@@ -99,6 +99,9 @@ function App() {
   const [address, setAddress] = useState('');
   const [addressVerification, setAddressVerification] = useState({ status: 'idle', message: '' });
   const [lastVerifiedAddress, setLastVerifiedAddress] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
+  const debounceTimerRef = useRef(null);
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [ticketRoute, setTicketRoute] = useState('');
@@ -204,6 +207,15 @@ function App() {
   useEffect(() => {
     document.title = `${appName} - Control de Repartos y Ganancias`;
   }, [appName]);
+
+  // Limpiar temporizador de autocompletado al desmontar componente
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   // Lógica de rastreo GPS en tiempo real para choferes
   useEffect(() => {
@@ -512,6 +524,45 @@ function App() {
       const newVal = Math.max(0, cur + change);
       return { ...prev, [tariffId]: newVal };
     });
+  };
+
+  // Buscar sugerencias de direcciones usando Nominatim (OSM)
+  const fetchAddressSuggestions = async (queryText) => {
+    if (!queryText.trim() || queryText.trim().length < 4) {
+      setSuggestions([]);
+      return;
+    }
+    setIsSearchingSuggestions(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=${encodeURIComponent(queryText)}`;
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSuggestions(data || []);
+      }
+    } catch (err) {
+      console.error("Error fetching address suggestions:", err);
+    } finally {
+      setIsSearchingSuggestions(false);
+    }
+  };
+
+  // Seleccionar una dirección sugerida
+  const handleSelectSuggestion = (sug) => {
+    const lat = parseFloat(sug.lat);
+    const lng = parseFloat(sug.lon);
+    setAddress(sug.display_name);
+    setAddressVerification({
+      status: 'success',
+      message: `🟢 Dirección verificada correctamente (GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)})`,
+      coords: { lat, lng }
+    });
+    setLastVerifiedAddress(sug.display_name);
+    setSuggestions([]);
   };
 
   // Verificar validez de la dirección por geocodificación
@@ -1279,7 +1330,7 @@ function App() {
               <span className="input-label">Teléfono</span>
               <input type="tel" className="form-input" placeholder="Ej. 612345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isClosed} />
             </div>
-            <div className="input-group" style={{ position: 'relative' }}>
+             <div className="input-group" style={{ position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className="input-label">Dirección</span>
                 {address.trim() && (
@@ -1300,10 +1351,32 @@ function App() {
                 placeholder="Dirección de entrega" 
                 value={address} 
                 onChange={(e) => {
-                  setAddress(e.target.value);
+                  const val = e.target.value;
+                  setAddress(val);
                   setAddressVerification({ status: 'idle', message: '' });
+                  
+                  // Limpiar timer de autocompletado
+                  if (debounceTimerRef.current) {
+                    clearTimeout(debounceTimerRef.current);
+                  }
+                  
+                  if (val.trim().length >= 4) {
+                    debounceTimerRef.current = setTimeout(() => {
+                      fetchAddressSuggestions(val);
+                    }, 400);
+                  } else {
+                    setSuggestions([]);
+                  }
                 }} 
-                onBlur={handleVerifyAddress}
+                onBlur={() => {
+                  // Retraso para que el clic en sugerencia se registre antes de cerrar la lista
+                  setTimeout(() => {
+                    setSuggestions([]);
+                    if (address.trim() && addressVerification.status === 'idle') {
+                      handleVerifyAddress();
+                    }
+                  }, 250);
+                }}
                 required 
                 disabled={isClosed} 
                 style={{
@@ -1323,6 +1396,84 @@ function App() {
                         : 'none'
                 }}
               />
+              
+              {/* SUGERENCIAS DE DIRECCIÓN */}
+              {isSearchingSuggestions && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  zIndex: 999,
+                  background: 'rgba(20, 16, 38, 0.95)',
+                  backdropFilter: 'blur(12px)',
+                  border: '1px solid var(--panel-border)',
+                  borderRadius: 'var(--border-radius-md)',
+                  padding: '8px 12px',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted)',
+                  marginTop: '4px',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <div style={{
+                    width: '12px',
+                    height: '12px',
+                    border: '2px solid rgba(255,255,255,0.1)',
+                    borderTopColor: '#a78bfa',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite'
+                  }}></div>
+                  <span>Buscando sugerencias...</span>
+                </div>
+              )}
+
+              {!isSearchingSuggestions && suggestions.length > 0 && (
+                <ul style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  zIndex: 999,
+                  background: 'rgba(20, 16, 38, 0.95)',
+                  backdropFilter: 'blur(12px)',
+                  border: '1px solid var(--panel-border)',
+                  borderRadius: 'var(--border-radius-md)',
+                  padding: '4px 0',
+                  margin: '4px 0 0 0',
+                  listStyle: 'none',
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+                }}>
+                  {suggestions.map((sug, index) => (
+                    <li 
+                      key={index}
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // Evita perder foco
+                        handleSelectSuggestion(sug);
+                      }}
+                      style={{
+                        padding: '10px 14px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        color: 'var(--text-main)',
+                        borderBottom: index < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                        transition: 'background 0.2s',
+                        lineHeight: '1.4',
+                        textAlign: 'left'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      📍 {sug.display_name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
               {addressVerification.message && (
                 <div style={{ 
                   fontSize: '0.75rem', 
