@@ -298,6 +298,7 @@ function App() {
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
         
         const dayTickets = tickets.filter(t => {
+          if (!t) return false;
           if (t.date !== targetDate) return false;
           if (isAdminMap) {
             if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
@@ -305,7 +306,9 @@ function App() {
             // Driver map: only show tickets for the logged in driver
             if (t.furgoId !== currentUser?.id) return false;
           }
-          return t.lat && t.lng;
+          const latNum = parseFloat(t.lat);
+          const lngNum = parseFloat(t.lng);
+          return t.lat !== undefined && t.lat !== null && !isNaN(latNum) && t.lng !== undefined && t.lng !== null && !isNaN(lngNum);
         });
 
         // Ordenar por hora de creación para visualizar la secuencia lógica
@@ -328,7 +331,9 @@ function App() {
           const furgoLabel = users.find(u => u.id === fid)?.label || fid;
 
           driverTickets.forEach((t, seqIndex) => {
-            const latLng = [t.lat, t.lng];
+            const latNum = parseFloat(t.lat);
+            const lngNum = parseFloat(t.lng);
+            const latLng = [latNum, lngNum];
             bounds.push(latLng);
 
             const isSuccess = t.status === 'success' || !t.status;
@@ -370,9 +375,9 @@ function App() {
                 <div style="margin-top: 5px; font-weight: 700; color: ${statusColor};">
                   Estado: ${t.status === 'success' ? '🟢 Éxito' : t.status === 'failed' ? `🔴 Fallido (${t.failureReason || 'Sin motivo'})` : '🟡 Pendiente'}
                 </div>
-                ${t.completedLat ? `
+                ${t.completedLat && !isNaN(parseFloat(t.completedLat)) ? `
                   <div style="margin-top: 6px; font-size: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px; color: #9ca3af;">
-                    🎯 Completado en GPS: ${t.completedLat.toFixed(5)}, ${t.completedLng.toFixed(5)}
+                    🎯 Completado en GPS: ${parseFloat(t.completedLat).toFixed(5)}, ${parseFloat(t.completedLng).toFixed(5)}
                   </div>
                 ` : ''}
               </div>
@@ -385,7 +390,11 @@ function App() {
 
           // Trazar línea de ruta conectando las paradas en orden
           if (driverTickets.length > 1) {
-            const routeCoords = driverTickets.map(t => [t.lat, t.lng]);
+            const routeCoords = driverTickets.map(t => {
+              const latNum = parseFloat(t.lat);
+              const lngNum = parseFloat(t.lng);
+              return [latNum, lngNum];
+            });
             window.L.polyline(routeCoords, {
               color: driverColor,
               weight: 3,
@@ -395,9 +404,14 @@ function App() {
           }
         });
 
-        // 6. Dibujar repartidores en tiempo real (si reportaron en las últimas 6 horas)
+        // 6. Dibujar repartidores en tiempo real
         const liveLocations = getDriverLocations();
         Object.entries(liveLocations).forEach(([fid, loc]) => {
+          if (!loc || loc.lat === undefined || loc.lng === undefined) return;
+          const latNum = parseFloat(loc.lat);
+          const lngNum = parseFloat(loc.lng);
+          if (isNaN(latNum) || isNaN(lngNum)) return;
+
           if (isAdminMap) {
             if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
             if (!activeRepartidores.map(r => r.id).includes(fid)) return;
@@ -406,10 +420,14 @@ function App() {
             if (fid !== currentUser?.id) return;
           }
 
-          const timeDiff = Date.now() - new Date(loc.updatedAt).getTime();
+          const updatedAtStr = loc.updatedAt || loc.timestamp;
+          if (!updatedAtStr) return;
+          const locTime = new Date(updatedAtStr).getTime();
+          if (isNaN(locTime)) return;
+          const timeDiff = Date.now() - locTime;
           if (timeDiff > 6 * 60 * 60 * 1000) return; // Filtro de inactividad de 6 horas
 
-          const latLng = [loc.lat, loc.lng];
+          const latLng = [latNum, lngNum];
           bounds.push(latLng);
           const furgoLabel = users.find(u => u.id === fid)?.label || fid;
 
@@ -441,8 +459,8 @@ function App() {
           const popupContent = `
             <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
               <strong style="color: #a78bfa; font-size: 0.95rem;">🚚 ${furgoLabel} (En Vivo)</strong>
-              <div style="margin-top: 5px;">Última señal: <strong>${new Date(loc.updatedAt).toLocaleTimeString()}</strong></div>
-              <div style="margin-top: 2px; font-size: 0.75rem; color: #9ca3af;">GPS: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</div>
+              <div style="margin-top: 5px;">Última señal: <strong>${new Date(locTime).toLocaleTimeString()}</strong></div>
+              <div style="margin-top: 2px; font-size: 0.75rem; color: #9ca3af;">GPS: ${latNum.toFixed(5)}, ${lngNum.toFixed(5)}</div>
             </div>
           `;
 
@@ -1776,6 +1794,7 @@ function App() {
               🗺️ Mapa de Mi Ruta ({targetDate})
             </h3>
             <div 
+              key={`driver-map-${targetDate}-${activeTab}`}
               id="driver-map" 
               style={{ 
                 height: '450px', 
@@ -2502,14 +2521,18 @@ function App() {
             `}</style>
 
             <div style={{ position: 'relative' }}>
-              <div id="admin-map" style={{ 
-                height: '550px', 
-                borderRadius: '12px', 
-                border: '1px solid var(--panel-border)', 
-                background: '#1e1e1e',
-                boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
-                zIndex: 1
-              }}></div>
+              <div 
+                key={`admin-map-${mapFilterDate}-${mapFilterFurgo}-${activeTab}`}
+                id="admin-map" 
+                style={{ 
+                  height: '550px', 
+                  borderRadius: '12px', 
+                  border: '1px solid var(--panel-border)', 
+                  background: '#1e1e1e',
+                  boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
+                  zIndex: 1
+                }}
+              ></div>
             </div>
             
             <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
