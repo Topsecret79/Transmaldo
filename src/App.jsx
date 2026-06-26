@@ -72,6 +72,18 @@ function App() {
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
   const [alertMsg, setAlertMsg] = useState({ text: '', type: '' });
 
+  // Rango de fechas para cortes de facturación del Administrador
+  const getFirstDayOfMonth = () => {
+    const date = new Date();
+    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-01`;
+  };
+  const getTodayDate = () => {
+    return new Date().toISOString().split('T')[0];
+  };
+
+  const [adminStartDate, setAdminStartDate] = useState(getFirstDayOfMonth());
+  const [adminEndDate, setAdminEndDate] = useState(getTodayDate());
+
   // Estado que controla si estamos editando
   const [editingTicketId, setEditingTicketId] = useState(null);
   const [editingFurgoId, setEditingFurgoId] = useState('');
@@ -663,10 +675,16 @@ function App() {
     }
   };
 
-  // Exportar Excel
+  // Exportar Excel del Periodo seleccionado
   const handleExportExcel = async () => {
-    if (tickets.length === 0) {
-      triggerAlert('No hay registros para exportar', 'error');
+    const filteredTickets = tickets.filter(t => {
+      if (adminStartDate && t.date < adminStartDate) return false;
+      if (adminEndDate && t.date > adminEndDate) return false;
+      return true;
+    });
+
+    if (filteredTickets.length === 0) {
+      triggerAlert('No hay registros para exportar en este periodo', 'error');
       return;
     }
 
@@ -674,26 +692,26 @@ function App() {
     const wb = XLSX.utils.book_new();
 
     // Resumen General
-    const totalEarnings = tickets.reduce((sum, t) => sum + t.totalPrice, 0);
+    const totalEarnings = filteredTickets.reduce((sum, t) => sum + t.totalPrice, 0);
     const furgos = users.filter(u => u.role === 'repartidor').map(u => u.id);
     const totalIVA = totalEarnings * 0.21;
     const totalRetencion = totalEarnings * 0.01;
     const totalNet = totalEarnings + totalIVA - totalRetencion;
 
     const summaryData = [
-      ['CONTROL MENSUAL DE FACTURACIÓN DE REPARTOS'],
+      [`CONTROL DE FACTURACIÓN DE REPARTOS (Periodo: ${adminStartDate || 'inicio'} a ${adminEndDate || 'hoy'})`],
       [],
       ['Facturación Total Acumulada (Base Imponible)', `${totalEarnings.toFixed(2)} €`],
       ['IVA Acumulado (+21%)', `${totalIVA.toFixed(2)} €`],
       ['Retención Acumulada (-1%)', `${totalRetencion.toFixed(2)} €`],
       ['Total Neto Facturado', `${totalNet.toFixed(2)} €`],
-      ['Total Entregas Realizadas', tickets.length],
+      ['Total Entregas Realizadas', filteredTickets.length],
       [],
       ['Furgoneta', 'Entregas', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)'],
     ];
 
     furgos.forEach(fid => {
-      const fTickets = tickets.filter(t => t.furgoId === fid);
+      const fTickets = filteredTickets.filter(t => t.furgoId === fid);
       const label = users.find(u => u.id === fid)?.label || fid;
       const earnings = fTickets.reduce((sum, t) => sum + t.totalPrice, 0);
       const iva = earnings * 0.21;
@@ -714,7 +732,7 @@ function App() {
 
     // Hojas por furgoneta (Desglosando CADA artículo en una fila diferente para el control exacto)
     furgos.forEach(fid => {
-      const fTickets = tickets.filter(t => t.furgoId === fid).sort((a,b) => a.date.localeCompare(b.date));
+      const fTickets = filteredTickets.filter(t => t.furgoId === fid).sort((a,b) => a.date.localeCompare(b.date));
       const label = users.find(u => u.id === fid)?.label || fid;
 
       const sheetHeaders = ['Fecha', 'Ruta', 'Cliente', 'Teléfono', 'Dirección', 'Artículo / Tarea', 'Cantidad', 'Tarifa Unitaria (€)', 'Subtotal (€)', 'Notas / Observaciones'];
@@ -741,8 +759,7 @@ function App() {
       XLSX.utils.book_append_sheet(wb, wsFurgo, label);
     });
 
-    const date = new Date();
-    const filename = `Repartos_Desglosados_${date.getFullYear()}_${(date.getMonth() + 1).toString().padStart(2, '0')}.xlsx`;
+    const filename = `Facturacion_${adminStartDate || 'inicio'}_a_${adminEndDate || 'hoy'}.xlsx`;
     XLSX.writeFile(wb, filename);
     const localPath = await saveExcelToDisk(wb, filename);
     if (localPath) {
@@ -752,21 +769,12 @@ function App() {
     }
   };
 
-  const handleResetMonth = () => {
-    const confirmation = window.confirm(
-      '¿Deseas reiniciar la aplicación para el nuevo mes? Se borrarán todos los repartos. Exporta a Excel antes de hacerlo.'
-    );
-    if (confirmation) {
-      resetMonthlyTickets();
-      resetMonthlyShifts();
-      loadData();
-      setEditingTicketId(null);
-      triggerAlert('Aplicación reiniciada para el nuevo mes.');
-    }
-  };
-
   const getFilteredTickets = () => {
     return tickets.filter(t => {
+      if (currentUser && currentUser.role === 'admin') {
+        if (adminStartDate && t.date < adminStartDate) return false;
+        if (adminEndDate && t.date > adminEndDate) return false;
+      }
       if (ticketFilterFurgo !== 'all' && t.furgoId !== ticketFilterFurgo) return false;
       if (ticketFilterDate && t.date !== ticketFilterDate) return false;
       if (ticketSearchQuery.trim()) {
@@ -1240,11 +1248,17 @@ function App() {
 
   // --- RENDERIZADO DEL PORTAL DE ADMINISTRADOR ---
   const renderAdminPortal = () => {
-    const totalEarnings = tickets.reduce((sum, t) => sum + t.totalPrice, 0);
+    const filteredAdminTickets = tickets.filter(t => {
+      if (adminStartDate && t.date < adminStartDate) return false;
+      if (adminEndDate && t.date > adminEndDate) return false;
+      return true;
+    });
+
+    const totalEarnings = filteredAdminTickets.reduce((sum, t) => sum + t.totalPrice, 0);
     const furgos = users.filter(u => u.role === 'repartidor').map(u => u.id);
     
     const furgoData = furgos.reduce((acc, fid) => {
-      const fTickets = tickets.filter(t => t.furgoId === fid);
+      const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid);
       acc[fid] = {
         count: fTickets.length,
         earnings: fTickets.reduce((sum, t) => sum + t.totalPrice, 0)
@@ -1257,7 +1271,7 @@ function App() {
     // Contadores
     let totalTvs = 0;
     let totalPackages = 0;
-    tickets.forEach(t => {
+    filteredAdminTickets.forEach(t => {
       t.tasks.forEach(task => {
         const tar = tariffs.find(x => x.id === task.tariffId);
         if (tar?.block === 'Televisores') totalTvs += task.quantity;
@@ -1269,7 +1283,7 @@ function App() {
       <div>
         <div className="tab-container">
           <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('dashboard'); }}>Dashboard</button>
-          <button className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>Repartos del Mes ({tickets.length})</button>
+          <button className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>Repartos del Periodo ({filteredAdminTickets.length})</button>
           {editingTicketId && (
             <button className={`tab-btn active`} onClick={() => setActiveTab('new_ticket')}>✏️ Editando...</button>
           )}
@@ -1279,6 +1293,49 @@ function App() {
 
         {activeTab === 'dashboard' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Selector de Rango de Fechas para Cortes */}
+            <div className="glass-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', justifyContent: 'space-between', padding: '15px', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Calendar size={20} color="var(--primary)" />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>Corte de Facturación (Periodo)</h3>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Desde:</span>
+                  <input 
+                    type="date" 
+                    className="form-input" 
+                    style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto' }} 
+                    value={adminStartDate} 
+                    onChange={(e) => setAdminStartDate(e.target.value)} 
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Hasta:</span>
+                  <input 
+                    type="date" 
+                    className="form-input" 
+                    style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto' }} 
+                    value={adminEndDate} 
+                    onChange={(e) => setAdminEndDate(e.target.value)} 
+                  />
+                </div>
+                {(adminStartDate || adminEndDate) && (
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-small" 
+                    style={{ padding: '6px 12px' }}
+                    onClick={() => {
+                      setAdminStartDate('');
+                      setAdminEndDate('');
+                    }}
+                  >
+                    Mostrar Todo
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="dashboard-grid">
               <div className="stat-card success">
                 <p>Ganancias del Mes</p>
@@ -1286,7 +1343,7 @@ function App() {
               </div>
               <div className="stat-card info">
                 <p>Total Clientes</p>
-                <div className="stat-val">{tickets.length}</div>
+                <div className="stat-val">{filteredAdminTickets.length}</div>
               </div>
               <div className="stat-card warning">
                 <p>Televisores Entregados</p>
@@ -1354,14 +1411,18 @@ function App() {
               </div>
 
               <div className="glass-panel" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <h2>Gestión de Cierre Mensual</h2>
-                <p>Descarga el informe completo a un Excel detallado y limpia la base de datos para comenzar el nuevo mes sin registros anteriores.</p>
+                <h2>Cortes de Facturación y Exportación</h2>
+                <p>
+                  Descarga el informe completo a un Excel detallado con los repartos del periodo seleccionado 
+                  {adminStartDate || adminEndDate ? (
+                    <strong> (del {adminStartDate || 'inicio'} al {adminEndDate || 'hoy'})</strong>
+                  ) : (
+                    ' (todo el historial)'
+                  )}.
+                </p>
                 <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                   <button onClick={handleExportExcel} className="btn btn-success" style={{ width: 'auto', flex: 1, minWidth: '200px' }}>
-                    <FileSpreadsheet size={18} /> Exportar Excel Completo
-                  </button>
-                  <button onClick={handleResetMonth} className="btn btn-danger" style={{ width: 'auto', flex: 1, minWidth: '200px' }}>
-                    <RefreshCw size={18} /> Reiniciar Periodo Mensual
+                    <FileSpreadsheet size={18} /> Exportar Excel del Periodo
                   </button>
                 </div>
               </div>
