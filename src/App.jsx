@@ -686,7 +686,13 @@ function App() {
   };
 
   const handleUpdateTicketStatus = (id, status) => {
-    updateTicketStatus(id, status);
+    let failureReason = '';
+    if (status === 'failed') {
+      const reason = window.prompt("Introduce el motivo del fallo (ej. Cliente ausente, Dirección incorrecta, Rechazado):");
+      if (reason === null) return; // User cancelled
+      failureReason = reason.trim() || 'No especificado';
+    }
+    updateTicketStatus(id, status, failureReason);
     loadData();
     triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
   };
@@ -760,7 +766,11 @@ function App() {
 
       fTickets.forEach(t => {
         const isSuccess = t.status === 'success' || !t.status;
-        const statusLabel = t.status === 'success' || !t.status ? 'Éxito' : t.status === 'failed' ? 'Fallido' : 'Pendiente';
+        const statusLabel = t.status === 'success' || !t.status 
+          ? 'Éxito' 
+          : t.status === 'failed' 
+            ? `Fallido${t.failureReason ? ` (${t.failureReason})` : ''}` 
+            : 'Pendiente';
         t.tasks.forEach(task => {
           sheetRows.push([
             t.date,
@@ -1246,7 +1256,7 @@ function App() {
                                   {t.status === 'success' || !t.status ? (
                                     <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>🟢 Éxito</span>
                                   ) : t.status === 'failed' ? (
-                                    <span className="badge badge-danger" style={{ fontSize: '0.75rem' }}>🔴 Fallido</span>
+                                    <span className="badge badge-danger" style={{ fontSize: '0.75rem' }} title={t.failureReason}>🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>
                                   ) : (
                                     <span className="badge badge-warning" style={{ fontSize: '0.75rem' }}>🟡 Pendiente</span>
                                   )}
@@ -1296,7 +1306,7 @@ function App() {
                                     <span style={{ fontSize: '0.7rem', color: '#4ade80', fontWeight: '500' }}>🟢 Completado con éxito</span>
                                   )}
                                   {t.status === 'failed' && (
-                                    <span style={{ fontSize: '0.7rem', color: '#f87171', fontWeight: '500' }}>🔴 Intento fallido</span>
+                                    <span style={{ fontSize: '0.7rem', color: '#f87171', fontWeight: '500' }}>🔴 Intento fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>
                                   )}
                                 </div>
                               )}
@@ -1611,8 +1621,8 @@ function App() {
                             const isSuccess = t.status === 'success' || !t.status;
                             const isFailed = t.status === 'failed';
                             return (
-                              <span className={`badge ${isSuccess ? 'badge-success' : isFailed ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: '0.75rem' }}>
-                                {isSuccess ? '🟢 Éxito' : isFailed ? '🔴 Fallido' : '🟡 Pendiente'}
+                              <span className={`badge ${isSuccess ? 'badge-success' : isFailed ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: '0.75rem' }} title={t.failureReason}>
+                                {isSuccess ? '🟢 Éxito' : isFailed ? `🔴 Fallido ${t.failureReason ? `(${t.failureReason})` : ''}` : '🟡 Pendiente'}
                               </span>
                             );
                           })()}

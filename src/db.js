@@ -254,11 +254,16 @@ export function updateTicket(updatedTicket) {
 }
 
 // Actualizar el estado de un ticket
-export function updateTicketStatus(ticketId, status) {
+export function updateTicketStatus(ticketId, status, failureReason = '') {
   const tickets = getTickets();
   const index = tickets.findIndex(t => t.id === ticketId);
   if (index !== -1) {
     tickets[index].status = status;
+    if (status === 'failed') {
+      tickets[index].failureReason = failureReason;
+    } else {
+      delete tickets[index].failureReason;
+    }
     saveTickets(tickets);
     return tickets[index];
   }
