@@ -96,6 +96,7 @@ function App() {
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [ticketRoute, setTicketRoute] = useState('');
+  const [codAmount, setCodAmount] = useState('');
 
   // Lista de TVs añadidas al ticket actual
   // Cada TV: { id: string, inches: number, action: 'entrega'|'recogida'|'combinado', pmType: 'none'|'basic'|'complex', cuelgue: boolean, recogidaViejaType: 'none'|'urbantz'|'no_urbantz' }
@@ -335,6 +336,7 @@ function App() {
       phone: phone.trim(),
       address: address.trim(),
       notes: notes.trim(),
+      codAmount: parseFloat(codAmount) || 0,
       tasks: tasksArray
     };
 
@@ -352,6 +354,7 @@ function App() {
       setFormTvs([]);
       setOtherQuantities({});
       setNotes('');
+      setCodAmount('');
       setTicketDate(new Date().toISOString().split('T')[0]);
       loadData();
     }
@@ -439,6 +442,7 @@ function App() {
 
     setFormTvs(tempTvs);
     setOtherQuantities(tempOthers);
+    setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
     setActiveTab('new_ticket');
   };
 
@@ -451,6 +455,7 @@ function App() {
     setFormTvs([]);
     setOtherQuantities({});
     setNotes('');
+    setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
     setTicketDate(new Date().toISOString().split('T')[0]);
     setActiveTab(currentUser.role === 'admin' ? 'tickets' : 'history');
@@ -531,8 +536,10 @@ function App() {
     let totalCuelgues = 0;
     let totalVieja = 0;
     let totalOtros = 0;
+    let totalCODAmount = 0;
     
     dayTickets.forEach(t => {
+      totalCODAmount += t.codAmount || 0;
       t.tasks.forEach(task => {
         const tariff = tariffs.find(tar => tar.id === task.tariffId);
         if (!tariff) return;
@@ -569,7 +576,8 @@ function App() {
       totalPM,
       totalCuelgues,
       totalVieja,
-      totalOtros
+      totalOtros,
+      totalCODAmount
     };
   };
 
@@ -720,6 +728,7 @@ function App() {
     const totalIVA = totalEarnings * 0.21;
     const totalRetencion = totalEarnings * 0.01;
     const totalNet = totalEarnings + totalIVA - totalRetencion;
+    const totalCOD = successTickets.reduce((sum, t) => sum + (t.codAmount || 0), 0);
 
     const summaryData = [
       [`CONTROL DE FACTURACIÓN DE REPARTOS (Periodo: ${adminStartDate || 'inicio'} a ${adminEndDate || 'hoy'})`],
@@ -730,8 +739,9 @@ function App() {
       ['Total Neto Facturado', `${totalNet.toFixed(2)} €`],
       ['Total Paradas Planificadas', filteredTickets.length],
       ['Total Entregas con Éxito (Facturadas)', successTickets.length],
+      ['Total Reembolsos Cobrados', `${totalCOD.toFixed(2)} €`],
       [],
-      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)'],
+      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)', 'Reembolsos Cobrados (€)'],
     ];
 
     furgos.forEach(fid => {
@@ -742,6 +752,7 @@ function App() {
       const iva = earnings * 0.21;
       const ret = earnings * 0.01;
       const net = earnings + iva - ret;
+      const fCod = fSuccess.reduce((sum, t) => sum + (t.codAmount || 0), 0);
       summaryData.push([
         label, 
         fTickets.length, 
@@ -749,7 +760,8 @@ function App() {
         `${earnings.toFixed(2)} €`,
         `${iva.toFixed(2)} €`,
         `-${ret.toFixed(2)} €`,
-        `${net.toFixed(2)} €`
+        `${net.toFixed(2)} €`,
+        `${fCod.toFixed(2)} €`
       ]);
     });
 
@@ -761,7 +773,7 @@ function App() {
       const fTickets = filteredTickets.filter(t => t.furgoId === fid).sort((a,b) => a.date.localeCompare(b.date));
       const label = users.find(u => u.id === fid)?.label || fid;
 
-      const sheetHeaders = ['Fecha', 'Ruta', 'Cliente', 'Teléfono', 'Dirección', 'Artículo / Tarea', 'Cantidad', 'Tarifa Unitaria (€)', 'Subtotal (€)', 'Estado', 'Notas / Observaciones'];
+      const sheetHeaders = ['Fecha', 'Ruta', 'Cliente', 'Teléfono', 'Dirección', 'Cobro Reembolso (€)', 'Artículo / Tarea', 'Cantidad', 'Tarifa Unitaria (€)', 'Subtotal (€)', 'Estado', 'Notas / Observaciones'];
       const sheetRows = [];
 
       fTickets.forEach(t => {
@@ -778,6 +790,7 @@ function App() {
             t.customerName,
             t.phone || '',
             t.address,
+            t.codAmount || 0,
             task.name,
             task.quantity,
             task.unitPrice,
@@ -904,7 +917,7 @@ function App() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
             <div className="input-group">
               <span className="input-label">Cliente</span>
               <input type="text" className="form-input" placeholder="Ej. Jaime Rodríguez" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required disabled={isClosed} />
@@ -916,6 +929,10 @@ function App() {
             <div className="input-group">
               <span className="input-label">Dirección</span>
               <input type="text" className="form-input" placeholder="Dirección de entrega" value={address} onChange={(e) => setAddress(e.target.value)} required disabled={isClosed} />
+            </div>
+            <div className="input-group">
+              <span className="input-label">Importe a Cobrar / Reembolso (€)</span>
+              <input type="number" step="0.01" min="0" className="form-input" placeholder="Ej. 150.00 (0 si no requiere)" value={codAmount} onChange={(e) => setCodAmount(e.target.value)} disabled={isClosed} />
             </div>
           </div>
 
@@ -1224,6 +1241,23 @@ function App() {
                               <div>{t.customerName}</div>
                               {t.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>📞 {t.phone}</div>}
                               {t.notes && <div style={{ fontSize: '0.8rem', fontStyle: 'italic', color: 'var(--text-muted)', marginTop: '4px' }}>📝 {t.notes}</div>}
+                              {t.codAmount > 0 && (
+                                <div style={{
+                                  marginTop: '6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  background: t.status === 'success' ? 'var(--success-light)' : t.status === 'failed' ? 'var(--danger-light)' : 'var(--warning-light)',
+                                  color: t.status === 'success' ? 'var(--success)' : t.status === 'failed' ? 'var(--danger)' : 'var(--warning)',
+                                  border: '1px solid ' + (t.status === 'success' ? 'rgba(16, 185, 129, 0.2)' : t.status === 'failed' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(234, 179, 8, 0.2)'),
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '600'
+                                }}>
+                                  💵 {t.status === 'success' ? 'Cobrado: ' : t.status === 'failed' ? 'No cobrado: ' : 'Cobrar: '} {t.codAmount.toFixed(2)} €
+                                </div>
+                              )}
                             </td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1587,6 +1621,19 @@ function App() {
                         <td style={{ fontWeight: '600' }}>
                           <div>{t.customerName || ''}</div>
                           {t.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>📞 {t.phone}</div>}
+                          {t.codAmount > 0 && (
+                            <div style={{
+                              marginTop: '4px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: t.status === 'success' ? 'var(--success)' : t.status === 'failed' ? 'var(--danger)' : 'var(--warning)',
+                              fontSize: '0.8rem',
+                              fontWeight: '700'
+                            }}>
+                              💵 {t.status === 'success' ? 'Cobrado: ' : t.status === 'failed' ? 'No cobrado: ' : 'Cobrar: '} {t.codAmount.toFixed(2)} €
+                            </div>
+                          )}
                         </td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1686,6 +1733,9 @@ function App() {
                                 <span>TV: <strong>{s.summary ? s.summary.totalTvs : 0}</strong></span> |
                                 <span>PV/GV: <strong>{s.summary ? s.summary.totalPV : 0}/{s.summary ? s.summary.totalGV : 0}</strong></span> |
                                 <span>PM/Cuelgues: <strong>{s.summary ? s.summary.totalPM : 0}/{s.summary ? s.summary.totalCuelgues : 0}</strong></span>
+                                {s.summary && s.summary.totalCODAmount > 0 && (
+                                  <> | <span>Cobrado: <strong style={{ color: 'var(--success)' }}>{s.summary.totalCODAmount.toFixed(2)} €</strong></span></>
+                                )}
                               </div>
                             </td>
                             <td style={{ textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -2149,7 +2199,8 @@ function App() {
                   totalPM: 0,
                   totalCuelgues: 0,
                   totalVieja: 0,
-                  totalOtros: 0
+                  totalOtros: 0,
+                  totalCODAmount: 0
                 };
                 
                 const dayTickets = tickets.filter(t => t.furgoId === targetFurgoId && t.date === targetDate);
@@ -2194,6 +2245,12 @@ function App() {
                        <span>Otros Accesorios:</span>
                        <strong>{summary.totalOtros}</strong>
                     </div>
+                    {summary.totalCODAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--success)', fontWeight: '600' }}>
+                         <span>Total Dinero Cobrado:</span>
+                         <strong>{summary.totalCODAmount.toFixed(2)} €</strong>
+                      </div>
+                    )}
                     
                     <div style={{ borderBottom: '1px dashed var(--panel-border)', margin: '10px 0' }}></div>
                     <div style={{ fontWeight: '700', fontSize: '0.9rem', marginBottom: '5px' }}>Clientes y Servicios Realizados:</div>
