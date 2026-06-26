@@ -194,6 +194,7 @@ export function addTicket(ticketData) {
     phone: ticketData.phone || '',
     address: ticketData.address,
     notes: ticketData.notes || '',
+    codAmount: ticketData.codAmount || 0,
     tasks: detailedTasks,
     totalPrice: totalCalculado,
     status: ticketData.status || 'pending',
@@ -243,6 +244,7 @@ export function updateTicket(updatedTicket) {
       phone: updatedTicket.phone || '',
       address: updatedTicket.address,
       notes: updatedTicket.notes || '',
+      codAmount: updatedTicket.codAmount || 0,
       tasks: detailedTasks,
       totalPrice: totalCalculado,
       status: updatedTicket.status || tickets[index].status || 'pending'
