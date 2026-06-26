@@ -719,6 +719,7 @@ function App() {
       updateTicket(ticketData);
       triggerAlert('Registro modificado con éxito');
       cancelEditing();
+      loadData();
     } else {
       addTicket(ticketData);
       triggerAlert('Registro guardado con éxito');
