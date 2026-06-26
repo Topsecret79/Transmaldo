@@ -263,198 +263,212 @@ function App() {
 
   // Inicialización y actualización del Mapa Leaflet (Admin o Repartidor)
   useEffect(() => {
-    const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');
-    const isDriverMap = activeTab === 'driver_map' && document.getElementById('driver-map');
+    const timer = setTimeout(() => {
+      const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');
+      const isDriverMap = activeTab === 'driver_map' && document.getElementById('driver-map');
 
-    if ((isAdminMap || isDriverMap) && window.L) {
-      const mapElementId = isAdminMap ? 'admin-map' : 'driver-map';
+      if ((isAdminMap || isDriverMap) && window.L) {
+        const mapElementId = isAdminMap ? 'admin-map' : 'driver-map';
 
-      // 1. Destruir mapa previo si existe
-      if (mapInstanceRef.current !== null) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-
-      // 2. Inicializar nuevo mapa (centrado en Madrid por defecto)
-      const map = window.L.map(mapElementId, {
-        zoomControl: true,
-        attributionControl: true
-      }).setView([40.416775, -3.703790], 12);
-      mapInstanceRef.current = map;
-
-      // 3. Cargar capa de mapa oscuro (CartoDB Dark Matter)
-      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20
-      }).addTo(map);
-
-      // 4. Filtrar y ordenar los tickets geocodificados
-      const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
-      
-      const dayTickets = tickets.filter(t => {
-        if (t.date !== targetDate) return false;
-        if (isAdminMap) {
-          if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
-        } else {
-          // Driver map: only show tickets for the logged in driver
-          if (t.furgoId !== currentUser?.id) return false;
+        // 1. Destruir mapa previo si existe
+        if (mapInstanceRef.current !== null) {
+          try {
+            mapInstanceRef.current.remove();
+          } catch (e) {
+            console.error("Error removing map instance:", e);
+          }
+          mapInstanceRef.current = null;
         }
-        return t.lat && t.lng;
-      });
 
-      // Ordenar por hora de creación para visualizar la secuencia lógica
-      const sortedDayTickets = [...dayTickets].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+        // 2. Inicializar nuevo mapa (centrado en Madrid por defecto)
+        const map = window.L.map(mapElementId, {
+          zoomControl: true,
+          attributionControl: true
+        }).setView([40.416775, -3.703790], 12);
+        mapInstanceRef.current = map;
 
-      // Agrupar tickets por repartidor
-      const ticketsByDriver = {};
-      sortedDayTickets.forEach(t => {
-        if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = [];
-        ticketsByDriver[t.furgoId].push(t);
-      });
+        // 3. Cargar capa de mapa oscuro (CartoDB Dark Matter)
+        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+          subdomains: 'abcd',
+          maxZoom: 20
+        }).addTo(map);
 
-      const bounds = [];
-      const COLORS = ['#a78bfa', '#38bdf8', '#34d399', '#f472b6', '#fbbf24', '#f43f5e'];
+        // 4. Filtrar y ordenar los tickets geocodificados
+        const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
+        
+        const dayTickets = tickets.filter(t => {
+          if (t.date !== targetDate) return false;
+          if (isAdminMap) {
+            if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+          } else {
+            // Driver map: only show tickets for the logged in driver
+            if (t.furgoId !== currentUser?.id) return false;
+          }
+          return t.lat && t.lng;
+        });
 
-      // 5. Dibujar marcadores de paradas y líneas de ruta (polilíneas)
-      Object.keys(ticketsByDriver).forEach((fid, idx) => {
-        const driverTickets = ticketsByDriver[fid];
-        const driverColor = COLORS[idx % COLORS.length];
-        const furgoLabel = users.find(u => u.id === fid)?.label || fid;
+        // Ordenar por hora de creación para visualizar la secuencia lógica
+        const sortedDayTickets = [...dayTickets].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
 
-        driverTickets.forEach((t, seqIndex) => {
-          const latLng = [t.lat, t.lng];
+        // Agrupar tickets por repartidor
+        const ticketsByDriver = {};
+        sortedDayTickets.forEach(t => {
+          if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = [];
+          ticketsByDriver[t.furgoId].push(t);
+        });
+
+        const bounds = [];
+        const COLORS = ['#a78bfa', '#38bdf8', '#34d399', '#f472b6', '#fbbf24', '#f43f5e'];
+
+        // 5. Dibujar marcadores de paradas y líneas de ruta (polilíneas)
+        Object.keys(ticketsByDriver).forEach((fid, idx) => {
+          const driverTickets = ticketsByDriver[fid];
+          const driverColor = COLORS[idx % COLORS.length];
+          const furgoLabel = users.find(u => u.id === fid)?.label || fid;
+
+          driverTickets.forEach((t, seqIndex) => {
+            const latLng = [t.lat, t.lng];
+            bounds.push(latLng);
+
+            const isSuccess = t.status === 'success' || !t.status;
+            const isFailed = t.status === 'failed';
+            const statusColor = isSuccess ? '#10b981' : isFailed ? '#ef4444' : '#fbbf24';
+
+            const markerHtml = `
+              <div style="
+                width: 24px; 
+                height: 24px; 
+                border-radius: 50%; 
+                background-color: ${statusColor}; 
+                color: #000; 
+                font-weight: 800; 
+                font-size: 11px; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                border: 2px solid #fff;
+                box-shadow: 0 0 10px rgba(0,0,0,0.5);
+              ">
+                ${seqIndex + 1}
+              </div>
+            `;
+
+            const markerIcon = window.L.divIcon({
+              html: markerHtml,
+              className: '',
+              iconSize: [24, 24],
+              iconAnchor: [12, 12]
+            });
+
+            const popupContent = `
+              <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
+                <strong style="color: #a78bfa; font-size: 0.95rem;">${t.customerName}</strong>
+                <div style="margin-top: 5px;">📍 <strong>Parada #${seqIndex + 1}</strong></div>
+                <div style="margin-top: 2px;">🚚 Chofer: <strong>${furgoLabel}</strong></div>
+                <div style="margin-top: 2px;">🏠 Dir: ${t.address}</div>
+                <div style="margin-top: 5px; font-weight: 700; color: ${statusColor};">
+                  Estado: ${t.status === 'success' ? '🟢 Éxito' : t.status === 'failed' ? `🔴 Fallido (${t.failureReason || 'Sin motivo'})` : '🟡 Pendiente'}
+                </div>
+                ${t.completedLat ? `
+                  <div style="margin-top: 6px; font-size: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px; color: #9ca3af;">
+                    🎯 Completado en GPS: ${t.completedLat.toFixed(5)}, ${t.completedLng.toFixed(5)}
+                  </div>
+                ` : ''}
+              </div>
+            `;
+
+            window.L.marker(latLng, { icon: markerIcon })
+              .addTo(map)
+              .bindPopup(popupContent, { maxWidth: 220 });
+          });
+
+          // Trazar línea de ruta conectando las paradas en orden
+          if (driverTickets.length > 1) {
+            const routeCoords = driverTickets.map(t => [t.lat, t.lng]);
+            window.L.polyline(routeCoords, {
+              color: driverColor,
+              weight: 3,
+              opacity: 0.75,
+              dashArray: '8, 8'
+            }).addTo(map);
+          }
+        });
+
+        // 6. Dibujar repartidores en tiempo real (si reportaron en las últimas 6 horas)
+        const liveLocations = getDriverLocations();
+        Object.entries(liveLocations).forEach(([fid, loc]) => {
+          if (isAdminMap) {
+            if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
+            if (!activeRepartidores.map(r => r.id).includes(fid)) return;
+          } else {
+            // Driver map: only show their own location
+            if (fid !== currentUser?.id) return;
+          }
+
+          const timeDiff = Date.now() - new Date(loc.updatedAt).getTime();
+          if (timeDiff > 6 * 60 * 60 * 1000) return; // Filtro de inactividad de 6 horas
+
+          const latLng = [loc.lat, loc.lng];
           bounds.push(latLng);
+          const furgoLabel = users.find(u => u.id === fid)?.label || fid;
 
-          const isSuccess = t.status === 'success' || !t.status;
-          const isFailed = t.status === 'failed';
-          const statusColor = isSuccess ? '#10b981' : isFailed ? '#ef4444' : '#fbbf24';
-
-          const markerHtml = `
+          const liveHtml = `
             <div style="
-              width: 24px; 
-              height: 24px; 
-              border-radius: 50%; 
-              background-color: ${statusColor}; 
-              color: #000; 
-              font-weight: 800; 
-              font-size: 11px; 
-              display: flex; 
-              align-items: center; 
-              justify-content: center; 
-              border: 2px solid #fff;
-              box-shadow: 0 0 10px rgba(0,0,0,0.5);
+              width: 32px;
+              height: 32px;
+              border-radius: 50%;
+              background: rgba(139, 92, 246, 0.2);
+              border: 2px solid #a78bfa;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow: 0 0 15px #a78bfa;
+              animation: gpsPulse 2s infinite ease-in-out;
+              font-size: 16px;
             ">
-              ${seqIndex + 1}
+              🚚
             </div>
           `;
 
-          const markerIcon = window.L.divIcon({
-            html: markerHtml,
+          const liveIcon = window.L.divIcon({
+            html: liveHtml,
             className: '',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
           });
 
           const popupContent = `
             <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
-              <strong style="color: #a78bfa; font-size: 0.95rem;">${t.customerName}</strong>
-              <div style="margin-top: 5px;">📍 <strong>Parada #${seqIndex + 1}</strong></div>
-              <div style="margin-top: 2px;">🚚 Chofer: <strong>${furgoLabel}</strong></div>
-              <div style="margin-top: 2px;">🏠 Dir: ${t.address}</div>
-              <div style="margin-top: 5px; font-weight: 700; color: ${statusColor};">
-                Estado: ${t.status === 'success' ? '🟢 Éxito' : t.status === 'failed' ? `🔴 Fallido (${t.failureReason || 'Sin motivo'})` : '🟡 Pendiente'}
-              </div>
-              ${t.completedLat ? `
-                <div style="margin-top: 6px; font-size: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px; color: #9ca3af;">
-                  🎯 Completado en GPS: ${t.completedLat.toFixed(5)}, ${t.completedLng.toFixed(5)}
-                </div>
-              ` : ''}
+              <strong style="color: #a78bfa; font-size: 0.95rem;">🚚 ${furgoLabel} (En Vivo)</strong>
+              <div style="margin-top: 5px;">Última señal: <strong>${new Date(loc.updatedAt).toLocaleTimeString()}</strong></div>
+              <div style="margin-top: 2px; font-size: 0.75rem; color: #9ca3af;">GPS: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</div>
             </div>
           `;
 
-          window.L.marker(latLng, { icon: markerIcon })
+          window.L.marker(latLng, { icon: liveIcon })
             .addTo(map)
-            .bindPopup(popupContent, { maxWidth: 220 });
+            .bindPopup(popupContent);
         });
 
-        // Trazar línea de ruta conectando las paradas en orden
-        if (driverTickets.length > 1) {
-          const routeCoords = driverTickets.map(t => [t.lat, t.lng]);
-          window.L.polyline(routeCoords, {
-            color: driverColor,
-            weight: 3,
-            opacity: 0.75,
-            dashArray: '8, 8'
-          }).addTo(map);
-        }
-      });
-
-      // 6. Dibujar repartidores en tiempo real (si reportaron en las últimas 6 horas)
-      const liveLocations = getDriverLocations();
-      Object.entries(liveLocations).forEach(([fid, loc]) => {
-        if (isAdminMap) {
-          if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
-          if (!activeRepartidores.map(r => r.id).includes(fid)) return;
-        } else {
-          // Driver map: only show their own location
-          if (fid !== currentUser?.id) return;
+        // 7. Auto-ajustar el zoom del mapa para mostrar todos los puntos
+        if (bounds.length > 0) {
+          map.fitBounds(bounds, { padding: [50, 50] });
         }
 
-        const timeDiff = Date.now() - new Date(loc.updatedAt).getTime();
-        if (timeDiff > 6 * 60 * 60 * 1000) return; // Filtro de inactividad de 6 horas
-
-        const latLng = [loc.lat, loc.lng];
-        bounds.push(latLng);
-        const furgoLabel = users.find(u => u.id === fid)?.label || fid;
-
-        const liveHtml = `
-          <div style="
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: rgba(139, 92, 246, 0.2);
-            border: 2px solid #a78bfa;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 15px #a78bfa;
-            animation: gpsPulse 2s infinite ease-in-out;
-            font-size: 16px;
-          ">
-            🚚
-          </div>
-        `;
-
-        const liveIcon = window.L.divIcon({
-          html: liveHtml,
-          className: '',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
-        });
-
-        const popupContent = `
-          <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
-            <strong style="color: #a78bfa; font-size: 0.95rem;">🚚 ${furgoLabel} (En Vivo)</strong>
-            <div style="margin-top: 5px;">Última señal: <strong>${new Date(loc.updatedAt).toLocaleTimeString()}</strong></div>
-            <div style="margin-top: 2px; font-size: 0.75rem; color: #9ca3af;">GPS: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</div>
-          </div>
-        `;
-
-        window.L.marker(latLng, { icon: liveIcon })
-          .addTo(map)
-          .bindPopup(popupContent);
-      });
-
-      // 7. Auto-ajustar el zoom del mapa para mostrar todos los puntos
-      if (bounds.length > 0) {
-        map.fitBounds(bounds, { padding: [50, 50] });
+        // Forzar recalculo de dimensiones para corregir pantallas grises o en blanco
+        map.invalidateSize();
       }
-    }
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       if (mapInstanceRef.current !== null) {
-        mapInstanceRef.current.remove();
+        try {
+          mapInstanceRef.current.remove();
+        } catch (e) {
+          console.error("Error removing map instance:", e);
+        }
         mapInstanceRef.current = null;
       }
     };
@@ -1763,13 +1777,14 @@ function App() {
             </h3>
             <div 
               id="driver-map" 
-              className="map-container" 
               style={{ 
                 height: '450px', 
                 width: '100%', 
                 borderRadius: 'var(--border-radius-lg)', 
                 border: '1px solid var(--panel-border)',
-                boxShadow: 'inset 0 0 15px rgba(0,0,0,0.5)'
+                background: '#1e1e1e',
+                boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
+                zIndex: 1
               }}
             ></div>
           </div>
