@@ -1381,18 +1381,18 @@ function App() {
                 disabled={isClosed} 
                 style={{
                   borderColor: addressVerification.status === 'success' 
-                    ? '#10b981' 
+                    ? '#34d399' 
                     : addressVerification.status === 'error' 
-                      ? '#ef4444' 
+                      ? '#f87171' 
                       : addressVerification.status === 'verifying' 
-                        ? '#8b5cf6' 
+                        ? '#c084fc' 
                         : 'var(--input-border)',
                   boxShadow: addressVerification.status === 'success' 
-                    ? '0 0 0 3px rgba(16, 185, 129, 0.15)' 
+                    ? '0 0 0 3px rgba(52, 211, 153, 0.2)' 
                     : addressVerification.status === 'error' 
-                      ? '0 0 0 3px rgba(239, 68, 68, 0.15)' 
+                      ? '0 0 0 3px rgba(248, 113, 113, 0.2)' 
                       : addressVerification.status === 'verifying' 
-                        ? '0 0 0 3px rgba(139, 92, 246, 0.15)' 
+                        ? '0 0 0 3px rgba(192, 132, 252, 0.2)' 
                         : 'none'
                 }}
               />
@@ -1405,15 +1405,15 @@ function App() {
                   left: 0,
                   right: 0,
                   zIndex: 999,
-                  background: 'rgba(20, 16, 38, 0.95)',
+                  background: 'rgba(20, 16, 38, 0.98)',
                   backdropFilter: 'blur(12px)',
                   border: '1px solid var(--panel-border)',
                   borderRadius: 'var(--border-radius-md)',
                   padding: '8px 12px',
                   fontSize: '0.8rem',
-                  color: 'var(--text-muted)',
+                  color: '#e9d5ff',
                   marginTop: '4px',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px'
@@ -1422,7 +1422,7 @@ function App() {
                     width: '12px',
                     height: '12px',
                     border: '2px solid rgba(255,255,255,0.1)',
-                    borderTopColor: '#a78bfa',
+                    borderTopColor: '#c084fc',
                     borderRadius: '50%',
                     animation: 'spin 0.8s linear infinite'
                   }}></div>
@@ -1437,7 +1437,7 @@ function App() {
                   left: 0,
                   right: 0,
                   zIndex: 999,
-                  background: 'rgba(20, 16, 38, 0.95)',
+                  background: 'rgba(20, 16, 38, 0.98)',
                   backdropFilter: 'blur(12px)',
                   border: '1px solid var(--panel-border)',
                   borderRadius: 'var(--border-radius-md)',
@@ -1446,7 +1446,7 @@ function App() {
                   listStyle: 'none',
                   maxHeight: '200px',
                   overflowY: 'auto',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.6)'
                 }}>
                   {suggestions.map((sug, index) => (
                     <li 
@@ -1459,13 +1459,13 @@ function App() {
                         padding: '10px 14px',
                         cursor: 'pointer',
                         fontSize: '0.85rem',
-                        color: 'var(--text-main)',
+                        color: '#ffffff',
                         borderBottom: index < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
                         transition: 'background 0.2s',
                         lineHeight: '1.4',
                         textAlign: 'left'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.35)'}
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
                       📍 {sug.display_name}
@@ -1476,10 +1476,10 @@ function App() {
 
               {addressVerification.message && (
                 <div style={{ 
-                  fontSize: '0.75rem', 
-                  marginTop: '4px', 
-                  color: addressVerification.status === 'success' ? '#10b981' : addressVerification.status === 'verifying' ? 'var(--text-muted)' : '#ef4444',
-                  fontWeight: addressVerification.status === 'success' ? '700' : 'normal',
+                  fontSize: '0.78rem', 
+                  marginTop: '6px', 
+                  color: addressVerification.status === 'success' ? '#34d399' : addressVerification.status === 'verifying' ? '#a78bfa' : '#f87171',
+                  fontWeight: '600',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px'
