@@ -57,6 +57,7 @@ initDB();
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
+  const isAdminOrSuper = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -120,6 +121,7 @@ function App() {
   const [newUsername, setNewUsername] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newRole, setNewRole] = useState('repartidor');
 
   // Nombre dinámico de la aplicación
   const [appName, setAppName] = useState(getAppName());
@@ -139,7 +141,7 @@ function App() {
     if (savedUser) {
       const parsed = JSON.parse(savedUser);
       setCurrentUser(parsed);
-      setActiveTab(parsed.role === 'admin' ? 'dashboard' : 'new_ticket');
+      setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
     }
   }, []);
 
@@ -156,7 +158,7 @@ function App() {
 
   // Sincronizar ruta por defecto del ticket
   useEffect(() => {
-    if (currentUser && currentUser.role !== 'admin') {
+    if (currentUser && !isAdminOrSuper) {
       const currentDbUser = users.find(u => u.id === currentUser.id);
       setTicketRoute(currentDbUser ? currentDbUser.label : currentUser.label);
     }
@@ -190,7 +192,7 @@ function App() {
     if (foundUser) {
       setCurrentUser(foundUser);
       localStorage.setItem('delivery_session', JSON.stringify(foundUser));
-      setActiveTab(foundUser.role === 'admin' ? 'dashboard' : 'new_ticket');
+      setActiveTab((foundUser.role === 'admin' || foundUser.role === 'superadmin') ? 'dashboard' : 'new_ticket');
       setUsernameInput('');
       setPasswordInput('');
       loadData();
@@ -255,7 +257,7 @@ function App() {
 
     const checkFurgoId = editingTicketId ? editingFurgoId : currentUser.id;
     const isClosed = getShiftStatus(checkFurgoId, ticketDate) === 'closed';
-    if (isClosed && currentUser.role !== 'admin') {
+    if (isClosed && !isAdminOrSuper) {
       triggerAlert('El turno para este día ya ha sido cerrado. No puedes guardar ni editar repartos para esta fecha.', 'error');
       return;
     }
@@ -363,7 +365,7 @@ function App() {
   // Iniciar la edición de un ticket y reconstruir los estados desde el listado de tareas del ticket
   const startEditing = (ticket) => {
     const isClosed = getShiftStatus(ticket.furgoId, ticket.date) === 'closed';
-    if (isClosed && currentUser.role !== 'admin') {
+    if (isClosed && !isAdminOrSuper) {
       triggerAlert('El turno para la fecha de este reparto está cerrado. No puedes editarlo.', 'error');
       return;
     }
@@ -458,7 +460,7 @@ function App() {
     setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
     setTicketDate(new Date().toISOString().split('T')[0]);
-    setActiveTab(currentUser.role === 'admin' ? 'tickets' : 'history');
+    setActiveTab(isAdminOrSuper ? 'tickets' : 'history');
   };
 
   const handleUpdateTariffValue = (id, newValue) => {
@@ -678,7 +680,7 @@ function App() {
     if (!ticket) return;
 
     const isClosed = getShiftStatus(ticket.furgoId, ticket.date) === 'closed';
-    if (isClosed && currentUser.role !== 'admin') {
+    if (isClosed && !isAdminOrSuper) {
       triggerAlert('El turno para este reparto está cerrado. No puedes eliminarlo.', 'error');
       return;
     }
@@ -817,7 +819,7 @@ function App() {
 
   const getFilteredTickets = () => {
     return tickets.filter(t => {
-      if (currentUser && currentUser.role === 'admin') {
+      if (currentUser && isAdminOrSuper) {
         if (adminStartDate && t.date < adminStartDate) return false;
         if (adminEndDate && t.date > adminEndDate) return false;
       }
@@ -846,7 +848,7 @@ function App() {
     const itemsOtros = tariffs.filter(t => t.block === 'Otros');
 
     const activeCheckFurgo = editingTicketId ? editingFurgoId : currentUser.id;
-    const isClosed = getShiftStatus(activeCheckFurgo, ticketDate) === 'closed' && currentUser.role !== 'admin';
+    const isClosed = getShiftStatus(activeCheckFurgo, ticketDate) === 'closed' && !isAdminOrSuper;
 
     return (
       <form onSubmit={handleFormSubmit} className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -881,7 +883,7 @@ function App() {
         )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px' }}>
-          {editingTicketId && currentUser.role === 'admin' && (
+          {editingTicketId && isAdminOrSuper && (
             <div className="input-group">
               <span className="input-label">Furgoneta asignada</span>
               <select className="form-input" value={editingFurgoId} onChange={(e) => setEditingFurgoId(e.target.value)} required disabled={isClosed}>
@@ -898,7 +900,7 @@ function App() {
               <input type="date" className="form-input" value={ticketDate} onChange={(e) => setTicketDate(e.target.value)} required disabled={isClosed || !!editingTicketId} />
             </div>
 
-            {currentUser.role !== 'admin' && (
+            {!isAdminOrSuper && (
               <div className="input-group" style={{ marginBottom: 0 }}>
                 <span className="input-label">Adjudicar a la Ruta / Furgoneta de</span>
                 <select 
@@ -1962,10 +1964,10 @@ function App() {
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
-              {/* Crear nueva furgoneta */}
+              {/* Crear nueva furgoneta / usuario */}
               <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
                 <div className="block-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Plus size={18} color="var(--primary)" /> Añadir Nueva Furgoneta
+                  <Plus size={18} color="var(--primary)" /> {currentUser.role === 'superadmin' ? 'Añadir Nuevo Usuario o Administrador' : 'Añadir Nueva Furgoneta'}
                 </div>
                 <form onSubmit={(e) => {
                   e.preventDefault();
@@ -1973,12 +1975,14 @@ function App() {
                     triggerAlert('Por favor rellena todos los campos', 'error');
                     return;
                   }
-                  const res = addUser(newUsername, newLabel, newPassword, 'repartidor');
+                  const roleToUse = currentUser.role === 'superadmin' ? newRole : 'repartidor';
+                  const res = addUser(newUsername, newLabel, newPassword, roleToUse);
                   if (res.success) {
                     triggerAlert(`Usuario "${newLabel}" creado correctamente`);
                     setNewUsername('');
                     setNewLabel('');
                     setNewPassword('');
+                    setNewRole('repartidor');
                     loadData();
                   } else {
                     triggerAlert(res.error, 'error');
@@ -1989,15 +1993,30 @@ function App() {
                     <input type="text" className="form-input" placeholder="Ej. furgo4" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} required />
                   </div>
                   <div className="input-group">
-                    <span className="input-label">Nombre Visible / Furgoneta</span>
-                    <input type="text" className="form-input" placeholder="Ej. Furgoneta 4" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} required />
+                    <span className="input-label">{currentUser.role === 'superadmin' ? 'Nombre Visible / Identificador' : 'Nombre Visible / Furgoneta'}</span>
+                    <input type="text" className="form-input" placeholder={currentUser.role === 'superadmin' ? 'Ej. Furgoneta 4 o Administrador Norte' : 'Ej. Furgoneta 4'} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} required />
                   </div>
                   <div className="input-group">
                     <span className="input-label">Contraseña / PIN</span>
                     <input type="text" className="form-input" placeholder="Ej. 4444" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
                   </div>
+                  {currentUser.role === 'superadmin' && (
+                    <div className="input-group">
+                      <span className="input-label">Rol del Usuario</span>
+                      <select 
+                        className="form-input" 
+                        value={newRole} 
+                        onChange={(e) => setNewRole(e.target.value)}
+                        required
+                        style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
+                      >
+                        <option value="repartidor">Repartidor (Furgoneta)</option>
+                        <option value="admin">Administrador</option>
+                      </select>
+                    </div>
+                  )}
                   <button type="submit" className="btn btn-primary" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                    <Plus size={16} /> Crear Nueva Furgoneta
+                    <Plus size={16} /> {currentUser.role === 'superadmin' ? 'Crear Nuevo Usuario' : 'Crear Nueva Furgoneta'}
                   </button>
                 </form>
               </div>
@@ -2006,12 +2025,14 @@ function App() {
               <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
                 <div className="block-title">Usuarios y Furgonetas Activas</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-                  {users.map(u => (
+                  {users.filter(u => currentUser.role === 'superadmin' || u.role === 'repartidor').map(u => (
                     <div key={u.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '15px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)' }}>{u.label}</span>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <span className="badge badge-primary">{u.role}</span>
+                          <span className="badge badge-primary" style={{ textTransform: 'capitalize' }}>
+                            {u.role === 'superadmin' ? 'Super Admin' : u.role === 'admin' ? 'Administrador' : 'Repartidor'}
+                          </span>
                           {u.id !== 'admin' && u.id !== currentUser.id && (
                             <button 
                               type="button" 
@@ -2172,7 +2193,7 @@ function App() {
         </div>
       </header>
 
-      {currentUser.role === 'admin' ? renderAdminPortal() : renderDriverPortal()}
+      {isAdminOrSuper ? renderAdminPortal() : renderDriverPortal()}
 
       {showShiftModal && (
         <div className="modal-overlay">
@@ -2282,7 +2303,7 @@ function App() {
                       </div>
                     )}
 
-                    {!existingShift && currentUser.role !== 'admin' && (
+                    {!existingShift && !isAdminOrSuper && (
                       <div style={{ marginTop: '20px' }}>
                         <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginBottom: '12px', lineHeight: '1.4', background: 'rgba(239, 68, 68, 0.05)', padding: '10px', borderRadius: '6px', border: '1px dashed var(--danger)' }}>
                           ⚠️ <strong>¡Atención!</strong> Al finalizar el turno se bloqueará el registro de entregas para esta fecha. No podrás editar ni añadir más repartos de este día.
@@ -2298,7 +2319,7 @@ function App() {
                       </div>
                     )}
 
-                    {currentUser.role === 'admin' && (
+                    {isAdminOrSuper && (
                       <button 
                         type="button" 
                         onClick={() => setShowShiftModal(false)} 
