@@ -97,6 +97,8 @@ function App() {
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [addressVerification, setAddressVerification] = useState({ status: 'idle', message: '' });
+  const [lastVerifiedAddress, setLastVerifiedAddress] = useState('');
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [ticketRoute, setTicketRoute] = useState('');
@@ -512,6 +514,44 @@ function App() {
     });
   };
 
+  // Verificar validez de la dirección por geocodificación
+  const handleVerifyAddress = async () => {
+    const trimmed = address.trim();
+    if (!trimmed) {
+      setAddressVerification({ status: 'idle', message: '' });
+      setLastVerifiedAddress('');
+      return;
+    }
+    // Evitar llamadas duplicadas o innecesarias
+    if (addressVerification.status === 'verifying') return;
+    if (addressVerification.status === 'success' && trimmed === lastVerifiedAddress) return;
+
+    setAddressVerification({ status: 'verifying', message: '🛰️ Verificando dirección en el mapa...' });
+    try {
+      const coords = await geocodeAddress(trimmed);
+      if (coords) {
+        setAddressVerification({ 
+          status: 'success', 
+          message: `🟢 Dirección verificada correctamente (GPS: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`,
+          coords
+        });
+        setLastVerifiedAddress(trimmed);
+      } else {
+        setAddressVerification({ 
+          status: 'error', 
+          message: '🔴 Dirección no localizada. Revisa la ortografía o añade la ciudad (ej: Calle Mayor 10, Madrid).' 
+        });
+        setLastVerifiedAddress('');
+      }
+    } catch (err) {
+      setAddressVerification({ 
+        status: 'error', 
+        message: '🔴 Error al conectar con el servicio de verificación de mapas.' 
+      });
+      setLastVerifiedAddress('');
+    }
+  };
+
   // Procesar envío del formulario (Nuevo o Edición)
   const handleFormSubmit = async (e) => {
     e.preventDefault();
@@ -607,15 +647,21 @@ function App() {
       tasks: tasksArray
     };
 
-    // Intentar geocodificar la dirección de manera asíncrona (Nominatim)
-    try {
-      const coords = await geocodeAddress(address.trim());
-      if (coords) {
-        ticketData.lat = coords.lat;
-        ticketData.lng = coords.lng;
+    // Intentar obtener las coordenadas desde la verificación previa, o geocodificar en el momento
+    let coords = null;
+    if (addressVerification.status === 'success' && addressVerification.coords) {
+      coords = addressVerification.coords;
+    } else {
+      try {
+        coords = await geocodeAddress(address.trim());
+      } catch (err) {
+        console.error("Error geocodificando la dirección:", err);
       }
-    } catch (err) {
-      console.error("Error geocodificando la dirección:", err);
+    }
+
+    if (coords) {
+      ticketData.lat = coords.lat;
+      ticketData.lng = coords.lng;
     }
 
     if (editingTicketId) {
@@ -629,6 +675,8 @@ function App() {
       setCustomerName('');
       setPhone('');
       setAddress('');
+      setAddressVerification({ status: 'idle', message: '' });
+      setLastVerifiedAddress('');
       setFormTvs([]);
       setOtherQuantities({});
       setNotes('');
@@ -651,6 +699,12 @@ function App() {
     setCustomerName(ticket.customerName);
     setPhone(ticket.phone || '');
     setAddress(ticket.address);
+    setAddressVerification(ticket.lat ? { 
+      status: 'success', 
+      message: '🟢 Dirección verificada en el mapa',
+      coords: { lat: ticket.lat, lng: ticket.lng }
+    } : { status: 'idle', message: '' });
+    setLastVerifiedAddress(ticket.lat ? ticket.address : '');
     setTicketDate(ticket.date);
     setNotes(ticket.notes || '');
     setTicketRoute(ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId);
@@ -730,6 +784,8 @@ function App() {
     setCustomerName('');
     setPhone('');
     setAddress('');
+    setAddressVerification({ status: 'idle', message: '' });
+    setLastVerifiedAddress('');
     setFormTvs([]);
     setOtherQuantities({});
     setNotes('');
@@ -1223,9 +1279,63 @@ function App() {
               <span className="input-label">Teléfono</span>
               <input type="tel" className="form-input" placeholder="Ej. 612345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isClosed} />
             </div>
-            <div className="input-group">
-              <span className="input-label">Dirección</span>
-              <input type="text" className="form-input" placeholder="Dirección de entrega" value={address} onChange={(e) => setAddress(e.target.value)} required disabled={isClosed} />
+            <div className="input-group" style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="input-label">Dirección</span>
+                {address.trim() && (
+                  <button 
+                    type="button" 
+                    onClick={handleVerifyAddress}
+                    className="btn btn-secondary btn-small"
+                    style={{ width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                    disabled={isClosed}
+                  >
+                    🔍 Verificar
+                  </button>
+                )}
+              </div>
+              <input 
+                type="text" 
+                className="form-input" 
+                placeholder="Dirección de entrega" 
+                value={address} 
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  setAddressVerification({ status: 'idle', message: '' });
+                }} 
+                onBlur={handleVerifyAddress}
+                required 
+                disabled={isClosed} 
+                style={{
+                  borderColor: addressVerification.status === 'success' 
+                    ? '#10b981' 
+                    : addressVerification.status === 'error' 
+                      ? '#ef4444' 
+                      : addressVerification.status === 'verifying' 
+                        ? '#8b5cf6' 
+                        : 'var(--input-border)',
+                  boxShadow: addressVerification.status === 'success' 
+                    ? '0 0 0 3px rgba(16, 185, 129, 0.15)' 
+                    : addressVerification.status === 'error' 
+                      ? '0 0 0 3px rgba(239, 68, 68, 0.15)' 
+                      : addressVerification.status === 'verifying' 
+                        ? '0 0 0 3px rgba(139, 92, 246, 0.15)' 
+                        : 'none'
+                }}
+              />
+              {addressVerification.message && (
+                <div style={{ 
+                  fontSize: '0.75rem', 
+                  marginTop: '4px', 
+                  color: addressVerification.status === 'success' ? '#10b981' : addressVerification.status === 'verifying' ? 'var(--text-muted)' : '#ef4444',
+                  fontWeight: addressVerification.status === 'success' ? '700' : 'normal',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  {addressVerification.message}
+                </div>
+              )}
             </div>
             <div className="input-group">
               <span className="input-label">Importe a Cobrar / Reembolso (€)</span>
