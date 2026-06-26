@@ -391,7 +391,7 @@ export function resetMonthlyShifts() {
 }
 
 // Crear nuevo usuario dinámicamente
-export function addUser(username, label, password, role = 'repartidor') {
+export function addUser(username, label, password, role = 'repartidor', createdBy = null) {
   const users = getUsers();
   if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
     return { success: false, error: 'El usuario ya existe' };
@@ -401,7 +401,8 @@ export function addUser(username, label, password, role = 'repartidor') {
     username: username.trim(),
     label: label.trim(),
     password: password.trim(),
-    role
+    role,
+    createdBy
   };
   users.push(newUser);
   saveUsers(users);

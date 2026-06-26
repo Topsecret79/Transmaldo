@@ -123,6 +123,45 @@ function App() {
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('repartidor');
 
+  // Derived state for role-based data partitioning (independent invoicing per administrator)
+  const activeRepartidores = users.filter(u => {
+    if (u.role !== 'repartidor') return false;
+    if (!currentUser) return false;
+    if (currentUser.role === 'superadmin') return true;
+    if (currentUser.role === 'repartidor') return u.id === currentUser.id;
+    // admin role
+    return u.createdBy === currentUser.id;
+  });
+
+  const visibleUsers = users.filter(u => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'superadmin') return true;
+    // Admins only see the repartidores they created
+    return u.role === 'repartidor' && u.createdBy === currentUser.id;
+  });
+
+  const visibleTickets = tickets.filter(t => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'superadmin') return true;
+    if (currentUser.role === 'repartidor') {
+      return t.furgoId === currentUser.id;
+    }
+    // Admin role: see tickets of their own repartidores
+    const allowedFurgoIds = activeRepartidores.map(r => r.id);
+    return allowedFurgoIds.includes(t.furgoId);
+  });
+
+  const visibleShifts = shifts.filter(s => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'superadmin') return true;
+    if (currentUser.role === 'repartidor') {
+      return s.furgoId === currentUser.id;
+    }
+    // Admin role: see shifts of their own repartidores
+    const allowedFurgoIds = activeRepartidores.map(r => r.id);
+    return allowedFurgoIds.includes(s.furgoId);
+  });
+
   // Nombre dinámico de la aplicación
   const [appName, setAppName] = useState(getAppName());
   const [appNameInput, setAppNameInput] = useState(getAppName());
@@ -709,7 +748,7 @@ function App() {
 
   // Exportar Excel del Periodo seleccionado
   const handleExportExcel = async () => {
-    const filteredTickets = tickets.filter(t => {
+    const filteredTickets = visibleTickets.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
       return true;
@@ -726,7 +765,7 @@ function App() {
     // Resumen General (Solo suma ganancias de repartos con Éxito)
     const successTickets = filteredTickets.filter(t => t.status === 'success' || !t.status);
     const totalEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
-    const furgos = users.filter(u => u.role === 'repartidor').map(u => u.id);
+    const furgos = activeRepartidores.map(u => u.id);
     const totalIVA = totalEarnings * 0.21;
     const totalRetencion = totalEarnings * 0.01;
     const totalNet = totalEarnings + totalIVA - totalRetencion;
@@ -818,7 +857,7 @@ function App() {
   };
 
   const getFilteredTickets = () => {
-    return tickets.filter(t => {
+    return visibleTickets.filter(t => {
       if (currentUser && isAdminOrSuper) {
         if (adminStartDate && t.date < adminStartDate) return false;
         if (adminEndDate && t.date > adminEndDate) return false;
@@ -887,7 +926,7 @@ function App() {
             <div className="input-group">
               <span className="input-label">Furgoneta asignada</span>
               <select className="form-input" value={editingFurgoId} onChange={(e) => setEditingFurgoId(e.target.value)} required disabled={isClosed}>
-                {users.filter(u => u.role === 'repartidor').map(u => (
+                {activeRepartidores.map(u => (
                   <option key={u.id} value={u.id}>{u.label}</option>
                 ))}
               </select>
@@ -910,7 +949,7 @@ function App() {
                   disabled={isClosed}
                   required
                 >
-                  {users.filter(u => u.role === 'repartidor').map(u => (
+                  {activeRepartidores.map(u => (
                     <option key={u.id} value={u.label}>{u.label}</option>
                   ))}
                 </select>
@@ -1385,7 +1424,7 @@ function App() {
 
     const successTickets = filteredAdminTickets.filter(t => t.status === 'success' || !t.status);
     const totalEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
-    const furgos = users.filter(u => u.role === 'repartidor').map(u => u.id);
+    const furgos = activeRepartidores.map(u => u.id);
     
     const furgoData = furgos.reduce((acc, fid) => {
       const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid);
@@ -1573,7 +1612,7 @@ function App() {
                 <span className="input-label">Furgoneta</span>
                 <select className="form-input" value={ticketFilterFurgo} onChange={(e) => setTicketFilterFurgo(e.target.value)}>
                   <option value="all">Todas las Furgonetas</option>
-                  {users.filter(u => u.role === 'repartidor').map(u => (
+                  {activeRepartidores.map(u => (
                     <option key={u.id} value={u.id}>{u.label}</option>
                   ))}
                 </select>
@@ -1696,7 +1735,7 @@ function App() {
                 Aquí se muestran los cierres de turno realizados por los choferes. Si un chofer se equivocó o necesita registrar algo más, puedes "Reabrir Turno".
               </p>
               
-              {shifts.length === 0 ? (
+              {visibleShifts.length === 0 ? (
                 <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
                   No se ha registrado ningún cierre de turno todavía.
                 </div>
@@ -1713,7 +1752,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {shifts.map(s => {
+                      {visibleShifts.map(s => {
                         const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
                         return (
                           <tr key={s.id}>
@@ -1976,7 +2015,7 @@ function App() {
                     return;
                   }
                   const roleToUse = currentUser.role === 'superadmin' ? newRole : 'repartidor';
-                  const res = addUser(newUsername, newLabel, newPassword, roleToUse);
+                  const res = addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id);
                   if (res.success) {
                     triggerAlert(`Usuario "${newLabel}" creado correctamente`);
                     setNewUsername('');
@@ -2025,7 +2064,7 @@ function App() {
               <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
                 <div className="block-title">Usuarios y Furgonetas Activas</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-                  {users.filter(u => currentUser.role === 'superadmin' || u.role === 'repartidor').map(u => (
+                  {visibleUsers.map(u => (
                     <div key={u.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '15px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)' }}>{u.label}</span>
