@@ -261,9 +261,14 @@ function App() {
     }
   }, [currentUser, ticketDate, users]);
 
-  // Inicialización y actualización del Mapa Leaflet
+  // Inicialización y actualización del Mapa Leaflet (Admin o Repartidor)
   useEffect(() => {
-    if (activeTab === 'map' && window.L && document.getElementById('admin-map')) {
+    const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');
+    const isDriverMap = activeTab === 'driver_map' && document.getElementById('driver-map');
+
+    if ((isAdminMap || isDriverMap) && window.L) {
+      const mapElementId = isAdminMap ? 'admin-map' : 'driver-map';
+
       // 1. Destruir mapa previo si existe
       if (mapInstanceRef.current !== null) {
         mapInstanceRef.current.remove();
@@ -271,7 +276,7 @@ function App() {
       }
 
       // 2. Inicializar nuevo mapa (centrado en Madrid por defecto)
-      const map = window.L.map('admin-map', {
+      const map = window.L.map(mapElementId, {
         zoomControl: true,
         attributionControl: true
       }).setView([40.416775, -3.703790], 12);
@@ -284,10 +289,17 @@ function App() {
         maxZoom: 20
       }).addTo(map);
 
-      // 4. Filtrar y ordenar los tickets geocodificados del periodo seleccionado
-      const dayTickets = visibleTickets.filter(t => {
-        if (t.date !== mapFilterDate) return false;
-        if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+      // 4. Filtrar y ordenar los tickets geocodificados
+      const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
+      
+      const dayTickets = tickets.filter(t => {
+        if (t.date !== targetDate) return false;
+        if (isAdminMap) {
+          if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+        } else {
+          // Driver map: only show tickets for the logged in driver
+          if (t.furgoId !== currentUser?.id) return false;
+        }
         return t.lat && t.lng;
       });
 
@@ -381,8 +393,13 @@ function App() {
       // 6. Dibujar repartidores en tiempo real (si reportaron en las últimas 6 horas)
       const liveLocations = getDriverLocations();
       Object.entries(liveLocations).forEach(([fid, loc]) => {
-        if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
-        if (!activeRepartidores.map(r => r.id).includes(fid)) return;
+        if (isAdminMap) {
+          if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
+          if (!activeRepartidores.map(r => r.id).includes(fid)) return;
+        } else {
+          // Driver map: only show their own location
+          if (fid !== currentUser?.id) return;
+        }
 
         const timeDiff = Date.now() - new Date(loc.updatedAt).getTime();
         if (timeDiff > 6 * 60 * 60 * 1000) return; // Filtro de inactividad de 6 horas
@@ -441,7 +458,7 @@ function App() {
         mapInstanceRef.current = null;
       }
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser]);
 
 
 
@@ -1679,6 +1696,9 @@ function App() {
           <button className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
             🚚 Mi Ruta ({dateTickets.length})
           </button>
+          <button className={`tab-btn ${activeTab === 'driver_map' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('driver_map'); }}>
+            🗺️ Ver Mapa
+          </button>
         </div>
 
         {/* Control de Geolocalización / Compartir Ubicación */}
@@ -1735,6 +1755,25 @@ function App() {
         </div>
 
         {activeTab === 'new_ticket' && renderTicketForm()}
+
+        {activeTab === 'driver_map' && (
+          <div className="glass-panel" style={{ textAlign: 'left', padding: '20px' }}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', color: 'var(--primary)' }}>
+              🗺️ Mapa de Mi Ruta ({targetDate})
+            </h3>
+            <div 
+              id="driver-map" 
+              className="map-container" 
+              style={{ 
+                height: '450px', 
+                width: '100%', 
+                borderRadius: 'var(--border-radius-lg)', 
+                border: '1px solid var(--panel-border)',
+                boxShadow: 'inset 0 0 15px rgba(0,0,0,0.5)'
+              }}
+            ></div>
+          </div>
+        )}
 
 
         {activeTab === 'history' && (
