@@ -1416,7 +1416,7 @@ function App() {
 
   // --- RENDERIZADO DEL PORTAL DE ADMINISTRADOR ---
   const renderAdminPortal = () => {
-    const filteredAdminTickets = tickets.filter(t => {
+    const filteredAdminTickets = visibleTickets.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
       return true;
