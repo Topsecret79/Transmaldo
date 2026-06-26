@@ -211,7 +211,9 @@ export function addTicket(ticketData) {
     tasks: detailedTasks,
     totalPrice: totalCalculado,
     status: ticketData.status || 'pending',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    lat: ticketData.lat || null,
+    lng: ticketData.lng || null
   };
 
   tickets.push(newTicket);
@@ -260,7 +262,11 @@ export function updateTicket(updatedTicket) {
       codAmount: updatedTicket.codAmount || 0,
       tasks: detailedTasks,
       totalPrice: totalCalculado,
-      status: updatedTicket.status || tickets[index].status || 'pending'
+      status: updatedTicket.status || tickets[index].status || 'pending',
+      lat: updatedTicket.lat !== undefined ? updatedTicket.lat : tickets[index].lat,
+      lng: updatedTicket.lng !== undefined ? updatedTicket.lng : tickets[index].lng,
+      completedLat: updatedTicket.completedLat !== undefined ? updatedTicket.completedLat : tickets[index].completedLat,
+      completedLng: updatedTicket.completedLng !== undefined ? updatedTicket.completedLng : tickets[index].completedLng
     };
     saveTickets(tickets);
     return tickets[index];
@@ -269,7 +275,7 @@ export function updateTicket(updatedTicket) {
 }
 
 // Actualizar el estado de un ticket
-export function updateTicketStatus(ticketId, status, failureReason = '') {
+export function updateTicketStatus(ticketId, status, failureReason = '', completedLat = null, completedLng = null) {
   const tickets = getTickets();
   const index = tickets.findIndex(t => t.id === ticketId);
   if (index !== -1) {
@@ -278,6 +284,11 @@ export function updateTicketStatus(ticketId, status, failureReason = '') {
       tickets[index].failureReason = failureReason;
     } else {
       delete tickets[index].failureReason;
+    }
+    if (completedLat !== null && completedLng !== null) {
+      tickets[index].completedLat = completedLat;
+      tickets[index].completedLng = completedLng;
+      tickets[index].completedAt = new Date().toISOString();
     }
     saveTickets(tickets);
     return tickets[index];
@@ -444,6 +455,55 @@ export function deleteTariff(id) {
   const tariffs = getTariffs();
   const filtered = tariffs.filter(t => t.id !== id);
   saveTariffs(filtered);
+}
+
+// Guardar ubicación en tiempo real de un repartidor
+export function saveDriverLocation(furgoId, lat, lng) {
+  try {
+    const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+    locations[furgoId] = {
+      lat: parseFloat(lat),
+      lng: parseFloat(lng),
+      updatedAt: new Date().toISOString()
+    };
+    localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+  } catch (e) {
+    console.error("Error saving driver location:", e);
+  }
+}
+
+// Obtener todas las ubicaciones actuales de repartidores
+export function getDriverLocations() {
+  try {
+    return JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+  } catch (e) {
+    console.error("Error reading driver locations:", e);
+    return {};
+  }
+}
+
+// Convertir texto de dirección a coordenadas mediante Nominatim (OSM)
+export async function geocodeAddress(addressText) {
+  if (!addressText || !addressText.trim()) return null;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addressText)}`;
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data && data.length > 0) {
+      return {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon)
+      };
+    }
+  } catch (e) {
+    console.error("Geocoding failed for address:", addressText, e);
+  }
+  return null;
 }
 
 

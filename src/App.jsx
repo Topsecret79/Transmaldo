@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Truck, 
   Settings, 
@@ -50,7 +50,10 @@ import {
   getAppName,
   saveAppName,
   addTariff,
-  deleteTariff
+  deleteTariff,
+  geocodeAddress,
+  saveDriverLocation,
+  getDriverLocations
 } from './db';
 
 initDB();
@@ -122,6 +125,11 @@ function App() {
   const [newLabel, setNewLabel] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('repartidor');
+  const [isTrackingActive, setIsTrackingActive] = useState(localStorage.getItem('delivery_tracking_active') === 'true');
+  const watchIdRef = useRef(null);
+  const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
+  const mapInstanceRef = useRef(null);
 
   // Derived state for role-based data partitioning (independent invoicing per administrator)
   const activeRepartidores = users.filter(u => {
@@ -195,6 +203,42 @@ function App() {
     document.title = `${appName} - Control de Repartos y Ganancias`;
   }, [appName]);
 
+  // Lógica de rastreo GPS en tiempo real para choferes
+  useEffect(() => {
+    if (isTrackingActive && currentUser && currentUser.role === 'repartidor') {
+      if ('geolocation' in navigator) {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            saveDriverLocation(currentUser.id, latitude, longitude);
+          },
+          (error) => {
+            console.error("GPS Tracking Error:", error);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      } else {
+        console.error("Geolocation not supported by this browser.");
+      }
+    } else {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    }
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, [isTrackingActive, currentUser]);
+
   // Sincronizar ruta por defecto del ticket
   useEffect(() => {
     if (currentUser && !isAdminOrSuper) {
@@ -202,6 +246,188 @@ function App() {
       setTicketRoute(currentDbUser ? currentDbUser.label : currentUser.label);
     }
   }, [currentUser, ticketDate, users]);
+
+  // Inicialización y actualización del Mapa Leaflet
+  useEffect(() => {
+    if (activeTab === 'map' && window.L && document.getElementById('admin-map')) {
+      // 1. Destruir mapa previo si existe
+      if (mapInstanceRef.current !== null) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+
+      // 2. Inicializar nuevo mapa (centrado en Madrid por defecto)
+      const map = window.L.map('admin-map', {
+        zoomControl: true,
+        attributionControl: true
+      }).setView([40.416775, -3.703790], 12);
+      mapInstanceRef.current = map;
+
+      // 3. Cargar capa de mapa oscuro (CartoDB Dark Matter)
+      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+      }).addTo(map);
+
+      // 4. Filtrar y ordenar los tickets geocodificados del periodo seleccionado
+      const dayTickets = visibleTickets.filter(t => {
+        if (t.date !== mapFilterDate) return false;
+        if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+        return t.lat && t.lng;
+      });
+
+      // Ordenar por hora de creación para visualizar la secuencia lógica
+      const sortedDayTickets = [...dayTickets].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+
+      // Agrupar tickets por repartidor
+      const ticketsByDriver = {};
+      sortedDayTickets.forEach(t => {
+        if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = [];
+        ticketsByDriver[t.furgoId].push(t);
+      });
+
+      const bounds = [];
+      const COLORS = ['#a78bfa', '#38bdf8', '#34d399', '#f472b6', '#fbbf24', '#f43f5e'];
+
+      // 5. Dibujar marcadores de paradas y líneas de ruta (polilíneas)
+      Object.keys(ticketsByDriver).forEach((fid, idx) => {
+        const driverTickets = ticketsByDriver[fid];
+        const driverColor = COLORS[idx % COLORS.length];
+        const furgoLabel = users.find(u => u.id === fid)?.label || fid;
+
+        driverTickets.forEach((t, seqIndex) => {
+          const latLng = [t.lat, t.lng];
+          bounds.push(latLng);
+
+          const isSuccess = t.status === 'success' || !t.status;
+          const isFailed = t.status === 'failed';
+          const statusColor = isSuccess ? '#10b981' : isFailed ? '#ef4444' : '#fbbf24';
+
+          const markerHtml = `
+            <div style="
+              width: 24px; 
+              height: 24px; 
+              border-radius: 50%; 
+              background-color: ${statusColor}; 
+              color: #000; 
+              font-weight: 800; 
+              font-size: 11px; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center; 
+              border: 2px solid #fff;
+              box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            ">
+              ${seqIndex + 1}
+            </div>
+          `;
+
+          const markerIcon = window.L.divIcon({
+            html: markerHtml,
+            className: '',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+
+          const popupContent = `
+            <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
+              <strong style="color: #a78bfa; font-size: 0.95rem;">${t.customerName}</strong>
+              <div style="margin-top: 5px;">📍 <strong>Parada #${seqIndex + 1}</strong></div>
+              <div style="margin-top: 2px;">🚚 Chofer: <strong>${furgoLabel}</strong></div>
+              <div style="margin-top: 2px;">🏠 Dir: ${t.address}</div>
+              <div style="margin-top: 5px; font-weight: 700; color: ${statusColor};">
+                Estado: ${t.status === 'success' ? '🟢 Éxito' : t.status === 'failed' ? `🔴 Fallido (${t.failureReason || 'Sin motivo'})` : '🟡 Pendiente'}
+              </div>
+              ${t.completedLat ? `
+                <div style="margin-top: 6px; font-size: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px; color: #9ca3af;">
+                  🎯 Completado en GPS: ${t.completedLat.toFixed(5)}, ${t.completedLng.toFixed(5)}
+                </div>
+              ` : ''}
+            </div>
+          `;
+
+          window.L.marker(latLng, { icon: markerIcon })
+            .addTo(map)
+            .bindPopup(popupContent, { maxWidth: 220 });
+        });
+
+        // Trazar línea de ruta conectando las paradas en orden
+        if (driverTickets.length > 1) {
+          const routeCoords = driverTickets.map(t => [t.lat, t.lng]);
+          window.L.polyline(routeCoords, {
+            color: driverColor,
+            weight: 3,
+            opacity: 0.75,
+            dashArray: '8, 8'
+          }).addTo(map);
+        }
+      });
+
+      // 6. Dibujar repartidores en tiempo real (si reportaron en las últimas 6 horas)
+      const liveLocations = getDriverLocations();
+      Object.entries(liveLocations).forEach(([fid, loc]) => {
+        if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
+        if (!activeRepartidores.map(r => r.id).includes(fid)) return;
+
+        const timeDiff = Date.now() - new Date(loc.updatedAt).getTime();
+        if (timeDiff > 6 * 60 * 60 * 1000) return; // Filtro de inactividad de 6 horas
+
+        const latLng = [loc.lat, loc.lng];
+        bounds.push(latLng);
+        const furgoLabel = users.find(u => u.id === fid)?.label || fid;
+
+        const liveHtml = `
+          <div style="
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(139, 92, 246, 0.2);
+            border: 2px solid #a78bfa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px #a78bfa;
+            animation: gpsPulse 2s infinite ease-in-out;
+            font-size: 16px;
+          ">
+            🚚
+          </div>
+        `;
+
+        const liveIcon = window.L.divIcon({
+          html: liveHtml,
+          className: '',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const popupContent = `
+          <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
+            <strong style="color: #a78bfa; font-size: 0.95rem;">🚚 ${furgoLabel} (En Vivo)</strong>
+            <div style="margin-top: 5px;">Última señal: <strong>${new Date(loc.updatedAt).toLocaleTimeString()}</strong></div>
+            <div style="margin-top: 2px; font-size: 0.75rem; color: #9ca3af;">GPS: ${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}</div>
+          </div>
+        `;
+
+        window.L.marker(latLng, { icon: liveIcon })
+          .addTo(map)
+          .bindPopup(popupContent);
+      });
+
+      // 7. Auto-ajustar el zoom del mapa para mostrar todos los puntos
+      if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
+    }
+
+    return () => {
+      if (mapInstanceRef.current !== null) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users]);
 
 
 
@@ -287,7 +513,7 @@ function App() {
   };
 
   // Procesar envío del formulario (Nuevo o Edición)
-  const handleFormSubmit = (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     if (!customerName.trim() || !address.trim()) {
       triggerAlert('Por favor, rellena el cliente y dirección', 'error');
@@ -380,6 +606,17 @@ function App() {
       codAmount: parseFloat(codAmount) || 0,
       tasks: tasksArray
     };
+
+    // Intentar geocodificar la dirección de manera asíncrona (Nominatim)
+    try {
+      const coords = await geocodeAddress(address.trim());
+      if (coords) {
+        ticketData.lat = coords.lat;
+        ticketData.lng = coords.lng;
+      }
+    } catch (err) {
+      console.error("Error geocodificando la dirección:", err);
+    }
 
     if (editingTicketId) {
       updateTicket(ticketData);
@@ -741,9 +978,28 @@ function App() {
       if (reason === null) return; // User cancelled
       failureReason = reason.trim() || 'No especificado';
     }
-    updateTicketStatus(id, status, failureReason);
-    loadData();
-    triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          updateTicketStatus(id, status, failureReason, latitude, longitude);
+          loadData();
+          triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'} (GPS registrado)`);
+        },
+        (error) => {
+          console.warn("GPS Location capture failed:", error);
+          updateTicketStatus(id, status, failureReason);
+          loadData();
+          triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    } else {
+      updateTicketStatus(id, status, failureReason);
+      loadData();
+      triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+    }
   };
 
   // Exportar Excel del Periodo seleccionado
@@ -1163,6 +1419,59 @@ function App() {
           </button>
         </div>
 
+        {/* Control de Geolocalización / Compartir Ubicación */}
+        <div className="glass-panel" style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          padding: '12px 20px', 
+          borderRadius: '12px', 
+          marginBottom: '20px', 
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid var(--panel-border)',
+          textAlign: 'left'
+        }}>
+          <style>{`
+            @keyframes gpsPulse {
+              0% { transform: scale(0.9); opacity: 0.6; }
+              50% { transform: scale(1.1); opacity: 1; }
+              100% { transform: scale(0.9); opacity: 0.6; }
+            }
+          `}</style>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ 
+              display: 'inline-block', 
+              width: '12px', 
+              height: '12px', 
+              borderRadius: '50%', 
+              backgroundColor: isTrackingActive ? 'var(--success)' : 'var(--text-muted)',
+              boxShadow: isTrackingActive ? '0 0 10px var(--success)' : 'none',
+              animation: isTrackingActive ? 'gpsPulse 2s infinite ease-in-out' : 'none'
+            }}></span>
+            <div>
+              <span style={{ fontWeight: '700', fontSize: '0.9rem', color: isTrackingActive ? 'var(--success)' : 'var(--text)' }}>
+                {isTrackingActive ? '🛰️ Compartiendo GPS en Vivo' : '🛰️ GPS Inactivo'}
+              </span>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {isTrackingActive ? 'Tu posición se actualiza automáticamente con la oficina' : 'Habilita para compartir tu avance en tiempo real'}
+              </div>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => {
+              const newVal = !isTrackingActive;
+              setIsTrackingActive(newVal);
+              localStorage.setItem('delivery_tracking_active', newVal ? 'true' : 'false');
+              triggerAlert(newVal ? 'Se ha activado el rastreo de ubicación' : 'Rastreo desactivado');
+            }} 
+            className={`btn btn-small ${isTrackingActive ? 'btn-danger' : 'btn-primary'}`}
+            style={{ width: 'auto', margin: 0, padding: '6px 12px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+          >
+            {isTrackingActive ? 'Detener Compartir' : 'Compartir GPS'}
+          </button>
+        </div>
+
         {activeTab === 'new_ticket' && renderTicketForm()}
 
 
@@ -1455,6 +1764,7 @@ function App() {
         <div className="tab-container">
           <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('dashboard'); }}>Dashboard</button>
           <button className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>Repartos del Periodo ({filteredAdminTickets.length})</button>
+          <button className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('map'); }}>🗺️ Mapa de Control</button>
           {editingTicketId && (
             <button className={`tab-btn active`} onClick={() => setActiveTab('new_ticket')}>✏️ Editando...</button>
           )}
@@ -1808,6 +2118,102 @@ function App() {
               )}
             </div>
 
+          </div>
+        )}
+
+        {activeTab === 'map' && (
+          <div className="glass-panel" style={{ textAlign: 'left' }}>
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>🗺️ Mapa de Control de Rutas</h2>
+            <p style={{ marginBottom: '20px' }}>
+              Visualiza en tiempo real la ubicación de tus repartidores en vivo y el recorrido ordenado de sus paradas en el mapa.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label">Filtrar por Fecha</span>
+                <input 
+                  type="date" 
+                  className="form-input" 
+                  value={mapFilterDate} 
+                  onChange={(e) => setMapFilterDate(e.target.value)} 
+                />
+              </div>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label">Filtrar por Furgoneta</span>
+                <select 
+                  className="form-input" 
+                  value={mapFilterFurgo} 
+                  onChange={(e) => setMapFilterFurgo(e.target.value)}
+                >
+                  <option value="all">Todas las Furgonetas</option>
+                  {activeRepartidores.map(u => (
+                    <option key={u.id} value={u.id}>{u.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
+                <button 
+                  type="button" 
+                  onClick={() => { loadData(); triggerAlert('Ubicaciones y entregas actualizadas'); }} 
+                  className="btn btn-secondary" 
+                  style={{ height: '45px', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  <RefreshCw size={16} /> Actualizar Mapa
+                </button>
+              </div>
+            </div>
+
+            {/* Custom dark map style definitions */}
+            <style>{`
+              .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+                background: rgba(18, 12, 38, 0.9) !important;
+                backdrop-filter: blur(10px) !important;
+                border: 1px solid var(--panel-border) !important;
+                color: #fff !important;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+              }
+              .leaflet-popup-close-button {
+                color: #a78bfa !important;
+              }
+              .leaflet-container {
+                font-family: 'Inter', sans-serif !important;
+              }
+              @keyframes gpsPulse {
+                0% { transform: scale(0.9); opacity: 0.6; }
+                50% { transform: scale(1.15); opacity: 1; }
+                100% { transform: scale(0.9); opacity: 0.6; }
+              }
+            `}</style>
+
+            <div style={{ position: 'relative' }}>
+              <div id="admin-map" style={{ 
+                height: '550px', 
+                borderRadius: '12px', 
+                border: '1px solid var(--panel-border)', 
+                background: '#1e1e1e',
+                boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
+                zIndex: 1
+              }}></div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
+                <span>Éxito</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
+                <span>Fallido</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#fbbf24' }}></span>
+                <span>Pendiente</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', marginLeft: '10px' }}>
+                <span style={{ display: 'inline-block', width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #a78bfa', background: 'rgba(139,92,246,0.2)', textAlign: 'center', lineHeight: '12px', fontSize: '10px' }}>🚚</span>
+                <span>Repartidor en Vivo (Últimas 6h)</span>
+              </div>
+            </div>
           </div>
         )}
 
