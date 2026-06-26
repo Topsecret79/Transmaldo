@@ -1,7 +1,7 @@
 // db.js - Gestión de base de datos local y lógica de negocio en localStorage
 
 const DEFAULT_USERS = [
-  { id: 'admin', username: 'admin', label: 'Administrador', role: 'admin', password: 'admin' },
+  { id: 'admin', username: 'admin', label: 'Super Administrador', role: 'superadmin', password: 'admin' },
   { id: 'furgo1', username: 'furgo1', label: 'Furgoneta 1', role: 'repartidor', password: '1111' },
   { id: 'furgo2', username: 'furgo2', label: 'Furgoneta 2', role: 'repartidor', password: '2222' },
   { id: 'furgo3', username: 'furgo3', label: 'Furgoneta 3', role: 'repartidor', password: '3333' }
@@ -61,6 +61,19 @@ export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74,
 export function initDB() {
   if (!localStorage.getItem('delivery_users')) {
     localStorage.setItem('delivery_users', JSON.stringify(DEFAULT_USERS));
+  } else {
+    // Migration: make sure 'admin' user has 'superadmin' role
+    try {
+      let current = JSON.parse(localStorage.getItem('delivery_users'));
+      const adminUser = current.find(u => u.id === 'admin');
+      if (adminUser && adminUser.role === 'admin') {
+        adminUser.role = 'superadmin';
+        adminUser.label = 'Super Administrador';
+        localStorage.setItem('delivery_users', JSON.stringify(current));
+      }
+    } catch (e) {
+      console.error("Error migrating admin user role:", e);
+    }
   }
   if (!localStorage.getItem('delivery_module_price')) {
     localStorage.setItem('delivery_module_price', JSON.stringify(DEFAULT_MODULE_PRICE));
