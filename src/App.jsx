@@ -1964,10 +1964,10 @@ function App() {
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
-              {/* Crear nueva furgoneta / usuario */}
+              {/* Crear nuevo usuario */}
               <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
                 <div className="block-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Plus size={18} color="var(--primary)" /> {currentUser.role === 'superadmin' ? 'Añadir Nuevo Usuario o Administrador' : 'Añadir Nueva Furgoneta'}
+                  <Plus size={18} color="var(--primary)" /> Crear Nuevo Usuario
                 </div>
                 <form onSubmit={(e) => {
                   e.preventDefault();
@@ -1993,8 +1993,8 @@ function App() {
                     <input type="text" className="form-input" placeholder="Ej. furgo4" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} required />
                   </div>
                   <div className="input-group">
-                    <span className="input-label">{currentUser.role === 'superadmin' ? 'Nombre Visible / Identificador' : 'Nombre Visible / Furgoneta'}</span>
-                    <input type="text" className="form-input" placeholder={currentUser.role === 'superadmin' ? 'Ej. Furgoneta 4 o Administrador Norte' : 'Ej. Furgoneta 4'} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} required />
+                    <span className="input-label">Nombre Visible / Identificador</span>
+                    <input type="text" className="form-input" placeholder="Ej. Furgoneta 4 o Administrador Norte" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} required />
                   </div>
                   <div className="input-group">
                     <span className="input-label">Contraseña / PIN</span>
@@ -2016,7 +2016,7 @@ function App() {
                     </div>
                   )}
                   <button type="submit" className="btn btn-primary" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                    <Plus size={16} /> {currentUser.role === 'superadmin' ? 'Crear Nuevo Usuario' : 'Crear Nueva Furgoneta'}
+                    <Plus size={16} /> Crear Nuevo Usuario
                   </button>
                 </form>
               </div>
