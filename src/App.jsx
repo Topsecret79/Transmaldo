@@ -35,6 +35,7 @@ import {
   updateTicket, 
   deleteTicket, 
   resetMonthlyTickets,
+  updateTicketStatus,
   getTVRange,
   PREDEFINED_TV_INCHES,
   getShifts,
@@ -521,7 +522,7 @@ function App() {
   };
 
   const getShiftSummary = (furgoId, date) => {
-    const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date);
+    const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date && (t.status === 'success' || !t.status));
     
     let totalTvs = 0;
     let totalPV = 0;
@@ -573,7 +574,16 @@ function App() {
   };
 
   const handleConfirmCloseShift = (furgoId, date) => {
-    if (window.confirm(`¿Estás seguro de que deseas finalizar tu turno del día ${date}? Una vez cerrado, no podrás agregar ni editar más repartos.`)) {
+    const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date);
+    const pendingTickets = dayTickets.filter(t => t.status === 'pending' || !t.status);
+    
+    let confirmMsg = `¿Estás seguro de que deseas finalizar tu turno del día ${date}? Una vez cerrado, no podrás agregar ni editar más repartos.`;
+    
+    if (pendingTickets.length > 0) {
+      confirmMsg = `⚠️ Tienes ${pendingTickets.length} parada(s) PENDIENTE(S) de realizar. Si cierras el turno ahora, estas paradas NO se sumarán a tu facturación diaria (se calculan como 0 €).\n\n¿Estás seguro de que deseas finalizar tu turno de todas formas?`;
+    }
+
+    if (window.confirm(confirmMsg)) {
       const summary = getShiftSummary(furgoId, date);
       closeShift(furgoId, date, summary);
       triggerAlert('Turno cerrado y resumen diario generado con éxito');
@@ -675,6 +685,12 @@ function App() {
     }
   };
 
+  const handleUpdateTicketStatus = (id, status) => {
+    updateTicketStatus(id, status);
+    loadData();
+    triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+  };
+
   // Exportar Excel del Periodo seleccionado
   const handleExportExcel = async () => {
     const filteredTickets = tickets.filter(t => {
@@ -691,8 +707,9 @@ function App() {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
-    // Resumen General
-    const totalEarnings = filteredTickets.reduce((sum, t) => sum + t.totalPrice, 0);
+    // Resumen General (Solo suma ganancias de repartos con Éxito)
+    const successTickets = filteredTickets.filter(t => t.status === 'success' || !t.status);
+    const totalEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
     const furgos = users.filter(u => u.role === 'repartidor').map(u => u.id);
     const totalIVA = totalEarnings * 0.21;
     const totalRetencion = totalEarnings * 0.01;
@@ -705,21 +722,24 @@ function App() {
       ['IVA Acumulado (+21%)', `${totalIVA.toFixed(2)} €`],
       ['Retención Acumulada (-1%)', `${totalRetencion.toFixed(2)} €`],
       ['Total Neto Facturado', `${totalNet.toFixed(2)} €`],
-      ['Total Entregas Realizadas', filteredTickets.length],
+      ['Total Paradas Planificadas', filteredTickets.length],
+      ['Total Entregas con Éxito (Facturadas)', successTickets.length],
       [],
-      ['Furgoneta', 'Entregas', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)'],
+      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)'],
     ];
 
     furgos.forEach(fid => {
       const fTickets = filteredTickets.filter(t => t.furgoId === fid);
+      const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
       const label = users.find(u => u.id === fid)?.label || fid;
-      const earnings = fTickets.reduce((sum, t) => sum + t.totalPrice, 0);
+      const earnings = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
       const iva = earnings * 0.21;
       const ret = earnings * 0.01;
       const net = earnings + iva - ret;
       summaryData.push([
         label, 
         fTickets.length, 
+        fSuccess.length,
         `${earnings.toFixed(2)} €`,
         `${iva.toFixed(2)} €`,
         `-${ret.toFixed(2)} €`,
@@ -735,10 +755,12 @@ function App() {
       const fTickets = filteredTickets.filter(t => t.furgoId === fid).sort((a,b) => a.date.localeCompare(b.date));
       const label = users.find(u => u.id === fid)?.label || fid;
 
-      const sheetHeaders = ['Fecha', 'Ruta', 'Cliente', 'Teléfono', 'Dirección', 'Artículo / Tarea', 'Cantidad', 'Tarifa Unitaria (€)', 'Subtotal (€)', 'Notas / Observaciones'];
+      const sheetHeaders = ['Fecha', 'Ruta', 'Cliente', 'Teléfono', 'Dirección', 'Artículo / Tarea', 'Cantidad', 'Tarifa Unitaria (€)', 'Subtotal (€)', 'Estado', 'Notas / Observaciones'];
       const sheetRows = [];
 
       fTickets.forEach(t => {
+        const isSuccess = t.status === 'success' || !t.status;
+        const statusLabel = t.status === 'success' || !t.status ? 'Éxito' : t.status === 'failed' ? 'Fallido' : 'Pendiente';
         t.tasks.forEach(task => {
           sheetRows.push([
             t.date,
@@ -749,7 +771,8 @@ function App() {
             task.name,
             task.quantity,
             task.unitPrice,
-            task.subtotal,
+            isSuccess ? task.subtotal : 0, // Fallido se calcula como 0 €
+            statusLabel,
             t.notes || ''
           ]);
         });
@@ -1058,15 +1081,17 @@ function App() {
   // --- RENDERIZADO DEL PORTAL DEL CHOFER (REPARTIDOR) ---
   const renderDriverPortal = () => {
     const userTickets = tickets.filter(t => t.furgoId === currentUser.id);
+    const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+    const dateTickets = userTickets.filter(t => t.date === targetDate);
 
     return (
       <div>
         <div className="tab-container">
           <button className={`tab-btn ${activeTab === 'new_ticket' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('new_ticket'); }}>
-            {editingTicketId ? '✏️ Editando...' : 'Nuevo Registro'}
+            {editingTicketId ? '✏️ Editando Parada' : '📋 Planificar Ruta'}
           </button>
           <button className={`tab-btn ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>
-            Historial del Día ({userTickets.filter(t => t.date === new Date().toISOString().split('T')[0]).length})
+            🚚 Mi Ruta ({dateTickets.length})
           </button>
         </div>
 
@@ -1090,14 +1115,13 @@ function App() {
                   <input 
                     type="date" 
                     className="form-input" 
-                    value={shiftSummaryDate || new Date().toISOString().split('T')[0]} 
+                    value={targetDate} 
                     onChange={(e) => setShiftSummaryDate(e.target.value)} 
                     style={{ width: '160px', padding: '8px 12px' }}
                   />
                 </div>
                 
                 {(() => {
-                  const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
                   const isClosed = getShiftStatus(currentUser.id, targetDate) === 'closed';
                   const dayTickets = tickets.filter(t => t.furgoId === currentUser.id && t.date === targetDate);
                   
@@ -1165,58 +1189,117 @@ function App() {
             </div>
 
             <div className="glass-panel" style={{ textAlign: 'left' }}>
-              <h2>Historial Completo del Mes</h2>
-              <p style={{ marginBottom: '15px' }}>Lista de todos los repartos introducidos por ti en este periodo mensual.</p>
-              {userTickets.length === 0 ? (
-                <div style={{ padding: '30px', color: 'var(--text-muted)', textAlign: 'center' }}>No has registrado entregas aún este mes.</div>
+              <h2>Planificación y Seguimiento de Ruta ({targetDate})</h2>
+              <p style={{ marginBottom: '15px' }}>Gestiona las paradas planificadas de tu jornada. Marca cada una como "Éxito" o "Fallido" según se complete el servicio.</p>
+              {dateTickets.length === 0 ? (
+                <div style={{ padding: '30px', color: 'var(--text-muted)', textAlign: 'center' }}>No hay paradas planificadas para este día.</div>
               ) : (
                 <div className="table-container">
                   <table>
                     <thead>
                       <tr>
-                        <th>Fecha</th>
-                        <th>Cliente</th>
-                        <th>Dirección</th>
-                        <th>Notas</th>
-                        <th>Artículos Transportados</th>
+                        <th>Cliente / Contacto</th>
+                        <th>Dirección / Ruta</th>
+                        <th>Servicios a Realizar</th>
+                        <th>Estado del Servicio</th>
                         <th style={{ textAlign: 'right' }}>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {userTickets.map(t => {
+                      {dateTickets.map(t => {
                         const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
                         return (
                           <tr key={t.id}>
-                            <td style={{ fontWeight: '600' }}>
-                              <div>{t.date}</div>
-                              {t.routeName && <div style={{ fontSize: '0.8rem', color: 'var(--primary)', marginTop: '2.5px' }}>📍 {t.routeName}</div>}
-                            </td>
                             <td style={{ fontWeight: '500' }}>
                               <div>{t.customerName}</div>
                               {t.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>📞 {t.phone}</div>}
+                              {t.notes && <div style={{ fontSize: '0.8rem', fontStyle: 'italic', color: 'var(--text-muted)', marginTop: '4px' }}>📝 {t.notes}</div>}
                             </td>
-                             <td>
-                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                 <span>{t.address}</span>
-                                 <a 
-                                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
-                                   target="_blank" 
-                                   rel="noopener noreferrer" 
-                                   title="Abrir en GPS"
-                                   className="btn btn-secondary btn-small"
-                                   style={{ display: 'inline-flex', padding: '4px', margin: 0, width: 'auto', borderRadius: '50%' }}
-                                 >
-                                   <MapPin size={14} color="var(--primary)" />
-                                 </a>
-                                </div>
-                             </td>
-                            <td style={{ fontStyle: 'italic', fontSize: '0.85rem' }}>{t.notes || '-'}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span>{t.address}</span>
+                                <a 
+                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  title="Abrir en GPS"
+                                  className="btn btn-secondary btn-small"
+                                  style={{ display: 'inline-flex', padding: '4px', margin: 0, width: 'auto', borderRadius: '50%' }}
+                                >
+                                  <MapPin size={14} color="var(--primary)" />
+                                </a>
+                              </div>
+                              {t.routeName && <div style={{ fontSize: '0.8rem', color: 'var(--primary)', marginTop: '4px' }}>📍 Ruta: {t.routeName}</div>}
+                            </td>
                             <td>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                                 {t.tasks.map((task, idx) => (
-                                  <span key={idx} className="badge badge-primary">{task.name} (x{task.quantity})</span>
+                                  <span key={idx} className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
+                                    {task.name} (x{task.quantity})
+                                  </span>
                                 ))}
                               </div>
+                            </td>
+                            <td>
+                              {isClosed ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  {t.status === 'success' || !t.status ? (
+                                    <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>🟢 Éxito</span>
+                                  ) : t.status === 'failed' ? (
+                                    <span className="badge badge-danger" style={{ fontSize: '0.75rem' }}>🔴 Fallido</span>
+                                  ) : (
+                                    <span className="badge badge-warning" style={{ fontSize: '0.75rem' }}>🟡 Pendiente</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <div style={{ display: 'flex', gap: '5px' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateTicketStatus(t.id, 'success')}
+                                      style={{
+                                        padding: '5px 8px',
+                                        borderRadius: '6px',
+                                        border: '1px solid ' + (t.status === 'success' ? 'var(--success)' : 'rgba(74, 222, 128, 0.2)'),
+                                        background: t.status === 'success' ? 'rgba(74, 222, 128, 0.2)' : 'transparent',
+                                        color: t.status === 'success' ? '#4ade80' : 'var(--text-muted)',
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer',
+                                        fontWeight: '600',
+                                        transition: 'all 0.2s ease',
+                                      }}
+                                    >
+                                      Éxito
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateTicketStatus(t.id, 'failed')}
+                                      style={{
+                                        padding: '5px 8px',
+                                        borderRadius: '6px',
+                                        border: '1px solid ' + (t.status === 'failed' ? 'var(--danger)' : 'rgba(248, 113, 113, 0.2)'),
+                                        background: t.status === 'failed' ? 'rgba(248, 113, 113, 0.2)' : 'transparent',
+                                        color: t.status === 'failed' ? '#f87171' : 'var(--text-muted)',
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer',
+                                        fontWeight: '600',
+                                        transition: 'all 0.2s ease',
+                                      }}
+                                    >
+                                      Fallido
+                                    </button>
+                                  </div>
+                                  {(!t.status || t.status === 'pending') && (
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--warning)', fontWeight: '500' }}>🟡 Pendiente de servicio</span>
+                                  )}
+                                  {(t.status === 'success') && (
+                                    <span style={{ fontSize: '0.7rem', color: '#4ade80', fontWeight: '500' }}>🟢 Completado con éxito</span>
+                                  )}
+                                  {t.status === 'failed' && (
+                                    <span style={{ fontSize: '0.7rem', color: '#f87171', fontWeight: '500' }}>🔴 Intento fallido</span>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td style={{ textAlign: 'right' }}>
                               {isClosed ? (
@@ -1254,24 +1337,27 @@ function App() {
       return true;
     });
 
-    const totalEarnings = filteredAdminTickets.reduce((sum, t) => sum + t.totalPrice, 0);
+    const successTickets = filteredAdminTickets.filter(t => t.status === 'success' || !t.status);
+    const totalEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
     const furgos = users.filter(u => u.role === 'repartidor').map(u => u.id);
     
     const furgoData = furgos.reduce((acc, fid) => {
       const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid);
+      const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
       acc[fid] = {
         count: fTickets.length,
-        earnings: fTickets.reduce((sum, t) => sum + t.totalPrice, 0)
+        successCount: fSuccess.length,
+        earnings: fSuccess.reduce((sum, t) => sum + t.totalPrice, 0)
       };
       return acc;
     }, {});
 
     const maxEarnings = Math.max(...Object.values(furgoData).map(d => d.earnings), 1);
 
-    // Contadores
+    // Contadores (Solo cuenta de paradas con éxito)
     let totalTvs = 0;
     let totalPackages = 0;
-    filteredAdminTickets.forEach(t => {
+    successTickets.forEach(t => {
       t.tasks.forEach(task => {
         const tar = tariffs.find(x => x.id === task.tariffId);
         if (tar?.block === 'Televisores') totalTvs += task.quantity;
@@ -1338,12 +1424,12 @@ function App() {
 
             <div className="dashboard-grid">
               <div className="stat-card success">
-                <p>Ganancias del Mes</p>
+                <p>Ganancias del Periodo</p>
                 <div className="stat-val">{totalEarnings.toFixed(2)} €</div>
               </div>
               <div className="stat-card info">
-                <p>Total Clientes</p>
-                <div className="stat-val">{filteredAdminTickets.length}</div>
+                <p>Entregas con Éxito</p>
+                <div className="stat-val">{successTickets.length} / {filteredAdminTickets.length}</div>
               </div>
               <div className="stat-card warning">
                 <p>Televisores Entregados</p>
@@ -1368,7 +1454,7 @@ function App() {
                       <div className="chart-bar-column" key={fid}>
                         <span className="chart-val-label">{data.earnings.toFixed(2)} €</span>
                         <div className="chart-bar" style={{ height: `${percent || 2}%`, backgroundColor: barColor }}></div>
-                        <span className="chart-label">{(users.find(u => u.id === fid)?.label) || fid} ({data.count} cli.)</span>
+                        <span className="chart-label">{(users.find(u => u.id === fid)?.label) || fid} ({data.successCount}/{data.count} éxitos)</span>
                       </div>
                     );
                   })}
@@ -1379,7 +1465,7 @@ function App() {
                     <thead>
                       <tr>
                         <th>Furgoneta</th>
-                        <th style={{ textAlign: 'center' }}>Entregas</th>
+                        <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
                         <th style={{ textAlign: 'right' }}>Base Imponible</th>
                         <th style={{ textAlign: 'right' }}>IVA (+21%)</th>
                         <th style={{ textAlign: 'right' }}>Retención (-1%)</th>
@@ -1388,7 +1474,7 @@ function App() {
                     </thead>
                     <tbody>
                       {furgos.map(fid => {
-                        const data = furgoData[fid] || { count: 0, earnings: 0 };
+                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0 };
                         const base = data.earnings;
                         const iva = base * 0.21;
                         const retencion = base * 0.01;
@@ -1397,7 +1483,7 @@ function App() {
                         return (
                           <tr key={fid}>
                             <td style={{ fontWeight: '600' }}>{label}</td>
-                            <td style={{ textAlign: 'center' }}>{data.count}</td>
+                            <td style={{ textAlign: 'center' }}>{data.successCount} / {data.count}</td>
                             <td style={{ textAlign: 'right', fontWeight: '500' }}>{base.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: '500' }}>+{iva.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>-{retencion.toFixed(2)} €</td>
@@ -1470,6 +1556,7 @@ function App() {
                       <th>Notas</th>
                       <th>Conceptos Facturados</th>
                       <th>Precio Final</th>
+                      <th>Estado</th>
                       <th style={{ textAlign: 'right' }}>Acciones</th>
                     </tr>
                   </thead>
@@ -1502,7 +1589,7 @@ function App() {
                                  title="Abrir en GPS"
                                  className="btn btn-secondary btn-small"
                                  style={{ display: 'inline-flex', padding: '4px', margin: 0, width: 'auto', borderRadius: '50%' }}
-                               >
+                                >
                                  <MapPin size={14} color="var(--primary)" />
                                </a>
                              )}
@@ -1516,7 +1603,20 @@ function App() {
                             ))}
                           </div>
                         </td>
-                        <td style={{ fontWeight: '700', color: 'var(--success)' }}>{((t.totalPrice || 0)).toFixed(2)} €</td>
+                        <td style={{ fontWeight: '700', color: t.status === 'failed' ? 'var(--text-muted)' : 'var(--success)' }}>
+                          {t.status === 'failed' ? '0.00' : (t.totalPrice || 0).toFixed(2)} €
+                        </td>
+                        <td>
+                          {(() => {
+                            const isSuccess = t.status === 'success' || !t.status;
+                            const isFailed = t.status === 'failed';
+                            return (
+                              <span className={`badge ${isSuccess ? 'badge-success' : isFailed ? 'badge-danger' : 'badge-warning'}`} style={{ fontSize: '0.75rem' }}>
+                                {isSuccess ? '🟢 Éxito' : isFailed ? '🔴 Fallido' : '🟡 Pendiente'}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end' }}>
                             <button onClick={() => startEditing(t)} className="btn btn-secondary btn-small" title="Editar registro"><Edit size={14} /></button>

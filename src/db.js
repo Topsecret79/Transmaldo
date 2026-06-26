@@ -196,6 +196,7 @@ export function addTicket(ticketData) {
     notes: ticketData.notes || '',
     tasks: detailedTasks,
     totalPrice: totalCalculado,
+    status: ticketData.status || 'pending',
     createdAt: new Date().toISOString()
   };
 
@@ -243,8 +244,21 @@ export function updateTicket(updatedTicket) {
       address: updatedTicket.address,
       notes: updatedTicket.notes || '',
       tasks: detailedTasks,
-      totalPrice: totalCalculado
+      totalPrice: totalCalculado,
+      status: updatedTicket.status || tickets[index].status || 'pending'
     };
+    saveTickets(tickets);
+    return tickets[index];
+  }
+  return null;
+}
+
+// Actualizar el estado de un ticket
+export function updateTicketStatus(ticketId, status) {
+  const tickets = getTickets();
+  const index = tickets.findIndex(t => t.id === ticketId);
+  if (index !== -1) {
+    tickets[index].status = status;
     saveTickets(tickets);
     return tickets[index];
   }
