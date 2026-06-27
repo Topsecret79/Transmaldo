@@ -843,13 +843,20 @@ function App() {
   };
 
   const handleOptimizeRoute = async () => {
-    if (!mapFilterFurgo || mapFilterFurgo === 'all') {
+    const targetFurgo = activeTab === 'tickets' ? ticketFilterFurgo : mapFilterFurgo;
+    const targetDate = activeTab === 'tickets' ? ticketFilterDate : mapFilterDate;
+
+    if (!targetFurgo || targetFurgo === 'all') {
       triggerAlert('Por favor, selecciona una furgoneta específica para optimizar su ruta.', 'error');
       return;
     }
     
-    const targetDate = mapFilterDate;
-    const dayTickets = tickets.filter(t => t && t.furgoId === mapFilterFurgo && t.date === targetDate);
+    if (!targetDate) {
+      triggerAlert('Por favor, selecciona una fecha para optimizar la ruta.', 'error');
+      return;
+    }
+
+    const dayTickets = tickets.filter(t => t && t.furgoId === targetFurgo && t.date === targetDate);
     if (dayTickets.length === 0) {
       triggerAlert('No hay paradas planificadas para este conductor en la fecha seleccionada.', 'error');
       return;
@@ -2563,6 +2570,51 @@ function App() {
                 <input type="text" className="form-input" placeholder="Buscar cliente, dirección, TV o nota..." value={ticketSearchQuery} onChange={(e) => setTicketSearchQuery(e.target.value)} />
               </div>
             </div>
+
+            {ticketFilterFurgo !== 'all' && ticketFilterDate && (
+              <div className="glass-panel" style={{ marginTop: '10px', marginBottom: '25px', padding: '20px', border: '1px solid var(--panel-border)', borderRadius: '12px', textAlign: 'left', background: 'rgba(255,255,255,0.01)' }}>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', margin: '0 0 10px 0', fontSize: '1.05rem' }}>
+                  ⚡ Optimización de Ruta (Furgoneta: {activeRepartidores.find(r => r.id === ticketFilterFurgo)?.label || ticketFilterFurgo})
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Ordena de forma eficiente las paradas del día ({ticketFilterDate}) desde la más cercana a la más lejana basándose en tus puntos de partida y destino final.
+                </p>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">🏁 Punto de Partida (Inicio)</span>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej: Calle del Almacén 1, Madrid" 
+                      value={routeStartAddr} 
+                      onChange={(e) => setRouteStartAddr(e.target.value)} 
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">🏁 Punto de Llegada (Retorno/Fin)</span>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej: Calle del Almacén 1, Madrid (o vacío)" 
+                      value={routeEndAddr} 
+                      onChange={(e) => setRouteEndAddr(e.target.value)} 
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
+                    <button 
+                      type="button" 
+                      onClick={handleOptimizeRoute} 
+                      className="btn btn-primary" 
+                      style={{ height: '45px', margin: 0, fontWeight: '700', letterSpacing: '0.5px' }}
+                      disabled={isOptimizing}
+                    >
+                      {isOptimizing ? 'Calculando Ruta Óptima...' : '⚡ Optimizar Ruta'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {getFilteredTickets().length === 0 ? (
               <div style={{ padding: '30px', color: 'var(--text-muted)' }}>No se encontraron registros.</div>
