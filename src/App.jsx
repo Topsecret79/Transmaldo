@@ -18,6 +18,25 @@ const sortTicketsByRouteOrder = (ticketList) => {
     return (a.createdAt || '').localeCompare(b.createdAt || '');
   });
 };
+
+// Obtener ruta por carreteras reales desde OSRM
+const fetchRoadRoute = async (points) => {
+  if (!points || points.length < 2) return null;
+  try {
+    const coordsString = points.map(p => `${p.lng},${p.lat}`).join(';');
+    const url = `https://router.project-osm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data && data.routes && data.routes.length > 0) {
+      const routeCoords = data.routes[0].geometry.coordinates;
+      return routeCoords.map(c => [c[1], c[0]]);
+    }
+  } catch (e) {
+    console.error("OSRM Routing failed:", e);
+  }
+  return null;
+};
 import { 
   Truck, 
   Settings, 
@@ -409,19 +428,33 @@ function App() {
               .bindPopup(popupContent, { maxWidth: 220 });
           });
 
-          // Trazar línea de ruta conectando las paradas en orden
+          // Trazar línea de ruta conectando las paradas en orden (siguiendo carreteras reales)
           if (driverTickets.length > 1) {
             const routeCoords = driverTickets.map(t => {
               const latNum = parseFloat(t.lat);
               const lngNum = parseFloat(t.lng);
               return [latNum, lngNum];
             });
-            window.L.polyline(routeCoords, {
+
+            // Dibujar línea recta como fallback inmediato
+            const polylineRef = window.L.polyline(routeCoords, {
               color: driverColor,
               weight: 3,
               opacity: 0.75,
-              dashArray: '8, 8'
+              dashArray: '6, 6'
             }).addTo(map);
+
+            // Cargar trazado de carreteras reales asíncronamente desde OSRM
+            fetchRoadRoute(routeCoords.map(c => ({ lat: c[0], lng: c[1] })))
+              .then(roadCoords => {
+                if (roadCoords && roadCoords.length > 0) {
+                  polylineRef.setLatLngs(roadCoords);
+                  polylineRef.setStyle({ dashArray: null, weight: 4, opacity: 0.85 });
+                }
+              })
+              .catch(err => {
+                console.error("OSRM route path failed:", err);
+              });
           }
         });
 
