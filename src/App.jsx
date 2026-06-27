@@ -1,4 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Asegurar Leaflet en el objeto global para compatibilidad
+if (typeof window !== 'undefined') {
+  window.L = L;
+}
 import { 
   Truck, 
   Settings, 
@@ -287,11 +294,10 @@ function App() {
         }).setView([40.416775, -3.703790], 12);
         mapInstanceRef.current = map;
 
-        // 3. Cargar capa de mapa oscuro (CartoDB Dark Matter)
-        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-          subdomains: 'abcd',
-          maxZoom: 20
+        // 3. Cargar capa de mapa gratuito estándar (OpenStreetMap)
+        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 19
         }).addTo(map);
 
         // 4. Filtrar y ordenar los tickets geocodificados
