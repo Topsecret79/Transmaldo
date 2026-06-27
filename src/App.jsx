@@ -6,6 +6,18 @@ import 'leaflet/dist/leaflet.css';
 if (typeof window !== 'undefined') {
   window.L = L;
 }
+
+// Función helper para ordenar tickets de manera uniforme por routeOrder, luego por createdAt
+const sortTicketsByRouteOrder = (ticketList) => {
+  return [...ticketList].sort((a, b) => {
+    const aOrder = a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
+    const bOrder = b.routeOrder !== undefined && b.routeOrder !== null && b.routeOrder !== '' ? Number(b.routeOrder) : Infinity;
+    if (aOrder !== bOrder) {
+      return aOrder - bOrder;
+    }
+    return (a.createdAt || '').localeCompare(b.createdAt || '');
+  });
+};
 import { 
   Truck, 
   Settings, 
@@ -142,6 +154,9 @@ function App() {
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
   const mapInstanceRef = useRef(null);
+  const [routeStartAddr, setRouteStartAddr] = useState(localStorage.getItem('delivery_default_start_addr') || 'Madrid, España');
+  const [routeEndAddr, setRouteEndAddr] = useState(localStorage.getItem('delivery_default_end_addr') || 'Madrid, España');
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   // Derived state for role-based data partitioning (independent invoicing per administrator)
   const activeRepartidores = users.filter(u => {
@@ -317,8 +332,8 @@ function App() {
           return t.lat !== undefined && t.lat !== null && !isNaN(latNum) && t.lng !== undefined && t.lng !== null && !isNaN(lngNum);
         });
 
-        // Ordenar por hora de creación para visualizar la secuencia lógica
-        const sortedDayTickets = [...dayTickets].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+        // Ordenar por hora de creación o por routeOrder para visualizar la secuencia lógica
+        const sortedDayTickets = sortTicketsByRouteOrder(dayTickets);
 
         // Agrupar tickets por repartidor
         const ticketsByDriver = {};
@@ -790,6 +805,125 @@ function App() {
       setCodAmount('');
       setTicketDate(new Date().toISOString().split('T')[0]);
       loadData();
+    }
+  };
+
+  const handleOptimizeRoute = async () => {
+    if (!mapFilterFurgo || mapFilterFurgo === 'all') {
+      triggerAlert('Por favor, selecciona una furgoneta específica para optimizar su ruta.', 'error');
+      return;
+    }
+    
+    const targetDate = mapFilterDate;
+    const dayTickets = tickets.filter(t => t && t.furgoId === mapFilterFurgo && t.date === targetDate);
+    if (dayTickets.length === 0) {
+      triggerAlert('No hay paradas planificadas para este conductor en la fecha seleccionada.', 'error');
+      return;
+    }
+
+    setIsOptimizing(true);
+    
+    localStorage.setItem('delivery_default_start_addr', routeStartAddr);
+    localStorage.setItem('delivery_default_end_addr', routeEndAddr);
+
+    try {
+      let startCoords = null;
+      if (routeStartAddr.trim()) {
+        const startGeocoded = await geocodeAddress(routeStartAddr);
+        if (startGeocoded && startGeocoded.lat && startGeocoded.lng) {
+          startCoords = { lat: parseFloat(startGeocoded.lat), lng: parseFloat(startGeocoded.lng) };
+        } else {
+          startCoords = { lat: 40.416775, lng: -3.703790 };
+          triggerAlert('No se pudo geolocalizar el punto de partida. Usando ubicación por defecto.', 'warning');
+        }
+      } else {
+        startCoords = { lat: 40.416775, lng: -3.703790 };
+      }
+
+      let endCoords = null;
+      if (routeEndAddr.trim()) {
+        const endGeocoded = await geocodeAddress(routeEndAddr);
+        if (endGeocoded && endGeocoded.lat && endGeocoded.lng) {
+          endCoords = { lat: parseFloat(endGeocoded.lat), lng: parseFloat(endGeocoded.lng) };
+        } else {
+          endCoords = startCoords;
+        }
+      } else {
+        endCoords = startCoords;
+      }
+
+      const ticketsWithCoords = [];
+      for (const t of dayTickets) {
+        let lat = t.lat ? parseFloat(t.lat) : null;
+        let lng = t.lng ? parseFloat(t.lng) : null;
+        
+        if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) {
+          const res = await geocodeAddress(t.address);
+          if (res && res.lat && res.lng) {
+            lat = parseFloat(res.lat);
+            lng = parseFloat(res.lng);
+            t.lat = lat;
+            t.lng = lng;
+            updateTicket(t);
+          }
+        }
+        
+        if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+          ticketsWithCoords.push({ ...t, lat, lng });
+        } else {
+          ticketsWithCoords.push({ ...t, lat: startCoords.lat, lng: startCoords.lng });
+        }
+      }
+
+      const getDistance = (c1, c2) => {
+        const R = 6371;
+        const dLat = (c2.lat - c1.lat) * Math.PI / 180;
+        const dLng = (c2.lng - c1.lng) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) * 
+          Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+      };
+
+      const unvisited = [...ticketsWithCoords];
+      const route = [];
+      let currentPos = startCoords;
+
+      while (unvisited.length > 0) {
+        let nearestIdx = -1;
+        let minDistance = Infinity;
+
+        for (let i = 0; i < unvisited.length; i++) {
+          const dist = getDistance(currentPos, unvisited[i]);
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestIdx = i;
+          }
+        }
+
+        if (nearestIdx !== -1) {
+          const nextTicket = unvisited.splice(nearestIdx, 1)[0];
+          route.push(nextTicket);
+          currentPos = { lat: nextTicket.lat, lng: nextTicket.lng };
+        } else {
+          break;
+        }
+      }
+
+      route.forEach((ticket, index) => {
+        ticket.routeOrder = index + 1;
+        updateTicket(ticket);
+      });
+
+      triggerAlert(`¡Ruta optimizada con éxito! ${route.length} paradas ordenadas de forma eficiente.`, 'success');
+      loadData();
+    } catch (err) {
+      console.error(err);
+      triggerAlert('Ocurrió un error al optimizar la ruta.', 'error');
+    } finally {
+      setIsOptimizing(false);
     }
   };
 
@@ -1293,6 +1427,11 @@ function App() {
       }
       return true;
     }).sort((a,b) => {
+      const aOrder = a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
+      const bOrder = b.routeOrder !== undefined && b.routeOrder !== null && b.routeOrder !== '' ? Number(b.routeOrder) : Infinity;
+      if (aOrder !== Infinity || bOrder !== Infinity) {
+        if (aOrder !== bOrder) return aOrder - bOrder;
+      }
       const dateA = a.createdAt || '';
       const dateB = b.createdAt || '';
       return dateB.localeCompare(dateA);
@@ -1723,7 +1862,7 @@ function App() {
   const renderDriverPortal = () => {
     const userTickets = tickets.filter(t => t.furgoId === currentUser.id);
     const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
-    const dateTickets = userTickets.filter(t => t.date === targetDate);
+    const dateTickets = sortTicketsByRouteOrder(userTickets.filter(t => t.date === targetDate));
 
     return (
       <div>
@@ -2559,6 +2698,51 @@ function App() {
                 <span>Repartidor en Vivo (Últimas 6h)</span>
               </div>
             </div>
+
+            {mapFilterFurgo !== 'all' && (
+              <div className="glass-panel" style={{ marginTop: '20px', padding: '20px', border: '1px solid var(--panel-border)', borderRadius: '12px', textAlign: 'left', background: 'rgba(255,255,255,0.01)' }}>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', margin: '0 0 10px 0', fontSize: '1.05rem' }}>
+                  ⚡ Optimización de Ruta (Furgoneta: {activeRepartidores.find(r => r.id === mapFilterFurgo)?.label || mapFilterFurgo})
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Organiza de forma eficiente las paradas del día, ordenándolas desde la más cercana a la más lejana basándose en tus puntos de partida y destino final.
+                </p>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">🏁 Punto de Partida (Inicio)</span>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej: Calle del Almacén 1, Madrid" 
+                      value={routeStartAddr} 
+                      onChange={(e) => setRouteStartAddr(e.target.value)} 
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">🏁 Punto de Llegada (Retorno/Fin)</span>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej: Calle del Almacén 1, Madrid (o vacío)" 
+                      value={routeEndAddr} 
+                      onChange={(e) => setRouteEndAddr(e.target.value)} 
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
+                    <button 
+                      type="button" 
+                      onClick={handleOptimizeRoute} 
+                      className="btn btn-primary" 
+                      style={{ height: '45px', margin: 0, fontWeight: '700', letterSpacing: '0.5px' }}
+                      disabled={isOptimizing}
+                    >
+                      {isOptimizing ? 'Calculando Ruta Óptima...' : '⚡ Optimizar Ruta'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

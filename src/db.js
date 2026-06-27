@@ -213,7 +213,8 @@ export function addTicket(ticketData) {
     status: ticketData.status || 'pending',
     createdAt: new Date().toISOString(),
     lat: ticketData.lat || null,
-    lng: ticketData.lng || null
+    lng: ticketData.lng || null,
+    routeOrder: ticketData.routeOrder || null
   };
 
   tickets.push(newTicket);
@@ -266,7 +267,8 @@ export function updateTicket(updatedTicket) {
       lat: updatedTicket.lat !== undefined ? updatedTicket.lat : tickets[index].lat,
       lng: updatedTicket.lng !== undefined ? updatedTicket.lng : tickets[index].lng,
       completedLat: updatedTicket.completedLat !== undefined ? updatedTicket.completedLat : tickets[index].completedLat,
-      completedLng: updatedTicket.completedLng !== undefined ? updatedTicket.completedLng : tickets[index].completedLng
+      completedLng: updatedTicket.completedLng !== undefined ? updatedTicket.completedLng : tickets[index].completedLng,
+      routeOrder: updatedTicket.routeOrder !== undefined ? updatedTicket.routeOrder : tickets[index].routeOrder
     };
     saveTickets(tickets);
     return tickets[index];
