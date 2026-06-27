@@ -1369,6 +1369,51 @@ function App() {
     window.open(url, '_blank');
   };
 
+  const handleNavigateFullRoute = () => {
+    if (!currentUser || currentUser.role !== 'repartidor') return;
+
+    const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+    const userTickets = tickets.filter(t => t.furgoId === currentUser.id && t.date === targetDate);
+    
+    if (userTickets.length === 0) {
+      triggerAlert('No tienes paradas planificadas para hoy.', 'error');
+      return;
+    }
+
+    const sorted = sortTicketsByRouteOrder(userTickets);
+    const startAddr = routeStartAddr.trim() || 'Madrid, España';
+    const endAddr = routeEndAddr.trim() || '';
+
+    let origin = startAddr;
+    let destination = '';
+    let waypoints = [];
+
+    if (endAddr) {
+      destination = endAddr;
+      waypoints = sorted.map(t => t.address);
+    } else {
+      if (sorted.length === 1) {
+        destination = sorted[0].address;
+      } else {
+        destination = sorted[sorted.length - 1].address;
+        waypoints = sorted.slice(0, sorted.length - 1).map(t => t.address);
+      }
+    }
+
+    if (waypoints.length > 9) {
+      waypoints = waypoints.slice(0, 9);
+      triggerAlert('La ruta completa incluye más de 9 paradas. Se mostrarán las primeras 9 en el mapa de navegación.', 'warning');
+    }
+
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}`;
+    if (waypoints.length > 0) {
+      url += `&waypoints=${encodeURIComponent(waypoints.join('|'))}`;
+    }
+    url += '&travelmode=driving';
+
+    window.open(url, '_blank');
+  };
+
   // Exportar Excel del Periodo seleccionado
   const handleExportExcel = async () => {
     const filteredTickets = visibleTickets.filter(t => {
@@ -2145,15 +2190,26 @@ function App() {
                   />
                 </div>
                 <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
-                  <button 
-                    type="button" 
-                    onClick={handleOptimizeRoute} 
-                    className="btn btn-primary" 
-                    style={{ height: '45px', margin: 0, fontWeight: '700', letterSpacing: '0.5px' }}
-                    disabled={isOptimizing}
-                  >
-                    {isOptimizing ? 'Calculando Ruta...' : '⚡ Optimizar Mi Ruta'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                    <button 
+                      type="button" 
+                      onClick={handleOptimizeRoute} 
+                      className="btn btn-primary" 
+                      style={{ height: '45px', margin: 0, fontWeight: '700', flex: 1 }}
+                      disabled={isOptimizing}
+                    >
+                      {isOptimizing ? 'Calculando...' : '⚡ Optimizar'}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={handleNavigateFullRoute} 
+                      className="btn btn-secondary" 
+                      style={{ height: '45px', margin: 0, fontWeight: '700', flex: 1, border: '1px solid var(--primary)', color: 'var(--primary)', background: 'rgba(79, 70, 229, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      title="Navegar ruta completa en Google Maps"
+                    >
+                      🗺️ Navegar Ruta
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
