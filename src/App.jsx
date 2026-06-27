@@ -238,6 +238,18 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.role === 'repartidor') {
+        setRouteStartAddr(localStorage.getItem(`delivery_start_addr_${currentUser.id}`) || 'Madrid, España');
+        setRouteEndAddr(localStorage.getItem(`delivery_end_addr_${currentUser.id}`) || 'Madrid, España');
+      } else {
+        setRouteStartAddr(localStorage.getItem('delivery_default_start_addr') || 'Madrid, España');
+        setRouteEndAddr(localStorage.getItem('delivery_default_end_addr') || 'Madrid, España');
+      }
+    }
+  }, [currentUser]);
+
   // Aplicar tema en el body
   useEffect(() => {
     document.body.className = appTheme;
@@ -843,8 +855,8 @@ function App() {
   };
 
   const handleOptimizeRoute = async () => {
-    const targetFurgo = activeTab === 'tickets' ? ticketFilterFurgo : mapFilterFurgo;
-    const targetDate = activeTab === 'tickets' ? ticketFilterDate : mapFilterDate;
+    const targetFurgo = currentUser.role === 'repartidor' ? currentUser.id : (activeTab === 'tickets' ? ticketFilterFurgo : mapFilterFurgo);
+    const targetDate = currentUser.role === 'repartidor' ? (shiftSummaryDate || new Date().toISOString().split('T')[0]) : (activeTab === 'tickets' ? ticketFilterDate : mapFilterDate);
 
     if (!targetFurgo || targetFurgo === 'all') {
       triggerAlert('Por favor, selecciona una furgoneta específica para optimizar su ruta.', 'error');
@@ -864,8 +876,13 @@ function App() {
 
     setIsOptimizing(true);
     
-    localStorage.setItem('delivery_default_start_addr', routeStartAddr);
-    localStorage.setItem('delivery_default_end_addr', routeEndAddr);
+    if (currentUser.role === 'repartidor') {
+      localStorage.setItem(`delivery_start_addr_${currentUser.id}`, routeStartAddr);
+      localStorage.setItem(`delivery_end_addr_${currentUser.id}`, routeEndAddr);
+    } else {
+      localStorage.setItem('delivery_default_start_addr', routeStartAddr);
+      localStorage.setItem('delivery_default_end_addr', routeEndAddr);
+    }
 
     try {
       let startCoords = null;
@@ -2095,6 +2112,49 @@ function App() {
                     );
                   }
                 })()}
+              </div>
+            </div>
+
+            <div className="glass-panel" style={{ textAlign: 'left', padding: '20px', border: '1px solid var(--panel-border)', borderRadius: '12px', background: 'rgba(255,255,255,0.01)', marginBottom: '20px' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', margin: '0 0 10px 0', fontSize: '1.05rem' }}>
+                ⚡ Optimización de Mi Ruta
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Ordena tus paradas del día de la más cercana a la más lejana ingresando tus puntos de salida y fin de ruta.
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">🏁 Punto de Partida (Inicio)</span>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Ej: Mi Casa, Calle X, Madrid" 
+                    value={routeStartAddr} 
+                    onChange={(e) => setRouteStartAddr(e.target.value)} 
+                  />
+                </div>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">🏁 Punto de Llegada (Retorno/Fin)</span>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Ej: Almacén, Calle Y, Madrid (o vacío)" 
+                    value={routeEndAddr} 
+                    onChange={(e) => setRouteEndAddr(e.target.value)} 
+                  />
+                </div>
+                <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
+                  <button 
+                    type="button" 
+                    onClick={handleOptimizeRoute} 
+                    className="btn btn-primary" 
+                    style={{ height: '45px', margin: 0, fontWeight: '700', letterSpacing: '0.5px' }}
+                    disabled={isOptimizing}
+                  >
+                    {isOptimizing ? 'Calculando Ruta...' : '⚡ Optimizar Mi Ruta'}
+                  </button>
+                </div>
               </div>
             </div>
 
