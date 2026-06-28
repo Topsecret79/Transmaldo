@@ -1907,17 +1907,44 @@ function App() {
              <div className="input-group" style={{ position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span className="input-label">Dirección</span>
-                {address.trim() && (
-                  <button 
-                    type="button" 
-                    onClick={handleVerifyAddress}
-                    className="btn btn-secondary btn-small"
-                    style={{ width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px', display: 'flex', alignItems: 'center', gap: '3px' }}
-                    disabled={isClosed}
-                  >
-                    🔍 Verificar
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                    <button
+                      type="button"
+                      onClick={handleStartVoiceSearch}
+                      className={`btn btn-small ${isListening ? 'btn-danger' : 'btn-secondary'}`}
+                      style={{ 
+                        width: 'auto', 
+                        margin: 0, 
+                        padding: '2px 8px', 
+                        fontSize: '0.7rem', 
+                        height: '20px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '3px',
+                        background: isListening ? '#ef4444' : '',
+                        borderColor: isListening ? '#ef4444' : '',
+                        color: '#fff',
+                        animation: isListening ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                      }}
+                      disabled={isClosed}
+                      title="Dictar dirección por voz"
+                    >
+                      🎙️ {isListening ? 'Escuchando...' : 'Dictar'}
+                    </button>
+                  )}
+                  {address.trim() && (
+                    <button 
+                      type="button" 
+                      onClick={handleVerifyAddress}
+                      className="btn btn-secondary btn-small"
+                      style={{ width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                      disabled={isClosed}
+                    >
+                      🔍 Verificar
+                    </button>
+                  )}
+                </div>
               </div>
               <input 
                 type="text" 
