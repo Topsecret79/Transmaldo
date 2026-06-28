@@ -91,7 +91,8 @@ import {
   deleteTariff,
   geocodeAddress,
   saveDriverLocation,
-  getDriverLocations
+  getDriverLocations,
+  toggleUserSearchPermission
 } from './db';
 
 initDB();
@@ -227,6 +228,11 @@ function App() {
   };
   const [currentUser, setCurrentUser] = useState(null);
   const isAdminOrSuper = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
+  const loggedInUserObj = users.find(u => u.id === currentUser?.id) || currentUser;
+  const hasSearchPermission = loggedInUserObj && (
+    loggedInUserObj.role === 'superadmin' || 
+    loggedInUserObj.canSearch
+  );
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -2428,6 +2434,11 @@ function App() {
           <button className={`tab-btn ${activeTab === 'driver_map' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('driver_map'); }}>
             🗺️ Ver Mapa
           </button>
+          {hasSearchPermission && (
+            <button className={`tab-btn ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('search'); }}>
+              🔍 Buscador General
+            </button>
+          )}
         </div>
 
         {/* Control de Geolocalización / Compartir Ubicación */}
@@ -2911,6 +2922,289 @@ function App() {
             </div>
           </div>
         )}
+
+        {activeTab === 'search' && renderSearchSection()}
+      </div>
+    );
+  };
+
+  // --- SECCIÓN DE BÚSQUEDA GENERAL ---
+  const renderSearchSection = () => {
+    return (
+      <div className="glass-panel" style={{ textAlign: 'left' }}>
+        <h2>🔍 Buscador General de Repartos</h2>
+        <p style={{ marginBottom: '20px', color: 'var(--text-muted)' }}>
+          Busca en todo el historial acumulado por nombre de cliente o dirección. 
+          Encuentra qué día se realizó la visita, qué furgoneta lo atendió y los servicios específicos suministrados.
+        </p>
+
+        {/* Input de Búsqueda */}
+        <div style={{ marginBottom: '25px', position: 'relative' }}>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Escribe el nombre del cliente, dirección, teléfono..."
+            value={globalSearchQuery}
+            onChange={(e) => setGlobalSearchQuery(e.target.value)}
+            style={{
+              paddingLeft: '40px',
+              height: '45px',
+              fontSize: '1rem',
+              borderRadius: '10px'
+            }}
+          />
+          <span style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+            🔍
+          </span>
+        </div>
+
+        {/* Resultados de Búsqueda */}
+        {(() => {
+          const query = globalSearchQuery.trim().toLowerCase();
+          if (!query) {
+            return (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <p style={{ margin: 0, fontSize: '0.95rem' }}>Escribe una palabra clave arriba para iniciar la búsqueda en todo el historial.</p>
+              </div>
+            );
+          }
+
+          // A los repartidores con permiso solo les dejamos buscar sus propios tickets, a los administradores todos
+          const searchTickets = isAdminOrSuper ? tickets : tickets.filter(t => t.furgoId === currentUser.id);
+
+          const matches = searchTickets.filter(t => {
+            const nameMatch = t.customerName && t.customerName.toLowerCase().includes(query);
+            const addressMatch = t.address && t.address.toLowerCase().includes(query);
+            const phoneMatch = t.phone && t.phone.toLowerCase().includes(query);
+            const notesMatch = t.notes && t.notes.toLowerCase().includes(query);
+            return nameMatch || addressMatch || phoneMatch || notesMatch;
+          });
+
+          if (matches.length === 0) {
+            return (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <p style={{ margin: 0, fontSize: '0.95rem' }}>❌ No se encontraron visitas que coincidan con la búsqueda.</p>
+              </div>
+            );
+          }
+
+          return (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="delivery-table">
+                <thead>
+                  <tr>
+                    <th>Fecha de Visita</th>
+                    <th>Cliente</th>
+                    <th>Dirección / Población</th>
+                    <th>Ruta / Chofer</th>
+                    <th>Servicios Suministrados</th>
+                    <th>Estado</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {matches.map(ticket => {
+                    const driver = users.find(u => u.id === ticket.furgoId);
+                    const driverLabel = driver ? driver.label : ticket.furgoId;
+                    
+                    let statusBadge = <span className="badge badge-secondary">Planificado</span>;
+                    if (ticket.status === 'success') {
+                      statusBadge = <span className="badge badge-success" style={{ background: '#10b981', color: '#fff' }}>🟢 Éxito</span>;
+                    } else if (ticket.status === 'failed') {
+                      statusBadge = <span className="badge badge-danger" style={{ background: '#ef4444', color: '#fff' }}>🔴 Fallido</span>;
+                    } else if (ticket.status === 'transit') {
+                      statusBadge = <span className="badge" style={{ background: '#38bdf8', color: '#0f172a', fontWeight: 'bold' }}>🔵 En Camino</span>;
+                    }
+
+                    return (
+                      <tr key={ticket.id}>
+                        <td style={{ fontWeight: '700', whiteSpace: 'nowrap' }}>
+                          {ticket.date}
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: '600' }}>{ticket.customerName}</div>
+                          {ticket.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>📞 {ticket.phone}</div>}
+                        </td>
+                        <td>
+                          <div style={{ fontSize: '0.85rem', lineHeight: '1.3' }}>{ticket.address}</div>
+                          {ticket.postcode && (
+                            <span className="badge" style={{ 
+                              fontSize: '0.7rem', 
+                              padding: '2px 6px', 
+                              marginTop: '4px', 
+                              display: 'inline-block',
+                              background: 'rgba(99, 102, 241, 0.15)',
+                              border: '1px solid rgba(99, 102, 241, 0.3)',
+                              color: '#a5b4fc',
+                              borderRadius: '4px'
+                            }}>
+                              CP {ticket.postcode}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          🚚 {driverLabel}
+                        </td>
+                        <td>
+                          <ul style={{ margin: 0, paddingLeft: '15px', fontSize: '0.82rem', lineHeight: '1.4' }}>
+                            {ticket.tasks.map((task, idx) => {
+                              const tariff = tariffs.find(tar => tar.id === task.tariffId);
+                              const name = tariff ? tariff.name : task.tariffId;
+                              return (
+                                <li key={idx}>
+                                  {name} <span style={{ color: 'var(--text-muted)' }}>(x{task.quantity})</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          {ticket.notes && (
+                            <div style={{ 
+                              fontSize: '0.78rem', 
+                              color: 'var(--text-muted)', 
+                              background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid var(--panel-border)',
+                              borderRadius: '4px',
+                              padding: '4px 8px',
+                              marginTop: '6px'
+                            }}>
+                              📝 {ticket.notes}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          {statusBadge}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTicketId(ticket.id);
+                              setEditingFurgoId(ticket.furgoId);
+                              setCustomerName(ticket.customerName);
+                              setPhone(ticket.phone || '');
+                              setAddress(ticket.address);
+                              setPostcode(ticket.postcode || '');
+                              setNotes(ticket.notes || '');
+                              setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
+                              setTicketRoute(driverLabel);
+                              setTicketDate(ticket.date);
+                              
+                              const tempTvs = [];
+                              const tempOthers = {};
+                              
+                              const tvMainTasks = ticket.tasks.filter(t => t.tariffId.startsWith('TV_ENT_') || t.tariffId.startsWith('TV_COMB_'));
+                              const pmTasks = ticket.tasks.filter(t => t.tariffId.startsWith('PM_') && t.tariffId !== 'PM_BSND');
+                              const cuelgueTasks = ticket.tasks.filter(t => t.tariffId.startsWith('CUELGUE_') && t.tariffId !== 'CUELGUE_BSND');
+                              const viejaTasks = ticket.tasks.filter(t => t.tariffId === 'TV_VIEJA_URB' || t.tariffId === 'TV_VIEJA_NO_URB');
+                              
+                              let pmIndex = 0;
+                              let cuelgueIndex = 0;
+                              let viejaIndex = 0;
+                              
+                              tvMainTasks.forEach((mTask, idx) => {
+                                const isComb = mTask.tariffId.includes('COMB');
+                                let range = '49';
+                                if (mTask.tariffId.includes('74')) range = '74';
+                                if (mTask.tariffId.includes('115')) range = '115';
+                                
+                                let pmType = 'none';
+                                if (pmIndex < pmTasks.length) {
+                                  const pmMatch = pmTasks[pmIndex++];
+                                  pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
+                                }
+                                
+                                let cuelgue = false;
+                                if (cuelgueIndex < cuelgueTasks.length) {
+                                  cuelgueIndex++;
+                                  cuelgue = true;
+                                }
+                                
+                                let recogidaViejaType = 'none';
+                                if (viejaIndex < viejaTasks.length) {
+                                  const viejaMatch = viejaTasks[viejaIndex++];
+                                  recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+                                }
+                                
+                                tempTvs.push({
+                                  id: 'tv_' + idx + Date.now().toString(),
+                                  inches: range,
+                                  action: isComb ? 'combinado' : (mTask.name.includes('Recogida') && !mTask.name.includes('Entrega') ? 'recogida' : 'entrega'),
+                                  pmType,
+                                  cuelgue,
+                                  recogidaViejaType
+                                });
+                              });
+                              
+                              while (pmIndex < pmTasks.length) {
+                                const pmMatch = pmTasks[pmIndex++];
+                                let range = '49';
+                                if (pmMatch.tariffId.includes('74')) range = '74';
+                                if (pmMatch.tariffId.includes('115')) range = '115';
+                                
+                                const pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
+                                
+                                let cuelgue = false;
+                                if (cuelgueIndex < cuelgueTasks.length) {
+                                  cuelgueIndex++;
+                                  cuelgue = true;
+                                }
+                                
+                                let recogidaViejaType = 'none';
+                                if (viejaIndex < viejaTasks.length) {
+                                  const viejaMatch = viejaTasks[viejaIndex++];
+                                  recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+                                }
+                                
+                                tempTvs.push({
+                                  id: 'tv_pm_' + pmIndex + Date.now().toString(),
+                                  inches: range,
+                                  action: 'solo_pm',
+                                  pmType,
+                                  cuelgue,
+                                  recogidaViejaType
+                                });
+                              }
+                              
+                              ticket.tasks.forEach(t => {
+                                const isTVRelated = (t.tariffId.startsWith('TV_ENT_') || 
+                                                    t.tariffId.startsWith('TV_COMB_') || 
+                                                    t.tariffId.startsWith('PM_') || 
+                                                    t.tariffId.startsWith('CUELGUE_') || 
+                                                    t.tariffId === 'TV_VIEJA_URB' || 
+                                                    t.tariffId === 'TV_VIEJA_NO_URB') &&
+                                                    t.tariffId !== 'PM_BSND' &&
+                                                    t.tariffId !== 'CUELGUE_BSND';
+                                
+                                if (!isTVRelated) {
+                                  tempOthers[t.tariffId] = t.quantity;
+                                }
+                              });
+                              
+                              setFormTvs(tempTvs);
+                              setOtherQuantities(tempOthers);
+                              setAddressVerification({
+                                status: 'success',
+                                message: `🟢 Dirección verificada`,
+                                coords: { lat: ticket.lat, lng: ticket.lng }
+                              });
+                              setLastVerifiedAddress(ticket.address);
+                              
+                              setActiveTab('new_ticket');
+                            }}
+                            className="btn btn-secondary btn-small"
+                            style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            ✏️ Editar
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -2957,7 +3251,9 @@ function App() {
           <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('dashboard'); }}>Dashboard</button>
           <button className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>Repartos del Periodo ({filteredAdminTickets.length})</button>
           <button className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('map'); }}>🗺️ Mapa de Control</button>
-          <button className={`tab-btn ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('search'); }}>🔍 Buscador General</button>
+          {hasSearchPermission && (
+            <button className={`tab-btn ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('search'); }}>🔍 Buscador General</button>
+          )}
           {editingTicketId && (
             <button className={`tab-btn active`} onClick={() => setActiveTab('new_ticket')}>✏️ Editando...</button>
           )}
@@ -3879,6 +4175,22 @@ function App() {
                           style={{ padding: '4px 8px', flex: 1, fontSize: '0.85rem' }} 
                         />
                       </div>
+                      {currentUser.role === 'superadmin' && u.id !== 'admin' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
+                          <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={!!u.canSearch} 
+                              onChange={() => {
+                                toggleUserSearchPermission(u.id);
+                                triggerAlert(`Permiso de buscador modificado para ${u.label}`);
+                                loadData();
+                              }} 
+                            />
+                            Permitir acceso al Buscador General
+                          </label>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3887,279 +4199,7 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'search' && (
-          <div className="glass-panel" style={{ textAlign: 'left' }}>
-            <h2>🔍 Buscador General de Repartos</h2>
-            <p style={{ marginBottom: '20px', color: 'var(--text-muted)' }}>
-              Busca en todo el historial acumulado por nombre de cliente o dirección. 
-              Encuentra qué día se realizó la visita, qué furgoneta lo atendió y los servicios específicos suministrados.
-            </p>
-
-            {/* Input de Búsqueda */}
-            <div style={{ marginBottom: '25px', position: 'relative' }}>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Escribe el nombre del cliente, dirección, teléfono..."
-                value={globalSearchQuery}
-                onChange={(e) => setGlobalSearchQuery(e.target.value)}
-                style={{
-                  paddingLeft: '40px',
-                  height: '45px',
-                  fontSize: '1rem',
-                  borderRadius: '10px'
-                }}
-              />
-              <span style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
-                🔍
-              </span>
-            </div>
-
-            {/* Resultados de Búsqueda */}
-            {(() => {
-              const query = globalSearchQuery.trim().toLowerCase();
-              if (!query) {
-                return (
-                  <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    <p style={{ margin: 0, fontSize: '0.95rem' }}>Escribe una palabra clave arriba para iniciar la búsqueda en todo el historial.</p>
-                  </div>
-                );
-              }
-
-              const matches = tickets.filter(t => {
-                const nameMatch = t.customerName && t.customerName.toLowerCase().includes(query);
-                const addressMatch = t.address && t.address.toLowerCase().includes(query);
-                const phoneMatch = t.phone && t.phone.toLowerCase().includes(query);
-                const notesMatch = t.notes && t.notes.toLowerCase().includes(query);
-                return nameMatch || addressMatch || phoneMatch || notesMatch;
-              });
-
-              if (matches.length === 0) {
-                return (
-                  <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    <p style={{ margin: 0, fontSize: '0.95rem' }}>❌ No se encontraron visitas que coincidan con la búsqueda.</p>
-                  </div>
-                );
-              }
-
-              return (
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="delivery-table">
-                    <thead>
-                      <tr>
-                        <th>Fecha de Visita</th>
-                        <th>Cliente</th>
-                        <th>Dirección / Población</th>
-                        <th>Ruta / Chofer</th>
-                        <th>Servicios Suministrados</th>
-                        <th>Estado</th>
-                        <th>Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {matches.map(ticket => {
-                        const driver = users.find(u => u.id === ticket.furgoId);
-                        const driverLabel = driver ? driver.label : ticket.furgoId;
-                        
-                        let statusBadge = <span className="badge badge-secondary">Planificado</span>;
-                        if (ticket.status === 'success') {
-                          statusBadge = <span className="badge badge-success" style={{ background: '#10b981', color: '#fff' }}>🟢 Éxito</span>;
-                        } else if (ticket.status === 'failed') {
-                          statusBadge = <span className="badge badge-danger" style={{ background: '#ef4444', color: '#fff' }}>🔴 Fallido</span>;
-                        } else if (ticket.status === 'transit') {
-                          statusBadge = <span className="badge" style={{ background: '#38bdf8', color: '#0f172a', fontWeight: 'bold' }}>🔵 En Camino</span>;
-                        }
-
-                        return (
-                          <tr key={ticket.id}>
-                            <td style={{ fontWeight: '700', whiteSpace: 'nowrap' }}>
-                              {ticket.date}
-                            </td>
-                            <td>
-                              <div style={{ fontWeight: '600' }}>{ticket.customerName}</div>
-                              {ticket.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>📞 {ticket.phone}</div>}
-                            </td>
-                            <td>
-                              <div style={{ fontSize: '0.85rem', lineHeight: '1.3' }}>{ticket.address}</div>
-                              {ticket.postcode && (
-                                <span className="badge" style={{ 
-                                  fontSize: '0.7rem', 
-                                  padding: '2px 6px', 
-                                  marginTop: '4px', 
-                                  display: 'inline-block',
-                                  background: 'rgba(99, 102, 241, 0.15)',
-                                  border: '1px solid rgba(99, 102, 241, 0.3)',
-                                  color: '#a5b4fc',
-                                  borderRadius: '4px'
-                                }}>
-                                  CP {ticket.postcode}
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ whiteSpace: 'nowrap' }}>
-                              🚚 {driverLabel}
-                            </td>
-                            <td>
-                              <ul style={{ margin: 0, paddingLeft: '15px', fontSize: '0.82rem', lineHeight: '1.4' }}>
-                                {ticket.tasks.map((task, idx) => {
-                                  const tariff = tariffs.find(tar => tar.id === task.tariffId);
-                                  const name = tariff ? tariff.name : task.tariffId;
-                                  return (
-                                    <li key={idx}>
-                                      {name} <span style={{ color: 'var(--text-muted)' }}>(x{task.quantity})</span>
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                              {ticket.notes && (
-                                <div style={{ 
-                                  fontSize: '0.78rem', 
-                                  color: 'var(--text-muted)', 
-                                  background: 'rgba(255,255,255,0.02)',
-                                  border: '1px solid var(--panel-border)',
-                                  borderRadius: '4px',
-                                  padding: '4px 8px',
-                                  marginTop: '6px'
-                                }}>
-                                  📝 {ticket.notes}
-                                </div>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              {statusBadge}
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingTicketId(ticket.id);
-                                  setEditingFurgoId(ticket.furgoId);
-                                  setCustomerName(ticket.customerName);
-                                  setPhone(ticket.phone || '');
-                                  setAddress(ticket.address);
-                                  setPostcode(ticket.postcode || '');
-                                  setNotes(ticket.notes || '');
-                                  setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
-                                  setTicketRoute(driverLabel);
-                                  setTicketDate(ticket.date);
-                                  
-                                  const tempTvs = [];
-                                  const tempOthers = {};
-                                  
-                                  const tvMainTasks = ticket.tasks.filter(t => t.tariffId.startsWith('TV_ENT_') || t.tariffId.startsWith('TV_COMB_'));
-                                  const pmTasks = ticket.tasks.filter(t => t.tariffId.startsWith('PM_') && t.tariffId !== 'PM_BSND');
-                                  const cuelgueTasks = ticket.tasks.filter(t => t.tariffId.startsWith('CUELGUE_') && t.tariffId !== 'CUELGUE_BSND');
-                                  const viejaTasks = ticket.tasks.filter(t => t.tariffId === 'TV_VIEJA_URB' || t.tariffId === 'TV_VIEJA_NO_URB');
-                                  
-                                  let pmIndex = 0;
-                                  let cuelgueIndex = 0;
-                                  let viejaIndex = 0;
-                                  
-                                  tvMainTasks.forEach((mTask, idx) => {
-                                    const isComb = mTask.tariffId.includes('COMB');
-                                    let range = '49';
-                                    if (mTask.tariffId.includes('74')) range = '74';
-                                    if (mTask.tariffId.includes('115')) range = '115';
-                                    
-                                    let pmType = 'none';
-                                    if (pmIndex < pmTasks.length) {
-                                      const pmMatch = pmTasks[pmIndex++];
-                                      pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
-                                    }
-                                    
-                                    let cuelgue = false;
-                                    if (cuelgueIndex < cuelgueTasks.length) {
-                                      cuelgueIndex++;
-                                      cuelgue = true;
-                                    }
-                                    
-                                    let recogidaViejaType = 'none';
-                                    if (viejaIndex < viejaTasks.length) {
-                                      const viejaMatch = viejaTasks[viejaIndex++];
-                                      recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
-                                    }
-                                    
-                                    tempTvs.push({
-                                      id: 'tv_' + idx + Date.now().toString(),
-                                      inches: range,
-                                      action: isComb ? 'combinado' : (mTask.name.includes('Recogida') && !mTask.name.includes('Entrega') ? 'recogida' : 'entrega'),
-                                      pmType,
-                                      cuelgue,
-                                      recogidaViejaType
-                                    });
-                                  });
-                                  
-                                  while (pmIndex < pmTasks.length) {
-                                    const pmMatch = pmTasks[pmIndex++];
-                                    let range = '49';
-                                    if (pmMatch.tariffId.includes('74')) range = '74';
-                                    if (pmMatch.tariffId.includes('115')) range = '115';
-                                    const pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
-                                    
-                                    let cuelgue = false;
-                                    if (cuelgueIndex < cuelgueTasks.length) {
-                                      cuelgueIndex++;
-                                      cuelgue = true;
-                                    }
-                                    
-                                    let recogidaViejaType = 'none';
-                                    if (viejaIndex < viejaTasks.length) {
-                                      const viejaMatch = viejaTasks[viejaIndex++];
-                                      recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
-                                    }
-                                    
-                                    tempTvs.push({
-                                      id: 'tv_pm_' + pmIndex + Date.now().toString(),
-                                      inches: range,
-                                      action: 'solo_pm',
-                                      pmType,
-                                      cuelgue,
-                                      recogidaViejaType
-                                    });
-                                  }
-                                  
-                                  ticket.tasks.forEach(t => {
-                                    const isTVRelated = (t.tariffId.startsWith('TV_ENT_') || 
-                                                        t.tariffId.startsWith('TV_COMB_') || 
-                                                        t.tariffId.startsWith('PM_') || 
-                                                        t.tariffId.startsWith('CUELGUE_') || 
-                                                        t.tariffId === 'TV_VIEJA_URB' || 
-                                                        t.tariffId === 'TV_VIEJA_NO_URB') &&
-                                                        t.tariffId !== 'PM_BSND' &&
-                                                        t.tariffId !== 'CUELGUE_BSND';
-                                    
-                                    if (!isTVRelated) {
-                                      tempOthers[t.tariffId] = t.quantity;
-                                    }
-                                  });
-                                  
-                                  setFormTvs(tempTvs);
-                                  setOtherQuantities(tempOthers);
-                                  setAddressVerification({
-                                    status: 'success',
-                                    message: `🟢 Dirección verificada`,
-                                    coords: { lat: ticket.lat, lng: ticket.lng }
-                                  });
-                                  setLastVerifiedAddress(ticket.address);
-                                  
-                                  setActiveTab('new_ticket');
-                                }}
-                                className="btn btn-secondary btn-small"
-                                style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                              >
-                                ✏️ Editar
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
-          </div>
-        )}
+        {activeTab === 'search' && renderSearchSection()}
       </div>
     );
   };

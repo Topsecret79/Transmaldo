@@ -558,6 +558,18 @@ export async function geocodeAddress(addressText) {
   return null;
 }
 
+// Alternar el permiso de búsqueda del buscador general para un usuario
+export function toggleUserSearchPermission(userId) {
+  const users = getUsers();
+  const user = users.find(u => u.id === userId);
+  if (user) {
+    user.canSearch = !user.canSearch;
+    saveUsers(users);
+    return { success: true, user };
+  }
+  return { success: false, error: 'Usuario no encontrado' };
+}
+
 
 
 
