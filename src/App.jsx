@@ -1720,6 +1720,56 @@ function App() {
     }
   };
 
+  const handleUpdateTicketTvSize = (ticketId, oldRange, newRange) => {
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
+    const updatedTasks = ticket.tasks.map(task => {
+      if (task.tariffId.endsWith(`_${oldRange}`)) {
+        const prefix = task.tariffId.substring(0, task.tariffId.length - oldRange.length - 1);
+        const newTariffId = `${prefix}_${newRange}`;
+        const tariff = tariffs.find(tar => tar.id === newTariffId);
+        if (tariff) {
+          let name = tariff.name;
+          if (newTariffId.startsWith('TV_ENT_') || newTariffId.startsWith('TV_COMB_')) {
+            const approxInches = newRange === '49' ? 43 : newRange === '74' ? 55 : 75;
+            const actionText = newTariffId.startsWith('TV_COMB_') ? 'Entrega + Recogida' : 'Entrega';
+            name = `TV ${approxInches}" (${actionText})`;
+          }
+          return {
+            ...task,
+            tariffId: newTariffId,
+            name: name
+          };
+        }
+      }
+      return task;
+    });
+
+    let totalCalculado = 0;
+    const finalTasks = updatedTasks.map(task => {
+      const tariff = tariffs.find(t => t.id === task.tariffId);
+      if (!tariff) return task;
+      const price = tariff.type === 'fixed' ? tariff.value : tariff.value * modulePrice;
+      return {
+        ...task,
+        unitPrice: price,
+        subtotal: price * task.quantity
+      };
+    });
+    totalCalculado = finalTasks.reduce((sum, t) => sum + t.subtotal, 0);
+
+    const updatedTicket = {
+      ...ticket,
+      tasks: finalTasks,
+      totalPrice: totalCalculado
+    };
+
+    updateTicket(ticketId, updatedTicket);
+    triggerAlert('Medida de TV actualizada y módulos recalculados');
+    loadData();
+  };
+
   const handleStartTransit = (id) => {
     const ticket = tickets.find(t => t.id === id);
     if (!ticket) return;
@@ -2763,6 +2813,49 @@ function App() {
                                   </span>
                                 ))}
                               </div>
+                              {(() => {
+                                const tvRanges = [];
+                                t.tasks.forEach(task => {
+                                  ['49', '74', '115'].forEach(r => {
+                                    if (task.tariffId.endsWith(`_${r}`) && !tvRanges.includes(r)) {
+                                      tvRanges.push(r);
+                                    }
+                                  });
+                                });
+
+                                if (tvRanges.length === 0 || isClosed) return null;
+
+                                return (
+                                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {tvRanges.map(range => {
+                                      const rangeLabel = range === '49' ? '<= 49"' : range === '74' ? '50" a 74"' : '75" a 115"';
+                                      return (
+                                        <div key={range} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', flexWrap: 'wrap' }}>
+                                          <span style={{ color: 'var(--text-muted)', fontWeight: '600' }}>Pulgadas TV:</span>
+                                          <select 
+                                            value={range}
+                                            onChange={(e) => handleUpdateTicketTvSize(t.id, range, e.target.value)}
+                                            style={{
+                                              padding: '4px 8px',
+                                              borderRadius: '6px',
+                                              border: '1px solid var(--panel-border)',
+                                              background: 'rgba(255,255,255,0.05)',
+                                              color: 'var(--text)',
+                                              fontSize: '0.75rem',
+                                              cursor: 'pointer',
+                                              outline: 'none'
+                                            }}
+                                          >
+                                            <option value="49">Hasta 49"</option>
+                                            <option value="74">50" a 74"</option>
+                                            <option value="115">75" a 115"</option>
+                                          </select>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td>
                               {isClosed ? (
