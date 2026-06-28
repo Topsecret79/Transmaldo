@@ -218,6 +218,13 @@ function getStreetSpellingSuggestions(addressText) {
 }
 
 function App() {
+  const formatCustomerName = (name) => {
+    if (!name) return '';
+    return name
+      .split(/\s+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
   const [currentUser, setCurrentUser] = useState(null);
   const isAdminOrSuper = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
   const [usernameInput, setUsernameInput] = useState('');
@@ -1071,7 +1078,7 @@ function App() {
       id: editingTicketId || undefined,
       furgoId: assignedFurgoId,
       date: ticketDate,
-      customerName: customerName.trim(),
+      customerName: formatCustomerName(customerName).trim(),
       phone: phone.trim(),
       address: address.trim(),
       postcode: postcode.trim(),
@@ -1918,7 +1925,16 @@ function App() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
             <div className="input-group">
               <span className="input-label">Cliente</span>
-              <input type="text" className="form-input" placeholder="Ej. Jaime Rodríguez" value={customerName} onChange={(e) => setCustomerName(e.target.value)} required disabled={isClosed} />
+              <input 
+                type="text" 
+                className="form-input" 
+                placeholder="Ej. Jaime Rodríguez" 
+                value={customerName} 
+                onChange={(e) => setCustomerName(e.target.value)} 
+                onBlur={() => setCustomerName(formatCustomerName(customerName))}
+                required 
+                disabled={isClosed} 
+              />
             </div>
             <div className="input-group">
               <span className="input-label">Teléfono</span>
