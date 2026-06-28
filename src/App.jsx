@@ -279,6 +279,7 @@ function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isListeningName, setIsListeningName] = useState(false);
   const debounceTimerRef = useRef(null);
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -951,6 +952,55 @@ function App() {
     } catch (err) {
       console.error("Failed to start SpeechRecognition:", err);
       setIsListening(false);
+    }
+  };
+
+  const handleStartNameVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      triggerAlert('El dictado por voz no es compatible con tu navegador actual. Usa Chrome o Safari.', 'error');
+      return;
+    }
+
+    if (isListeningName) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-ES';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListeningName(true);
+      triggerAlert('🎙️ Micrófono activado. Por favor, dicta el nombre del cliente...', 'info');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      if (transcript && transcript.trim()) {
+        const formattedName = formatCustomerName(transcript);
+        setCustomerName(formattedName);
+        triggerAlert('🎙️ Nombre de cliente capturado y formateado con éxito');
+      }
+    };
+
+    recognition.onerror = (e) => {
+      console.error("Speech recognition error:", e);
+      if (e.error === 'not-allowed') {
+        triggerAlert('Permiso de micrófono denegado. Habilita el acceso en tu navegador.', 'error');
+      } else {
+        triggerAlert('No se pudo entender el nombre. Intenta hablar más claro.', 'warning');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListeningName(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to start SpeechRecognition:", err);
+      setIsListeningName(false);
     }
   };
 
@@ -2054,7 +2104,34 @@ function App() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
             <div className="input-group">
-              <span className="input-label">Cliente</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="input-label">Cliente</span>
+                {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                  <button
+                    type="button"
+                    onClick={handleStartNameVoiceInput}
+                    className={`btn btn-small ${isListeningName ? 'btn-danger' : 'btn-secondary'}`}
+                    style={{ 
+                      width: 'auto', 
+                      margin: 0, 
+                      padding: '2px 8px', 
+                      fontSize: '0.7rem', 
+                      height: '20px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '3px',
+                      background: isListeningName ? '#ef4444' : '',
+                      borderColor: isListeningName ? '#ef4444' : '',
+                      color: '#fff',
+                      animation: isListeningName ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                    }}
+                    disabled={isClosed}
+                    title="Dictar nombre del cliente por voz"
+                  >
+                    🎙️ {isListeningName ? 'Escuchando...' : 'Dictar'}
+                  </button>
+                )}
+              </div>
               <input 
                 type="text" 
                 className="form-input" 
