@@ -1893,7 +1893,7 @@ function App() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
             <div className="input-group" style={{ marginBottom: 0 }}>
               <span className="input-label">Fecha</span>
-              <input type="date" className="form-input" value={ticketDate} onChange={(e) => setTicketDate(e.target.value)} required disabled={isClosed || !!editingTicketId} />
+              <input type="date" className="form-input" value={ticketDate} onChange={(e) => setTicketDate(e.target.value)} required disabled={isClosed} />
             </div>
 
             {!isAdminOrSuper && (
