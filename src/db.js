@@ -206,6 +206,7 @@ export function addTicket(ticketData) {
     customerName: ticketData.customerName,
     phone: ticketData.phone || '',
     address: ticketData.address,
+    postcode: ticketData.postcode || '',
     notes: ticketData.notes || '',
     codAmount: ticketData.codAmount || 0,
     tasks: detailedTasks,
@@ -259,6 +260,7 @@ export function updateTicket(updatedTicket) {
       customerName: updatedTicket.customerName,
       phone: updatedTicket.phone || '',
       address: updatedTicket.address,
+      postcode: updatedTicket.postcode !== undefined ? updatedTicket.postcode : tickets[index].postcode || '',
       notes: updatedTicket.notes || '',
       codAmount: updatedTicket.codAmount || 0,
       tasks: detailedTasks,
@@ -504,7 +506,7 @@ export async function geocodeAddress(addressText) {
       searchQuery += `, ${cityBias}`;
     }
 
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQuery)}`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQuery)}`;
     const response = await fetch(url, {
       headers: {
         'Accept': 'application/json'
@@ -515,7 +517,8 @@ export async function geocodeAddress(addressText) {
     if (data && data.length > 0) {
       return {
         lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon)
+        lng: parseFloat(data[0].lon),
+        postcode: data[0].address && data[0].address.postcode ? data[0].address.postcode : ''
       };
     }
   } catch (e) {

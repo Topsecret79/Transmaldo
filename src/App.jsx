@@ -226,6 +226,7 @@ function App() {
   const [ticketFilterFurgo, setTicketFilterFurgo] = useState('all');
   const [ticketFilterDate, setTicketFilterDate] = useState('');
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
+  const [ticketFilterPostcode, setTicketFilterPostcode] = useState('');
   const [alertMsg, setAlertMsg] = useState({ text: '', type: '' });
 
   // Rango de fechas para cortes de facturación del Administrador
@@ -248,6 +249,7 @@ function App() {
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [postcode, setPostcode] = useState('');
   const [addressVerification, setAddressVerification] = useState({ status: 'idle', message: '' });
   const [lastVerifiedAddress, setLastVerifiedAddress] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -824,6 +826,12 @@ function App() {
     const lat = parseFloat(sug.lat);
     const lng = parseFloat(sug.lon);
     setAddress(sug.display_name);
+
+    const extractedPostcode = sug.address && sug.address.postcode ? sug.address.postcode : '';
+    if (extractedPostcode) {
+      setPostcode(extractedPostcode);
+    }
+
     setAddressVerification({
       status: 'success',
       message: `🟢 Dirección verificada correctamente (GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)})`,
@@ -850,6 +858,9 @@ function App() {
     try {
       const coords = await geocodeAddress(trimmed);
       if (coords) {
+        if (coords.postcode) {
+          setPostcode(coords.postcode);
+        }
         setAddressVerification({ 
           status: 'success', 
           message: `🟢 Dirección verificada correctamente (GPS: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`,
@@ -962,6 +973,7 @@ function App() {
       customerName: customerName.trim(),
       phone: phone.trim(),
       address: address.trim(),
+      postcode: postcode.trim(),
       notes: notes.trim(),
       codAmount: parseFloat(codAmount) || 0,
       tasks: tasksArray
@@ -996,6 +1008,7 @@ function App() {
       setCustomerName('');
       setPhone('');
       setAddress('');
+      setPostcode('');
       setAddressVerification({ status: 'idle', message: '' });
       setLastVerifiedAddress('');
       setFormTvs([]);
@@ -1159,6 +1172,7 @@ function App() {
     setCustomerName(ticket.customerName);
     setPhone(ticket.phone || '');
     setAddress(ticket.address);
+    setPostcode(ticket.postcode || '');
     setAddressVerification(ticket.lat ? { 
       status: 'success', 
       message: '🟢 Dirección verificada en el mapa',
@@ -1246,6 +1260,7 @@ function App() {
     setAddress('');
     setAddressVerification({ status: 'idle', message: '' });
     setLastVerifiedAddress('');
+    setPostcode('');
     setFormTvs([]);
     setOtherQuantities({});
     setNotes('');
@@ -1694,6 +1709,12 @@ function App() {
       }
       if (ticketFilterFurgo !== 'all' && t.furgoId !== ticketFilterFurgo) return false;
       if (ticketFilterDate && t.date !== ticketFilterDate) return false;
+      if (ticketFilterPostcode.trim()) {
+        const queryPostcode = ticketFilterPostcode.trim();
+        const postcodeMatch = t.postcode ? t.postcode.includes(queryPostcode) : false;
+        const addressPostcodeMatch = t.address ? t.address.includes(queryPostcode) : false;
+        if (!postcodeMatch && !addressPostcodeMatch) return false;
+      }
       if (ticketSearchQuery.trim()) {
         const query = ticketSearchQuery.toLowerCase();
         const nameMatch = t.customerName ? t.customerName.toLowerCase().includes(query) : false;
@@ -1801,6 +1822,17 @@ function App() {
             <div className="input-group">
               <span className="input-label">Teléfono</span>
               <input type="tel" className="form-input" placeholder="Ej. 612345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isClosed} />
+            </div>
+            <div className="input-group">
+              <span className="input-label">Código Postal</span>
+              <input 
+                type="text" 
+                className="form-input" 
+                placeholder="Ej. 08208" 
+                value={postcode} 
+                onChange={(e) => setPostcode(e.target.value.trim())} 
+                disabled={isClosed} 
+              />
             </div>
              <div className="input-group" style={{ position: 'relative' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2466,7 +2498,12 @@ function App() {
                               )}
                             </td>
                             <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                {t.postcode && (
+                                  <span className="badge badge-primary" style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.25)', border: '1px solid rgba(99, 102, 241, 0.5)', color: '#c7d2fe' }}>
+                                    CP {t.postcode}
+                                  </span>
+                                )}
                                 <span>{t.address}</span>
                                 <a 
                                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
@@ -2892,6 +2929,16 @@ function App() {
                 <span className="input-label">Buscador</span>
                 <input type="text" className="form-input" placeholder="Buscar cliente, dirección, TV o nota..." value={ticketSearchQuery} onChange={(e) => setTicketSearchQuery(e.target.value)} />
               </div>
+              <div className="input-group">
+                <span className="input-label">Código Postal</span>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder="Ej: 08208" 
+                  value={ticketFilterPostcode} 
+                  onChange={(e) => setTicketFilterPostcode(e.target.value)} 
+                />
+              </div>
             </div>
 
             {ticketFilterFurgo !== 'all' && ticketFilterDate && (
@@ -2989,7 +3036,12 @@ function App() {
                           )}
                         </td>
                         <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                             {t.postcode && (
+                               <span className="badge badge-primary" style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.25)', border: '1px solid rgba(99, 102, 241, 0.5)', color: '#c7d2fe' }}>
+                                 CP {t.postcode}
+                               </span>
+                             )}
                              <span>{t.address || ''}</span>
                              {t.address && (
                                <a 
