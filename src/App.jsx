@@ -940,12 +940,17 @@ function App() {
         if (coords.postcode) {
           setPostcode(coords.postcode);
         }
+        if (coords.displayName && coords.displayName.trim() !== trimmed) {
+          setAddress(coords.displayName);
+          setLastVerifiedAddress(coords.displayName);
+        } else {
+          setLastVerifiedAddress(trimmed);
+        }
         setAddressVerification({ 
           status: 'success', 
-          message: `🟢 Dirección verificada correctamente (GPS: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`,
+          message: `🟢 Verificada como: ${coords.displayName || trimmed}`,
           coords
         });
-        setLastVerifiedAddress(trimmed);
       } else {
         setAddressVerification({ 
           status: 'error', 

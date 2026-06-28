@@ -530,7 +530,8 @@ export async function geocodeAddress(addressText) {
       return {
         lat: parseFloat(data[0].lat),
         lng: parseFloat(data[0].lon),
-        postcode: data[0].address && data[0].address.postcode ? data[0].address.postcode : ''
+        postcode: data[0].address && data[0].address.postcode ? data[0].address.postcode : '',
+        displayName: data[0].display_name || ''
       };
     }
   } catch (e) {
