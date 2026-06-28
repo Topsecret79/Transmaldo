@@ -833,20 +833,20 @@ tr:hover td {
 /* ================= DISPOSITIVOS MÓVILES (Optimización de Tamaños) ================= */
 @media (max-width: 768px) {
   html {
-    font-size: 14.5px !important; /* Scales up REM-based elements on mobile */
+    font-size: 15.5px !important; /* Scales up REM-based elements on mobile */
   }
 
   #root {
-    padding: 8px 6px;
+    padding: 4px 2px;
   }
   
   .glass-panel {
-    padding: 12px 10px;
+    padding: 8px 6px;
   }
 
   .login-form-panel {
-    padding: 20px 15px !important;
-    gap: 15px !important;
+    padding: 12px 10px !important;
+    gap: 10px !important;
   }
 
   .login-title {
@@ -855,17 +855,17 @@ tr:hover td {
   
   h1 {
     font-size: 1.55rem !important;
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
   
   h2 {
     font-size: 1.3rem !important;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   
   h3 {
     font-size: 1.15rem !important;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
 
   p {
@@ -873,22 +873,22 @@ tr:hover td {
   }
 
   .form-input {
-    padding: 8px 10px;
+    padding: 6px 8px;
     font-size: 0.95rem;
   }
   
   .btn {
-    padding: 10px 14px;
+    padding: 8px 12px;
     font-size: 0.95rem;
   }
 
   .btn-small {
-    padding: 4px 8px;
+    padding: 3px 6px;
     font-size: 0.82rem;
   }
 
   .task-item-row {
-    padding: 4px 0;
+    padding: 2px 0;
   }
 
   .task-item-label {
@@ -896,14 +896,14 @@ tr:hover td {
   }
 
   .qty-counter {
-    padding: 2px 4px;
-    gap: 4px;
+    padding: 1px 2px;
+    gap: 3px;
   }
 
   .qty-btn {
-    width: 20px;
-    height: 20px;
-    font-size: 0.9rem;
+    width: 18px;
+    height: 18px;
+    font-size: 0.85rem;
   }
 
   th, td {
@@ -943,6 +943,34 @@ tr:hover td {
   .user-badge {
     padding: 4px 8px;
     font-size: 0.75rem;
+  }
+
+  /* Compact Driver Card / TV selector styles on mobile */
+  .driver-card {
+    padding: 10px 8px !important;
+    margin-bottom: 10px !important;
+    gap: 8px !important;
+  }
+
+  .driver-card-header {
+    padding-bottom: 6px !important;
+  }
+
+  .tv-cards-grid {
+    gap: 8px !important;
+  }
+
+  .tv-size-card {
+    padding: 10px 6px !important;
+    gap: 4px !important;
+  }
+
+  .action-pills {
+    margin-bottom: 10px !important;
+  }
+
+  .action-pill-opt {
+    padding: 6px 8px !important;
   }
 }
 
