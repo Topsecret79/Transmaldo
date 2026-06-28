@@ -280,6 +280,7 @@ function App() {
   const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isListeningName, setIsListeningName] = useState(false);
+  const [formStep, setFormStep] = useState(1);
   const debounceTimerRef = useRef(null);
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -1198,6 +1199,7 @@ function App() {
       setCodAmount('');
       setTicketDate(new Date().toISOString().split('T')[0]);
       setSpellingSuggestions([]);
+      setFormStep(1);
       loadData();
     }
   };
@@ -1487,6 +1489,7 @@ function App() {
     setFormTvs(tempTvs);
     setOtherQuantities(tempOthers);
     setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
+    setFormStep(1);
     setActiveTab('new_ticket');
   };
 
@@ -1506,6 +1509,7 @@ function App() {
     setTicketRoute(currentUser ? currentUser.label : '');
     setTicketDate(new Date().toISOString().split('T')[0]);
     setSpellingSuggestions([]);
+    setFormStep(1);
     setActiveTab(isAdminOrSuper ? 'tickets' : 'history');
   };
 
@@ -2065,510 +2069,634 @@ function App() {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px' }}>
-          {editingTicketId && isAdminOrSuper && (
-            <div className="input-group">
-              <span className="input-label">Furgoneta asignada</span>
-              <select className="form-input" value={editingFurgoId} onChange={(e) => setEditingFurgoId(e.target.value)} required disabled={isClosed}>
-                {activeRepartidores.map(u => (
-                  <option key={u.id} value={u.id}>{u.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
-            <div className="input-group" style={{ marginBottom: 0 }}>
-              <span className="input-label">Fecha</span>
-              <input type="date" className="form-input" value={ticketDate} onChange={(e) => setTicketDate(e.target.value)} required disabled={isClosed} />
-            </div>
-
-            {!isAdminOrSuper && (
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <span className="input-label">Adjudicar a la Ruta / Furgoneta de</span>
-                <select 
-                  className="form-input" 
-                  value={ticketRoute} 
-                  onChange={(e) => setTicketRoute(e.target.value)} 
-                  disabled={isClosed}
-                  required
-                >
-                  {activeRepartidores.map(u => (
-                    <option key={u.id} value={u.label}>{u.label}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+        {/* Barra de Pasos (Step Indicator) */}
+        <div className="step-bar">
+          <div 
+            className={`step-node ${formStep === 1 ? 'active' : formStep > 1 ? 'completed' : ''}`}
+            onClick={() => formStep > 1 && setFormStep(1)}
+            style={{ cursor: formStep > 1 ? 'pointer' : 'default' }}
+          >
+            <span className="step-circle">1</span>
+            <span>Ubicación y Cliente</span>
+          </div>
+          <div style={{ flex: 1, height: '2px', background: 'rgba(255,255,255,0.05)', minWidth: '20px' }}></div>
+          <div 
+            className={`step-node ${formStep === 2 ? 'active' : formStep > 2 ? 'completed' : ''}`}
+            onClick={() => {
+              // Validar paso 1 antes de permitir saltar al 2 haciendo clic en los nodos
+              if (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper)) {
+                setFormStep(2);
+              }
+            }}
+            style={{ cursor: (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper)) ? 'pointer' : 'not-allowed' }}
+          >
+            <span className="step-circle">2</span>
+            <span>Artículos y Servicios</span>
+          </div>
+          <div style={{ flex: 1, height: '2px', background: 'rgba(255,255,255,0.05)', minWidth: '20px' }}></div>
+          <div 
+            className={`step-node ${formStep === 3 ? 'active' : ''}`}
+            onClick={() => {
+              // Validar paso 2 antes de permitir saltar al 3 haciendo clic en los nodos
+              const hasTvs = formTvs.length > 0;
+              const hasPackages = Object.values(otherQuantities).some(qty => qty > 0);
+              if (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper) && (hasTvs || hasPackages)) {
+                setFormStep(3);
+              }
+            }}
+            style={{ cursor: (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper) && (formTvs.length > 0 || Object.values(otherQuantities).some(qty => qty > 0))) ? 'pointer' : 'not-allowed' }}
+          >
+            <span className="step-circle">3</span>
+            <span>Observaciones y Guardar</span>
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
-            <div className="input-group">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="input-label">Cliente</span>
-                {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
-                  <button
-                    type="button"
-                    onClick={handleStartNameVoiceInput}
-                    className={`btn btn-small ${isListeningName ? 'btn-danger' : 'btn-secondary'}`}
-                    style={{ 
-                      width: 'auto', 
-                      margin: 0, 
-                      padding: '2px 8px', 
-                      fontSize: '0.7rem', 
-                      height: '20px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '3px',
-                      background: isListeningName ? '#ef4444' : '',
-                      borderColor: isListeningName ? '#ef4444' : '',
-                      color: '#fff',
-                      animation: isListeningName ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
-                    }}
-                    disabled={isClosed}
-                    title="Dictar nombre del cliente por voz"
-                  >
-                    🎙️ {isListeningName ? 'Escuchando...' : 'Dictar'}
-                  </button>
-                )}
+        {/* PASO 1: CLIENTE Y GEOLOCALIZACIÓN */}
+        {formStep === 1 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label">Fecha</span>
+                <input type="date" className="form-input" value={ticketDate} onChange={(e) => setTicketDate(e.target.value)} required disabled={isClosed} />
               </div>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="Ej. Jaime Rodríguez" 
-                value={customerName} 
-                onChange={(e) => setCustomerName(e.target.value)} 
-                onBlur={() => setCustomerName(formatCustomerName(customerName))}
-                required 
-                disabled={isClosed} 
-              />
+
+              {!isAdminOrSuper ? (
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">Adjudicar a la Ruta de</span>
+                  <select 
+                    className="form-input" 
+                    value={ticketRoute} 
+                    onChange={(e) => setTicketRoute(e.target.value)} 
+                    required
+                    disabled={isClosed}
+                  >
+                    <option value="">Selecciona Ruta / Chofer...</option>
+                    {activeRepartidores.map(u => (
+                      <option key={u.id} value={u.label}>{u.label}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : editingTicketId && (
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">Furgoneta asignada</span>
+                  <select className="form-input" value={editingFurgoId} onChange={(e) => setEditingFurgoId(e.target.value)} required disabled={isClosed}>
+                    {activeRepartidores.map(u => (
+                      <option key={u.id} value={u.id}>{u.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
-            <div className="input-group">
-              <span className="input-label">Teléfono</span>
-              <input type="tel" className="form-input" placeholder="Ej. 612345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isClosed} />
-            </div>
-            <div className="input-group">
-              <span className="input-label">Código Postal</span>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="Ej. 08208" 
-                value={postcode} 
-                onChange={(e) => setPostcode(e.target.value.trim())} 
-                disabled={isClosed} 
-              />
-            </div>
-             <div className="input-group" style={{ position: 'relative' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="input-label">Dirección</span>
-                <div style={{ display: 'flex', gap: '6px' }}>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
+              <div className="input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="input-label">Cliente</span>
                   {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
                     <button
                       type="button"
-                      onClick={handleStartVoiceSearch}
-                      className={`btn btn-small ${isListening ? 'btn-danger' : 'btn-secondary'}`}
+                      onClick={handleStartNameVoiceInput}
+                      className={`btn btn-small ${isListeningName ? 'btn-danger' : 'btn-secondary'}`}
                       style={{ 
-                        width: 'auto', 
-                        margin: 0, 
-                        padding: '2px 8px', 
-                        fontSize: '0.7rem', 
-                        height: '20px', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '3px',
-                        background: isListening ? '#ef4444' : '',
-                        borderColor: isListening ? '#ef4444' : '',
-                        color: '#fff',
-                        animation: isListening ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                        width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px',
+                        display: 'flex', alignItems: 'center', gap: '3px',
+                        background: isListeningName ? '#ef4444' : '', borderColor: isListeningName ? '#ef4444' : '', color: '#fff',
+                        animation: isListeningName ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
                       }}
                       disabled={isClosed}
-                      title="Dictar dirección por voz"
                     >
-                      🎙️ {isListening ? 'Escuchando...' : 'Dictar'}
-                    </button>
-                  )}
-                  {address.trim() && (
-                    <button 
-                      type="button" 
-                      onClick={handleVerifyAddress}
-                      className="btn btn-secondary btn-small"
-                      style={{ width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px', display: 'flex', alignItems: 'center', gap: '3px' }}
-                      disabled={isClosed}
-                    >
-                      🔍 Verificar
+                      🎙️ {isListeningName ? 'Escuchando...' : 'Dictar'}
                     </button>
                   )}
                 </div>
-              </div>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="Dirección de entrega" 
-                value={address} 
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setAddress(val);
-                  setAddressVerification({ status: 'idle', message: '' });
-                  
-                  // Verificar errores de ortografía de calles de Barcelona
-                  const corrections = getStreetSpellingSuggestions(val);
-                  setSpellingSuggestions(corrections);
-                  
-                  // Limpiar timer de autocompletado
-                  if (debounceTimerRef.current) {
-                    clearTimeout(debounceTimerRef.current);
-                  }
-                  
-                  if (val.trim().length >= 4) {
-                    debounceTimerRef.current = setTimeout(() => {
-                      fetchAddressSuggestions(val);
-                    }, 400);
-                  } else {
-                    setSuggestions([]);
-                  }
-                }} 
-                onBlur={() => {
-                  // Retraso para que el clic en sugerencia se registre antes de cerrar la lista
-                  setTimeout(() => {
-                    setSuggestions([]);
-                    if (address.trim() && addressVerification.status === 'idle') {
-                      handleVerifyAddress();
-                    }
-                  }, 250);
-                }}
-                required 
-                disabled={isClosed} 
-                style={{
-                  borderColor: addressVerification.status === 'success' 
-                    ? '#34d399' 
-                    : addressVerification.status === 'error' 
-                      ? '#f87171' 
-                      : addressVerification.status === 'verifying' 
-                        ? '#c084fc' 
-                        : 'var(--input-border)',
-                  boxShadow: addressVerification.status === 'success' 
-                    ? '0 0 0 3px rgba(52, 211, 153, 0.2)' 
-                    : addressVerification.status === 'error' 
-                      ? '0 0 0 3px rgba(248, 113, 113, 0.2)' 
-                      : addressVerification.status === 'verifying' 
-                        ? '0 0 0 3px rgba(192, 132, 252, 0.2)' 
-                        : 'none'
-                }}
-              />
-
-              {spellingSuggestions.length > 0 && (
-                <div style={{
-                  background: 'rgba(79, 70, 229, 0.12)',
-                  border: '1px solid rgba(79, 70, 229, 0.35)',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  marginTop: '8px',
-                  fontSize: '0.82rem',
-                  color: '#e2e8f0',
-                  textAlign: 'left'
-                }}>
-                  <div style={{ fontWeight: '600', marginBottom: '6px', color: '#c7d2fe', fontSize: '0.85rem' }}>
-                    💡 ¿Quisiste decir alguna de estas calles?
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
-                    {spellingSuggestions.map((sug, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => {
-                          const correctedAddress = address.replace(new RegExp(sug.misspelled, 'gi'), sug.corrected);
-                          setAddress(correctedAddress);
-                          setSpellingSuggestions([]);
-                          fetchAddressSuggestions(correctedAddress);
-                        }}
-                        className="btn btn-secondary"
-                        style={{
-                          margin: 0,
-                          padding: '4px 10px',
-                          fontSize: '0.75rem',
-                          borderRadius: '16px',
-                          width: 'auto',
-                          height: 'auto',
-                          background: 'rgba(99, 102, 241, 0.2)',
-                          border: '1px solid rgba(99, 102, 241, 0.4)',
-                          color: '#fff',
-                          fontWeight: '500',
-                          cursor: 'pointer'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.4)'}
-                        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)'}
-                      >
-                        {sug.fullStreet}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {/* SUGERENCIAS DE DIRECCIÓN */}
-              {isSearchingSuggestions && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  zIndex: 999,
-                  background: 'rgba(20, 16, 38, 0.98)',
-                  backdropFilter: 'blur(12px)',
-                  border: '1px solid var(--panel-border)',
-                  borderRadius: 'var(--border-radius-md)',
-                  padding: '8px 12px',
-                  fontSize: '0.8rem',
-                  color: '#e9d5ff',
-                  marginTop: '4px',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <div style={{
-                    width: '12px',
-                    height: '12px',
-                    border: '2px solid rgba(255,255,255,0.1)',
-                    borderTopColor: '#c084fc',
-                    borderRadius: '50%',
-                    animation: 'spin 0.8s linear infinite'
-                  }}></div>
-                  <span>Buscando sugerencias...</span>
-                </div>
-              )}
-
-              {!isSearchingSuggestions && suggestions.length > 0 && (
-                <ul style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  zIndex: 999,
-                  background: 'rgba(20, 16, 38, 0.98)',
-                  backdropFilter: 'blur(12px)',
-                  border: '1px solid var(--panel-border)',
-                  borderRadius: 'var(--border-radius-md)',
-                  padding: '4px 0',
-                  margin: '4px 0 0 0',
-                  listStyle: 'none',
-                  maxHeight: '200px',
-                  overflowY: 'auto',
-                  boxShadow: '0 10px 25px rgba(0,0,0,0.6)'
-                }}>
-                  {suggestions.map((sug, index) => (
-                    <li 
-                      key={index}
-                      onMouseDown={(e) => {
-                        e.preventDefault(); // Evita perder foco
-                        handleSelectSuggestion(sug);
-                      }}
-                      style={{
-                        padding: '10px 14px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                        color: '#ffffff',
-                        borderBottom: index < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                        transition: 'background 0.2s',
-                        lineHeight: '1.4',
-                        textAlign: 'left'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.35)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      📍 {sug.display_name}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {addressVerification.message && (
-                <div style={{ 
-                  fontSize: '0.78rem', 
-                  marginTop: '6px', 
-                  color: addressVerification.status === 'success' ? '#34d399' : addressVerification.status === 'verifying' ? '#a78bfa' : '#f87171',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  {addressVerification.message}
-                </div>
-              )}
-            </div>
-            <div className="input-group">
-              <span className="input-label">Importe a Cobrar / Reembolso (€)</span>
-              <input type="number" step="0.01" min="0" className="form-input" placeholder="Ej. 150.00 (0 si no requiere)" value={codAmount} onChange={(e) => setCodAmount(e.target.value)} disabled={isClosed} />
-            </div>
-          </div>
-
-        {/* SECCIÓN A: AGREGAR TELEVISORES */}
-        <div className="block-section" style={{ textAlign: 'left' }}>
-          <div className="block-title">📺 Sección de Televisores</div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-            Agrega las televisiones que transporte el cliente. Podrás configurar los servicios vinculados de cada una.
-          </p>
-
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '20px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px dashed var(--panel-border)' }}>
-            <div className="input-group" style={{ marginBottom: 0, flex: 1, minWidth: '130px' }}>
-              <span className="input-label">Pulgadas</span>
-              <select 
-                className="form-input" 
-                value={PREDEFINED_TV_INCHES.includes(parseInt(tempTvInches)) ? tempTvInches : 'manual'} 
-                onChange={(e) => {
-                  if (e.target.value === 'manual') {
-                    setTempTvInches('');
-                  } else {
-                    setTempTvInches(e.target.value);
-                  }
-                }} 
-                disabled={isClosed}
-              >
-                {PREDEFINED_TV_INCHES.map(inch => <option key={inch} value={inch}>{inch}"</option>)}
-                <option value="manual">Otra pulgada (Manual)...</option>
-              </select>
-            </div>
-            
-            {!PREDEFINED_TV_INCHES.includes(parseInt(tempTvInches)) && (
-              <div className="input-group" style={{ marginBottom: 0, flex: 1, minWidth: '110px' }}>
-                <span className="input-label">Escribe Pulgadas</span>
                 <input 
-                  type="number" 
+                  type="text" 
                   className="form-input" 
-                  placeholder="Ej. 60" 
-                  value={tempTvInches} 
-                  onChange={(e) => setTempTvInches(e.target.value)}
-                  disabled={isClosed}
-                  min="1"
+                  placeholder="Ej. Jaime Rodríguez" 
+                  value={customerName} 
+                  onChange={(e) => setCustomerName(e.target.value)} 
+                  onBlur={() => setCustomerName(formatCustomerName(customerName))}
+                  required 
+                  disabled={isClosed} 
                 />
               </div>
-            )}
 
-            <div className="input-group" style={{ marginBottom: 0, flex: 1, minWidth: '150px' }}>
-              <span className="input-label">Acción</span>
-              <select className="form-input" value={tempTvAction} onChange={(e) => setTempTvAction(e.target.value)} disabled={isClosed}>
-                <option value="entrega">Entrega</option>
-                <option value="recogida">Recogida</option>
-                <option value="combinado">Entrega + Recogida</option>
-                <option value="solo_pm">Solo Puesta en Marcha (PM)</option>
-                <option value="solo_cuelgue">Solo Cuelgue</option>
-              </select>
+              <div className="input-group">
+                <span className="input-label">Teléfono</span>
+                <input type="tel" className="form-input" placeholder="Ej. 612345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isClosed} />
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">Código Postal</span>
+                <input type="text" className="form-input" placeholder="Ej. 08208" value={postcode} onChange={(e) => setPostcode(e.target.value.trim())} disabled={isClosed} />
+              </div>
             </div>
-            <button type="button" onClick={addTvToForm} className="btn btn-primary" style={{ width: 'auto', height: '45px' }} disabled={isClosed}>
-              <Plus size={16} /> Añadir TV
-            </button>
-          </div>
 
-          {/* Listado de TVs Añadidas */}
-          {formTvs.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {formTvs.map((tv, idx) => {
-                const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : tv.action === 'solo_cuelgue' ? 'Solo Cuelgue' : 'Entrega + Recogida';
-                return (
-                  <div key={tv.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--panel-border)', borderRadius: '10px', padding: '15px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed var(--panel-border)', paddingBottom: '8px', marginBottom: '12px' }}>
-                      <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)' }}>
-                        📺 TV {tv.inches}" ({actionText})
-                      </span>
-                      <button type="button" onClick={() => removeTvFromForm(tv.id)} className="btn btn-danger btn-small" style={{ display: 'flex', padding: '4px 8px', gap: '4px' }} disabled={isClosed}>
-                        <Trash2 size={12} /> Quitar
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
+              <div className="input-group" style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="input-label">Dirección</span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                      <button
+                        type="button"
+                        onClick={handleStartVoiceSearch}
+                        className={`btn btn-small ${isListening ? 'btn-danger' : 'btn-secondary'}`}
+                        style={{ 
+                          width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px',
+                          display: 'flex', alignItems: 'center', gap: '3px',
+                          background: isListening ? '#ef4444' : '', borderColor: isListening ? '#ef4444' : '', color: '#fff',
+                          animation: isListening ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                        }}
+                        disabled={isClosed}
+                      >
+                        🎙️ {isListening ? 'Escuchando...' : 'Dictar'}
                       </button>
+                    )}
+                    {address.trim() && (
+                      <button 
+                        type="button" 
+                        onClick={handleVerifyAddress}
+                        className="btn btn-secondary btn-small"
+                        style={{ width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px', display: 'flex', alignItems: 'center', gap: '3px' }}
+                        disabled={isClosed}
+                      >
+                        🔍 Verificar
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder="Dirección de entrega" 
+                  value={address} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setAddress(val);
+                    setAddressVerification({ status: 'idle', message: '' });
+                    
+                    const corrections = getStreetSpellingSuggestions(val);
+                    setSpellingSuggestions(corrections);
+                    
+                    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+                    
+                    if (val.trim().length >= 4) {
+                      debounceTimerRef.current = setTimeout(() => {
+                        fetchAddressSuggestions(val);
+                      }, 400);
+                    } else {
+                      setSuggestions([]);
+                    }
+                  }} 
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setSuggestions([]);
+                      if (address.trim() && addressVerification.status === 'idle') {
+                        handleVerifyAddress();
+                      }
+                    }, 250);
+                  }}
+                  required 
+                  disabled={isClosed} 
+                  style={{
+                    borderColor: addressVerification.status === 'success' 
+                      ? '#34d399' 
+                      : addressVerification.status === 'error' 
+                        ? '#f87171' 
+                        : addressVerification.status === 'verifying' 
+                          ? '#c084fc' 
+                          : 'var(--input-border)',
+                    boxShadow: addressVerification.status === 'success' 
+                      ? '0 0 0 3px rgba(52, 211, 153, 0.2)' 
+                      : addressVerification.status === 'error' 
+                        ? '0 0 0 3px rgba(248, 113, 113, 0.2)' 
+                        : addressVerification.status === 'verifying' 
+                          ? '0 0 0 3px rgba(192, 132, 252, 0.2)' 
+                          : 'none'
+                  }}
+                />
+
+                {spellingSuggestions.length > 0 && (
+                  <div style={{
+                    background: 'rgba(79, 70, 229, 0.12)', border: '1px solid rgba(79, 70, 229, 0.35)',
+                    padding: '10px 14px', borderRadius: '8px', marginTop: '8px', fontSize: '0.82rem', color: '#e2e8f0', textAlign: 'left'
+                  }}>
+                    <div style={{ fontWeight: '600', marginBottom: '6px', color: '#c7d2fe', fontSize: '0.85rem' }}>
+                      💡 ¿Quisiste decir alguna de estas calles?
                     </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
-                      <div className="input-group" style={{ marginBottom: 0 }}>
-                        <span className="input-label">Puesta en Marcha (PM)</span>
-                        <select className="form-input" value={tv.pmType} onChange={(e) => updateTvInForm(tv.id, 'pmType', e.target.value)} disabled={isClosed}>
-                          <option value="none">No requiere</option>
-                          <option value="basic">Puesta en Marcha Básica (3 Módulos)</option>
-                          <option value="complex">Puesta en Marcha Compleja (5 Módulos)</option>
-                        </select>
-                      </div>
-
-                      <div className="input-group" style={{ marginBottom: 0 }}>
-                        <span className="input-label">Retirada TV Vieja</span>
-                        <select className="form-input" value={tv.recogidaViejaType} onChange={(e) => updateTvInForm(tv.id, 'recogidaViejaType', e.target.value)} disabled={isClosed}>
-                          <option value="none">No requiere retirada</option>
-                          <option value="urbantz">Retirada Vieja Urbantz</option>
-                          <option value="no_urbantz">Retirada Vieja NO Urbantz</option>
-                        </select>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '18px' }}>
-                        <input 
-                          type="checkbox" 
-                          id={`cuelgue_${tv.id}`} 
-                          checked={tv.cuelgue} 
-                          onChange={(e) => updateTvInForm(tv.id, 'cuelgue', e.target.checked)}
-                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                          disabled={isClosed}
-                        />
-                        <label htmlFor={`cuelgue_${tv.id}`} style={{ fontWeight: '600', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          Cuelgue en Pared (8 o 10 Mód.)
-                        </label>
-                      </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                      {spellingSuggestions.map((sug, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            const correctedAddress = address.replace(new RegExp(sug.misspelled, 'gi'), sug.corrected);
+                            setAddress(correctedAddress);
+                            setSpellingSuggestions([]);
+                            fetchAddressSuggestions(correctedAddress);
+                          }}
+                          className="btn btn-secondary"
+                          style={{
+                            margin: 0, padding: '4px 10px', fontSize: '0.75rem', borderRadius: '16px', width: 'auto', height: 'auto',
+                            background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', color: '#fff',
+                            fontWeight: '500', cursor: 'pointer'
+                          }}
+                        >
+                          {sug.fullStreet}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ padding: '15px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--panel-border)', borderRadius: '10px', textAlign: 'center', fontSize: '0.9rem' }}>
-              No has añadido ninguna televisión a este ticket todavía.
-            </div>
-          )}
-        </div>
+                )}
+                
+                {!isSearchingSuggestions && suggestions.length > 0 && (
+                  <ul style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
+                    background: 'rgba(20, 16, 38, 0.98)', border: '1px solid var(--panel-border)', borderRadius: 'var(--border-radius-md)',
+                    padding: '4px 0', margin: '4px 0 0 0', listStyle: 'none', maxHeight: '200px', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.6)'
+                  }}>
+                    {suggestions.map((sug, index) => (
+                      <li 
+                        key={index}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectSuggestion(sug);
+                        }}
+                        style={{
+                          padding: '10px 14px', cursor: 'pointer', fontSize: '0.85rem', color: '#ffffff',
+                          borderBottom: index < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                          transition: 'background 0.2s', lineHeight: '1.4', textAlign: 'left'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.35)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        📍 {sug.display_name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
-        {/* SECCIÓN B: PAQUETERÍA Y OTROS ARTÍCULOS */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
-          
-          <div className="block-section">
-            <div className="block-title">📦 Bloque Paquetería (Cantidades)</div>
-            {itemsPaqueteria.map(t => (
-              <div key={t.id} className="task-item-row">
-                <span className="task-item-label">{t.name}</span>
-                <div className="qty-counter">
-                  <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
-                  <span className="qty-val">{otherQuantities[t.id] || 0}</span>
-                  <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                {addressVerification.message && (
+                  <div style={{ 
+                    fontSize: '0.78rem', marginTop: '6px', 
+                    color: addressVerification.status === 'success' ? '#34d399' : addressVerification.status === 'verifying' ? '#a78bfa' : '#f87171',
+                    fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px'
+                  }}>
+                    {addressVerification.message}
+                  </div>
+                )}
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">Importe a Cobrar / Reembolso (€)</span>
+                <input type="number" step="0.01" min="0" className="form-input" placeholder="Ej. 150.00 (0 si no)" value={codAmount} onChange={(e) => setCodAmount(e.target.value)} disabled={isClosed} />
+              </div>
+            </div>
+
+            <div className="wizard-footer" style={{ justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (!customerName.trim()) {
+                    triggerAlert('Por favor, indica el nombre del cliente.', 'error');
+                    return;
+                  }
+                  if (!address.trim()) {
+                    triggerAlert('Por favor, indica la dirección de entrega.', 'error');
+                    return;
+                  }
+                  if (!ticketRoute && !isAdminOrSuper) {
+                    triggerAlert('Por favor, selecciona una ruta.', 'error');
+                    return;
+                  }
+                  setFormStep(2);
+                }} 
+                className="btn btn-primary"
+                style={{ width: 'auto' }}
+              >
+                Continuar a Servicios ➔
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PASO 2: ARTÍCULOS Y SERVICIOS */}
+        {formStep === 2 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px', animation: 'fadeIn 0.3s ease' }}>
+            {/* SECCIÓN A: TELEVISORES */}
+            <div className="block-section" style={{ textAlign: 'left' }}>
+              <div className="block-title">📺 Selección de Televisores</div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Selecciona la medida de la TV y la acción del servicio, luego haz clic en "Añadir".
+              </p>
+
+              {/* Grid de Tarjetas Visuales de Pulgadas */}
+              <div className="tv-cards-grid">
+                <div 
+                  className={`tv-size-card ${tempTvInches === '43' ? 'active' : ''}`}
+                  onClick={() => !isClosed && setTempTvInches('43')}
+                >
+                  <span className="tv-size-card-icon">📺</span>
+                  <span className="tv-size-card-label">Hasta 49"</span>
+                  <span className="tv-size-card-desc">Tarifa estándar</span>
+                </div>
+                <div 
+                  className={`tv-size-card ${tempTvInches === '55' ? 'active' : ''}`}
+                  onClick={() => !isClosed && setTempTvInches('55')}
+                >
+                  <span className="tv-size-card-icon">🖥️</span>
+                  <span className="tv-size-card-label">50" a 74"</span>
+                  <span className="tv-size-card-desc">Tarifa intermedia</span>
+                </div>
+                <div 
+                  className={`tv-size-card ${tempTvInches === '75' ? 'active' : ''}`}
+                  onClick={() => !isClosed && setTempTvInches('75')}
+                >
+                  <span className="tv-size-card-icon">📽️</span>
+                  <span className="tv-size-card-label">75" a 115"</span>
+                  <span className="tv-size-card-desc">Tarifa Gran Formato</span>
+                </div>
+                <div 
+                  className={`tv-size-card ${(!['43','55','75'].includes(tempTvInches) && tempTvInches !== '') ? 'active' : ''}`}
+                  onClick={() => {
+                    if (isClosed) return;
+                    const val = window.prompt('Introduce las pulgadas de la TV:', tempTvInches);
+                    if (val !== null) setTempTvInches(val);
+                  }}
+                >
+                  <span className="tv-size-card-icon">✏️</span>
+                  <span className="tv-size-card-label">Medida Manual</span>
+                  <span className="tv-size-card-desc">
+                    {(!['43','55','75'].includes(tempTvInches) && tempTvInches !== '') ? `${tempTvInches}"` : 'Ej: 60"'}
+                  </span>
                 </div>
               </div>
-            ))}
-          </div>
 
-          <div className="block-section">
-            <div className="block-title">🎙️ Otros Elementos (Cantidades)</div>
-            {(() => {
-              // Primero las barras de sonido juntas en orden: Barra de sonido, PM barra de sonido, Cuelgue barra de sonido
-              const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
-              const soundbarItems = soundbarIds.map(id => itemsOtros.find(item => item.id === id)).filter(Boolean);
-              const otherItems = itemsOtros.filter(item => !soundbarIds.includes(item.id));
-              const sortedOtros = [...soundbarItems, ...otherItems];
-              
-              return sortedOtros.map(t => (
-                <div key={t.id} className="task-item-row" style={{ borderBottom: t.id === 'CUELGUE_BSND' ? '2px dashed var(--panel-border)' : '1px solid rgba(255,255,255,0.05)', paddingBottom: t.id === 'CUELGUE_BSND' ? '12px' : '8px', marginBottom: t.id === 'CUELGUE_BSND' ? '12px' : '0px' }}>
-                  <span className="task-item-label" style={{ fontWeight: soundbarIds.includes(t.id) ? '600' : 'normal' }}>{t.name}</span>
-                  <div className="qty-counter">
-                    <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
-                    <span className="qty-val">{otherQuantities[t.id] || 0}</span>
-                    <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
-                  </div>
+              {/* Selector Segmentado de Acción */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '15px' }}>
+                <span className="input-label" style={{ margin: 0 }}>Acción a realizar:</span>
+                <div className="action-pills">
+                  <button 
+                    type="button" 
+                    className={`action-pill-opt ${tempTvAction === 'entrega' ? 'active' : ''}`}
+                    onClick={() => !isClosed && setTempTvAction('entrega')}
+                  >
+                    Entrega
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`action-pill-opt ${tempTvAction === 'recogida' ? 'active' : ''}`}
+                    onClick={() => !isClosed && setTempTvAction('recogida')}
+                  >
+                    Recogida
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`action-pill-opt ${tempTvAction === 'combinado' ? 'active' : ''}`}
+                    onClick={() => !isClosed && setTempTvAction('combinado')}
+                  >
+                    Entrega+Rec.
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`action-pill-opt ${tempTvAction === 'solo_pm' ? 'active' : ''}`}
+                    onClick={() => !isClosed && setTempTvAction('solo_pm')}
+                  >
+                    Solo PM
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`action-pill-opt ${tempTvAction === 'solo_cuelgue' ? 'active' : ''}`}
+                    onClick={() => !isClosed && setTempTvAction('solo_cuelgue')}
+                  >
+                    Solo Cuelgue
+                  </button>
                 </div>
-              ));
-            })()}
+              </div>
+
+              <button 
+                type="button" 
+                onClick={() => {
+                  if (!tempTvInches) {
+                    triggerAlert('Por favor, selecciona el tamaño o pulgadas de la TV', 'error');
+                    return;
+                  }
+                  addTvToForm();
+                }} 
+                className="btn btn-primary" 
+                style={{ width: '100%', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                disabled={isClosed}
+              >
+                <Plus size={16} /> Añadir Televisión a la Carga
+              </button>
+
+              {/* Listado de TVs Añadidas */}
+              {formTvs.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
+                  {formTvs.map((tv) => {
+                    const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : tv.action === 'solo_cuelgue' ? 'Solo Cuelgue' : 'Entrega + Recogida';
+                    return (
+                      <div key={tv.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '10px', padding: '15px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed var(--panel-border)', paddingBottom: '8px', marginBottom: '12px' }}>
+                          <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--primary)' }}>
+                            📺 TV {tv.inches}" ({actionText})
+                          </span>
+                          <button type="button" onClick={() => removeTvFromForm(tv.id)} className="btn btn-danger btn-small" style={{ display: 'flex', padding: '4px 8px', gap: '4px', width: 'auto', margin: 0 }} disabled={isClosed}>
+                            <Trash2 size={12} /> Quitar
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <span className="input-label">Puesta en Marcha (PM)</span>
+                            <select className="form-input" value={tv.pmType} onChange={(e) => updateTvInForm(tv.id, 'pmType', e.target.value)} disabled={isClosed}>
+                              <option value="none">No requiere</option>
+                              <option value="basic">Puesta en Marcha Básica (3 Mód.)</option>
+                              <option value="complex">Puesta en Marcha Compleja (5 Mód.)</option>
+                            </select>
+                          </div>
+
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <span className="input-label">Retirada TV Vieja</span>
+                            <select className="form-input" value={tv.recogidaViejaType} onChange={(e) => updateTvInForm(tv.id, 'recogidaViejaType', e.target.value)} disabled={isClosed}>
+                              <option value="none">No requiere retirada</option>
+                              <option value="urbantz">Retirada Vieja Urbantz</option>
+                              <option value="no_urbantz">Retirada Vieja NO Urbantz</option>
+                            </select>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '18px' }}>
+                            <input 
+                              type="checkbox" 
+                              id={`cuelgue_${tv.id}`} 
+                              checked={tv.cuelgue} 
+                              onChange={(e) => updateTvInForm(tv.id, 'cuelgue', e.target.checked)}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                              disabled={isClosed}
+                            />
+                            <label htmlFor={`cuelgue_${tv.id}`} style={{ fontWeight: '600', cursor: 'pointer', fontSize: '0.85rem' }}>
+                              Cuelgue en Pared (8/10 Mód.)
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* SECCIÓN B: PAQUETERÍA Y OTROS */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', textAlign: 'left' }}>
+              <div className="block-section">
+                <div className="block-title">📦 Bloque Paquetería (Unidades)</div>
+                {itemsPaqueteria.map(t => (
+                  <div key={t.id} className="task-item-row">
+                    <span className="task-item-label">{t.name}</span>
+                    <div className="qty-counter">
+                      <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                      <span className="qty-val">{otherQuantities[t.id] || 0}</span>
+                      <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="block-section">
+                <div className="block-title">🔧 Otros Elementos / Accesorios</div>
+                {(() => {
+                  const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
+                  const soundbarItems = soundbarIds.map(id => itemsOtros.find(item => item.id === id)).filter(Boolean);
+                  const otherItems = itemsOtros.filter(item => !soundbarIds.includes(item.id));
+                  const sortedOtros = [...soundbarItems, ...otherItems];
+                  
+                  return sortedOtros.map(t => (
+                    <div key={t.id} className="task-item-row" style={{ borderBottom: t.id === 'CUELGUE_BSND' ? '2px dashed var(--panel-border)' : '1px solid rgba(255,255,255,0.05)', paddingBottom: t.id === 'CUELGUE_BSND' ? '12px' : '8px', marginBottom: t.id === 'CUELGUE_BSND' ? '12px' : '0px' }}>
+                      <span className="task-item-label" style={{ fontWeight: soundbarIds.includes(t.id) ? '600' : 'normal' }}>{t.name}</span>
+                      <div className="qty-counter">
+                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                        <span className="qty-val">{otherQuantities[t.id] || 0}</span>
+                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            <div className="wizard-footer">
+              <button 
+                type="button" 
+                onClick={() => setFormStep(1)} 
+                className="btn btn-secondary"
+                style={{ width: 'auto' }}
+              >
+                ← Atrás
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  const hasTvs = formTvs.length > 0;
+                  const hasPackages = Object.values(otherQuantities).some(qty => qty > 0);
+                  if (!hasTvs && !hasPackages) {
+                    triggerAlert('Debes registrar al menos un televisor o un paquete/servicio en este reparto.', 'error');
+                    return;
+                  }
+                  setFormStep(3);
+                }} 
+                className="btn btn-primary"
+                style={{ width: 'auto' }}
+              >
+                Continuar a Confirmación ➔
+              </button>
+            </div>
           </div>
+        )}
 
-        </div>
+        {/* PASO 3: NOTAS Y CONFIRMACIÓN */}
+        {formStep === 3 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease', textAlign: 'left' }}>
+            <div className="block-section" style={{ background: 'rgba(99, 102, 241, 0.03)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '20px' }}>
+              <div className="block-title" style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                📋 Resumen del Reparto a Registrar
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
+                <div><strong>Cliente:</strong> {customerName}</div>
+                {phone && <div><strong>Teléfono:</strong> {phone}</div>}
+                <div><strong>Dirección:</strong> {address} {postcode && `(CP ${postcode})`}</div>
+                {parseFloat(codAmount) > 0 && (
+                  <div style={{ color: 'var(--warning)', fontWeight: '700' }}>
+                    💵 Cobro Reembolso: {parseFloat(codAmount).toFixed(2)} €
+                  </div>
+                )}
+                
+                <div style={{ borderTop: '1px dashed var(--panel-border)', margin: '10px 0' }}></div>
+                
+                <div><strong>Carga y Servicios:</strong></div>
+                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  {formTvs.map((tv, idx) => {
+                    const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : tv.action === 'solo_cuelgue' ? 'Solo Cuelgue' : 'Entrega + Recogida';
+                    return (
+                      <li key={idx}>
+                        Televisión de {tv.inches}" ({actionText}) 
+                        {tv.pmType !== 'none' && ` + PM (${tv.pmType === 'basic' ? 'Básica' : 'Compleja'})`}
+                        {tv.cuelgue && ` + Cuelgue en Pared`}
+                        {tv.recogidaViejaType !== 'none' && ` + Retirada TV Vieja`}
+                      </li>
+                    );
+                  })}
+                  {Object.entries(otherQuantities).map(([tariffId, quantity]) => {
+                    if (quantity <= 0) return null;
+                    const tariff = tariffs.find(t => t.id === tariffId);
+                    return (
+                      <li key={tariffId}>
+                        {tariff ? tariff.name : tariffId} (x{quantity})
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>
 
-        {/* CAMPO DE NOTAS */}
-        <div className="input-group">
-          <span className="input-label">Notas / Observaciones del Reparto</span>
-          <textarea className="form-input" placeholder="Escribe alguna nota relevante (opcional)..." value={notes} onChange={(e) => setNotes(e.target.value)} rows="2" style={{ resize: 'vertical' }} disabled={isClosed} />
-        </div>
+            <div className="input-group">
+              <span className="input-label">Observaciones / Instrucciones del Reparto</span>
+              <textarea 
+                className="form-input" 
+                placeholder="Escribe aquí notas adicionales, indicaciones de timbre, portales, etc." 
+                value={notes} 
+                onChange={(e) => setNotes(e.target.value)} 
+                style={{ minHeight: '100px', resize: 'vertical', padding: '12px' }}
+                disabled={isClosed}
+              />
+            </div>
 
-        <button type="submit" className="btn btn-primary" style={{ marginTop: '15px', opacity: isClosed ? 0.5 : 1, cursor: isClosed ? 'not-allowed' : 'pointer' }} disabled={isClosed}>
-          {editingTicketId ? 'Guardar Cambios y Recalcular Ganancias' : 'Registrar Hoja de Reparto'}
-        </button>
+            <div className="wizard-footer">
+              <button 
+                type="button" 
+                onClick={() => setFormStep(2)} 
+                className="btn btn-secondary"
+                style={{ width: 'auto' }}
+              >
+                ← Atrás
+              </button>
+              <button 
+                type="submit" 
+                className="btn btn-primary"
+                style={{ 
+                  width: 'auto', 
+                  background: 'linear-gradient(135deg, var(--primary) 0%, #10b981 100%)',
+                  boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)',
+                  fontWeight: '800'
+                }}
+                disabled={isClosed}
+              >
+                💾 {editingTicketId ? 'Guardar Cambios' : 'Confirmar y Planificar Reparto'}
+              </button>
+            </div>
+          </div>
+        )}
       </form>
     );
   };
