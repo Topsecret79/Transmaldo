@@ -228,11 +228,6 @@ function App() {
   };
   const [currentUser, setCurrentUser] = useState(null);
   const isAdminOrSuper = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
-  const loggedInUserObj = users.find(u => u.id === currentUser?.id) || currentUser;
-  const hasSearchPermission = loggedInUserObj && (
-    loggedInUserObj.role === 'superadmin' || 
-    loggedInUserObj.canSearch
-  );
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -241,6 +236,11 @@ function App() {
   const [tariffs, setTariffs] = useState([]);
   const [modulePrice, setModulePrice] = useState(3.81);
   const [users, setUsers] = useState([]);
+  const loggedInUserObj = users.find(u => u.id === currentUser?.id) || currentUser;
+  const hasSearchPermission = loggedInUserObj && (
+    loggedInUserObj.role === 'superadmin' || 
+    loggedInUserObj.canSearch
+  );
   const [shifts, setShifts] = useState([]);
 
   const [activeTab, setActiveTab] = useState(''); 
