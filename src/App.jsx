@@ -766,7 +766,7 @@ function App() {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
       inches: parseInt(tempTvInches),
       action: tempTvAction,
-      pmType: 'none',
+      pmType: tempTvAction === 'solo_pm' ? 'basic' : 'none',
       cuelgue: false,
       recogidaViejaType: 'none'
     };
@@ -1010,18 +1010,28 @@ function App() {
     // Agrupar todas las tareas y calcular tarifas locales
     const tasksArray = [];
 
+    // Validar que si la acción es "solo_pm", se haya seleccionado un tipo de PM
+    let hasValidationError = false;
+    formTvs.forEach(tv => {
+      if (tv.action === 'solo_pm' && tv.pmType === 'none') {
+        triggerAlert('Para un servicio de "Solo PM", debes seleccionar el tipo de Puesta en Marcha (Básica o Compleja)', 'error');
+        hasValidationError = true;
+      }
+    });
+    if (hasValidationError) return;
+
     // 1. Añadir las TVs y sus servicios vinculados
     formTvs.forEach(tv => {
       const range = getTVRange(tv.inches);
       
       // Artículo principal TV
-      const mainTariffId = tv.action === 'combinado' ? `TV_COMB_${range}` : `TV_ENT_${range}`;
-      let actionLabel = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : 'Entrega + Recogida';
-      
-      tasksArray.push({
-        tariffId: mainTariffId,
-        quantity: 1
-      });
+      if (tv.action !== 'solo_pm') {
+        const mainTariffId = tv.action === 'combinado' ? `TV_COMB_${range}` : `TV_ENT_${range}`;
+        tasksArray.push({
+          tariffId: mainTariffId,
+          quantity: 1
+        });
+      }
 
       // PM
       if (tv.pmType !== 'none') {
@@ -1296,38 +1306,41 @@ function App() {
     const tempTvs = [];
     const tempOthers = {};
 
-    // Para evitar duplicar TVs al procesar la lista secuencial
-    // Agrupamos por patrones de IDs de tareas
-    // Buscamos tareas de TV
     const tvMainTasks = ticket.tasks.filter(t => t.tariffId.startsWith('TV_ENT_') || t.tariffId.startsWith('TV_COMB_'));
     const pmTasks = ticket.tasks.filter(t => t.tariffId.startsWith('PM_') && t.tariffId !== 'PM_BSND');
     const cuelgueTasks = ticket.tasks.filter(t => t.tariffId.startsWith('CUELGUE_') && t.tariffId !== 'CUELGUE_BSND');
     const viejaTasks = ticket.tasks.filter(t => t.tariffId === 'TV_VIEJA_URB' || t.tariffId === 'TV_VIEJA_NO_URB');
 
-    // Reconstruir cada TV basándonos en la tarea principal de la TV
-    // Nota: Como antes lo simplificamos a una TV por ticket, mapeamos secuencialmente
+    let pmIndex = 0;
+    let cuelgueIndex = 0;
+    let viejaIndex = 0;
+
     tvMainTasks.forEach((mTask, idx) => {
-      // Extraer rango e inches aproximadas (o leer de metadatos si existían, si no usamos las del rango)
       const isComb = mTask.tariffId.includes('COMB');
       let range = '49';
       if (mTask.tariffId.includes('74')) range = '74';
       if (mTask.tariffId.includes('115')) range = '115';
 
-      // Intentar extraer pulgadas del nombre de la tarea (ej: "TV 55\" (Entrega)")
       const inchMatch = mTask.name.match(/TV (\d+)"/);
       const inches = inchMatch ? parseInt(inchMatch[1]) : (range === '49' ? 43 : range === '74' ? 55 : 75);
 
-      // Ver si tiene PM asociada
-      const pmMatch = pmTasks[idx];
-      const pmType = pmMatch ? (pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex') : 'none';
+      let pmType = 'none';
+      if (pmIndex < pmTasks.length) {
+        const pmMatch = pmTasks[pmIndex++];
+        pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
+      }
 
-      // Ver si tiene cuelgue asociado
-      const cuelgueMatch = cuelgueTasks[idx];
-      const cuelgue = !!cuelgueMatch;
+      let cuelgue = false;
+      if (cuelgueIndex < cuelgueTasks.length) {
+        cuelgueIndex++;
+        cuelgue = true;
+      }
 
-      // Ver si tiene recogida vieja asociada
-      const viejaMatch = viejaTasks[idx];
-      const recogidaViejaType = viejaMatch ? (viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz') : 'none';
+      let recogidaViejaType = 'none';
+      if (viejaIndex < viejaTasks.length) {
+        const viejaMatch = viejaTasks[viejaIndex++];
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+      }
 
       tempTvs.push({
         id: 'tv_' + idx + Date.now().toString(),
@@ -1338,6 +1351,37 @@ function App() {
         recogidaViejaType
       });
     });
+
+    while (pmIndex < pmTasks.length) {
+      const pmMatch = pmTasks[pmIndex++];
+      let range = '49';
+      if (pmMatch.tariffId.includes('74')) range = '74';
+      if (pmMatch.tariffId.includes('115')) range = '115';
+      const inches = range === '49' ? 43 : range === '74' ? 55 : 75;
+
+      const pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
+
+      let cuelgue = false;
+      if (cuelgueIndex < cuelgueTasks.length) {
+        cuelgueIndex++;
+        cuelgue = true;
+      }
+
+      let recogidaViejaType = 'none';
+      if (viejaIndex < viejaTasks.length) {
+        const viejaMatch = viejaTasks[viejaIndex++];
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+      }
+
+      tempTvs.push({
+        id: 'tv_pm_' + pmIndex + Date.now().toString(),
+        inches,
+        action: 'solo_pm',
+        pmType,
+        cuelgue,
+        recogidaViejaType
+      });
+    }
 
     // Reconstruir otros artículos no-TV
     ticket.tasks.forEach(t => {
@@ -2244,6 +2288,7 @@ function App() {
                 <option value="entrega">Entrega</option>
                 <option value="recogida">Recogida</option>
                 <option value="combinado">Entrega + Recogida</option>
+                <option value="solo_pm">Solo Puesta en Marcha (PM)</option>
               </select>
             </div>
             <button type="button" onClick={addTvToForm} className="btn btn-primary" style={{ width: 'auto', height: '45px' }} disabled={isClosed}>
@@ -2255,7 +2300,7 @@ function App() {
           {formTvs.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               {formTvs.map((tv, idx) => {
-                const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : 'Entrega + Recogida';
+                const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : 'Entrega + Recogida';
                 return (
                   <div key={tv.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--panel-border)', borderRadius: '10px', padding: '15px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed var(--panel-border)', paddingBottom: '8px', marginBottom: '12px' }}>
@@ -4000,7 +4045,15 @@ function App() {
                                   
                                   const tempTvs = [];
                                   const tempOthers = {};
+                                  
                                   const tvMainTasks = ticket.tasks.filter(t => t.tariffId.startsWith('TV_ENT_') || t.tariffId.startsWith('TV_COMB_'));
+                                  const pmTasks = ticket.tasks.filter(t => t.tariffId.startsWith('PM_') && t.tariffId !== 'PM_BSND');
+                                  const cuelgueTasks = ticket.tasks.filter(t => t.tariffId.startsWith('CUELGUE_') && t.tariffId !== 'CUELGUE_BSND');
+                                  const viejaTasks = ticket.tasks.filter(t => t.tariffId === 'TV_VIEJA_URB' || t.tariffId === 'TV_VIEJA_NO_URB');
+                                  
+                                  let pmIndex = 0;
+                                  let cuelgueIndex = 0;
+                                  let viejaIndex = 0;
                                   
                                   tvMainTasks.forEach((mTask, idx) => {
                                     const isComb = mTask.tariffId.includes('COMB');
@@ -4008,14 +4061,23 @@ function App() {
                                     if (mTask.tariffId.includes('74')) range = '74';
                                     if (mTask.tariffId.includes('115')) range = '115';
                                     
-                                    const pmMatch = ticket.tasks.find(t => t.tariffId.startsWith('PM_') && t.tariffId !== 'PM_BSND');
-                                    const pmType = pmMatch ? (pmMatch.tariffId.includes('PEANA') ? 'peana' : pmMatch.tariffId.includes('PARED') ? 'pared' : 'caja') : 'none';
+                                    let pmType = 'none';
+                                    if (pmIndex < pmTasks.length) {
+                                      const pmMatch = pmTasks[pmIndex++];
+                                      pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
+                                    }
                                     
-                                    const cuelgueMatch = ticket.tasks.find(t => t.tariffId.startsWith('CUELGUE_') && t.tariffId !== 'CUELGUE_BSND');
-                                    const cuelgue = cuelgueMatch ? (cuelgueMatch.tariffId.includes('PEANA') ? 'peana' : 'pared') : 'none';
+                                    let cuelgue = false;
+                                    if (cuelgueIndex < cuelgueTasks.length) {
+                                      cuelgueIndex++;
+                                      cuelgue = true;
+                                    }
                                     
-                                    const viejaMatch = ticket.tasks.find(t => t.tariffId === 'TV_VIEJA_URB' || t.tariffId === 'TV_VIEJA_NO_URB');
-                                    const recogidaViejaType = viejaMatch ? (viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz') : 'none';
+                                    let recogidaViejaType = 'none';
+                                    if (viejaIndex < viejaTasks.length) {
+                                      const viejaMatch = viejaTasks[viejaIndex++];
+                                      recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+                                    }
                                     
                                     tempTvs.push({
                                       id: 'tv_' + idx + Date.now().toString(),
@@ -4026,6 +4088,35 @@ function App() {
                                       recogidaViejaType
                                     });
                                   });
+                                  
+                                  while (pmIndex < pmTasks.length) {
+                                    const pmMatch = pmTasks[pmIndex++];
+                                    let range = '49';
+                                    if (pmMatch.tariffId.includes('74')) range = '74';
+                                    if (pmMatch.tariffId.includes('115')) range = '115';
+                                    const pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
+                                    
+                                    let cuelgue = false;
+                                    if (cuelgueIndex < cuelgueTasks.length) {
+                                      cuelgueIndex++;
+                                      cuelgue = true;
+                                    }
+                                    
+                                    let recogidaViejaType = 'none';
+                                    if (viejaIndex < viejaTasks.length) {
+                                      const viejaMatch = viejaTasks[viejaIndex++];
+                                      recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+                                    }
+                                    
+                                    tempTvs.push({
+                                      id: 'tv_pm_' + pmIndex + Date.now().toString(),
+                                      inches: range,
+                                      action: 'solo_pm',
+                                      pmType,
+                                      cuelgue,
+                                      recogidaViejaType
+                                    });
+                                  }
                                   
                                   ticket.tasks.forEach(t => {
                                     const isTVRelated = (t.tariffId.startsWith('TV_ENT_') || 
