@@ -527,11 +527,29 @@ export async function geocodeAddress(addressText) {
     }
 
     if (data && data.length > 0) {
+      let displayName = data[0].display_name || '';
+      
+      const numberMatch = addressText.match(/\b\d{1,4}[a-zA-Z]?\b/);
+      if (numberMatch) {
+        const typedNumber = numberMatch[0];
+        const isPostalCode = typedNumber.length === 5;
+        if (!isPostalCode) {
+          const numberRegex = new RegExp(`\\b${typedNumber}\\b`);
+          if (!numberRegex.test(displayName)) {
+            const parts = displayName.split(',');
+            if (parts.length > 0) {
+              parts.splice(1, 0, ` ${typedNumber}`);
+              displayName = parts.join(',');
+            }
+          }
+        }
+      }
+
       return {
         lat: parseFloat(data[0].lat),
         lng: parseFloat(data[0].lon),
         postcode: data[0].address && data[0].address.postcode ? data[0].address.postcode : '',
-        displayName: data[0].display_name || ''
+        displayName: displayName
       };
     }
   } catch (e) {

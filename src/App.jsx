@@ -847,7 +847,25 @@ function App() {
   const handleSelectSuggestion = (sug) => {
     const lat = parseFloat(sug.lat);
     const lng = parseFloat(sug.lon);
-    setAddress(sug.display_name);
+
+    let finalAddress = sug.display_name;
+    const numberMatch = address.match(/\b\d{1,4}[a-zA-Z]?\b/);
+    if (numberMatch) {
+      const typedNumber = numberMatch[0];
+      const isPostalCode = typedNumber.length === 5;
+      if (!isPostalCode) {
+        const numberRegex = new RegExp(`\\b${typedNumber}\\b`);
+        if (!numberRegex.test(sug.display_name)) {
+          const parts = sug.display_name.split(',');
+          if (parts.length > 0) {
+            parts.splice(1, 0, ` ${typedNumber}`);
+            finalAddress = parts.join(',');
+          }
+        }
+      }
+    }
+
+    setAddress(finalAddress);
 
     const extractedPostcode = sug.address && sug.address.postcode ? sug.address.postcode : '';
     if (extractedPostcode) {
