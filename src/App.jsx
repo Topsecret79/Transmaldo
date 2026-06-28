@@ -96,6 +96,119 @@ import {
 
 initDB();
 
+// Diccionario de calles principales de Barcelona para corrector ortográfico
+const BARCELONA_STREETS = [
+  'Balmes', 'Diagonal', 'Gran Via de les Corts Catalanes', 'Aragó', 'Passeig de Gràcia', 
+  'Mallorca', 'Muntaner', 'La Rambla', 'Avinguda del Paral·lel', 'Consell de Cent', 
+  'Provença', 'Girona', 'Casp', 'Aribau', 'València', 'Rocafort', 'Entença', 
+  'Calàbria', 'Viladomat', 'Sardenya', 'Marina', 'Lepant', 'Padilla', 'Castillejos', 
+  'Travessera de Gràcia', 'Via Augusta', 'Passeig de Sant Joan', 'Avinguda Meridiana', 
+  'Gran de Gràcia', 'Santaló', 'Mandri', 'Ganduxer', 'Tuset', 'Ronda de Dalt', 
+  'Ronda Litoral', 'Ronda Sant Pere', 'Ronda Universitat', 'Ronda General Mitre', 
+  'Avinguda de Pedralbes', 'Avinguda de Sarrià', 'Carrer de Sants', 'Creu Coberta', 
+  'Tarragona', 'Passeig de Colom', 'Via Laietana', 'Carrer Ample', 'Princesa', 
+  'Carrer de Ferran', 'Carrer del Carme', 'Hospital', 'Rambla del Raval', 
+  'Carrer Nou de la Rambla', 'Carrer de Pelai', 'Carrer de Fontanella', 
+  'Carrer de Trafalgar', 'Avinguda de Portal de l\'Àngel', 'Carrer del Pi', 
+  'Carrer de Portaferrissa', 'Carrer del Bisbe', 'Montcada', 'Passeig del Born', 
+  'Avinguda del Marquès de l\'Argentera', 'Carrer del Comerç', 'Passeig de Picasso', 
+  'Passeig de Lluís Companys', 'Carrer de Pujades', 'Carrer de Llull', 
+  'Carrer de Pallars', 'Carrer de Pere IV', 'Avinguda de la Catedral', 'Via Júlia', 
+  'Carrer de Cartellà', 'Passeig de Fabra i Puig', 'Carrer de Pi i Margall', 
+  'Carrer de Roger de Llúria', 'Carrer de Pau Claris', 'Carrer del Bruc', 
+  'Carrer de Bailèn', 'Carrer de Nàpols', 'Carrer de Sicília', 'Carrer del Rosselló', 
+  'Carrer de Còrsega'
+];
+
+// Algoritmo Jaro-Winkler para calcular similitud de cadenas de texto
+function getJaroWinklerSimilarity(s1, s2) {
+  s1 = s1.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  s2 = s2.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  
+  if (s1 === s2) return 1.0;
+  
+  const len1 = s1.length;
+  const len2 = s2.length;
+  
+  const matchWindow = Math.floor(Math.max(len1, len2) / 2) - 1;
+  const matches1 = new Array(len1).fill(false);
+  const matches2 = new Array(len2).fill(false);
+  
+  let matches = 0;
+  let transpositions = 0;
+  
+  for (let i = 0; i < len1; i++) {
+    const start = Math.max(0, i - matchWindow);
+    const end = Math.min(len2 - 1, i + matchWindow);
+    for (let j = start; j <= end; j++) {
+      if (!matches2[j] && s1[i] === s2[j]) {
+        matches1[i] = true;
+        matches2[j] = true;
+        matches++;
+        break;
+      }
+    }
+  }
+  
+  if (matches === 0) return 0.0;
+  
+  let k = 0;
+  for (let i = 0; i < len1; i++) {
+    if (matches1[i]) {
+      while (!matches2[k]) k++;
+      if (s1[i] !== s2[k]) transpositions++;
+      k++;
+    }
+  }
+  
+  const jaro = (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3.0;
+  
+  let prefix = 0;
+  const maxPrefix = 4;
+  for (let i = 0; i < Math.min(len1, len2, maxPrefix); i++) {
+    if (s1[i] === s2[i]) {
+      prefix++;
+    } else {
+      break;
+    }
+  }
+  
+  return jaro + prefix * 0.1 * (1.0 - jaro);
+}
+
+// Analizar la dirección en busca de erratas ortográficas de calles de Barcelona
+function checkStreetSpelling(addressText) {
+  if (!addressText || addressText.length < 4) return null;
+  
+  const words = addressText.split(/\s+/).map(w => w.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '').trim()).filter(w => w.length >= 4);
+  const ignoreWords = ['carrer', 'calle', 'avenida', 'paseo', 'pass', 'passatge', 'avinguda', 'ronda', 'de', 'del', 'la', 'les', 'els', 'dels', 'en', 'es', 'el'];
+  
+  for (const word of words) {
+    if (ignoreWords.includes(word.toLowerCase())) continue;
+    
+    let bestMatch = null;
+    let maxSim = 0;
+    
+    for (const street of BARCELONA_STREETS) {
+      const streetWords = street.split(/\s+/).map(w => w.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '').trim()).filter(w => w.length >= 4 && !ignoreWords.includes(w.toLowerCase()));
+      
+      for (const sw of streetWords) {
+        const sim = getJaroWinklerSimilarity(word, sw);
+        // Similitud alta pero no idéntica
+        if (sim > 0.82 && sim < 0.98 && sim > maxSim) {
+          maxSim = sim;
+          bestMatch = { misspelled: word, corrected: sw, fullStreet: street };
+        }
+      }
+    }
+    
+    if (bestMatch) {
+      return bestMatch;
+    }
+  }
+  return null;
+}
+
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const isAdminOrSuper = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
@@ -179,6 +292,7 @@ function App() {
   const [searchCountryCode, setSearchCountryCode] = useState(localStorage.getItem('search_country_code') || 'es');
   const [searchCityBias, setSearchCityBias] = useState(localStorage.getItem('search_city_bias') || 'Barcelona');
   const [searchStrictCity, setSearchStrictCity] = useState(localStorage.getItem('search_strict_city') !== 'false');
+  const [spellingSuggestion, setSpellingSuggestion] = useState(null);
 
   // Derived state for role-based data partitioning (independent invoicing per administrator)
   const activeRepartidores = users.filter(u => {
@@ -691,6 +805,7 @@ function App() {
     });
     setLastVerifiedAddress(sug.display_name);
     setSuggestions([]);
+    setSpellingSuggestion(null);
   };
 
   // Verificar validez de la dirección por geocodificación
@@ -862,6 +977,7 @@ function App() {
       setNotes('');
       setCodAmount('');
       setTicketDate(new Date().toISOString().split('T')[0]);
+      setSpellingSuggestion(null);
       loadData();
     }
   };
@@ -1110,6 +1226,7 @@ function App() {
     setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
     setTicketDate(new Date().toISOString().split('T')[0]);
+    setSpellingSuggestion(null);
     setActiveTab(isAdminOrSuper ? 'tickets' : 'history');
   };
 
@@ -1684,6 +1801,10 @@ function App() {
                   setAddress(val);
                   setAddressVerification({ status: 'idle', message: '' });
                   
+                  // Verificar errores de ortografía de calles de Barcelona
+                  const correction = checkStreetSpelling(val);
+                  setSpellingSuggestion(correction);
+                  
                   // Limpiar timer de autocompletado
                   if (debounceTimerRef.current) {
                     clearTimeout(debounceTimerRef.current);
@@ -1725,6 +1846,47 @@ function App() {
                         : 'none'
                 }}
               />
+
+              {spellingSuggestion && (
+                <div style={{
+                  background: 'rgba(79, 70, 229, 0.15)',
+                  border: '1px solid rgba(79, 70, 229, 0.4)',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  marginTop: '6px',
+                  fontSize: '0.8rem',
+                  color: '#e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  textAlign: 'left'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>💡 ¿Quisiste decir: <strong>{spellingSuggestion.fullStreet}</strong>?</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const correctedAddress = address.replace(new RegExp(spellingSuggestion.misspelled, 'gi'), spellingSuggestion.corrected);
+                      setAddress(correctedAddress);
+                      setSpellingSuggestion(null);
+                      fetchAddressSuggestions(correctedAddress);
+                    }}
+                    className="btn btn-primary"
+                    style={{
+                      margin: 0,
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      width: 'auto',
+                      height: 'auto',
+                      fontWeight: '600'
+                    }}
+                  >
+                    Corregir
+                  </button>
+                </div>
+              )}
               
               {/* SUGERENCIAS DE DIRECCIÓN */}
               {isSearchingSuggestions && (
