@@ -176,6 +176,9 @@ function App() {
   const [routeStartAddr, setRouteStartAddr] = useState(localStorage.getItem('delivery_default_start_addr') || 'Madrid, España');
   const [routeEndAddr, setRouteEndAddr] = useState(localStorage.getItem('delivery_default_end_addr') || 'Madrid, España');
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [searchCountryCode, setSearchCountryCode] = useState(localStorage.getItem('search_country_code') || 'es');
+  const [searchCityBias, setSearchCityBias] = useState(localStorage.getItem('search_city_bias') || 'Barcelona');
+  const [searchStrictCity, setSearchStrictCity] = useState(localStorage.getItem('search_strict_city') !== 'false');
 
   // Derived state for role-based data partitioning (independent invoicing per administrator)
   const activeRepartidores = users.filter(u => {
@@ -642,7 +645,7 @@ function App() {
     });
   };
 
-  // Buscar sugerencias de direcciones usando Nominatim (OSM)
+  // Buscar sugerencias de direcciones usando Nominatim (OSM) con filtros geográficos
   const fetchAddressSuggestions = async (queryText) => {
     if (!queryText.trim() || queryText.trim().length < 4) {
       setSuggestions([]);
@@ -650,7 +653,16 @@ function App() {
     }
     setIsSearchingSuggestions(true);
     try {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=${encodeURIComponent(queryText)}`;
+      const countryCode = searchCountryCode || 'es';
+      const cityBias = searchCityBias || 'Barcelona';
+      const strictCity = searchStrictCity;
+
+      let searchQuery = queryText.trim();
+      if (strictCity && cityBias && !searchQuery.toLowerCase().includes(cityBias.toLowerCase())) {
+        searchQuery += `, ${cityBias}`;
+      }
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQuery)}`;
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json'
@@ -983,6 +995,13 @@ function App() {
     } finally {
       setIsOptimizing(false);
     }
+  };
+
+  const handleSaveMapSettings = () => {
+    localStorage.setItem('search_country_code', searchCountryCode);
+    localStorage.setItem('search_city_bias', searchCityBias);
+    localStorage.setItem('search_strict_city', searchStrictCity ? 'true' : 'false');
+    triggerAlert('Ajustes geográficos del mapa guardados con éxito', 'success');
   };
 
   // Iniciar la edición de un ticket y reconstruir los estados desde el listado de tareas del ticket
@@ -3183,10 +3202,61 @@ function App() {
                   </form>
                 </div>
 
-                <div className="block-section" style={{ position: 'sticky', top: '20px' }}>
+                <div className="block-section" style={{ marginBottom: '20px' }}>
                   <div className="block-title">Valor Unitario del Módulo</div>
                   <input type="number" step="0.01" className="form-input" value={modulePrice} onChange={(e) => handleUpdateModulePrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '10px' }}>Actualmente, cada módulo equivale a {modulePrice.toFixed(2)} €.</p>
+                </div>
+
+                <div className="block-section">
+                  <div className="block-title">Ajustes de Geolocalización y Búsqueda</div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                    Configura los parámetros para el autocompletado y geocodificación de direcciones en el sistema.
+                  </p>
+                  
+                  <div className="input-group" style={{ marginBottom: '12px' }}>
+                    <span className="input-label">País de Búsqueda (Código ISO 2 letras)</span>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej: es, mx, ar" 
+                      value={searchCountryCode} 
+                      onChange={(e) => setSearchCountryCode(e.target.value.toLowerCase().trim())} 
+                    />
+                  </div>
+
+                  <div className="input-group" style={{ marginBottom: '12px' }}>
+                    <span className="input-label">Ciudad / Región de Enfoque</span>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej: Barcelona, Madrid" 
+                      value={searchCityBias} 
+                      onChange={(e) => setSearchCityBias(e.target.value)} 
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', padding: '5px 0' }}>
+                    <input 
+                      type="checkbox" 
+                      id="search_strict_city" 
+                      checked={searchStrictCity} 
+                      onChange={(e) => setSearchStrictCity(e.target.checked)} 
+                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                    />
+                    <label htmlFor="search_strict_city" style={{ fontSize: '0.8rem', cursor: 'pointer', userSelect: 'none' }}>
+                      Búsqueda estricta en la ciudad enfocada (Autocompleta ciudad)
+                    </label>
+                  </div>
+
+                  <button 
+                    type="button" 
+                    onClick={handleSaveMapSettings} 
+                    className="btn btn-primary" 
+                    style={{ width: '100%', margin: 0, padding: '10px', fontSize: '0.85rem', fontWeight: '700' }}
+                  >
+                    Guardar Ajustes de Mapa
+                  </button>
                 </div>
               </div>
             </div>

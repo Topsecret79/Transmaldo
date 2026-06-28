@@ -488,7 +488,16 @@ export function getDriverLocations() {
 export async function geocodeAddress(addressText) {
   if (!addressText || !addressText.trim()) return null;
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addressText)}`;
+    const countryCode = localStorage.getItem('search_country_code') || 'es';
+    const cityBias = localStorage.getItem('search_city_bias') || 'Barcelona';
+    const strictCity = localStorage.getItem('search_strict_city') !== 'false';
+
+    let searchQuery = addressText.trim();
+    if (strictCity && cityBias && !searchQuery.toLowerCase().includes(cityBias.toLowerCase())) {
+      searchQuery += `, ${cityBias}`;
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQuery)}`;
     const response = await fetch(url, {
       headers: {
         'Accept': 'application/json'
