@@ -450,18 +450,37 @@ function App() {
           mapInstanceRef.current = null;
         }
 
-        // 2. Inicializar nuevo mapa (centrado en Madrid por defecto)
+        // 2. Inicializar nuevo mapa (centrado en Barcelona por defecto)
         const map = window.L.map(mapElementId, {
           zoomControl: true,
           attributionControl: true
-        }).setView([40.416775, -3.703790], 12);
+        }).setView([41.3879, 2.16992], 12);
         mapInstanceRef.current = map;
 
-        // 3. Cargar capa de mapa gratuito estándar (OpenStreetMap)
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // 3. Cargar capas de mapa (Estándar, Satélite de Esri, Topográfico)
+        const osm = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           maxZoom: 19
-        }).addTo(map);
+        });
+
+        const satellite = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+          maxZoom: 19
+        });
+
+        const topo = window.L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+          attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)',
+          maxZoom: 17
+        });
+
+        osm.addTo(map);
+
+        const baseMaps = {
+          "Mapa Estándar 🗺️": osm,
+          "Satélite 🛰️": satellite,
+          "Topográfico ⛰️": topo
+        };
+        window.L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
 
         // 4. Filtrar y ordenar los tickets geocodificados
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
@@ -1026,11 +1045,11 @@ function App() {
         if (startGeocoded && startGeocoded.lat && startGeocoded.lng) {
           startCoords = { lat: parseFloat(startGeocoded.lat), lng: parseFloat(startGeocoded.lng) };
         } else {
-          startCoords = { lat: 40.416775, lng: -3.703790 };
-          triggerAlert('No se pudo geolocalizar el punto de partida. Usando ubicación por defecto.', 'warning');
+          startCoords = { lat: 41.3879, lng: 2.16992 };
+          triggerAlert('No se pudo geolocalizar el punto de partida. Usando ubicación por defecto (Barcelona).', 'warning');
         }
       } else {
-        startCoords = { lat: 40.416775, lng: -3.703790 };
+        startCoords = { lat: 41.3879, lng: 2.16992 };
       }
 
       let endCoords = null;
