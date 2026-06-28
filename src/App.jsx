@@ -250,6 +250,8 @@ function App() {
   const [ticketFilterPostcode, setTicketFilterPostcode] = useState('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [alertMsg, setAlertMsg] = useState({ text: '', type: '' });
+  const [driverFilter, setDriverFilter] = useState('all');
+  const [quickFailTicketId, setQuickFailTicketId] = useState(null);
 
   // Rango de fechas para cortes de facturación del Administrador
   const getFirstDayOfMonth = () => {
@@ -2740,311 +2742,529 @@ function App() {
               </div>
             </div>
 
-            <div className="glass-panel" style={{ textAlign: 'left' }}>
+            <div className="glass-panel" style={{ textAlign: 'left', padding: '20px' }}>
               <h2>Planificación y Seguimiento de Ruta ({targetDate})</h2>
-              <p style={{ marginBottom: '15px' }}>Gestiona las paradas planificadas de tu jornada. Marca cada una como "Éxito" o "Fallido" según se complete el servicio.</p>
+              <p style={{ marginBottom: '15px', color: 'var(--text-muted)' }}>
+                Gestiona las paradas planificadas de tu jornada. Marca cada una como "Éxito" o "Fallido" según se complete el servicio.
+              </p>
+
+              {/* Barra de progreso de la jornada */}
+              {(() => {
+                const total = dateTickets.length;
+                if (total === 0) return null;
+                const completed = dateTickets.filter(t => t.status === 'success' || t.status === 'failed').length;
+                const pct = Math.round((completed / total) * 100);
+                const successCount = dateTickets.filter(t => t.status === 'success').length;
+                const failedCount = dateTickets.filter(t => t.status === 'failed').length;
+
+                return (
+                  <div style={{ marginBottom: '20px', background: 'rgba(255,255,255,0.02)', padding: '12px 15px', borderRadius: '10px', border: '1px solid var(--panel-border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-main)', flexWrap: 'wrap', gap: '6px' }}>
+                      <span>Avance de Ruta: {completed}/{total} Paradas ({pct}%)</span>
+                      <span style={{ color: 'var(--success)' }}>🟢 {successCount} Éxito | 🔴 {failedCount} Fallos</span>
+                    </div>
+                    <div className="progress-bar-container">
+                      <div className="progress-bar-fill" style={{ width: `${pct}%` }}></div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Botones de Filtrado Rápido */}
+              {dateTickets.length > 0 && (
+                <div className="filter-pills">
+                  <button 
+                    type="button" 
+                    onClick={() => setDriverFilter('all')} 
+                    className={`filter-pill ${driverFilter === 'all' ? 'active' : ''}`}
+                  >
+                    Todas ({dateTickets.length})
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setDriverFilter('pending')} 
+                    className={`filter-pill ${driverFilter === 'pending' ? 'active' : ''}`}
+                  >
+                    Pendientes ({dateTickets.filter(t => !t.status || t.status === 'pending').length})
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setDriverFilter('transit')} 
+                    className={`filter-pill ${driverFilter === 'transit' ? 'active' : ''}`}
+                  >
+                    En Ruta ({dateTickets.filter(t => t.status === 'transit').length})
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setDriverFilter('completed')} 
+                    className={`filter-pill ${driverFilter === 'completed' ? 'active' : ''}`}
+                  >
+                    Completadas ({dateTickets.filter(t => t.status === 'success' || t.status === 'failed').length})
+                  </button>
+                </div>
+              )}
+
               {dateTickets.length === 0 ? (
                 <div style={{ padding: '30px', color: 'var(--text-muted)', textAlign: 'center' }}>No hay paradas planificadas para este día.</div>
               ) : (
-                <div className="table-container">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Cliente / Contacto</th>
-                        <th>Dirección / Ruta</th>
-                        <th>Servicios a Realizar</th>
-                        <th>Estado del Servicio</th>
-                        <th style={{ textAlign: 'right' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dateTickets.map(t => {
+                (() => {
+                  const filteredTickets = dateTickets.filter(t => {
+                    if (driverFilter === 'pending') return !t.status || t.status === 'pending';
+                    if (driverFilter === 'transit') return t.status === 'transit';
+                    if (driverFilter === 'completed') return t.status === 'success' || t.status === 'failed';
+                    return true;
+                  });
+
+                  if (filteredTickets.length === 0) {
+                    return (
+                      <div style={{ padding: '40px', color: 'var(--text-muted)', textAlign: 'center', background: 'rgba(255,255,255,0.01)', borderRadius: '12px', border: '1px dashed var(--panel-border)' }}>
+                        No hay paradas en este filtro.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                      {filteredTickets.map((t) => {
                         const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
+                        const stopIndex = dateTickets.findIndex(ticket => ticket.id === t.id) + 1;
+                        
+                        let statusBadge = <span className="badge badge-warning" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>🟡 Pendiente</span>;
+                        if (t.status === 'success') {
+                          statusBadge = <span className="badge badge-success" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#10b981', color: '#fff' }}>🟢 Éxito</span>;
+                        } else if (t.status === 'failed') {
+                          statusBadge = <span className="badge badge-danger" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#ef4444', color: '#fff' }}>🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>;
+                        } else if (t.status === 'transit') {
+                          statusBadge = <span className="badge" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#38bdf8', color: '#0f172a' }}>🔵 En Camino</span>;
+                        }
+
                         return (
-                          <tr key={t.id}>
-                            <td style={{ fontWeight: '500' }}>
-                              <div>{t.customerName}</div>
-                              {t.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>📞 {t.phone}</div>}
-                              {t.notes && <div style={{ fontSize: '0.8rem', fontStyle: 'italic', color: 'var(--text-muted)', marginTop: '4px' }}>📝 {t.notes}</div>}
-                              {t.codAmount > 0 && (
-                                <div style={{
-                                  marginTop: '6px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  background: t.status === 'success' ? 'var(--success-light)' : t.status === 'failed' ? 'var(--danger-light)' : 'var(--warning-light)',
-                                  color: t.status === 'success' ? 'var(--success)' : t.status === 'failed' ? 'var(--danger)' : 'var(--warning)',
-                                  border: '1px solid ' + (t.status === 'success' ? 'rgba(16, 185, 129, 0.2)' : t.status === 'failed' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(234, 179, 8, 0.2)'),
-                                  padding: '4px 8px',
-                                  borderRadius: '6px',
-                                  fontSize: '0.8rem',
-                                  fontWeight: '600'
-                                }}>
-                                  💵 {t.status === 'success' ? 'Cobrado: ' : t.status === 'failed' ? 'No cobrado: ' : 'Cobrar: '} {t.codAmount.toFixed(2)} €
+                          <div 
+                            key={t.id} 
+                            className="driver-card" 
+                            style={{
+                              borderLeft: t.status === 'transit' ? '4px solid #38bdf8' : t.status === 'success' ? '4px solid #10b981' : t.status === 'failed' ? '4px solid #ef4444' : '1px solid var(--panel-border)',
+                              textAlign: 'left'
+                            }}
+                          >
+                            {/* Cabecera de la Tarjeta */}
+                            <div className="driver-card-header">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                                <div className="driver-card-index">#{stopIndex}</div>
+                                <div className="driver-card-title">{t.customerName}</div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {statusBadge}
+                                {!isClosed && (
+                                  <div style={{ display: 'flex', gap: '4px' }}>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => startEditing(t)} 
+                                      className="btn btn-secondary btn-small" 
+                                      style={{ margin: 0, padding: '4px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'auto' }}
+                                      title="Editar parada"
+                                    >
+                                      <Edit size={12} />
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        if (window.confirm('¿Estás seguro de que deseas eliminar permanentemente esta parada?')) {
+                                          handleDeleteTicket(t.id);
+                                          loadData();
+                                        }
+                                      }} 
+                                      className="btn btn-danger btn-small" 
+                                      style={{ margin: 0, padding: '4px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'auto' }}
+                                      title="Eliminar parada"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Contacto y Notas */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
+                              {t.phone && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
+                                  📞 <a href={`tel:${t.phone}`} style={{ color: 'var(--primary)', fontWeight: '600', textDecoration: 'none' }}>{t.phone}</a>
                                 </div>
                               )}
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              {t.notes && (
+                                <div style={{ 
+                                  fontStyle: 'italic', 
+                                  color: 'var(--text-muted)', 
+                                  padding: '6px 10px', 
+                                  background: 'rgba(255,255,255,0.02)', 
+                                  borderRadius: '6px', 
+                                  border: '1px solid var(--panel-border)',
+                                  marginTop: '4px',
+                                  fontSize: '0.8rem'
+                                }}>
+                                  📝 {t.notes}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Dirección con Botón de Navegación Gps */}
+                            <div style={{ 
+                              background: 'rgba(255,255,255,0.01)', 
+                              border: '1px solid var(--panel-border)', 
+                              borderRadius: '8px', 
+                              padding: '10px 12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '10px'
+                            }}>
+                              <div style={{ fontSize: '0.85rem', lineHeight: '1.3' }}>
                                 {t.postcode && (
-                                  <span className="badge badge-primary" style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.25)', border: '1px solid rgba(99, 102, 241, 0.5)', color: '#c7d2fe' }}>
+                                  <span className="badge" style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.7rem', 
+                                    marginRight: '6px',
+                                    background: 'rgba(99, 102, 241, 0.15)',
+                                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                                    color: '#a5b4fc',
+                                    borderRadius: '4px'
+                                  }}>
                                     CP {t.postcode}
                                   </span>
                                 )}
-                                <span>{t.address}</span>
-                                <a 
-                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  title="Abrir en GPS"
-                                  className="btn btn-secondary btn-small"
-                                  style={{ display: 'inline-flex', padding: '4px', margin: 0, width: 'auto', borderRadius: '50%' }}
-                                >
-                                  <MapPin size={14} color="var(--primary)" />
-                                </a>
+                                <strong>{t.address}</strong>
                               </div>
-                              {t.routeName && <div style={{ fontSize: '0.8rem', color: 'var(--primary)', marginTop: '4px' }}>📍 Ruta: {t.routeName}</div>}
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                              <a 
+                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="btn btn-secondary btn-small"
+                                style={{ display: 'inline-flex', padding: '10px', margin: 0, width: 'auto', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)' }}
+                                title="Iniciar GPS"
+                              >
+                                <MapPin size={16} color="var(--primary)" />
+                              </a>
+                            </div>
+
+                            {/* Cobro Contra Reembolso */}
+                            {t.codAmount > 0 && (
+                              <div style={{ alignSelf: 'flex-start' }}>
+                                <div className={`driver-card-cod ${t.status === 'success' ? 'success' : t.status === 'failed' ? 'failed' : ''}`}>
+                                  💵 {t.status === 'success' ? 'Cobrado: ' : t.status === 'failed' ? 'No cobrado: ' : 'Cobrar en Destino: '} 
+                                  <strong>{t.codAmount.toFixed(2)} €</strong>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tareas / Servicios */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '10px' }}>
+                              <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)' }}>Servicios:</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                 {t.tasks.map((task, idx) => (
-                                  <span key={idx} className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
+                                  <span key={idx} className="badge badge-primary" style={{ fontSize: '0.78rem', padding: '4px 8px' }}>
                                     {task.name} (x{task.quantity})
                                   </span>
                                 ))}
                               </div>
-                              {(() => {
-                                const tvRanges = [];
-                                t.tasks.forEach(task => {
-                                  ['49', '74', '115'].forEach(r => {
-                                    if (task.tariffId.endsWith(`_${r}`) && !tvRanges.includes(r)) {
-                                      tvRanges.push(r);
-                                    }
-                                  });
+                            </div>
+
+                            {/* Selector de Medida de TV en Destino basado en Segmented Control / Botones de Píldora */}
+                            {(() => {
+                              const tvRanges = [];
+                              t.tasks.forEach(task => {
+                                ['49', '74', '115'].forEach(r => {
+                                  if (task.tariffId.endsWith(`_${r}`) && !tvRanges.includes(r)) {
+                                    tvRanges.push(r);
+                                  }
                                 });
+                              });
 
-                                if (tvRanges.length === 0 || isClosed) return null;
+                              if (tvRanges.length === 0 || isClosed) return null;
 
-                                return (
-                                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {tvRanges.map(range => {
-                                      const rangeLabel = range === '49' ? '<= 49"' : range === '74' ? '50" a 74"' : '75" a 115"';
-                                      return (
-                                        <div key={range} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', flexWrap: 'wrap' }}>
-                                          <span style={{ color: 'var(--text-muted)', fontWeight: '600' }}>Pulgadas TV:</span>
-                                          <select 
-                                            value={range}
-                                            onChange={(e) => handleUpdateTicketTvSize(t.id, range, e.target.value)}
-                                            style={{
-                                              padding: '4px 8px',
-                                              borderRadius: '6px',
-                                              border: '1px solid var(--panel-border)',
-                                              background: 'rgba(255,255,255,0.05)',
-                                              color: 'var(--text)',
-                                              fontSize: '0.75rem',
-                                              cursor: 'pointer',
-                                              outline: 'none'
-                                            }}
+                              return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px dashed rgba(255, 255, 255, 0.05)', paddingTop: '10px', marginTop: '4px' }}>
+                                  {tvRanges.map(range => {
+                                    return (
+                                      <div key={range} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: '700' }}>
+                                          Ajustar tamaño de TV en Destino:
+                                        </span>
+                                        <div className="pill-selector">
+                                          <button 
+                                            type="button" 
+                                            className={`pill-option ${range === '49' ? 'active' : ''}`}
+                                            onClick={() => handleUpdateTicketTvSize(t.id, range, '49')}
                                           >
-                                            <option value="49">Hasta 49"</option>
-                                            <option value="74">50" a 74"</option>
-                                            <option value="115">75" a 115"</option>
-                                          </select>
+                                            Hasta 49"
+                                          </button>
+                                          <button 
+                                            type="button" 
+                                            className={`pill-option ${range === '74' ? 'active' : ''}`}
+                                            onClick={() => handleUpdateTicketTvSize(t.id, range, '74')}
+                                          >
+                                            50" a 74"
+                                          </button>
+                                          <button 
+                                            type="button" 
+                                            className={`pill-option ${range === '115' ? 'active' : ''}`}
+                                            onClick={() => handleUpdateTicketTvSize(t.id, range, '115')}
+                                          >
+                                            75" a 115"
+                                          </button>
                                         </div>
-                                      );
-                                    })}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+
+                            {/* Acciones del Chofer en la Tarjeta */}
+                            {!isClosed && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '12px', marginTop: '4px' }}>
+                                {(!t.status || t.status === 'pending') ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartTransit(t.id)}
+                                    style={{
+                                      padding: '12px',
+                                      borderRadius: '8px',
+                                      border: 'none',
+                                      background: 'linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)',
+                                      color: '#fff',
+                                      fontSize: '0.85rem',
+                                      fontWeight: '700',
+                                      cursor: 'pointer',
+                                      boxShadow: '0 4px 10px rgba(79, 70, 229, 0.25)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                      width: '100%'
+                                    }}
+                                  >
+                                    🚗 Iniciar Viaje a Parada
+                                  </button>
+                                ) : t.status === 'transit' ? (
+                                  <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateTicketStatus(t.id, 'success')}
+                                      style={{
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: '#10b981',
+                                        color: '#fff',
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        fontWeight: '700',
+                                        flex: 1,
+                                        boxShadow: '0 4px 10px rgba(16, 185, 129, 0.2)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '4px'
+                                      }}
+                                    >
+                                      🟢 Éxito
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setQuickFailTicketId(t.id)}
+                                      style={{
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: '#ef4444',
+                                        color: '#fff',
+                                        fontSize: '0.85rem',
+                                        cursor: 'pointer',
+                                        fontWeight: '700',
+                                        flex: 1,
+                                        boxShadow: '0 4px 10px rgba(239, 68, 68, 0.2)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: '4px'
+                                      }}
+                                    >
+                                      🔴 Fallido
+                                    </button>
                                   </div>
-                                );
-                              })()}
-                            </td>
-                            <td>
-                              {isClosed ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  {t.status === 'success' || !t.status ? (
-                                    <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>🟢 Éxito</span>
-                                  ) : t.status === 'failed' ? (
-                                    <span className="badge badge-danger" style={{ fontSize: '0.75rem' }} title={t.failureReason}>🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>
-                                  ) : t.status === 'transit' ? (
-                                    <span className="badge badge-primary" style={{ fontSize: '0.75rem', background: '#0284c7', color: '#fff' }}>🔵 En Camino</span>
-                                  ) : (
-                                    <span className="badge badge-warning" style={{ fontSize: '0.75rem' }}>🟡 Pendiente</span>
-                                  )}
-                                </div>
-                              ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                  {(!t.status || t.status === 'pending') ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleStartTransit(t.id)}
-                                        style={{
-                                          padding: '7px 10px',
-                                          borderRadius: '6px',
-                                          border: 'none',
-                                          background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-                                          color: '#fff',
-                                          fontSize: '0.75rem',
-                                          fontWeight: '700',
-                                          cursor: 'pointer',
-                                          boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          gap: '4px',
-                                          transition: 'all 0.2s ease',
-                                        }}
-                                      >
-                                        🚗 Iniciar Viaje
-                                      </button>
-                                      <div style={{ display: 'flex', gap: '5px', marginTop: '2px' }}>
-                                        <button
-                                          type="button"
-                                          className="btn-link"
-                                          onClick={() => handleUpdateTicketStatus(t.id, 'success')}
-                                          style={{ padding: '2px 4px', border: '1px solid rgba(74, 222, 128, 0.2)', background: 'transparent', color: 'var(--text-muted)', fontSize: '0.65rem', borderRadius: '4px', cursor: 'pointer' }}
-                                        >
-                                          Éxito Directo
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="btn-link"
-                                          onClick={() => handleUpdateTicketStatus(t.id, 'failed')}
-                                          style={{ padding: '2px 4px', border: '1px solid rgba(248, 113, 113, 0.2)', background: 'transparent', color: 'var(--text-muted)', fontSize: '0.65rem', borderRadius: '4px', cursor: 'pointer' }}
-                                        >
-                                          Fallido Directo
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : t.status === 'transit' ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                      <div style={{ fontSize: '0.7rem', color: '#38bdf8', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                                        <span className="gps-pulse-dot" style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#38bdf8', boxShadow: '0 0 6px #38bdf8', animation: 'gpsPulse 1.5s infinite ease-in-out' }}></span>
-                                        En camino al cliente...
-                                      </div>
-                                      <div style={{ display: 'flex', gap: '4px' }}>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleUpdateTicketStatus(t.id, 'success')}
-                                          style={{
-                                            padding: '5px 8px',
-                                            borderRadius: '6px',
-                                            border: 'none',
-                                            background: '#10b981',
-                                            color: '#fff',
-                                            fontSize: '0.7rem',
-                                            cursor: 'pointer',
-                                            fontWeight: '700',
-                                          }}
-                                        >
-                                          🟢 Éxito
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleUpdateTicketStatus(t.id, 'failed')}
-                                          style={{
-                                            padding: '5px 8px',
-                                            borderRadius: '6px',
-                                            border: 'none',
-                                            background: '#ef4444',
-                                            color: '#fff',
-                                            fontSize: '0.7rem',
-                                            cursor: 'pointer',
-                                            fontWeight: '700',
-                                          }}
-                                        >
-                                          🔴 Fallido
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleUpdateTicketStatus(t.id, 'pending')}
-                                          style={{
-                                            padding: '5px 8px',
-                                            borderRadius: '6px',
-                                            border: '1px solid var(--panel-border)',
-                                            background: 'rgba(255,255,255,0.05)',
-                                            color: 'var(--text-muted)',
-                                            fontSize: '0.7rem',
-                                            cursor: 'pointer',
-                                          }}
-                                          title="Cancelar viaje y volver a pendiente"
-                                        >
-                                          ⚪ Cancelar
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                      <div style={{ display: 'flex', gap: '5px' }}>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleUpdateTicketStatus(t.id, 'success')}
-                                          style={{
-                                            padding: '5px 8px',
-                                            borderRadius: '6px',
-                                            border: '1px solid ' + (t.status === 'success' ? 'var(--success)' : 'rgba(74, 222, 128, 0.2)'),
-                                            background: t.status === 'success' ? 'rgba(74, 222, 128, 0.2)' : 'transparent',
-                                            color: t.status === 'success' ? '#4ade80' : 'var(--text-muted)',
-                                            fontSize: '0.75rem',
-                                            cursor: 'pointer',
-                                            fontWeight: '600',
-                                          }}
-                                        >
-                                          Éxito
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleUpdateTicketStatus(t.id, 'failed')}
-                                          style={{
-                                            padding: '5px 8px',
-                                            borderRadius: '6px',
-                                            border: '1px solid ' + (t.status === 'failed' ? 'var(--danger)' : 'rgba(248, 113, 113, 0.2)'),
-                                            background: t.status === 'failed' ? 'rgba(248, 113, 113, 0.2)' : 'transparent',
-                                            color: t.status === 'failed' ? '#f87171' : 'var(--text-muted)',
-                                            fontSize: '0.75rem',
-                                            cursor: 'pointer',
-                                            fontWeight: '600',
-                                          }}
-                                        >
-                                          Fallido
-                                        </button>
-                                      </div>
-                                      {t.status === 'success' && (
-                                        <span style={{ fontSize: '0.7rem', color: '#4ade80', fontWeight: '500' }}>🟢 Completado con éxito</span>
-                                      )}
-                                      {t.status === 'failed' && (
-                                        <span style={{ fontSize: '0.7rem', color: '#f87171', fontWeight: '500' }}>🔴 Intento fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              {isClosed ? (
-                                <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>🔒 Turno Cerrado</span>
-                              ) : (
-                                <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end' }}>
-                                  <button type="button" onClick={() => startEditing(t)} className="btn btn-secondary btn-small" title="Editar registro">
-                                    <Edit size={14} />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateTicketStatus(t.id, 'pending')}
+                                    className="btn btn-secondary btn-small"
+                                    style={{
+                                      alignSelf: 'flex-start',
+                                      fontSize: '0.75rem',
+                                      padding: '6px 12px',
+                                      margin: 0
+                                    }}
+                                  >
+                                    🔄 Reabrir / Pendiente
                                   </button>
-                                  <button type="button" onClick={() => handleDeleteTicket(t.id)} className="btn btn-danger btn-small" title="Eliminar registro">
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
+                                )}
+
+                                {/* Atajos Directos si está pendiente para marcar de un click */}
+                                {(!t.status || t.status === 'pending') && (
+                                  <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateTicketStatus(t.id, 'success')}
+                                      style={{
+                                        padding: '6px 8px',
+                                        border: '1px solid rgba(74, 222, 128, 0.15)',
+                                        background: 'rgba(74, 222, 128, 0.03)',
+                                        color: '#4ade80',
+                                        fontSize: '0.72rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        flex: 1,
+                                        fontWeight: '600'
+                                      }}
+                                    >
+                                      Éxito Rápido
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setQuickFailTicketId(t.id)}
+                                      style={{
+                                        padding: '6px 8px',
+                                        border: '1px solid rgba(248, 113, 113, 0.15)',
+                                        background: 'rgba(248, 113, 113, 0.03)',
+                                        color: '#f87171',
+                                        fontSize: '0.72rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        flex: 1,
+                                        fontWeight: '600'
+                                      }}
+                                    >
+                                      Fallido Rápido
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
+                    </div>
+                  );
+                })()
               )}
             </div>
           </div>
         )}
 
         {activeTab === 'search' && renderSearchSection()}
+
+        {/* Modal de Presintonías de Motivo de Fallo Rápido */}
+        {quickFailTicketId !== null && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '20px'
+          }}>
+            <div className="glass-panel" style={{
+              width: '100%',
+              maxWidth: '360px',
+              padding: '25px',
+              textAlign: 'center',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+              border: '1px solid var(--panel-border)'
+            }}>
+              <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', color: 'var(--danger)' }}>
+                🔴 Registrar Motivo de Fallo
+              </h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                Selecciona una de las opciones rápidas para liquidar la parada:
+              </p>
+
+              <div className="quick-fail-grid">
+                <button 
+                  type="button" 
+                  className="quick-fail-btn"
+                  onClick={() => {
+                    handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Ausente');
+                    setQuickFailTicketId(null);
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem' }}>👤</span>
+                  Ausente
+                </button>
+                <button 
+                  type="button" 
+                  className="quick-fail-btn"
+                  onClick={() => {
+                    handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Rechazado');
+                    setQuickFailTicketId(null);
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem' }}>❌</span>
+                  Rechazado
+                </button>
+                <button 
+                  type="button" 
+                  className="quick-fail-btn"
+                  onClick={() => {
+                    handleUpdateTicketStatus(quickFailTicketId, 'failed', 'No responde');
+                    setQuickFailTicketId(null);
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem' }}>📞</span>
+                  No responde
+                </button>
+                <button 
+                  type="button" 
+                  className="quick-fail-btn"
+                  onClick={() => {
+                    handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Dirección Incorrecta');
+                    setQuickFailTicketId(null);
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem' }}>📍</span>
+                  Dir. Incorrecta
+                </button>
+              </div>
+
+              <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const customReason = window.prompt('Escribe el motivo del fallo:');
+                    if (customReason !== null) {
+                      handleUpdateTicketStatus(quickFailTicketId, 'failed', customReason || 'Otro motivo');
+                      setQuickFailTicketId(null);
+                    }
+                  }}
+                  className="btn btn-secondary btn-small"
+                  style={{ width: '100%', marginBottom: '10px' }}
+                >
+                  ✏️ Otro Motivo (Escribir)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickFailTicketId(null)}
+                  className="btn btn-link btn-small"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
