@@ -811,7 +811,19 @@ function App() {
         }
       });
       if (response.ok) {
-        const data = await response.json();
+        let data = await response.json();
+
+        if (!data || data.length === 0) {
+          const strippedQuery = searchQuery.replace(/^\s*(carrer\s+(de\s+|d')?|calle\s+(de\s+)?|avinguda\s+(de\s+|d')?|avenida\s+(de\s+)?|paseo\s+(de\s+)?|passeig\s+(de\s+|d')?|plaza\s+(de\s+)?|plaça\s+(de\s+|d')?|ronda\s+(de\s+)?|via\s+|vía\s+)/i, '').trim();
+          if (strippedQuery && strippedQuery !== searchQuery) {
+            const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(strippedQuery)}`;
+            const fallbackRes = await fetch(fallbackUrl, { headers: { 'Accept': 'application/json' } });
+            if (fallbackRes.ok) {
+              data = await fallbackRes.json();
+            }
+          }
+        }
+
         setSuggestions(data || []);
       }
     } catch (err) {
