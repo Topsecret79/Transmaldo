@@ -254,6 +254,7 @@ function App() {
   const [lastVerifiedAddress, setLastVerifiedAddress] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const debounceTimerRef = useRef(null);
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -852,6 +853,63 @@ function App() {
     setLastVerifiedAddress(sug.display_name);
     setSuggestions([]);
     setSpellingSuggestion(null);
+  };
+
+  // Iniciar la búsqueda de dirección por dictado de voz (Web Speech API)
+  const handleStartVoiceSearch = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      triggerAlert('La búsqueda por voz no es compatible con tu navegador actual. Usa Chrome o Safari.', 'error');
+      return;
+    }
+
+    if (isListening) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-ES';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      triggerAlert('🎙️ Micrófono activado. Por favor, dicta la dirección...', 'info');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      if (transcript && transcript.trim()) {
+        setAddress(transcript);
+        setAddressVerification({ status: 'idle', message: '' });
+        
+        // Verificar errores de ortografía en el texto dictado
+        const correction = checkStreetSpelling(transcript);
+        setSpellingSuggestion(correction);
+        
+        // Buscar sugerencias de mapas para el texto dictado
+        fetchAddressSuggestions(transcript);
+        triggerAlert('🎙️ Dirección capturada con éxito');
+      }
+    };
+
+    recognition.onerror = (e) => {
+      console.error("Speech recognition error:", e);
+      if (e.error === 'not-allowed') {
+        triggerAlert('Permiso de micrófono denegado. Habilita el acceso en tu navegador.', 'error');
+      } else {
+        triggerAlert('No se pudo entender la dirección. Intenta hablar más claro.', 'warning');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to start SpeechRecognition:", err);
+      setIsListening(false);
+    }
   };
 
   // Verificar validez de la dirección por geocodificación
