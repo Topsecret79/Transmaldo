@@ -833,7 +833,7 @@ tr:hover td {
 /* ================= DISPOSITIVOS MÓVILES (Optimización de Tamaños) ================= */
 @media (max-width: 768px) {
   html {
-    font-size: 12.5px !important; /* Scales down all REM-based elements */
+    font-size: 14.5px !important; /* Scales up REM-based elements on mobile */
   }
 
   #root {
@@ -850,41 +850,41 @@ tr:hover td {
   }
 
   .login-title {
-    font-size: 1.5rem !important;
+    font-size: 1.6rem !important;
   }
   
   h1 {
-    font-size: 1.45rem !important;
+    font-size: 1.55rem !important;
     margin-bottom: 10px;
   }
   
   h2 {
-    font-size: 1.15rem !important;
+    font-size: 1.3rem !important;
     margin-bottom: 8px;
   }
   
   h3 {
-    font-size: 1.0rem !important;
+    font-size: 1.15rem !important;
     margin-bottom: 6px;
   }
 
   p {
-    font-size: 0.82rem;
+    font-size: 0.9rem;
   }
 
   .form-input {
     padding: 8px 10px;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
   
   .btn {
     padding: 10px 14px;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
 
   .btn-small {
     padding: 4px 8px;
-    font-size: 0.72rem;
+    font-size: 0.82rem;
   }
 
   .task-item-row {
@@ -892,7 +892,7 @@ tr:hover td {
   }
 
   .task-item-label {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
   }
 
   .qty-counter {
@@ -901,9 +901,9 @@ tr:hover td {
   }
 
   .qty-btn {
-    width: 18px;
-    height: 18px;
-    font-size: 0.85rem;
+    width: 20px;
+    height: 20px;
+    font-size: 0.9rem;
   }
 
   th, td {
