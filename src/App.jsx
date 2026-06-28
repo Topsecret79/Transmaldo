@@ -176,37 +176,46 @@ function getJaroWinklerSimilarity(s1, s2) {
   return jaro + prefix * 0.1 * (1.0 - jaro);
 }
 
-// Analizar la dirección en busca de erratas ortográficas de calles de Barcelona
-function checkStreetSpelling(addressText) {
-  if (!addressText || addressText.length < 4) return null;
+// Analizar la dirección en busca de erratas ortográficas y devolver sugerencias de calles similares
+function getStreetSpellingSuggestions(addressText) {
+  if (!addressText || addressText.length < 4) return [];
   
   const words = addressText.split(/\s+/).map(w => w.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '').trim()).filter(w => w.length >= 4);
   const ignoreWords = ['carrer', 'calle', 'avenida', 'paseo', 'pass', 'passatge', 'avinguda', 'ronda', 'de', 'del', 'la', 'les', 'els', 'dels', 'en', 'es', 'el'];
   
+  const suggestions = [];
+  
   for (const word of words) {
     if (ignoreWords.includes(word.toLowerCase())) continue;
-    
-    let bestMatch = null;
-    let maxSim = 0;
     
     for (const street of BARCELONA_STREETS) {
       const streetWords = street.split(/\s+/).map(w => w.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ]/g, '').trim()).filter(w => w.length >= 4 && !ignoreWords.includes(w.toLowerCase()));
       
       for (const sw of streetWords) {
         const sim = getJaroWinklerSimilarity(word, sw);
-        // Similitud alta pero no idéntica
-        if (sim > 0.82 && sim < 0.98 && sim > maxSim) {
-          maxSim = sim;
-          bestMatch = { misspelled: word, corrected: sw, fullStreet: street };
+        if (sim > 0.80 && sim < 0.99) {
+          suggestions.push({
+            misspelled: word,
+            corrected: sw,
+            fullStreet: street,
+            similarity: sim
+          });
         }
       }
     }
-    
-    if (bestMatch) {
-      return bestMatch;
+  }
+
+  const sorted = suggestions.sort((a, b) => b.similarity - a.similarity);
+  const uniqueStreets = [];
+  const seen = new Set();
+  for (const item of sorted) {
+    if (!seen.has(item.fullStreet)) {
+      seen.add(item.fullStreet);
+      uniqueStreets.push(item);
     }
   }
-  return null;
+  
+  return uniqueStreets.slice(0, 3);
 }
 
 function App() {
@@ -295,7 +304,7 @@ function App() {
   const [searchCountryCode, setSearchCountryCode] = useState(localStorage.getItem('search_country_code') || 'es');
   const [searchCityBias, setSearchCityBias] = useState(localStorage.getItem('search_city_bias') || 'Barcelona');
   const [searchStrictCity, setSearchStrictCity] = useState(localStorage.getItem('search_strict_city') !== 'false');
-  const [spellingSuggestion, setSpellingSuggestion] = useState(null);
+  const [spellingSuggestions, setSpellingSuggestions] = useState([]);
 
   // Derived state for role-based data partitioning (independent invoicing per administrator)
   const activeRepartidores = users.filter(u => {
@@ -882,8 +891,8 @@ function App() {
         setAddressVerification({ status: 'idle', message: '' });
         
         // Verificar errores de ortografía en el texto dictado
-        const correction = checkStreetSpelling(transcript);
-        setSpellingSuggestion(correction);
+        const corrections = getStreetSpellingSuggestions(transcript);
+        setSpellingSuggestions(corrections);
         
         // Buscar sugerencias de mapas para el texto dictado
         fetchAddressSuggestions(transcript);
@@ -1086,7 +1095,7 @@ function App() {
       setNotes('');
       setCodAmount('');
       setTicketDate(new Date().toISOString().split('T')[0]);
-      setSpellingSuggestion(null);
+      setSpellingSuggestions([]);
       loadData();
     }
   };
@@ -1337,7 +1346,7 @@ function App() {
     setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
     setTicketDate(new Date().toISOString().split('T')[0]);
-    setSpellingSuggestion(null);
+    setSpellingSuggestions([]);
     setActiveTab(isAdminOrSuper ? 'tickets' : 'history');
   };
 
@@ -1957,8 +1966,8 @@ function App() {
                   setAddressVerification({ status: 'idle', message: '' });
                   
                   // Verificar errores de ortografía de calles de Barcelona
-                  const correction = checkStreetSpelling(val);
-                  setSpellingSuggestion(correction);
+                  const corrections = getStreetSpellingSuggestions(val);
+                  setSpellingSuggestions(corrections);
                   
                   // Limpiar timer de autocompletado
                   if (debounceTimerRef.current) {
@@ -2002,44 +2011,52 @@ function App() {
                 }}
               />
 
-              {spellingSuggestion && (
+              {spellingSuggestions.length > 0 && (
                 <div style={{
-                  background: 'rgba(79, 70, 229, 0.15)',
-                  border: '1px solid rgba(79, 70, 229, 0.4)',
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  marginTop: '6px',
-                  fontSize: '0.8rem',
+                  background: 'rgba(79, 70, 229, 0.12)',
+                  border: '1px solid rgba(79, 70, 229, 0.35)',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  marginTop: '8px',
+                  fontSize: '0.82rem',
                   color: '#e2e8f0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
                   textAlign: 'left'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>💡 ¿Quisiste decir: <strong>{spellingSuggestion.fullStreet}</strong>?</span>
+                  <div style={{ fontWeight: '600', marginBottom: '6px', color: '#c7d2fe', fontSize: '0.85rem' }}>
+                    💡 ¿Quisiste decir alguna de estas calles?
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const correctedAddress = address.replace(new RegExp(spellingSuggestion.misspelled, 'gi'), spellingSuggestion.corrected);
-                      setAddress(correctedAddress);
-                      setSpellingSuggestion(null);
-                      fetchAddressSuggestions(correctedAddress);
-                    }}
-                    className="btn btn-primary"
-                    style={{
-                      margin: 0,
-                      padding: '4px 10px',
-                      fontSize: '0.75rem',
-                      width: 'auto',
-                      height: 'auto',
-                      fontWeight: '600'
-                    }}
-                  >
-                    Corregir
-                  </button>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px' }}>
+                    {spellingSuggestions.map((sug, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          const correctedAddress = address.replace(new RegExp(sug.misspelled, 'gi'), sug.corrected);
+                          setAddress(correctedAddress);
+                          setSpellingSuggestions([]);
+                          fetchAddressSuggestions(correctedAddress);
+                        }}
+                        className="btn btn-secondary"
+                        style={{
+                          margin: 0,
+                          padding: '4px 10px',
+                          fontSize: '0.75rem',
+                          borderRadius: '16px',
+                          width: 'auto',
+                          height: 'auto',
+                          background: 'rgba(99, 102, 241, 0.2)',
+                          border: '1px solid rgba(99, 102, 241, 0.4)',
+                          color: '#fff',
+                          fontWeight: '500',
+                          cursor: 'pointer'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.4)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)'}
+                      >
+                        {sug.fullStreet}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               
