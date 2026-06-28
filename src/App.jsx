@@ -773,7 +773,7 @@ function App() {
       inches: parseInt(tempTvInches),
       action: tempTvAction,
       pmType: tempTvAction === 'solo_pm' ? 'basic' : 'none',
-      cuelgue: false,
+      cuelgue: tempTvAction === 'solo_cuelgue' ? true : false,
       recogidaViejaType: 'none'
     };
     setFormTvs([...formTvs, newTv]);
@@ -1016,11 +1016,15 @@ function App() {
     // Agrupar todas las tareas y calcular tarifas locales
     const tasksArray = [];
 
-    // Validar que si la acción es "solo_pm", se haya seleccionado un tipo de PM
+    // Validar que si la acción es "solo_pm" o "solo_cuelgue", se hayan seleccionado los servicios correspondientes
     let hasValidationError = false;
     formTvs.forEach(tv => {
       if (tv.action === 'solo_pm' && tv.pmType === 'none') {
         triggerAlert('Para un servicio de "Solo PM", debes seleccionar el tipo de Puesta en Marcha (Básica o Compleja)', 'error');
+        hasValidationError = true;
+      }
+      if (tv.action === 'solo_cuelgue' && !tv.cuelgue) {
+        triggerAlert('Para un servicio de "Solo Cuelgue", debes marcar la opción de Cuelgue en Pared', 'error');
         hasValidationError = true;
       }
     });
@@ -1031,7 +1035,7 @@ function App() {
       const range = getTVRange(tv.inches);
       
       // Artículo principal TV
-      if (tv.action !== 'solo_pm') {
+      if (tv.action !== 'solo_pm' && tv.action !== 'solo_cuelgue') {
         const mainTariffId = tv.action === 'combinado' ? `TV_COMB_${range}` : `TV_ENT_${range}`;
         tasksArray.push({
           tariffId: mainTariffId,
@@ -1385,6 +1389,29 @@ function App() {
         action: 'solo_pm',
         pmType,
         cuelgue,
+        recogidaViejaType
+      });
+    }
+
+    while (cuelgueIndex < cuelgueTasks.length) {
+      const cuelgueMatch = cuelgueTasks[cuelgueIndex++];
+      let range = '49';
+      if (cuelgueMatch.tariffId.includes('74')) range = '74';
+      if (cuelgueMatch.tariffId.includes('115')) range = '115';
+      const inches = range === '49' ? 43 : range === '74' ? 55 : 75;
+
+      let recogidaViejaType = 'none';
+      if (viejaIndex < viejaTasks.length) {
+        const viejaMatch = viejaTasks[viejaIndex++];
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+      }
+
+      tempTvs.push({
+        id: 'tv_cuelgue_' + cuelgueIndex + Date.now().toString(),
+        inches,
+        action: 'solo_cuelgue',
+        pmType: 'none',
+        cuelgue: true,
         recogidaViejaType
       });
     }
@@ -2295,6 +2322,7 @@ function App() {
                 <option value="recogida">Recogida</option>
                 <option value="combinado">Entrega + Recogida</option>
                 <option value="solo_pm">Solo Puesta en Marcha (PM)</option>
+                <option value="solo_cuelgue">Solo Cuelgue</option>
               </select>
             </div>
             <button type="button" onClick={addTvToForm} className="btn btn-primary" style={{ width: 'auto', height: '45px' }} disabled={isClosed}>
@@ -2306,7 +2334,7 @@ function App() {
           {formTvs.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               {formTvs.map((tv, idx) => {
-                const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : 'Entrega + Recogida';
+                const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : tv.action === 'solo_cuelgue' ? 'Solo Cuelgue' : 'Entrega + Recogida';
                 return (
                   <div key={tv.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--panel-border)', borderRadius: '10px', padding: '15px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed var(--panel-border)', paddingBottom: '8px', marginBottom: '12px' }}>
@@ -3161,6 +3189,29 @@ function App() {
                                   action: 'solo_pm',
                                   pmType,
                                   cuelgue,
+                                  recogidaViejaType
+                                });
+                              }
+
+                              while (cuelgueIndex < cuelgueTasks.length) {
+                                const cuelgueMatch = cuelgueTasks[cuelgueIndex++];
+                                let range = '49';
+                                if (cuelgueMatch.tariffId.includes('74')) range = '74';
+                                if (cuelgueMatch.tariffId.includes('115')) range = '115';
+                                const inches = range === '49' ? 43 : range === '74' ? 55 : 75;
+                                
+                                let recogidaViejaType = 'none';
+                                if (viejaIndex < viejaTasks.length) {
+                                  const viejaMatch = viejaTasks[viejaIndex++];
+                                  recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+                                }
+                                
+                                tempTvs.push({
+                                  id: 'tv_cuelgue_' + cuelgueIndex + Date.now().toString(),
+                                  inches: range,
+                                  action: 'solo_cuelgue',
+                                  pmType: 'none',
+                                  cuelgue: true,
                                   recogidaViejaType
                                 });
                               }
