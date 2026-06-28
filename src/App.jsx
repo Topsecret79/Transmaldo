@@ -116,7 +116,7 @@ const BARCELONA_STREETS = [
   'Carrer de Pallars', 'Carrer de Pere IV', 'Avinguda de la Catedral', 'Via Júlia', 
   'Carrer de Cartellà', 'Passeig de Fabra i Puig', 'Carrer de Pi i Margall', 
   'Carrer de Roger de Llúria', 'Carrer de Pau Claris', 'Carrer del Bruc', 
-  'Carrer de Bailèn', 'Carrer de Nàpols', 'Carrer de Sicília',  'Carrer del Rosselló', 'Carrer de Còrsega', 'Ramon Llull', 'Jacint Verdaguer', 'Francesc Macià', 'Prat de la Riba'
+  'Carrer de Bailèn', 'Carrer de Nàpols', 'Carrer de Sicília',  'Carrer del Rosselló', 'Carrer de Còrsega', 'Ramon Llull', 'Jacint Verdaguer', 'Francesc Macià', 'Prat de la Riba', 'Joaquim Sorolla', 'Joan de Borbó', 'Josep Tarradellas', 'Carles III', 'Pere IV', 'Sant Antoni', 'Enric Granados', 'Jordi Girona', 'Esteve Terradas'
 ];
 
 // Algoritmo Jaro-Winkler para calcular similitud de cadenas de texto
