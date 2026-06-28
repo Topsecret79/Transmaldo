@@ -493,7 +493,14 @@ export async function geocodeAddress(addressText) {
     const strictCity = localStorage.getItem('search_strict_city') !== 'false';
 
     let searchQuery = addressText.trim();
-    if (strictCity && cityBias && !searchQuery.toLowerCase().includes(cityBias.toLowerCase())) {
+    const hasComma = searchQuery.includes(',');
+    const hasPostalCode = /\b\d{5}\b/.test(searchQuery);
+    const commonCities = ['sabadell', 'terrassa', 'badalona', 'hospitalet', 'mataro', 'cornella', 'sant cugat', 'girona', 'tarragona', 'lleida', 'vic', 'manresa', 'sitges', 'castelldefels', 'viladecans', 'prat', 'rubi', 'granollers', 'mollet', 'figueres', 'reus', 'santiago', 'sevilla', 'bilbao', 'madrid', 'valencia', 'zaragoza', 'malaga', 'murcia', 'palma', 'las palmas', 'alicante', 'cordoba', 'valladolid', 'vigo', 'gijon'];
+    const hasCommonCity = commonCities.some(city => searchQuery.toLowerCase().includes(city));
+
+    const shouldAppendCity = strictCity && cityBias && !hasComma && !hasPostalCode && !hasCommonCity && !searchQuery.toLowerCase().includes(cityBias.toLowerCase());
+
+    if (shouldAppendCity) {
       searchQuery += `, ${cityBias}`;
     }
 
