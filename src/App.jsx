@@ -130,7 +130,9 @@ import {
   geocodeAddress,
   saveDriverLocation,
   getDriverLocations,
-  toggleUserSearchPermission
+  toggleUserSearchPermission,
+  onDataSync,
+  reinitSupabase
 } from './db';
 
 initDB();
@@ -435,6 +437,10 @@ function App() {
       setCurrentUser(parsed);
       setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
     }
+
+    onDataSync(() => {
+      loadData();
+    });
   }, []);
 
   useEffect(() => {
@@ -5502,6 +5508,74 @@ function App() {
                   </button>
                 </div>
               </div>
+            </div>
+            
+            {/* Conexión a Supabase */}
+            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px' }}>
+              <div className="block-title">☁️ Conexión de Base de Datos Cloud (Supabase)</div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Conecta tu aplicación a la nube para sincronizar tus furgonetas, rutas y paradas en tiempo real. 
+                Si está configurado, la aplicación sincronizará automáticamente; de lo contrario, funcionará de manera local offline.
+              </p>
+              
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const urlInput = e.target.elements.supabase_url.value.trim();
+                const keyInput = e.target.elements.supabase_key.value.trim();
+                
+                localStorage.setItem('supabase_url', urlInput);
+                localStorage.setItem('supabase_key', keyInput);
+                
+                reinitSupabase();
+                loadData();
+                triggerAlert('Ajustes de base de datos guardados y sincronizados', 'success');
+              }} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Supabase URL</span>
+                    <input 
+                      type="text" 
+                      name="supabase_url"
+                      className="form-input" 
+                      placeholder="https://xxxxxx.supabase.co" 
+                      defaultValue={localStorage.getItem('supabase_url') || ''} 
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Supabase Anon Key</span>
+                    <input 
+                      type="password" 
+                      name="supabase_key"
+                      className="form-input" 
+                      placeholder="Clave API pública anon" 
+                      defaultValue={localStorage.getItem('supabase_key') || ''} 
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button type="submit" className="btn btn-primary" style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}>
+                    Conectar y Sincronizar
+                  </button>
+                  {(localStorage.getItem('supabase_url') || localStorage.getItem('supabase_key')) && (
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      onClick={() => {
+                        if (window.confirm('¿Seguro que quieres desconectarte de la nube y volver al modo 100% local?')) {
+                          localStorage.removeItem('supabase_url');
+                          localStorage.removeItem('supabase_key');
+                          reinitSupabase();
+                          loadData();
+                          triggerAlert('Desconectado de la nube. Modo local activado.', 'warning');
+                        }
+                      }}
+                      style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}
+                    >
+                      Desconectar / Usar Local
+                    </button>
+                  )}
+                </div>
+              </form>
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>

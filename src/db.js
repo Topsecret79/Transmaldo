@@ -1,4 +1,204 @@
 // db.js - Gestión de base de datos local y lógica de negocio en localStorage
+import { createClient } from '@supabase/supabase-js';
+
+let supabase = null;
+const storedUrl = localStorage.getItem('supabase_url');
+const storedKey = localStorage.getItem('supabase_key');
+
+if (storedUrl && storedKey) {
+  try {
+    supabase = createClient(storedUrl, storedKey);
+  } catch (e) {
+    console.error("Error initializing Supabase client:", e);
+  }
+}
+
+export function getSupabaseClient() {
+  return supabase;
+}
+
+export function reinitSupabase() {
+  const url = localStorage.getItem('supabase_url');
+  const key = localStorage.getItem('supabase_key');
+  if (url && key) {
+    try {
+      supabase = createClient(url, key);
+      initializeSupabaseTables();
+      syncFromCloud();
+    } catch (e) {
+      console.error("Error re-initializing Supabase client:", e);
+      supabase = null;
+    }
+  } else {
+    supabase = null;
+  }
+}
+
+let onDataSyncCallback = null;
+
+export function onDataSync(callback) {
+  onDataSyncCallback = callback;
+}
+
+function notifySync() {
+  if (onDataSyncCallback) {
+    onDataSyncCallback();
+  }
+}
+
+export async function initializeSupabaseTables() {
+  if (!supabase) return;
+  try {
+    // 1. Check if users are empty in cloud, if so seed from local
+    const { data: cloudUsers } = await supabase.from('delivery_users').select('id');
+    if (!cloudUsers || cloudUsers.length === 0) {
+      const localUsers = JSON.parse(localStorage.getItem('delivery_users')) || [];
+      if (localUsers.length > 0) {
+        await supabase.from('delivery_users').insert(localUsers.map(u => ({
+          id: u.id,
+          username: u.username,
+          password: u.password,
+          label: u.label,
+          role: u.role,
+          can_search: u.canSearch || false
+        })));
+      }
+    }
+
+    // 2. Check if tariffs are empty, seed from local
+    const { data: cloudTariffs } = await supabase.from('delivery_tariffs').select('id');
+    if (!cloudTariffs || cloudTariffs.length === 0) {
+      const localTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+      if (localTariffs.length > 0) {
+        await supabase.from('delivery_tariffs').insert(localTariffs);
+      }
+    }
+
+    // 3. Check if tickets are empty, seed from local
+    const { data: cloudTickets } = await supabase.from('delivery_tickets').select('id');
+    if (!cloudTickets || cloudTickets.length === 0) {
+      const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+      if (localTickets.length > 0) {
+        const formatted = localTickets.map(t => ({
+          id: t.id,
+          date: t.date,
+          furgo_id: t.furgoId,
+          furgo_label: t.furgoLabel,
+          route_name: t.routeName,
+          customer_name: t.customerName,
+          phone: t.phone,
+          address: t.address,
+          postcode: t.postcode,
+          notes: t.notes,
+          cod_amount: t.codAmount,
+          tasks: t.tasks,
+          total_price: t.totalPrice,
+          status: t.status,
+          failure_reason: t.failureReason || '',
+          lat: t.lat,
+          lng: t.lng,
+          completed_lat: t.completedLat,
+          completed_lng: t.completedLng,
+          route_order: t.routeOrder,
+          created_at: t.createdAt
+        }));
+        await supabase.from('delivery_tickets').insert(formatted);
+      }
+    }
+
+    // 4. Check if shifts are empty, seed from local
+    const { data: cloudShifts } = await supabase.from('delivery_shifts').select('id');
+    if (!cloudShifts || cloudShifts.length === 0) {
+      const localShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+      if (localShifts.length > 0) {
+        await supabase.from('delivery_shifts').insert(localShifts);
+      }
+    }
+
+    // 5. Seed settings
+    const { data: cloudSettings } = await supabase.from('delivery_settings').select('key');
+    if (!cloudSettings || cloudSettings.length === 0) {
+      const mPrice = parseFloat(localStorage.getItem('delivery_module_price')) || 3.81;
+      const appName = localStorage.getItem('delivery_app_name') || 'LogiEarn';
+      await supabase.from('delivery_settings').insert([
+        { key: 'module_price', value: mPrice.toString() },
+        { key: 'app_name', value: appName }
+      ]);
+    }
+  } catch (e) {
+    console.error("Error seeding Supabase tables:", e);
+  }
+}
+
+export async function syncFromCloud() {
+  if (!supabase) return;
+  try {
+    // Pull Users
+    const { data: users, error: errUsers } = await supabase.from('delivery_users').select('*');
+    if (users && !errUsers) {
+      const localUsers = users.map(u => ({
+        id: u.id,
+        username: u.username,
+        password: u.password,
+        label: u.label,
+        role: u.role,
+        canSearch: u.can_search || false
+      }));
+      localStorage.setItem('delivery_users', JSON.stringify(localUsers));
+    }
+
+    // Pull Tariffs
+    const { data: tariffs, error: errTariffs } = await supabase.from('delivery_tariffs').select('*');
+    if (tariffs && !errTariffs) localStorage.setItem('delivery_tariffs', JSON.stringify(tariffs));
+
+    // Pull Tickets
+    const { data: tickets, error: errTickets } = await supabase.from('delivery_tickets').select('*');
+    if (tickets && !errTickets) {
+      const localTickets = tickets.map(t => ({
+        id: t.id,
+        date: t.date,
+        furgoId: t.furgo_id,
+        furgoLabel: t.furgo_label,
+        routeName: t.route_name,
+        customerName: t.customer_name,
+        phone: t.phone,
+        address: t.address,
+        postcode: t.postcode,
+        notes: t.notes,
+        codAmount: t.cod_amount,
+        tasks: t.tasks,
+        totalPrice: parseFloat(t.total_price) || 0,
+        status: t.status,
+        failureReason: t.failure_reason,
+        lat: t.lat,
+        lng: t.lng,
+        completedLat: t.completed_lat,
+        completedLng: t.completed_lng,
+        routeOrder: t.route_order,
+        createdAt: t.created_at
+      }));
+      localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
+    }
+
+    // Pull Shifts
+    const { data: shifts, error: errShifts } = await supabase.from('delivery_shifts').select('*');
+    if (shifts && !errShifts) localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
+
+    // Pull Settings
+    const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
+    if (settings && !errSettings) {
+      const mPrice = settings.find(s => s.key === 'module_price');
+      if (mPrice) localStorage.setItem('delivery_module_price', JSON.stringify(parseFloat(mPrice.value)));
+      
+      const appNameSetting = settings.find(s => s.key === 'app_name');
+      if (appNameSetting) localStorage.setItem('delivery_app_name', appNameSetting.value);
+    }
+
+    notifySync();
+  } catch (e) {
+    console.error("Error pulling database from Supabase:", e);
+  }
+}
 
 const DEFAULT_USERS = [
   { id: 'admin', username: 'admin', label: 'Super Administrador', role: 'superadmin', password: 'admin' },
@@ -116,6 +316,9 @@ export function initDB() {
     localStorage.setItem('delivery_shifts', JSON.stringify([]));
   }
   localStorage.setItem('delivery_db_cleared_once', 'true');
+  if (supabase) {
+    syncFromCloud();
+  }
 }
 
 // Obtener datos
@@ -126,6 +329,23 @@ export function getUsers() {
 
 export function saveUsers(users) {
   localStorage.setItem('delivery_users', JSON.stringify(users));
+  if (supabase) {
+    (async () => {
+      try {
+        const formatted = users.map(u => ({
+          id: u.id,
+          username: u.username,
+          password: u.password,
+          label: u.label,
+          role: u.role,
+          can_search: u.canSearch || false
+        }));
+        await supabase.from('delivery_users').upsert(formatted);
+      } catch (e) {
+        console.error("Error saving users to Supabase:", e);
+      }
+    })();
+  }
 }
 
 export function getModulePrice() {
@@ -135,6 +355,11 @@ export function getModulePrice() {
 
 export function saveModulePrice(price) {
   localStorage.setItem('delivery_module_price', JSON.stringify(price));
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({ key: 'module_price', value: price.toString() }).then(({ error }) => {
+      if (error) console.error("Error saving module price to Supabase:", error);
+    });
+  }
 }
 
 export function getTariffs() {
@@ -144,6 +369,15 @@ export function getTariffs() {
 
 export function saveTariffs(tariffs) {
   localStorage.setItem('delivery_tariffs', JSON.stringify(tariffs));
+  if (supabase) {
+    (async () => {
+      try {
+        await supabase.from('delivery_tariffs').upsert(tariffs);
+      } catch (e) {
+        console.error("Error saving tariffs to Supabase:", e);
+      }
+    })();
+  }
 }
 
 export function getTickets() {
@@ -153,6 +387,38 @@ export function getTickets() {
 
 export function saveTickets(tickets) {
   localStorage.setItem('delivery_tickets', JSON.stringify(tickets));
+  if (supabase) {
+    (async () => {
+      try {
+        const formatted = tickets.map(t => ({
+          id: t.id,
+          date: t.date,
+          furgo_id: t.furgoId,
+          furgo_label: t.furgoLabel,
+          route_name: t.routeName,
+          customer_name: t.customerName,
+          phone: t.phone,
+          address: t.address,
+          postcode: t.postcode,
+          notes: t.notes,
+          cod_amount: t.codAmount,
+          tasks: t.tasks,
+          total_price: t.totalPrice,
+          status: t.status,
+          failure_reason: t.failureReason || '',
+          lat: t.lat,
+          lng: t.lng,
+          completed_lat: t.completedLat,
+          completed_lng: t.completedLng,
+          route_order: t.routeOrder,
+          created_at: t.createdAt
+        }));
+        await supabase.from('delivery_tickets').upsert(formatted);
+      } catch (e) {
+        console.error("Error saving tickets to Supabase:", e);
+      }
+    })();
+  }
 }
 
 // Calcular precio de una tarifa individual
@@ -232,6 +498,37 @@ export function addTicket(ticketData) {
 
   tickets.push(newTicket);
   saveTickets(tickets);
+  if (supabase) {
+    (async () => {
+      try {
+        await supabase.from('delivery_tickets').insert({
+          id: newTicket.id,
+          date: newTicket.date,
+          furgo_id: newTicket.furgoId,
+          furgo_label: newTicket.furgoLabel,
+          route_name: newTicket.routeName,
+          customer_name: newTicket.customerName,
+          phone: newTicket.phone,
+          address: newTicket.address,
+          postcode: newTicket.postcode,
+          notes: newTicket.notes,
+          cod_amount: newTicket.codAmount,
+          tasks: newTicket.tasks,
+          total_price: newTicket.totalPrice,
+          status: newTicket.status,
+          failure_reason: newTicket.failureReason || '',
+          lat: newTicket.lat,
+          lng: newTicket.lng,
+          completed_lat: newTicket.completedLat,
+          completed_lng: newTicket.completedLng,
+          route_order: newTicket.routeOrder,
+          created_at: newTicket.createdAt
+        });
+      } catch (e) {
+        console.error("Error pushing ticket to Supabase:", e);
+      }
+    })();
+  }
   return newTicket;
 }
 
@@ -297,6 +594,38 @@ export function updateTicket(updatedTicket) {
       routeOrder: updatedTicket.routeOrder !== undefined ? updatedTicket.routeOrder : tickets[index].routeOrder
     };
     saveTickets(tickets);
+    if (supabase) {
+      (async () => {
+        try {
+          const t = tickets[index];
+          await supabase.from('delivery_tickets').upsert({
+            id: t.id,
+            date: t.date,
+            furgo_id: t.furgoId,
+            furgo_label: t.furgoLabel,
+            route_name: t.routeName,
+            customer_name: t.customerName,
+            phone: t.phone,
+            address: t.address,
+            postcode: t.postcode,
+            notes: t.notes,
+            cod_amount: t.codAmount,
+            tasks: t.tasks,
+            total_price: t.totalPrice,
+            status: t.status,
+            failure_reason: t.failureReason || '',
+            lat: t.lat,
+            lng: t.lng,
+            completed_lat: t.completedLat,
+            completed_lng: t.completedLng,
+            route_order: t.routeOrder,
+            created_at: t.createdAt
+          });
+        } catch (e) {
+          console.error("Error updating ticket in Supabase:", e);
+        }
+      })();
+    }
     return tickets[index];
   }
   return null;
@@ -319,6 +648,16 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
       tickets[index].completedAt = new Date().toISOString();
     }
     saveTickets(tickets);
+    if (supabase) {
+      supabase.from('delivery_tickets').update({
+        status: status,
+        failure_reason: failureReason,
+        completed_lat: completedLat,
+        completed_lng: completedLng
+      }).eq('id', ticketId).then(({ error }) => {
+        if (error) console.error("Error updating ticket status in Supabase:", error);
+      });
+    }
     return tickets[index];
   }
   return null;
@@ -329,6 +668,11 @@ export function deleteTicket(ticketId) {
   const tickets = getTickets();
   const filtered = tickets.filter(t => t.id !== ticketId);
   saveTickets(filtered);
+  if (supabase) {
+    supabase.from('delivery_tickets').delete().eq('id', ticketId).then(({ error }) => {
+      if (error) console.error("Error deleting ticket from Supabase:", error);
+    });
+  }
 }
 
 // Iniciar mes de cero
@@ -353,6 +697,15 @@ export function getShifts() {
 // Guardar turnos
 export function saveShifts(shifts) {
   localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
+  if (supabase) {
+    (async () => {
+      try {
+        await supabase.from('delivery_shifts').upsert(shifts);
+      } catch (e) {
+        console.error("Error saving shifts to Supabase:", e);
+      }
+    })();
+  }
 }
 
 // Comprobar si el turno para una furgoneta en una fecha está cerrado
@@ -453,6 +806,11 @@ export function deleteUser(userId) {
   const users = getUsers();
   const filtered = users.filter(u => u.id !== userId);
   saveUsers(filtered);
+  if (supabase) {
+    supabase.from('delivery_users').delete().eq('id', userId).then(({ error }) => {
+      if (error) console.error("Error deleting user from Supabase:", error);
+    });
+  }
 }
 
 // Obtener nombre de la aplicación
@@ -463,6 +821,11 @@ export function getAppName() {
 // Guardar nombre de la aplicación
 export function saveAppName(name) {
   localStorage.setItem('delivery_app_name', name.trim());
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({ key: 'app_name', value: name.trim() }).then(({ error }) => {
+      if (error) console.error("Error saving app name to Supabase:", error);
+    });
+  }
 }
 
 // Agregar nueva tarifa
@@ -483,6 +846,11 @@ export function deleteTariff(id) {
   const tariffs = getTariffs();
   const filtered = tariffs.filter(t => t.id !== id);
   saveTariffs(filtered);
+  if (supabase) {
+    supabase.from('delivery_tariffs').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error("Error deleting tariff from Supabase:", error);
+    });
+  }
 }
 
 // Guardar ubicación en tiempo real de un repartidor
@@ -495,6 +863,14 @@ export function saveDriverLocation(furgoId, lat, lng) {
       updatedAt: new Date().toISOString()
     };
     localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+    if (supabase) {
+      supabase.from('delivery_settings').upsert({
+        key: `loc_${furgoId}`,
+        value: JSON.stringify({ lat: parseFloat(lat), lng: parseFloat(lng), updatedAt: new Date().toISOString() })
+      }).then(({ error }) => {
+        if (error) console.error("Error pushing driver location to Supabase:", error);
+      });
+    }
   } catch (e) {
     console.error("Error saving driver location:", e);
   }
