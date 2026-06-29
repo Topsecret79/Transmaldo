@@ -4628,10 +4628,27 @@ function App() {
     const furgoData = furgos.reduce((acc, fid) => {
       const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid);
       const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
+      
+      let pms = 0;
+      let deliveries = 0;
+      fSuccess.forEach(t => {
+        t.tasks.forEach(task => {
+          const tid = task.tariffId || '';
+          if (tid.startsWith('PM_')) {
+            pms += task.quantity;
+          }
+          if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) {
+            deliveries += task.quantity;
+          }
+        });
+      });
+
       acc[fid] = {
         count: fTickets.length,
         successCount: fSuccess.length,
-        earnings: fSuccess.reduce((sum, t) => sum + t.totalPrice, 0)
+        earnings: fSuccess.reduce((sum, t) => sum + t.totalPrice, 0),
+        pms,
+        deliveries
       };
       return acc;
     }, {});
@@ -4758,6 +4775,8 @@ function App() {
                       <tr>
                         <th>Furgoneta</th>
                         <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
+                        <th style={{ textAlign: 'center' }}>PMs</th>
+                        <th style={{ textAlign: 'center' }}>Entregas</th>
                         <th style={{ textAlign: 'right' }}>Base Imponible</th>
                         <th style={{ textAlign: 'right' }}>IVA (+21%)</th>
                         <th style={{ textAlign: 'right' }}>Retención (-1%)</th>
@@ -4766,7 +4785,7 @@ function App() {
                     </thead>
                     <tbody>
                       {furgos.map(fid => {
-                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0 };
+                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0, pms: 0, deliveries: 0 };
                         const base = data.earnings;
                         const iva = base * 0.21;
                         const retencion = base * 0.01;
@@ -4776,6 +4795,8 @@ function App() {
                           <tr key={fid}>
                             <td style={{ fontWeight: '600' }}>{label}</td>
                             <td style={{ textAlign: 'center' }}>{data.successCount} / {data.count}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.pms}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.deliveries}</td>
                             <td style={{ textAlign: 'right', fontWeight: '500' }}>{base.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: '500' }}>+{iva.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>-{retencion.toFixed(2)} €</td>
