@@ -95,7 +95,8 @@ import {
   X,
   Minus,
   Clock,
-  Navigation
+  Navigation,
+  Phone
 } from 'lucide-react';
 import { 
   initDB, 
@@ -3518,8 +3519,29 @@ function App() {
                             {/* Contacto y Notas */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
                               {t.phone && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
-                                  📞 <a href={`tel:${t.phone}`} style={{ color: 'var(--primary)', fontWeight: '600', textDecoration: 'none' }}>{t.phone}</a>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)' }}>
+                                  <span>📞 {t.phone}</span>
+                                  <a 
+                                    href={`tel:${t.phone}`} 
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '50%',
+                                      background: 'rgba(16, 185, 129, 0.15)',
+                                      color: '#10b981',
+                                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                                      boxShadow: '0 0 10px rgba(16, 185, 129, 0.1)',
+                                      cursor: 'pointer',
+                                      textDecoration: 'none',
+                                      marginLeft: '4px'
+                                    }}
+                                    title="Llamar Cliente"
+                                  >
+                                    <Phone size={14} />
+                                  </a>
                                 </div>
                               )}
                               {t.notes && (
