@@ -3757,7 +3757,7 @@ function App() {
                                         fontWeight: '600'
                                       }}
                                     >
-                                      Éxito Rápido
+                                      Entregado
                                     </button>
                                     <button
                                       type="button"
@@ -3774,7 +3774,7 @@ function App() {
                                         fontWeight: '600'
                                       }}
                                     >
-                                      Fallido Rápido
+                                      Fallido
                                     </button>
                                   </div>
                                 )}
