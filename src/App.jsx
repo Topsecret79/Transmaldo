@@ -4639,13 +4639,17 @@ function App() {
     const maxEarnings = Math.max(...Object.values(furgoData).map(d => d.earnings), 1);
 
     // Contadores (Solo cuenta de paradas con éxito)
-    let totalTvs = 0;
-    let totalPackages = 0;
+    let totalPMs = 0;
+    let totalDeliveries = 0;
     successTickets.forEach(t => {
       t.tasks.forEach(task => {
-        const tar = tariffs.find(x => x.id === task.tariffId);
-        if (tar?.block === 'Televisores') totalTvs += task.quantity;
-        if (tar?.block === 'Paquetería') totalPackages += task.quantity;
+        const tid = task.tariffId || '';
+        if (tid.startsWith('PM_')) {
+          totalPMs += task.quantity;
+        }
+        if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) {
+          totalDeliveries += task.quantity;
+        }
       });
     });
 
@@ -4720,12 +4724,12 @@ function App() {
                 <div className="stat-val">{successTickets.length} / {filteredAdminTickets.length}</div>
               </div>
               <div className="stat-card warning">
-                <p>Televisores Entregados</p>
-                <div className="stat-val">{totalTvs}</div>
+                <p>Puestas en Marcha (PM)</p>
+                <div className="stat-val">{totalPMs}</div>
               </div>
               <div className="stat-card danger">
-                <p>Paquetes PV / GV</p>
-                <div className="stat-val">{totalPackages}</div>
+                <p>Entregas Realizadas</p>
+                <div className="stat-val">{totalDeliveries}</div>
               </div>
             </div>
 
