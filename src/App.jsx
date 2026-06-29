@@ -828,61 +828,59 @@ function App() {
 
 
   const loadData = () => {
-    const rawTickets = getTickets();
-    const rawTariffs = getTariffs();
-    const rawUsers = getUsers();
-    const rawShifts = getShifts();
-    
-    const savedUser = localStorage.getItem('delivery_session');
-    const u = currentUser || (savedUser ? JSON.parse(savedUser) : null);
-    
-    if (u) {
-      if (u.role === 'admin') {
-        const myUserIds = rawUsers.filter(usr => usr.createdBy === u.id || usr.id === u.id).map(usr => usr.id);
-        
-        const filteredTickets = rawTickets.filter(t => t.createdBy === u.id || myUserIds.includes(t.furgoId));
-        const filteredUsers = rawUsers.filter(usr => usr.createdBy === u.id || usr.id === u.id);
-        const filteredTariffs = rawTariffs.filter(t => t.createdBy === u.id || !t.createdBy);
-        const filteredShifts = rawShifts.filter(s => s.createdBy === u.id || myUserIds.includes(s.furgoId));
-        
-        setTickets(filteredTickets);
-        setTariffs(filteredTariffs);
-        setUsers(filteredUsers);
-        setShifts(filteredShifts);
-        
-        const activeRepartidores = filteredUsers.filter(usr => usr.role === 'repartidor');
-        if (activeRepartidores.length > 0 && !activeRepartidores.map(r => r.id).includes(newRouteFurgoId)) {
-          setNewRouteFurgoId(activeRepartidores[0].id);
+    try {
+      const rawTickets = getTickets() || [];
+      const rawTariffs = getTariffs() || [];
+      const rawUsers = getUsers() || [];
+      const rawShifts = getShifts() || [];
+      
+      const savedUser = localStorage.getItem('delivery_session');
+      let u = currentUser;
+      if (!u && savedUser) {
+        try {
+          u = JSON.parse(savedUser);
+        } catch (e) {
+          console.error("Error parsing delivery_session:", e);
         }
-      } else if (u.role === 'superadmin') {
-        setTickets(rawTickets);
-        setTariffs(rawTariffs);
-        setUsers(rawUsers);
-        setShifts(rawShifts);
-        
-        const activeRepartidores = rawUsers.filter(usr => usr.role === 'repartidor');
-        if (activeRepartidores.length > 0 && !activeRepartidores.map(r => r.id).includes(newRouteFurgoId)) {
-          setNewRouteFurgoId(activeRepartidores[0].id);
-        }
-      } else if (u.role === 'repartidor') {
-        const filteredTickets = rawTickets.filter(t => t.furgoId === u.id);
-        const filteredShifts = rawShifts.filter(s => s.furgoId === u.id);
-        
-        setTickets(filteredTickets);
-        setTariffs(rawTariffs);
-        setUsers(rawUsers.filter(usr => usr.id === u.id));
-        setShifts(filteredShifts);
       }
-    } else {
-      setTickets(rawTickets);
-      setTariffs(rawTariffs);
-      setUsers(rawUsers);
-      setShifts(rawShifts);
+      
+      let finalTickets = rawTickets;
+      let finalTariffs = rawTariffs;
+      let finalUsers = rawUsers;
+      let finalShifts = rawShifts;
+      
+      if (u && u.role) {
+        if (u.role === 'admin') {
+          const myUserIds = rawUsers.filter(usr => usr && (usr.createdBy === u.id || usr.id === u.id)).map(usr => usr.id);
+          finalTickets = rawTickets.filter(t => t && (t.createdBy === u.id || myUserIds.includes(t.furgoId)));
+          finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.id || usr.id === u.id));
+          finalTariffs = rawTariffs.filter(t => t && (t.createdBy === u.id || !t.createdBy));
+          finalShifts = rawShifts.filter(s => s && (s.createdBy === u.id || myUserIds.includes(s.furgoId)));
+        } else if (u.role === 'repartidor') {
+          finalTickets = rawTickets.filter(t => t && t.furgoId === u.id);
+          finalUsers = rawUsers.filter(usr => usr && usr.id === u.id);
+          finalShifts = rawShifts.filter(s => s && s.furgoId === u.id);
+        }
+      }
+      
+      setTickets(finalTickets);
+      setTariffs(finalTariffs);
+      setUsers(finalUsers);
+      setShifts(finalShifts);
+      
+      const activeRepartidores = finalUsers.filter(usr => usr && usr.role === 'repartidor');
+      if (activeRepartidores.length > 0) {
+        if (!activeRepartidores.some(r => r.id === newRouteFurgoId)) {
+          setNewRouteFurgoId(activeRepartidores[0].id);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading data in App.jsx:", err);
     }
     
-    setModulePrice(getModulePrice());
-    setAppName(getAppName());
-    setAppNameInput(getAppName());
+    setModulePrice(getModulePrice() || 3.81);
+    setAppName(getAppName() || 'LogiEarn');
+    setAppNameInput(getAppName() || 'LogiEarn');
   };
 
   const triggerAlert = (text, type = 'success') => {
