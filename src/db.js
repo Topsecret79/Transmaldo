@@ -184,12 +184,21 @@ export function addTicket(ticketData) {
     totalCalculado += subtotal;
     const tariff = tariffs.find(t => t.id === task.tariffId);
 
+    let name = tariff ? tariff.name : 'Desconocido';
+    if (task.brand && task.inches) {
+      const isComb = task.tariffId.includes('COMB');
+      const typeStr = isComb ? 'Ent+Rec' : (task.tariffId.includes('ENT') ? 'Entrega' : '');
+      name = `${task.brand} ${task.inches}" (${typeStr || name})`;
+    }
+
     return {
       tariffId: task.tariffId,
-      name: tariff ? tariff.name : 'Desconocido',
+      name: name,
       quantity: task.quantity,
       unitPrice: price,
-      subtotal: subtotal
+      subtotal: subtotal,
+      brand: task.brand || null,
+      inches: task.inches || null
     };
   });
 
@@ -236,12 +245,21 @@ export function updateTicket(updatedTicket) {
     totalCalculado += subtotal;
     const tariff = tariffs.find(t => t.id === task.tariffId);
 
+    let name = tariff ? tariff.name : 'Desconocido';
+    if (task.brand && task.inches) {
+      const isComb = task.tariffId.includes('COMB');
+      const typeStr = isComb ? 'Ent+Rec' : (task.tariffId.includes('ENT') ? 'Entrega' : '');
+      name = `${task.brand} ${task.inches}" (${typeStr || name})`;
+    }
+
     return {
       tariffId: task.tariffId,
-      name: tariff ? tariff.name : 'Desconocido',
+      name: name,
       quantity: task.quantity,
       unitPrice: price,
-      subtotal: subtotal
+      subtotal: subtotal,
+      brand: task.brand || null,
+      inches: task.inches || null
     };
   });
 
