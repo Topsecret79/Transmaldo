@@ -2282,6 +2282,20 @@ function App() {
           gap: '15px' 
         }}
       >
+        <div style={{
+          width: '60px',
+          height: '60px',
+          borderRadius: '50%',
+          background: 'rgba(99, 102, 241, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--primary)',
+          boxShadow: '0 0 20px rgba(99, 102, 241, 0.2)',
+          marginBottom: '5px'
+        }}>
+          <Plus size={32} />
+        </div>
         <h2 style={{ margin: 0, fontWeight: '700' }}>Gestiona paradas</h2>
 
         <button
