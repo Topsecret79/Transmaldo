@@ -3674,7 +3674,7 @@ function App() {
                                       width: '100%'
                                     }}
                                   >
-                                    🚗 Navegar
+                                    <Navigation size={16} /> Navegar
                                   </button>
                                 ) : t.status === 'transit' ? (
                                   <div style={{ display: 'flex', gap: '10px' }}>
