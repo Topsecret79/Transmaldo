@@ -2817,44 +2817,36 @@ function App() {
                 Selecciona la medida de la TV y la acción del servicio, luego haz clic en "Añadir".
               </p>
 
-              {/* Grid de Tarjetas Visuales de Pulgadas */}
-              <div className="tv-cards-grid">
+              {/* Selector de Pulgadas de la TV */}
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
                 <div 
-                  className={`tv-size-card ${tempTvInches === '43' ? 'active' : ''}`}
-                  onClick={() => !isClosed && setTempTvInches('43')}
-                >
-                  <span className="tv-size-card-icon">📺</span>
-                  <span className="tv-size-card-label">Hasta 49"</span>
-                  <span className="tv-size-card-desc">Tarifa estándar</span>
-                </div>
-                <div 
-                  className={`tv-size-card ${tempTvInches === '55' ? 'active' : ''}`}
-                  onClick={() => !isClosed && setTempTvInches('55')}
-                >
-                  <span className="tv-size-card-icon">🖥️</span>
-                  <span className="tv-size-card-label">50" a 74"</span>
-                  <span className="tv-size-card-desc">Tarifa intermedia</span>
-                </div>
-                <div 
-                  className={`tv-size-card ${tempTvInches === '75' ? 'active' : ''}`}
-                  onClick={() => !isClosed && setTempTvInches('75')}
-                >
-                  <span className="tv-size-card-icon">📽️</span>
-                  <span className="tv-size-card-label">75" a 115"</span>
-                  <span className="tv-size-card-desc">Tarifa Gran Formato</span>
-                </div>
-                <div 
-                  className={`tv-size-card ${(!['43','55','75'].includes(tempTvInches) && tempTvInches !== '') ? 'active' : ''}`}
+                  className="tv-size-card active"
                   onClick={() => {
                     if (isClosed) return;
-                    const val = window.prompt('Introduce las pulgadas de la TV:', tempTvInches);
+                    const val = window.prompt('Introduce las pulgadas de la TV:', tempTvInches || '55');
                     if (val !== null) setTempTvInches(val);
                   }}
+                  style={{ 
+                    width: '100%', 
+                    maxWidth: '300px', 
+                    padding: '20px', 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    background: 'rgba(99, 102, 241, 0.08)',
+                    border: '2px solid var(--primary)',
+                    borderRadius: '12px',
+                    boxShadow: '0 0 15px rgba(99, 102, 241, 0.15)',
+                    margin: '0 auto'
+                  }}
                 >
-                  <span className="tv-size-card-icon">✏️</span>
-                  <span className="tv-size-card-label">Medida Manual</span>
-                  <span className="tv-size-card-desc">
-                    {(!['43','55','75'].includes(tempTvInches) && tempTvInches !== '') ? `${tempTvInches}"` : 'Ej: 60"'}
+                  <span style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📺</span>
+                  <span style={{ fontWeight: '800', fontSize: '1.4rem', color: '#fff' }}>
+                    {tempTvInches ? `${tempTvInches}"` : 'Toca para definir'}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>
+                    Pulgadas de la TV (Toca para cambiar)
                   </span>
                 </div>
               </div>
