@@ -1026,6 +1026,50 @@ function App() {
     }, 8000);
   };
 
+  const handleMoveTicketOrder = async (ticketId, direction) => {
+    const currentList = getFilteredTickets();
+    const idx = currentList.findIndex(t => t.id === ticketId);
+    if (idx === -1) return;
+
+    if (direction === 'up' && idx === 0) return;
+    if (direction === 'down' && idx === currentList.length - 1) return;
+
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    const ticketA = currentList[idx];
+    const ticketB = currentList[targetIdx];
+
+    const updatedTickets = tickets.map(t => {
+      if (t.date === ticketA.date && t.furgoId === ticketA.furgoId) {
+        const itemIdx = currentList.findIndex(x => x.id === t.id);
+        let order = t.routeOrder;
+        if (order === undefined || order === null || order === '') {
+          order = itemIdx + 1;
+        }
+        return { ...t, routeOrder: Number(order) };
+      }
+      return t;
+    });
+
+    const dbTicketA = updatedTickets.find(t => t.id === ticketA.id);
+    const dbTicketB = updatedTickets.find(t => t.id === ticketB.id);
+
+    if (dbTicketA && dbTicketB) {
+      const tempOrder = dbTicketA.routeOrder;
+      dbTicketA.routeOrder = dbTicketB.routeOrder;
+      dbTicketB.routeOrder = tempOrder;
+    }
+
+    setTickets(updatedTickets);
+    setVisibleTickets(updatedTickets);
+
+    try {
+      if (dbTicketA) await updateTicket(dbTicketA);
+      if (dbTicketB) await updateTicket(dbTicketB);
+    } catch (e) {
+      console.error("Error saving manual route order:", e);
+    }
+  };
+
   // Verificar validez de la dirección por geocodificación
   const handleVerifyAddress = async () => {
     const trimmed = address.trim();
@@ -2048,6 +2092,8 @@ function App() {
       return dateB.localeCompare(dateA);
     });
   };
+
+  const isSingleRouteFiltered = ticketFilterFurgo !== 'all' && ticketFilterDate && !ticketSearchQuery.trim() && !ticketFilterPostcode.trim();
 
 
   // --- RENDERIZADO DEL FORMULARIO ---
@@ -4205,6 +4251,7 @@ function App() {
                 <table>
                   <thead>
                     <tr>
+                      {isSingleRouteFiltered && <th style={{ width: '80px', textAlign: 'center' }}>Orden</th>}
                       <th>Fecha</th>
                       <th>Furgoneta</th>
                       <th>Cliente</th>
@@ -4217,8 +4264,35 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {getFilteredTickets().map(t => (
+                    {getFilteredTickets().map((t, idx, arr) => (
                       <tr key={t.id}>
+                        {isSingleRouteFiltered && (
+                          <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                              <span style={{ fontWeight: 'bold', minWidth: '20px', fontSize: '0.85rem' }}>#{idx + 1}</span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveTicketOrder(t.id, 'up')}
+                                  className="btn btn-secondary btn-small"
+                                  style={{ padding: '1px 4px', fontSize: '0.6rem', margin: 0, visibility: idx === 0 ? 'hidden' : 'visible', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  title="Subir parada"
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveTicketOrder(t.id, 'down')}
+                                  className="btn btn-secondary btn-small"
+                                  style={{ padding: '1px 4px', fontSize: '0.6rem', margin: 0, visibility: idx === arr.length - 1 ? 'hidden' : 'visible', minWidth: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  title="Bajar parada"
+                                >
+                                  ▼
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        )}
                         <td>
                           <div>{t.date || ''}</div>
                           {t.routeName && <div style={{ fontSize: '0.75rem', color: 'var(--primary)', marginTop: '2.5px' }}>📍 {t.routeName}</div>}
