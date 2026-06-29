@@ -3674,7 +3674,7 @@ function App() {
                                       width: '100%'
                                     }}
                                   >
-                                    🚗 Iniciar Viaje a Parada
+                                    🚗 Navegar
                                   </button>
                                 ) : t.status === 'transit' ? (
                                   <div style={{ display: 'flex', gap: '10px' }}>
