@@ -349,9 +349,6 @@ export function initDB() {
     localStorage.setItem('delivery_shifts', JSON.stringify([]));
   }
   localStorage.setItem('delivery_db_cleared_once', 'true');
-  if (supabase) {
-    syncFromCloud();
-  }
 }
 
 // Obtener datos

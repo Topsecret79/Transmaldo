@@ -438,9 +438,17 @@ function App() {
       setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
     }
 
+    reinitSupabase();
+
     onDataSync(() => {
       loadData();
     });
+
+    const interval = setInterval(() => {
+      reinitSupabase();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
