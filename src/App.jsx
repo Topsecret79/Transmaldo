@@ -290,6 +290,7 @@ function App() {
   // Lista de TVs añadidas al ticket actual
   // Cada TV: { id: string, inches: number, action: 'entrega'|'recogida'|'combinado', pmType: 'none'|'basic'|'complex', cuelgue: boolean, recogidaViejaType: 'none'|'urbantz'|'no_urbantz' }
   const [formTvs, setFormTvs] = useState([]);
+  const [selectedMapTicket, setSelectedMapTicket] = useState(null);
 
   // Estados temporales para añadir una TV nueva al listado
   const [tempTvInches, setTempTvInches] = useState('55');
@@ -486,6 +487,12 @@ function App() {
         }).setView([41.3879, 2.16992], 12);
         mapInstanceRef.current = map;
 
+        // Deseleccionar pin al hacer clic en el fondo del mapa
+        map.on('click', (e) => {
+          if (e.originalEvent.target.closest('.leaflet-marker-icon')) return;
+          setSelectedMapTicket(null);
+        });
+
         // 3. Cargar capas de mapa (Estándar, Satélite de Esri, Topográfico)
         const osm = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -603,7 +610,10 @@ function App() {
 
             window.L.marker(latLng, { icon: markerIcon })
               .addTo(map)
-              .bindPopup(popupContent, { maxWidth: 220 });
+              .bindPopup(popupContent, { maxWidth: 220 })
+              .on('click', () => {
+                setSelectedMapTicket(t);
+              });
           });
 
           // Trazar línea de ruta conectando las paradas en orden (siguiendo carreteras reales)
@@ -2786,19 +2796,22 @@ function App() {
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', color: 'var(--primary)' }}>
               🗺️ Mapa de Mi Ruta ({targetDate})
             </h3>
-            <div 
-              key={`driver-map-${targetDate}-${activeTab}`}
-              id="driver-map" 
-              style={{ 
-                height: '450px', 
-                width: '100%', 
-                borderRadius: 'var(--border-radius-lg)', 
-                border: '1px solid var(--panel-border)',
-                background: '#1e1e1e',
-                boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
-                zIndex: 1
-              }}
-            ></div>
+            <div style={{ position: 'relative' }}>
+              <div 
+                key={`driver-map-${targetDate}-${activeTab}`}
+                id="driver-map" 
+                style={{ 
+                  height: '450px', 
+                  width: '100%', 
+                  borderRadius: 'var(--border-radius-lg)', 
+                  border: '1px solid var(--panel-border)',
+                  background: '#1e1e1e',
+                  boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
+                  zIndex: 1
+                }}
+              ></div>
+              {renderMapFloatingPanel()}
+            </div>
           </div>
         )}
 
@@ -3470,6 +3483,130 @@ function App() {
             </div>
           </div>
         )}
+      </div>
+    );
+  };
+
+  // --- PANEL DE DETALLE FLOTANTE EN EL MAPA ---
+  const renderMapFloatingPanel = () => {
+    // 1. Obtener el ticket a mostrar (el seleccionado o el siguiente pendiente)
+    let ticketToShow = selectedMapTicket;
+    
+    // Si no hay seleccionado, buscar la siguiente parada pendiente de los tickets visibles en este mapa
+    if (!ticketToShow) {
+      const targetDate = activeTab === 'map' ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
+      
+      const dayTickets = tickets.filter(t => {
+        if (!t) return false;
+        if (t.date !== targetDate) return false;
+        if (activeTab === 'map') {
+          if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+        } else {
+          if (t.furgoId !== currentUser?.id) return false;
+        }
+        return true;
+      });
+
+      const sorted = sortTicketsByRouteOrder(dayTickets);
+      // Encontrar el primero que no sea éxito ni fallido
+      ticketToShow = sorted.find(t => t.status !== 'success' && t.status !== 'failed');
+    }
+
+    if (!ticketToShow) {
+      return (
+        <div className="map-floating-details-empty">
+          <span>✨ Ruta finalizada o sin paradas planificadas para hoy</span>
+        </div>
+      );
+    }
+
+    const isSuccess = ticketToShow.status === 'success';
+    const isFailed = ticketToShow.status === 'failed';
+    const isTransit = ticketToShow.status === 'transit';
+    const statusText = isSuccess ? '🟢 Completado' : isFailed ? `🔴 Fallido (${ticketToShow.failureReason || 'Sin motivo'})` : isTransit ? '🔵 En Camino' : '🟡 Pendiente';
+
+    const furgoLabel = users.find(u => u.id === ticketToShow.furgoId)?.label || ticketToShow.furgoId;
+    const stopIndex = tickets.filter(tk => tk.date === ticketToShow.date && tk.furgoId === ticketToShow.furgoId)
+                             .sort((a,b) => {
+                               const aOrd = a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
+                               const bOrd = b.routeOrder !== undefined && b.routeOrder !== null && b.routeOrder !== '' ? Number(b.routeOrder) : Infinity;
+                               return aOrd - bOrd;
+                             })
+                             .findIndex(tk => tk.id === ticketToShow.id) + 1;
+
+    return (
+      <div className="map-floating-details">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+          <div style={{ flex: 1 }}>
+            <div className="map-floating-title-container">
+              <span className="map-floating-badge-stop">Parada #{stopIndex || '?'}</span>
+              <h4 className="map-floating-title">{ticketToShow.customerName}</h4>
+            </div>
+            <p className="map-floating-subtitle">🚚 Chofer: {furgoLabel} • {statusText}</p>
+          </div>
+          {selectedMapTicket && (
+            <button 
+              type="button" 
+              className="map-floating-close-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedMapTicket(null);
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="map-floating-info-row" style={{ marginTop: '8px' }}>
+          <span style={{ fontSize: '1rem', flexShrink: 0 }}>📍</span>
+          <span className="map-floating-info-text">{ticketToShow.address} {ticketToShow.postcode && `(CP ${ticketToShow.postcode})`}</span>
+        </div>
+
+        {ticketToShow.phone && (
+          <div className="map-floating-info-row">
+            <span style={{ fontSize: '1rem', flexShrink: 0 }}>📞</span>
+            <a href={`tel:${ticketToShow.phone}`} className="map-floating-phone-link">
+              {ticketToShow.phone}
+            </a>
+          </div>
+        )}
+
+        {/* Resumen rápido de artículos de la parada */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '8px' }}>
+          {ticketToShow.tasks.map((task, idx) => (
+            <span key={idx} className="map-floating-task-badge">
+              {task.name} {task.quantity > 1 && `x${task.quantity}`}
+            </span>
+          ))}
+          {parseFloat(ticketToShow.codAmount) > 0 && (
+            <span className="map-floating-task-badge" style={{ background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)', color: '#fbbf24', fontWeight: '700' }}>
+              💵 Reembolso: {parseFloat(ticketToShow.codAmount).toFixed(2)} €
+            </span>
+          )}
+        </div>
+
+        {/* Botones de acción rápida */}
+        <div className="map-floating-actions-container">
+          <a 
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ticketToShow.address)}`} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="btn btn-primary btn-small map-floating-action-btn"
+            style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
+          >
+            🗺️ Iniciar GPS
+          </a>
+          {ticketToShow.phone && (
+            <a 
+              href={`tel:${ticketToShow.phone}`}
+              className="btn btn-secondary btn-small map-floating-action-btn"
+              style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
+            >
+              📞 Llamar
+            </a>
+          )}
+        </div>
       </div>
     );
   };
@@ -4332,6 +4469,7 @@ function App() {
                   zIndex: 1
                 }}
               ></div>
+              {renderMapFloatingPanel()}
             </div>
             
             <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
