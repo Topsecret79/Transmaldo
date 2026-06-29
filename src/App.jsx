@@ -3572,7 +3572,7 @@ function App() {
     if (!ticketToShow) {
       const targetDate = activeTab === 'map' ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
       
-      const dayTickets = tickets.filter(t => {
+      const dayTickets = (tickets || []).filter(t => {
         if (!t) return false;
         if (t.date !== targetDate) return false;
         if (activeTab === 'map') {
@@ -3585,7 +3585,7 @@ function App() {
 
       const sorted = sortTicketsByRouteOrder(dayTickets);
       // Encontrar el primero que no sea éxito ni fallido
-      ticketToShow = sorted.find(t => t.status !== 'success' && t.status !== 'failed');
+      ticketToShow = sorted.find(t => t && t.status !== 'success' && t.status !== 'failed');
     }
 
     if (!ticketToShow) {
@@ -3601,14 +3601,14 @@ function App() {
     const isTransit = ticketToShow.status === 'transit';
     const statusText = isSuccess ? '🟢 Completado' : isFailed ? `🔴 Fallido (${ticketToShow.failureReason || 'Sin motivo'})` : isTransit ? '🔵 En Camino' : '🟡 Pendiente';
 
-    const furgoLabel = users.find(u => u.id === ticketToShow.furgoId)?.label || ticketToShow.furgoId;
-    const stopIndex = tickets.filter(tk => tk.date === ticketToShow.date && tk.furgoId === ticketToShow.furgoId)
+    const furgoLabel = users.find(u => u.id === ticketToShow.furgoId)?.label || ticketToShow.furgoId || '';
+    const stopIndex = (tickets || []).filter(tk => tk && ticketToShow && tk.date === ticketToShow.date && tk.furgoId === ticketToShow.furgoId)
                              .sort((a,b) => {
-                               const aOrd = a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
-                               const bOrd = b.routeOrder !== undefined && b.routeOrder !== null && b.routeOrder !== '' ? Number(b.routeOrder) : Infinity;
+                               const aOrd = a && a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
+                               const bOrd = b && b.routeOrder !== undefined && b.routeOrder !== null && b.routeOrder !== '' ? Number(b.routeOrder) : Infinity;
                                return aOrd - bOrd;
                              })
-                             .findIndex(tk => tk.id === ticketToShow.id) + 1;
+                             .findIndex(tk => tk && tk.id === ticketToShow.id) + 1;
 
     return (
       <div className="map-floating-details">
@@ -3616,7 +3616,7 @@ function App() {
           <div style={{ flex: 1 }}>
             <div className="map-floating-title-container">
               <span className="map-floating-badge-stop">Parada #{stopIndex || '?'}</span>
-              <h4 className="map-floating-title">{ticketToShow.customerName}</h4>
+              <h4 className="map-floating-title">{ticketToShow.customerName || ''}</h4>
             </div>
             <p className="map-floating-subtitle">🚚 Chofer: {furgoLabel} • {statusText}</p>
           </div>
@@ -3636,7 +3636,7 @@ function App() {
 
         <div className="map-floating-info-row" style={{ marginTop: '8px' }}>
           <span style={{ fontSize: '1rem', flexShrink: 0 }}>📍</span>
-          <span className="map-floating-info-text">{ticketToShow.address} {ticketToShow.postcode && `(CP ${ticketToShow.postcode})`}</span>
+          <span className="map-floating-info-text">{ticketToShow.address || ''} {ticketToShow.postcode && `(CP ${ticketToShow.postcode})`}</span>
         </div>
 
         {ticketToShow.phone && (
@@ -3650,12 +3650,15 @@ function App() {
 
         {/* Resumen rápido de artículos de la parada */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '8px' }}>
-          {ticketToShow.tasks.map((task, idx) => (
-            <span key={idx} className="map-floating-task-badge">
-              {task.name} {task.quantity > 1 && `x${task.quantity}`}
-            </span>
-          ))}
-          {parseFloat(ticketToShow.codAmount) > 0 && (
+          {(ticketToShow.tasks || []).map((task, idx) => {
+            if (!task) return null;
+            return (
+              <span key={idx} className="map-floating-task-badge">
+                {task.name || ''} {task.quantity > 1 && `x${task.quantity}`}
+              </span>
+            );
+          })}
+          {ticketToShow.codAmount && parseFloat(ticketToShow.codAmount) > 0 && (
             <span className="map-floating-task-badge" style={{ background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)', color: '#fbbf24', fontWeight: '700' }}>
               💵 Reembolso: {parseFloat(ticketToShow.codAmount).toFixed(2)} €
             </span>
@@ -3665,7 +3668,7 @@ function App() {
         {/* Botones de acción rápida */}
         <div className="map-floating-actions-container">
           <a 
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ticketToShow.address)}`} 
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ticketToShow.address || '')}`} 
             target="_blank" 
             rel="noopener noreferrer"
             className="btn btn-primary btn-small map-floating-action-btn"
