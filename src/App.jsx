@@ -353,7 +353,8 @@ function App() {
   const [newLabel, setNewLabel] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('repartidor');
-  const [isTrackingActive, setIsTrackingActive] = useState(localStorage.getItem('delivery_tracking_active') === 'true');
+  const [isTrackingActive, setIsTrackingActive] = useState(true);
+  const [gpsStatus, setGpsStatus] = useState('inactive'); // 'active' | 'error' | 'inactive'
   const watchIdRef = useRef(null);
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
@@ -463,13 +464,16 @@ function App() {
   useEffect(() => {
     if (isTrackingActive && currentUser && currentUser.role === 'repartidor') {
       if ('geolocation' in navigator) {
+        setGpsStatus('active');
         watchIdRef.current = navigator.geolocation.watchPosition(
           (position) => {
             const { latitude, longitude } = position.coords;
             saveDriverLocation(currentUser.id, latitude, longitude);
+            setGpsStatus('active');
           },
           (error) => {
             console.error("GPS Tracking Error:", error);
+            setGpsStatus('error');
           },
           {
             enableHighAccuracy: true,
@@ -479,12 +483,14 @@ function App() {
         );
       } else {
         console.error("Geolocation not supported by this browser.");
+        setGpsStatus('error');
       }
     } else {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
+      setGpsStatus('inactive');
     }
 
     return () => {
@@ -3099,58 +3105,7 @@ function App() {
           )}
         </div>
 
-        {/* Control de Geolocalización / Compartir Ubicación */}
-        <div className="glass-panel" style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          padding: '12px 20px', 
-          borderRadius: '12px', 
-          marginBottom: '20px', 
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px solid var(--panel-border)',
-          textAlign: 'left'
-        }}>
-          <style>{`
-            @keyframes gpsPulse {
-              0% { transform: scale(0.9); opacity: 0.6; }
-              50% { transform: scale(1.1); opacity: 1; }
-              100% { transform: scale(0.9); opacity: 0.6; }
-            }
-          `}</style>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ 
-              display: 'inline-block', 
-              width: '12px', 
-              height: '12px', 
-              borderRadius: '50%', 
-              backgroundColor: isTrackingActive ? 'var(--success)' : 'var(--text-muted)',
-              boxShadow: isTrackingActive ? '0 0 10px var(--success)' : 'none',
-              animation: isTrackingActive ? 'gpsPulse 2s infinite ease-in-out' : 'none'
-            }}></span>
-            <div>
-              <span style={{ fontWeight: '700', fontSize: '0.9rem', color: isTrackingActive ? 'var(--success)' : 'var(--text)' }}>
-                {isTrackingActive ? '🛰️ Compartiendo GPS en Vivo' : '🛰️ GPS Inactivo'}
-              </span>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                {isTrackingActive ? 'Tu posición se actualiza automáticamente con la oficina' : 'Habilita para compartir tu avance en tiempo real'}
-              </div>
-            </div>
-          </div>
-          <button 
-            type="button" 
-            onClick={() => {
-              const newVal = !isTrackingActive;
-              setIsTrackingActive(newVal);
-              localStorage.setItem('delivery_tracking_active', newVal ? 'true' : 'false');
-              triggerAlert(newVal ? 'Se ha activado el rastreo de ubicación' : 'Rastreo desactivado');
-            }} 
-            className={`btn btn-small ${isTrackingActive ? 'btn-danger' : 'btn-primary'}`}
-            style={{ width: 'auto', margin: 0, padding: '6px 12px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-          >
-            {isTrackingActive ? 'Detener Compartir' : 'Compartir GPS'}
-          </button>
-        </div>
+
 
         {activeTab === 'new_ticket' && renderTicketForm()}
 
@@ -5481,6 +5436,37 @@ function App() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {!isAdminOrSuper && (
+            <div 
+              className="user-badge"
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                cursor: 'pointer',
+                borderColor: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.3)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                background: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.05)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.05)' : 'transparent',
+              }}
+              onClick={() => {
+                setIsTrackingActive(false);
+                setTimeout(() => setIsTrackingActive(true), 200);
+                triggerAlert('Reconectando GPS y solicitando ubicación...');
+              }}
+              title={gpsStatus === 'active' ? 'GPS Conectado. Haz clic para refrescar.' : gpsStatus === 'error' ? 'GPS Offline. Haz clic para reconectar.' : 'GPS Inactivo'}
+            >
+              <span style={{ 
+                width: '8px', 
+                height: '8px', 
+                borderRadius: '50%', 
+                backgroundColor: gpsStatus === 'active' ? '#34d399' : '#f87171',
+                boxShadow: gpsStatus === 'active' ? '0 0 8px #34d399' : 'none',
+                display: 'inline-block'
+              }}></span>
+              <span style={{ fontSize: '0.78rem', fontWeight: '600', color: gpsStatus === 'active' ? '#34d399' : '#f87171' }}>
+                {gpsStatus === 'active' ? 'GPS' : 'GPS Offline'}
+              </span>
+            </div>
+          )}
           <div className="user-badge"><User size={14} />{currentUser.label}</div>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
