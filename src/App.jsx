@@ -332,6 +332,7 @@ function App() {
   // Estados temporales para añadir una TV nueva al listado
   const [tempTvInches, setTempTvInches] = useState('55');
   const [tempTvAction, setTempTvAction] = useState('entrega');
+  const [tempTvBrand, setTempTvBrand] = useState('Samsung');
 
   // Cantidades de otros artículos no-TV (Paquetería y Otros Elementos)
   // { tariffId: quantity }
@@ -804,6 +805,7 @@ function App() {
     const newTv = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
       inches: parseInt(tempTvInches),
+      brand: tempTvBrand || 'Genérica',
       action: tempTvAction,
       pmType: tempTvAction === 'solo_pm' ? 'basic' : 'none',
       cuelgue: tempTvAction === 'solo_cuelgue' ? true : false,
@@ -1245,7 +1247,9 @@ function App() {
         const mainTariffId = tv.action === 'combinado' ? `TV_COMB_${range}` : `TV_ENT_${range}`;
         tasksArray.push({
           tariffId: mainTariffId,
-          quantity: 1
+          quantity: 1,
+          brand: tv.brand || 'Genérica',
+          inches: tv.inches || 43
         });
       }
 
@@ -1254,7 +1258,9 @@ function App() {
         const pmId = tv.pmType === 'basic' ? `PM_BAS_${range}` : `PM_COMP_${range}`;
         tasksArray.push({
           tariffId: pmId,
-          quantity: 1
+          quantity: 1,
+          brand: tv.brand || 'Genérica',
+          inches: tv.inches || 43
         });
       }
 
@@ -1263,7 +1269,9 @@ function App() {
         const cuelgueId = `CUELGUE_${range}`;
         tasksArray.push({
           tariffId: cuelgueId,
-          quantity: 1
+          quantity: 1,
+          brand: tv.brand || 'Genérica',
+          inches: tv.inches || 43
         });
       }
 
@@ -2588,6 +2596,47 @@ function App() {
                 </div>
               </div>
 
+              {/* Selector de Marca de la TV */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '15px' }}>
+                <span className="input-label" style={{ margin: 0 }}>Marca de la TV:</span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    className="form-input"
+                    value={['Samsung', 'LG', 'Sony', 'Philips', 'Xiaomi', 'Hisense', 'TCL'].includes(tempTvBrand) ? tempTvBrand : 'Otra'}
+                    onChange={(e) => {
+                      if (e.target.value === 'Otra') {
+                        const customBrand = window.prompt('Introduce la marca de la TV:', tempTvBrand === 'Otra' ? '' : tempTvBrand);
+                        if (customBrand !== null) {
+                          setTempTvBrand(customBrand || 'Genérica');
+                        }
+                      } else {
+                        setTempTvBrand(e.target.value);
+                      }
+                    }}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="Samsung">Samsung</option>
+                    <option value="LG">LG</option>
+                    <option value="Sony">Sony</option>
+                    <option value="Philips">Philips</option>
+                    <option value="Xiaomi">Xiaomi</option>
+                    <option value="Hisense">Hisense</option>
+                    <option value="TCL">TCL</option>
+                    <option value="Otra">Otra (escribir...)</option>
+                  </select>
+                  {!['Samsung', 'LG', 'Sony', 'Philips', 'Xiaomi', 'Hisense', 'TCL'].includes(tempTvBrand) && (
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={tempTvBrand}
+                      onChange={(e) => setTempTvBrand(e.target.value)}
+                      placeholder="Escribe la marca..."
+                      style={{ flex: 1 }}
+                    />
+                  )}
+                </div>
+              </div>
+
               {/* Selector Segmentado de Acción */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '15px' }}>
                 <span className="input-label" style={{ margin: 0 }}>Acción a realizar:</span>
@@ -2655,7 +2704,7 @@ function App() {
                       <div key={tv.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '10px', padding: '15px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed var(--panel-border)', paddingBottom: '8px', marginBottom: '12px' }}>
                           <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--primary)' }}>
-                            📺 TV {tv.inches}" ({actionText})
+                            📺 TV {tv.brand || 'Genérica'} {tv.inches}" ({actionText})
                           </span>
                           <button type="button" onClick={() => removeTvFromForm(tv.id)} className="btn btn-danger btn-small" style={{ display: 'flex', padding: '4px 8px', gap: '4px', width: 'auto', margin: 0 }} disabled={isClosed}>
                             <Trash2 size={12} /> Quitar
@@ -2795,7 +2844,7 @@ function App() {
                     const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : tv.action === 'solo_cuelgue' ? 'Solo Cuelgue' : 'Entrega + Recogida';
                     return (
                       <li key={idx}>
-                        Televisión de {tv.inches}" ({actionText}) 
+                        Televisión {tv.brand || 'Genérica'} de {tv.inches}" ({actionText}) 
                         {tv.pmType !== 'none' && ` + PM (${tv.pmType === 'basic' ? 'Básica' : 'Compleja'})`}
                         {tv.cuelgue && ` + Cuelgue en Pared`}
                         {tv.recogidaViejaType !== 'none' && ` + Retirada TV Vieja`}
