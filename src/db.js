@@ -529,27 +529,47 @@ export async function geocodeAddress(addressText) {
     if (data && data.length > 0) {
       let displayName = data[0].display_name || '';
       
+      const rawAddr = data[0].address || {};
+      let street = rawAddr.road || rawAddr.pedestrian || rawAddr.footway || rawAddr.path || rawAddr.cycleway || rawAddr.square || rawAddr.amenity || rawAddr.building || '';
+      if (!street && displayName) {
+        street = displayName.split(',')[0].trim();
+      }
+
+      let houseNumber = rawAddr.house_number || '';
       const numberMatch = addressText.match(/\b\d{1,4}[a-zA-Z]?\b/);
-      if (numberMatch) {
+      if (!houseNumber && numberMatch) {
         const typedNumber = numberMatch[0];
         const isPostalCode = typedNumber.length === 5;
         if (!isPostalCode) {
-          const numberRegex = new RegExp(`\\b${typedNumber}\\b`);
-          if (!numberRegex.test(displayName)) {
-            const parts = displayName.split(',');
-            if (parts.length > 0) {
-              parts.splice(1, 0, ` ${typedNumber}`);
-              displayName = parts.join(',');
-            }
-          }
+          houseNumber = typedNumber;
         }
       }
+
+      let city = rawAddr.city || rawAddr.town || rawAddr.village || rawAddr.municipality || rawAddr.hamlet || '';
+      if (!city && displayName) {
+        const parts = displayName.split(',').map(p => p.trim());
+        if (parts.length > 2) {
+          city = houseNumber ? (parts[2] || '') : (parts[1] || '');
+        }
+      }
+
+      let shortParts = [];
+      if (street) shortParts.push(street);
+      if (houseNumber) {
+        const cleanStreet = street.toLowerCase();
+        if (!cleanStreet.includes(` ${houseNumber.toLowerCase()}`) && !cleanStreet.includes(`,${houseNumber.toLowerCase()}`)) {
+          shortParts.push(houseNumber);
+        }
+      }
+      if (city) shortParts.push(city);
+      
+      const shortDisplayName = shortParts.length > 0 ? shortParts.join(', ') : displayName;
 
       return {
         lat: parseFloat(data[0].lat),
         lng: parseFloat(data[0].lon),
         postcode: data[0].address && data[0].address.postcode ? data[0].address.postcode : '',
-        displayName: displayName
+        displayName: shortDisplayName
       };
     }
   } catch (e) {

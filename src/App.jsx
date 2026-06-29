@@ -876,22 +876,41 @@ function App() {
     const lat = parseFloat(sug.lat);
     const lng = parseFloat(sug.lon);
 
-    let finalAddress = sug.display_name;
+    const rawAddr = sug.address || {};
+    let street = rawAddr.road || rawAddr.pedestrian || rawAddr.footway || rawAddr.path || rawAddr.cycleway || rawAddr.square || rawAddr.amenity || rawAddr.building || '';
+    if (!street && sug.display_name) {
+      street = sug.display_name.split(',')[0].trim();
+    }
+
+    let houseNumber = rawAddr.house_number || '';
     const numberMatch = address.match(/\b\d{1,4}[a-zA-Z]?\b/);
-    if (numberMatch) {
+    if (!houseNumber && numberMatch) {
       const typedNumber = numberMatch[0];
       const isPostalCode = typedNumber.length === 5;
       if (!isPostalCode) {
-        const numberRegex = new RegExp(`\\b${typedNumber}\\b`);
-        if (!numberRegex.test(sug.display_name)) {
-          const parts = sug.display_name.split(',');
-          if (parts.length > 0) {
-            parts.splice(1, 0, ` ${typedNumber}`);
-            finalAddress = parts.join(',');
-          }
-        }
+        houseNumber = typedNumber;
       }
     }
+
+    let city = rawAddr.city || rawAddr.town || rawAddr.village || rawAddr.municipality || rawAddr.hamlet || '';
+    if (!city && sug.display_name) {
+      const parts = sug.display_name.split(',').map(p => p.trim());
+      if (parts.length > 2) {
+        city = houseNumber ? (parts[2] || '') : (parts[1] || '');
+      }
+    }
+
+    let shortParts = [];
+    if (street) shortParts.push(street);
+    if (houseNumber) {
+      const cleanStreet = street.toLowerCase();
+      if (!cleanStreet.includes(` ${houseNumber.toLowerCase()}`) && !cleanStreet.includes(`,${houseNumber.toLowerCase()}`)) {
+        shortParts.push(houseNumber);
+      }
+    }
+    if (city) shortParts.push(city);
+    
+    const finalAddress = shortParts.length > 0 ? shortParts.join(', ') : sug.display_name;
 
     setAddress(finalAddress);
 
