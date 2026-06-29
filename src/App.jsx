@@ -2245,9 +2245,7 @@ function App() {
           <Plus size={32} />
         </div>
         <h2 style={{ margin: 0, fontWeight: '700' }}>Planificación de Ruta</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '350px', margin: 0 }}>
-          Comienza a diseñar una nueva ruta diaria y añade sus respectivas entregas.
-        </p>
+
         <button
           type="button"
           className="btn btn-primary"
