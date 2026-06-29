@@ -907,7 +907,7 @@ function App() {
     });
     setLastVerifiedAddress(sug.display_name);
     setSuggestions([]);
-    setSpellingSuggestion(null);
+    setSpellingSuggestions([]);
   };
 
   // Iniciar la búsqueda de dirección por dictado de voz (Web Speech API)
