@@ -329,6 +329,7 @@ function App() {
   const [selectedMapTicket, setSelectedMapTicket] = useState(null);
   const [isMapPanelExpanded, setIsMapPanelExpanded] = useState(true);
   const [activeRouteContext, setActiveRouteContext] = useState(null);
+  const [showCreateRouteFormFields, setShowCreateRouteFormFields] = useState(false);
   const [newRouteName, setNewRouteName] = useState('');
   const [newRouteDate, setNewRouteDate] = useState(new Date().toISOString().split('T')[0]);
   const [newRouteFurgoId, setNewRouteFurgoId] = useState('');
@@ -2216,7 +2217,54 @@ function App() {
   const isSingleRouteFiltered = ticketFilterFurgo !== 'all' && ticketFilterDate && !ticketSearchQuery.trim() && !ticketFilterPostcode.trim();
 
 
+  const renderCreateRouteStartButton = () => {
+    return (
+      <div 
+        className="glass-panel" 
+        style={{ 
+          textAlign: 'center', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          padding: '40px 20px', 
+          gap: '15px' 
+        }}
+      >
+        <div style={{
+          width: '60px',
+          height: '60px',
+          borderRadius: '50%',
+          background: 'rgba(99, 102, 241, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--primary)',
+          boxShadow: '0 0 20px rgba(99, 102, 241, 0.2)'
+        }}>
+          <Plus size={32} />
+        </div>
+        <h2 style={{ margin: 0, fontWeight: '700' }}>Planificación de Ruta</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '350px', margin: 0 }}>
+          Comienza a diseñar una nueva ruta diaria y añade sus respectivas entregas.
+        </p>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => setShowCreateRouteFormFields(true)}
+          style={{ width: 'auto', minWidth: '200px', height: '45px', marginTop: '10px' }}
+        >
+          🚀 Crear Ruta
+        </button>
+      </div>
+    );
+  };
+
   const renderCreateRouteForm = () => {
+    if (!showCreateRouteFormFields) {
+      return renderCreateRouteStartButton();
+    }
+
     const activeRepartidores = users.filter(u => u.role === 'repartidor');
 
     const handleCreateRouteSubmit = (e) => {
@@ -2238,6 +2286,7 @@ function App() {
         date: newRouteDate,
         furgoId: selectedFurgoId
       });
+      setShowCreateRouteFormFields(false);
 
       // Pre-fill fields for the ticket form
       setTicketDate(newRouteDate);
@@ -2254,7 +2303,6 @@ function App() {
           <Plus size={24} color="var(--primary)" /> 
           Crear Nueva Ruta
         </h2>
-
 
         <form onSubmit={handleCreateRouteSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div className="input-group">
@@ -2297,13 +2345,23 @@ function App() {
             </div>
           </div>
 
-          <button 
-            type="submit" 
-            className="btn btn-primary" 
-            style={{ width: '100%', height: '42px', marginTop: '10px' }}
-          >
-            🚀 Crear Ruta y Empezar a Añadir Paradas
-          </button>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+            <button 
+              type="button" 
+              className="btn btn-secondary" 
+              onClick={() => setShowCreateRouteFormFields(false)}
+              style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}
+            >
+              Atrás
+            </button>
+            <button 
+              type="submit" 
+              className="btn btn-primary" 
+              style={{ flex: 1, height: '42px', margin: 0 }}
+            >
+              🚀 Empezar a Añadir Paradas
+            </button>
+          </div>
         </form>
       </div>
     );
