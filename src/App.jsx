@@ -92,7 +92,8 @@ import {
   RefreshCw,
   X,
   Minus,
-  Clock
+  Clock,
+  Navigation
 } from 'lucide-react';
 import { 
   initDB, 
@@ -3802,7 +3803,7 @@ function App() {
                 className="btn btn-primary btn-small map-floating-action-btn"
                 style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
               >
-                🗺️ Ir
+                <Navigation size={14} style={{ marginRight: '2px' }} /> Navegar
               </a>
               {ticketToShow.phone && (
                 <a 
