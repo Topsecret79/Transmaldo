@@ -1107,6 +1107,58 @@ function App() {
     }
   };
 
+  // Reordenar un ticket manualmente a cualquier posición
+  const changeTicketRouteOrder = async (ticketToMove, targetPos) => {
+    if (targetPos < 1) return;
+
+    // Obtener las paradas del mismo chofer y día
+    const dayTickets = tickets
+      .filter(t => t && t.date === ticketToMove.date && t.furgoId === ticketToMove.furgoId)
+      .sort((a, b) => {
+        const aOrd = a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
+        const bOrd = b.routeOrder !== undefined && b.routeOrder !== null && b.routeOrder !== '' ? Number(b.routeOrder) : Infinity;
+        return aOrd - bOrd;
+      });
+
+    const currentIndex = dayTickets.findIndex(t => t.id === ticketToMove.id);
+    if (currentIndex === -1) return;
+
+    // Quitar de la posición actual
+    const [movedTicket] = dayTickets.splice(currentIndex, 1);
+    
+    // Validar límites
+    let targetIdx = targetPos - 1;
+    if (targetIdx < 0) targetIdx = 0;
+    if (targetIdx > dayTickets.length) targetIdx = dayTickets.length;
+
+    // Insertar en la nueva posición
+    dayTickets.splice(targetIdx, 0, movedTicket);
+
+    // Actualizar el orden secuencial
+    const updatedTickets = tickets.map(t => {
+      if (t && t.date === ticketToMove.date && t.furgoId === ticketToMove.furgoId) {
+        const idx = dayTickets.findIndex(x => x.id === t.id);
+        return { ...t, routeOrder: idx + 1 };
+      }
+      return t;
+    });
+
+    setTickets(updatedTickets);
+    setVisibleTickets(updatedTickets);
+
+    try {
+      for (const t of updatedTickets) {
+        if (t && t.date === ticketToMove.date && t.furgoId === ticketToMove.furgoId) {
+          await updateTicket(t);
+        }
+      }
+      triggerAlert(`📍 Parada reordenada con éxito a la posición ${targetPos}`);
+    } catch (err) {
+      console.error("Error saving manual route reorder:", err);
+      triggerAlert("Error al guardar el nuevo orden de ruta", "error");
+    }
+  };
+
   // Verificar validez de la dirección por geocodificación
   const handleVerifyAddress = async () => {
     const trimmed = address.trim();
@@ -3633,7 +3685,44 @@ function App() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
           <div style={{ flex: 1 }}>
             <div className="map-floating-title-container">
-              <span className="map-floating-badge-stop">Parada #{stopIndex || '?'}</span>
+              {(() => {
+                const dayTicketsCount = (tickets || []).filter(tk => tk && ticketToShow && tk.date === ticketToShow.date && tk.furgoId === ticketToShow.furgoId).length;
+                if (dayTicketsCount > 1) {
+                  return (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                      <span className="map-floating-badge-stop" style={{ paddingRight: '2px' }}>Parada #</span>
+                      <select 
+                        value={stopIndex}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          changeTicketRouteOrder(ticketToShow, Number(e.target.value));
+                        }}
+                        style={{
+                          background: 'var(--primary)',
+                          border: 'none',
+                          color: '#fff',
+                          borderRadius: '4px',
+                          padding: '1px 6px 1px 4px',
+                          fontSize: '0.68rem',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          outline: 'none',
+                          height: '18px',
+                          lineHeight: '1',
+                          margin: 0
+                        }}
+                      >
+                        {Array.from({ length: dayTicketsCount }, (_, i) => i + 1).map(num => (
+                          <option key={num} value={num} style={{ background: '#141628', color: '#fff' }}>
+                            {num}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                }
+                return <span className="map-floating-badge-stop">Parada #{stopIndex || '?'}</span>;
+              })()}
               <h4 className="map-floating-title">{ticketToShow.customerName || ''}</h4>
             </div>
             {isMapPanelExpanded && (
