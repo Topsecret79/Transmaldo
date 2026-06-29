@@ -1322,8 +1322,10 @@ tr:hover td {
 .map-floating-details {
   position: absolute;
   bottom: 8px;
-  left: 8px;
-  right: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: fit-content;
+  max-width: calc(100% - 16px);
   background: rgba(20, 16, 38, 0.95);
   backdrop-filter: blur(12px);
   border: 1px solid var(--panel-border);
@@ -1334,8 +1336,13 @@ tr:hover td {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  animation: slideUp 0.25s ease;
+  animation: slideUpCentred 0.25s ease;
   text-align: left;
+}
+
+@keyframes slideUpCentred {
+  from { transform: translate(-50%, 15px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
 }
 
 @keyframes slideUp {
@@ -1345,18 +1352,22 @@ tr:hover td {
 
 @media (min-width: 768px) {
   .map-floating-details {
-    width: 320px;
+    width: fit-content;
+    max-width: 320px;
     left: 12px;
-    right: auto;
+    transform: none;
     bottom: 12px;
+    animation: slideUp 0.25s ease;
   }
 }
 
 .map-floating-details-empty {
   position: absolute;
   bottom: 8px;
-  left: 8px;
-  right: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: fit-content;
+  max-width: calc(100% - 16px);
   background: rgba(20, 16, 38, 0.9);
   backdrop-filter: blur(8px);
   border: 1px solid var(--panel-border);
@@ -1371,9 +1382,10 @@ tr:hover td {
 
 @media (min-width: 768px) {
   .map-floating-details-empty {
-    width: 280px;
+    width: fit-content;
+    max-width: 280px;
     left: 12px;
-    right: auto;
+    transform: none;
     bottom: 12px;
   }
 }
