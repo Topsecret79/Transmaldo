@@ -2254,9 +2254,7 @@ function App() {
           <Plus size={24} color="var(--primary)" /> 
           Crear Nueva Ruta
         </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '10px' }}>
-          Define el nombre, fecha y chofer de la ruta antes de añadir las paradas del día.
-        </p>
+
 
         <form onSubmit={handleCreateRouteSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div className="input-group">
