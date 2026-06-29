@@ -1,13 +1,19 @@
 // db.js - Gestión de base de datos local y lógica de negocio en localStorage
 import { createClient } from '@supabase/supabase-js';
 
+const defaultUrl = 'https://neskvzjfwjgbhasboxfh.supabase.co';
+const defaultKey = 'sb_publishable_hCm0ONw6mBihfXHHW23wfQ_-aGIA4uX';
+
 let supabase = null;
 const storedUrl = localStorage.getItem('supabase_url');
 const storedKey = localStorage.getItem('supabase_key');
 
-if (storedUrl && storedKey) {
+const activeUrl = storedUrl === 'none' ? null : (storedUrl || defaultUrl);
+const activeKey = storedUrl === 'none' ? null : (storedKey || defaultKey);
+
+if (activeUrl && activeKey) {
   try {
-    supabase = createClient(storedUrl, storedKey);
+    supabase = createClient(activeUrl, activeKey);
   } catch (e) {
     console.error("Error initializing Supabase client:", e);
   }
@@ -20,9 +26,13 @@ export function getSupabaseClient() {
 export function reinitSupabase() {
   const url = localStorage.getItem('supabase_url');
   const key = localStorage.getItem('supabase_key');
-  if (url && key) {
+  
+  const activeUrl = url === 'none' ? null : (url || defaultUrl);
+  const activeKey = url === 'none' ? null : (key || defaultKey);
+  
+  if (activeUrl && activeKey) {
     try {
-      supabase = createClient(url, key);
+      supabase = createClient(activeUrl, activeKey);
       initializeSupabaseTables();
       syncFromCloud();
     } catch (e) {

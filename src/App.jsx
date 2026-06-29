@@ -5538,7 +5538,7 @@ function App() {
                       name="supabase_url"
                       className="form-input" 
                       placeholder="https://xxxxxx.supabase.co" 
-                      defaultValue={localStorage.getItem('supabase_url') || ''} 
+                      defaultValue={localStorage.getItem('supabase_url') === 'none' ? '' : (localStorage.getItem('supabase_url') || '')} 
                     />
                   </div>
                   <div className="input-group" style={{ marginBottom: 0 }}>
@@ -5548,7 +5548,7 @@ function App() {
                       name="supabase_key"
                       className="form-input" 
                       placeholder="Clave API pública anon" 
-                      defaultValue={localStorage.getItem('supabase_key') || ''} 
+                      defaultValue={localStorage.getItem('supabase_key') === 'none' ? '' : (localStorage.getItem('supabase_key') || '')} 
                     />
                   </div>
                 </div>
@@ -5556,14 +5556,14 @@ function App() {
                   <button type="submit" className="btn btn-primary" style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}>
                     Conectar y Sincronizar
                   </button>
-                  {(localStorage.getItem('supabase_url') || localStorage.getItem('supabase_key')) && (
+                  {((localStorage.getItem('supabase_url') && localStorage.getItem('supabase_url') !== 'none') || (localStorage.getItem('supabase_key') && localStorage.getItem('supabase_key') !== 'none')) && (
                     <button 
                       type="button" 
                       className="btn btn-secondary" 
                       onClick={() => {
                         if (window.confirm('¿Seguro que quieres desconectarte de la nube y volver al modo 100% local?')) {
-                          localStorage.removeItem('supabase_url');
-                          localStorage.removeItem('supabase_key');
+                          localStorage.setItem('supabase_url', 'none');
+                          localStorage.setItem('supabase_key', 'none');
                           reinitSupabase();
                           loadData();
                           triggerAlert('Desconectado de la nube. Modo local activado.', 'warning');
