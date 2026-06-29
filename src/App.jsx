@@ -2451,7 +2451,7 @@ function App() {
               }}
               style={{ width: 'auto', margin: 0, padding: '6px 12px' }}
             >
-              Terminar Ruta
+              Cerrar / Nueva Ruta
             </button>
           </div>
         )}
