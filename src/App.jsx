@@ -19,6 +19,40 @@ const sortTicketsByRouteOrder = (ticketList) => {
   });
 };
 
+// Formatear dirección larga a formato corto: Calle, Número, Población
+const getShortAddressString = (addressStr) => {
+  if (!addressStr) return '';
+  const parts = addressStr.split(',').map(p => p.trim());
+  if (parts.length <= 3) return addressStr;
+
+  const cleanParts = parts.filter(p => {
+    const lp = p.toLowerCase();
+    if (lp === 'españa' || lp === 'spain') return false;
+    if (/^\d{5}$/.test(lp)) return false;
+    const regions = ['catalunya', 'cataluña', 'madrid', 'andalucía', 'andalucia', 'país vasco', 'pais vasco', 'galicia', 'comunidad valenciana', 'valencia', 'aragón', 'aragon', 'castilla', 'murcia', 'extremadura', 'asturias', 'cantabria', 'navarra', 'la rioja', 'baleares', 'canarias'];
+    if (regions.includes(lp)) return false;
+    const provinces = ['barcelona', 'madrid', 'sevilla', 'valencia', 'alicante', 'málaga', 'malaga', 'cádiz', 'cadiz', 'vizcaya', 'bizkaia', 'gipuzkoa', 'guipúzcoa', 'coruña', 'a coruña', 'asturias', 'zaragoza', 'pontevedra', 'las palmas', 'santa cruz', 'tarragona', 'girona', 'gerona', 'lleida', 'lerida', 'murcia', 'córdoba', 'cordoba', 'toledo', 'huelva', 'jaén', 'jaen', 'almería', 'almeria', 'granada', 'castellón', 'castellon', 'valladolid', 'badajoz', 'navarra', 'cantabria', 'ourense', 'lugo', 'cáceres', 'caceres', 'ciudad real', 'albacete', 'burgos', 'salamanca', 'león', 'leon', 'rioja', 'la rioja', 'cuenca', 'teruel', 'soria', 'segovia', 'ávila', 'avila', 'guadalajara', 'palencia', 'zamora', 'huesca'];
+    if (provinces.includes(lp)) return false;
+    const zones = ['vallès occidental', 'valles occidental', 'vallès oriental', 'valles oriental', 'baix llobregat', 'barcelonès', 'barcelones', 'maresme'];
+    if (zones.includes(lp)) return false;
+    return true;
+  });
+
+  if (cleanParts.length === 0) return addressStr;
+  if (cleanParts.length <= 3) return cleanParts.join(', ');
+
+  const first = cleanParts[0];
+  const second = cleanParts[1];
+  const last = cleanParts[cleanParts.length - 1];
+  
+  const isNum = /\d/.test(second) || second.toLowerCase().includes('s/n') || second.length <= 4;
+  
+  if (isNum) {
+    return `${first}, ${second}, ${last}`;
+  }
+  return `${first}, ${last}`;
+};
+
 // Obtener ruta por carreteras reales desde OSRM
 const fetchRoadRoute = async (points) => {
   if (!points || points.length < 2) return null;
@@ -3227,7 +3261,7 @@ function App() {
                                     CP {t.postcode}
                                   </span>
                                 )}
-                                <strong>{t.address}</strong>
+                                <strong>{getShortAddressString(t.address)}</strong>
                               </div>
                               <a 
                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
@@ -3636,7 +3670,7 @@ function App() {
 
         <div className="map-floating-info-row" style={{ marginTop: '8px' }}>
           <span style={{ fontSize: '1rem', flexShrink: 0 }}>📍</span>
-          <span className="map-floating-info-text">{ticketToShow.address || ''} {ticketToShow.postcode && `(CP ${ticketToShow.postcode})`}</span>
+          <span className="map-floating-info-text">{getShortAddressString(ticketToShow.address)} {ticketToShow.postcode && `(CP ${ticketToShow.postcode})`}</span>
         </div>
 
         {ticketToShow.phone && (
@@ -4350,7 +4384,7 @@ function App() {
                                  CP {t.postcode}
                                </span>
                              )}
-                             <span>{t.address || ''}</span>
+                             <span>{getShortAddressString(t.address || '')}</span>
                              {t.address && (
                                <a 
                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
