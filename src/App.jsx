@@ -1098,7 +1098,6 @@ function App() {
     }
 
     setTickets(updatedTickets);
-    setVisibleTickets(updatedTickets);
 
     try {
       if (dbTicketA) await updateTicket(dbTicketA);
@@ -1145,7 +1144,6 @@ function App() {
     });
 
     setTickets(updatedTickets);
-    setVisibleTickets(updatedTickets);
 
     try {
       for (const t of updatedTickets) {
