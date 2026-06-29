@@ -4703,15 +4703,15 @@ function App() {
 
     // Contadores (Solo cuenta de paradas con éxito)
     let totalPMs = 0;
-    let totalDeliveries = 0;
+    let totalCustomEarnings = 0;
     successTickets.forEach(t => {
       t.tasks.forEach(task => {
         const tid = task.tariffId || '';
         if (tid.startsWith('PM_')) {
           totalPMs += task.quantity;
         }
-        if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) {
-          totalDeliveries += task.quantity;
+        if (tid.startsWith('CUSTOM_')) {
+          totalCustomEarnings += (task.unitPrice || task.price || 0) * task.quantity;
         }
       });
     });
@@ -4779,20 +4779,21 @@ function App() {
 
             <div className="dashboard-grid">
               <div className="stat-card success">
-                <p>Ganancias del Periodo</p>
+                <p>Total Mes</p>
                 <div className="stat-val">{totalEarnings.toFixed(2)} €</div>
               </div>
-              <div className="stat-card info">
-                <p>Entregas con Éxito</p>
-                <div className="stat-val">{successTickets.length} / {filteredAdminTickets.length}</div>
+              <div className="stat-card info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <p>Entregas</p>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{successTickets.length}</div>
+                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>de {filteredAdminTickets.length} totales</span>
               </div>
               <div className="stat-card warning">
-                <p>Puestas en Marcha (PM)</p>
+                <p>Puestas en Marcha</p>
                 <div className="stat-val">{totalPMs}</div>
               </div>
               <div className="stat-card danger">
-                <p>Entregas Realizadas</p>
-                <div className="stat-val">{totalDeliveries}</div>
+                <p>Adicionales Mes</p>
+                <div className="stat-val">{totalCustomEarnings.toFixed(2)} €</div>
               </div>
             </div>
 
