@@ -282,6 +282,7 @@ function App() {
   const [isListeningName, setIsListeningName] = useState(false);
   const [formStep, setFormStep] = useState(1);
   const debounceTimerRef = useRef(null);
+  const mapSelectTimerRef = useRef(null);
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [ticketRoute, setTicketRoute] = useState('');
@@ -612,7 +613,7 @@ function App() {
               .addTo(map)
               .bindPopup(popupContent, { maxWidth: 220 })
               .on('click', () => {
-                setSelectedMapTicket(t);
+                handleSelectMapTicket(t);
               });
           });
 
@@ -1013,6 +1014,16 @@ function App() {
       console.error("Failed to start SpeechRecognition:", err);
       setIsListeningName(false);
     }
+  };
+
+  const handleSelectMapTicket = (ticket) => {
+    setSelectedMapTicket(ticket);
+    if (mapSelectTimerRef.current) {
+      clearTimeout(mapSelectTimerRef.current);
+    }
+    mapSelectTimerRef.current = setTimeout(() => {
+      setSelectedMapTicket(null);
+    }, 8000);
   };
 
   // Verificar validez de la dirección por geocodificación
