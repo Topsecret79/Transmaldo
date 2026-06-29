@@ -331,7 +331,9 @@ function App() {
   const [formTvs, setFormTvs] = useState([]);
   const [selectedMapTicket, setSelectedMapTicket] = useState(null);
   const [isMapPanelExpanded, setIsMapPanelExpanded] = useState(true);
-  const [activeRouteContext, setActiveRouteContext] = useState(null);
+  const [activeRoutes, setActiveRoutes] = useState([]);
+  const [currentRouteId, setCurrentRouteId] = useState(null);
+  const activeRouteContext = activeRoutes.find(r => r.id === currentRouteId);
   const [showCreateRouteFormFields, setShowCreateRouteFormFields] = useState(false);
   const [newRouteName, setNewRouteName] = useState('');
   const [newRouteDate, setNewRouteDate] = useState(new Date().toISOString().split('T')[0]);
@@ -2315,11 +2317,15 @@ function App() {
         return;
       }
 
-      setActiveRouteContext({
+      const newRoute = {
+        id: Date.now().toString(),
         name: cleanName,
         date: newRouteDate,
         furgoId: selectedFurgoId
-      });
+      };
+
+      setActiveRoutes(prev => [...prev, newRoute]);
+      setCurrentRouteId(newRoute.id);
       setShowCreateRouteFormFields(false);
 
       // Pre-fill fields for the ticket form
@@ -2327,6 +2333,9 @@ function App() {
       setTicketRoute(selectedFurgoId);
       setRouteName(cleanName);
       setFormStep(1);
+      
+      // Reset creation inputs
+      setNewRouteName('');
       
       triggerAlert(`🚀 Ruta "${cleanName}" creada. Ahora añade las paradas.`);
     };
@@ -2383,7 +2392,16 @@ function App() {
             <button 
               type="button" 
               className="btn btn-secondary" 
-              onClick={() => setShowCreateRouteFormFields(false)}
+              onClick={() => {
+                if (activeRoutes.length > 0) {
+                  const last = activeRoutes[activeRoutes.length - 1];
+                  setCurrentRouteId(last.id);
+                  setTicketDate(last.date);
+                  setTicketRoute(last.furgoId);
+                  setRouteName(last.name);
+                }
+                setShowCreateRouteFormFields(false);
+              }}
               style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}
             >
               Atrás
@@ -2425,11 +2443,52 @@ function App() {
             justifyContent: 'space-between',
             alignItems: 'center',
             fontSize: '0.9rem',
-            textAlign: 'left'
+            textAlign: 'left',
+            flexWrap: 'wrap',
+            gap: '10px'
           }}>
             <div>
-              <span style={{ fontWeight: '700', color: 'var(--primary)' }}>📍 Ruta Activa:</span> <strong>{activeRouteContext.name}</strong> 
-              <span style={{ color: 'var(--text-muted)' }}> ({activeRouteContext.date})</span>
+              <span style={{ fontWeight: '700', color: 'var(--primary)', marginRight: '6px' }}>📍 Ruta Activa:</span>
+              <select
+                className="form-input"
+                value={currentRouteId || ''}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  if (selectedId === 'new') {
+                    setCurrentRouteId(null);
+                    setShowCreateRouteFormFields(true);
+                  } else {
+                    setCurrentRouteId(selectedId);
+                    const r = activeRoutes.find(x => x.id === selectedId);
+                    if (r) {
+                      setTicketDate(r.date);
+                      setTicketRoute(r.furgoId);
+                      setRouteName(r.name);
+                    }
+                  }
+                }}
+                style={{ 
+                  width: 'auto', 
+                  minWidth: '180px',
+                  padding: '4px 10px', 
+                  fontSize: '0.85rem', 
+                  margin: 0,
+                  height: '32px',
+                  display: 'inline-block',
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(99, 102, 241, 0.3)',
+                  color: '#fff'
+                }}
+              >
+                {activeRoutes.map(r => (
+                  <option key={r.id} value={r.id} style={{ background: '#121214' }}>
+                    {r.name} ({r.date})
+                  </option>
+                ))}
+                <option value="new" style={{ background: '#121214', fontWeight: 'bold', color: 'var(--primary)' }}>
+                  ➕ Crear Otra Ruta...
+                </option>
+              </select>
               <br />
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 🚚 Chofer: {users.find(u => u.id === activeRouteContext.furgoId)?.label || activeRouteContext.furgoId} 
@@ -2440,18 +2499,26 @@ function App() {
               type="button"
               className="btn btn-secondary btn-small"
               onClick={() => {
-                if (window.confirm('¿Seguro que quieres finalizar y cerrar esta ruta? Volverás a la pantalla de creación.')) {
-                  setActiveRouteContext(null);
-                  setNewRouteName('');
-                  // Reset states
-                  setTicketDate(new Date().toISOString().split('T')[0]);
-                  setTicketRoute('');
-                  setRouteName('');
+                if (window.confirm(`¿Seguro que quieres finalizar y cerrar la ruta "${activeRouteContext.name}"? Se quitará de la lista de rutas activas.`)) {
+                  const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
+                  setActiveRoutes(remaining);
+                  const nextRoute = remaining[remaining.length - 1];
+                  if (nextRoute) {
+                    setCurrentRouteId(nextRoute.id);
+                    setTicketDate(nextRoute.date);
+                    setTicketRoute(nextRoute.furgoId);
+                    setRouteName(nextRoute.name);
+                  } else {
+                    setCurrentRouteId(null);
+                    setTicketDate(new Date().toISOString().split('T')[0]);
+                    setTicketRoute('');
+                    setRouteName('');
+                  }
                 }
               }}
               style={{ width: 'auto', margin: 0, padding: '6px 12px' }}
             >
-              Cerrar / Nueva Ruta
+              Finalizar esta Ruta
             </button>
           </div>
         )}
