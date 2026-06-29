@@ -328,6 +328,10 @@ function App() {
   const [formTvs, setFormTvs] = useState([]);
   const [selectedMapTicket, setSelectedMapTicket] = useState(null);
   const [isMapPanelExpanded, setIsMapPanelExpanded] = useState(true);
+  const [activeRouteContext, setActiveRouteContext] = useState(null);
+  const [newRouteName, setNewRouteName] = useState('');
+  const [newRouteDate, setNewRouteDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newRouteFurgoId, setNewRouteFurgoId] = useState('');
 
   // Estados temporales para añadir una TV nueva al listado
   const [tempTvInches, setTempTvInches] = useState('55');
@@ -760,7 +764,12 @@ function App() {
     setTickets(getTickets());
     setTariffs(getTariffs());
     setModulePrice(getModulePrice());
-    setUsers(getUsers());
+    const usrs = getUsers();
+    setUsers(usrs);
+    const activeRepartidores = usrs.filter(u => u.role === 'repartidor');
+    if (activeRepartidores.length > 0) {
+      setNewRouteFurgoId(activeRepartidores[0].id);
+    }
     setShifts(getShifts());
     setAppName(getAppName());
     setAppNameInput(getAppName());
@@ -1319,7 +1328,8 @@ function App() {
       postcode: postcode.trim(),
       notes: notes.trim(),
       codAmount: parseFloat(codAmount) || 0,
-      tasks: tasksArray
+      tasks: tasksArray,
+      routeName: routeName || undefined
     };
 
     // Intentar obtener las coordenadas desde la verificación previa, o geocodificar en el momento
@@ -1358,7 +1368,15 @@ function App() {
       setOtherQuantities({});
       setNotes('');
       setCodAmount('');
-      setTicketDate(new Date().toISOString().split('T')[0]);
+      if (activeRouteContext) {
+        setTicketDate(activeRouteContext.date);
+        setTicketRoute(activeRouteContext.furgoId);
+        setRouteName(activeRouteContext.name);
+      } else {
+        setTicketDate(new Date().toISOString().split('T')[0]);
+        setTicketRoute('');
+        setRouteName('');
+      }
       setSpellingSuggestions([]);
       setFormStep(1);
       loadData();
@@ -2192,8 +2210,107 @@ function App() {
   const isSingleRouteFiltered = ticketFilterFurgo !== 'all' && ticketFilterDate && !ticketSearchQuery.trim() && !ticketFilterPostcode.trim();
 
 
+  const renderCreateRouteForm = () => {
+    const activeRepartidores = users.filter(u => u.role === 'repartidor');
+
+    const handleCreateRouteSubmit = (e) => {
+      e.preventDefault();
+      const cleanName = newRouteName.trim();
+      if (!cleanName) {
+        triggerAlert('Por favor, introduce un nombre para la ruta', 'error');
+        return;
+      }
+      
+      const selectedFurgoId = newRouteFurgoId || (activeRepartidores[0]?.id || '');
+      if (!selectedFurgoId) {
+        triggerAlert('Por favor, asigna una furgoneta o chofer', 'error');
+        return;
+      }
+
+      setActiveRouteContext({
+        name: cleanName,
+        date: newRouteDate,
+        furgoId: selectedFurgoId
+      });
+
+      // Pre-fill fields for the ticket form
+      setTicketDate(newRouteDate);
+      setTicketRoute(selectedFurgoId);
+      setRouteName(cleanName);
+      setFormStep(1);
+      
+      triggerAlert(`🚀 Ruta "${cleanName}" creada. Ahora añade las paradas.`);
+    };
+
+    return (
+      <div className="glass-panel" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
+          <Plus size={24} color="var(--primary)" /> 
+          Crear Nueva Ruta
+        </h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '10px' }}>
+          Define el nombre, fecha y chofer de la ruta antes de añadir las paradas del día.
+        </p>
+
+        <form onSubmit={handleCreateRouteSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <div className="input-group">
+            <span className="input-label">Nombre de la Ruta</span>
+            <input 
+              type="text" 
+              className="form-input" 
+              placeholder="Ej: Ruta Sabadell, Ruta Norte, Ruta Especial..."
+              value={newRouteName}
+              onChange={(e) => setNewRouteName(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="grid-2col">
+            <div className="input-group">
+              <span className="input-label">Fecha de la Ruta</span>
+              <input 
+                type="date" 
+                className="form-input" 
+                value={newRouteDate}
+                onChange={(e) => setNewRouteDate(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="input-group">
+              <span className="input-label">Asignar Chofer / Furgoneta</span>
+              <select 
+                className="form-input" 
+                value={newRouteFurgoId}
+                onChange={(e) => setNewRouteFurgoId(e.target.value)}
+                required
+              >
+                <option value="" disabled>Selecciona furgoneta...</option>
+                {activeRepartidores.map(u => (
+                  <option key={u.id} value={u.id}>{u.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <button 
+            type="submit" 
+            className="btn btn-primary" 
+            style={{ width: '100%', height: '42px', marginTop: '10px' }}
+          >
+            🚀 Crear Ruta y Empezar a Añadir Paradas
+          </button>
+        </form>
+      </div>
+    );
+  };
+
   // --- RENDERIZADO DEL FORMULARIO ---
   const renderTicketForm = () => {
+    if (!activeRouteContext && !editingTicketId) {
+      return renderCreateRouteForm();
+    }
+
     const itemsPaqueteria = tariffs.filter(t => t.block === 'Paquetería');
     const itemsOtros = tariffs.filter(t => t.block === 'Otros');
 
@@ -2202,6 +2319,47 @@ function App() {
 
     return (
       <form onSubmit={handleFormSubmit} className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {activeRouteContext && !editingTicketId && (
+          <div style={{
+            background: 'rgba(99, 102, 241, 0.08)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.9rem',
+            textAlign: 'left'
+          }}>
+            <div>
+              <span style={{ fontWeight: '700', color: 'var(--primary)' }}>📍 Ruta Activa:</span> <strong>{activeRouteContext.name}</strong> 
+              <span style={{ color: 'var(--text-muted)' }}> ({activeRouteContext.date})</span>
+              <br />
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                🚚 Chofer: {users.find(u => u.id === activeRouteContext.furgoId)?.label || activeRouteContext.furgoId} 
+                • Paradas en esta ruta: {tickets.filter(t => t.date === activeRouteContext.date && t.furgoId === activeRouteContext.furgoId).length}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={() => {
+                if (window.confirm('¿Seguro que quieres finalizar y cerrar esta ruta? Volverás a la pantalla de creación.')) {
+                  setActiveRouteContext(null);
+                  setNewRouteName('');
+                  // Reset states
+                  setTicketDate(new Date().toISOString().split('T')[0]);
+                  setTicketRoute('');
+                  setRouteName('');
+                }
+              }}
+              style={{ width: 'auto', margin: 0, padding: '6px 12px' }}
+            >
+              Terminar Ruta
+            </button>
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
             <Plus size={24} color="var(--primary)" /> 
@@ -2277,39 +2435,41 @@ function App() {
         {/* PASO 1: CLIENTE Y GEOLOCALIZACIÓN */}
         {formStep === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <span className="input-label">Fecha</span>
-                <input type="date" className="form-input" value={ticketDate} onChange={(e) => setTicketDate(e.target.value)} required disabled={isClosed} />
-              </div>
+            {(!activeRouteContext || editingTicketId) ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">Fecha</span>
+                  <input type="date" className="form-input" value={ticketDate} onChange={(e) => setTicketDate(e.target.value)} required disabled={isClosed} />
+                </div>
 
-              {!isAdminOrSuper ? (
-                <div className="input-group" style={{ marginBottom: 0 }}>
-                  <span className="input-label">Adjudicar a la Ruta de</span>
-                  <select 
-                    className="form-input" 
-                    value={ticketRoute} 
-                    onChange={(e) => setTicketRoute(e.target.value)} 
-                    required
-                    disabled={isClosed}
-                  >
-                    <option value="">Selecciona Ruta / Chofer...</option>
-                    {activeRepartidores.map(u => (
-                      <option key={u.id} value={u.label}>{u.label}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : editingTicketId && (
-                <div className="input-group" style={{ marginBottom: 0 }}>
-                  <span className="input-label">Furgoneta asignada</span>
-                  <select className="form-input" value={editingFurgoId} onChange={(e) => setEditingFurgoId(e.target.value)} required disabled={isClosed}>
-                    {activeRepartidores.map(u => (
-                      <option key={u.id} value={u.id}>{u.label}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
+                {!isAdminOrSuper ? (
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Adjudicar a la Ruta de</span>
+                    <select 
+                      className="form-input" 
+                      value={ticketRoute} 
+                      onChange={(e) => setTicketRoute(e.target.value)} 
+                      required
+                      disabled={isClosed}
+                    >
+                      <option value="">Selecciona Ruta / Chofer...</option>
+                      {activeRepartidores.map(u => (
+                        <option key={u.id} value={u.label}>{u.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : editingTicketId && (
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Furgoneta asignada</span>
+                    <select className="form-input" value={editingFurgoId} onChange={(e) => setEditingFurgoId(e.target.value)} required disabled={isClosed}>
+                      {activeRepartidores.map(u => (
+                        <option key={u.id} value={u.id}>{u.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
               <div className="input-group">
