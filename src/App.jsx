@@ -347,6 +347,9 @@ function App() {
   // Cantidades de otros artículos no-TV (Paquetería y Otros Elementos)
   // { tariffId: quantity }
   const [otherQuantities, setOtherQuantities] = useState({});
+  const [customExtras, setCustomExtras] = useState([]);
+  const [customExtraName, setCustomExtraName] = useState('');
+  const [customExtraPrice, setCustomExtraPrice] = useState('');
 
   // Cierre de turno
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -886,6 +889,23 @@ function App() {
     setFormTvs(formTvs.filter(tv => tv.id !== tvId));
   };
 
+  // Añadir un concepto adicional personalizado
+  const addCustomExtra = () => {
+    const newExtra = {
+      id: 'CUSTOM_' + Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      name: customExtraName.trim(),
+      price: parseFloat(customExtraPrice) || 0
+    };
+    setCustomExtras([...customExtras, newExtra]);
+    setCustomExtraName('');
+    setCustomExtraPrice('');
+  };
+
+  // Quitar un concepto adicional
+  const removeCustomExtra = (id) => {
+    setCustomExtras(customExtras.filter(extra => extra.id !== id));
+  };
+
   // Modificar propiedades de una TV añadida
   const updateTvInForm = (tvId, field, value) => {
     setFormTvs(formTvs.map(tv => {
@@ -1362,6 +1382,16 @@ function App() {
       }
     });
 
+    // 3. Añadir conceptos adicionales (extras personalizados)
+    customExtras.forEach(extra => {
+      tasksArray.push({
+        tariffId: extra.id,
+        name: extra.name,
+        price: extra.price,
+        quantity: 1
+      });
+    });
+
     if (tasksArray.length === 0) {
       triggerAlert('Debes registrar al menos un artículo o servicio', 'error');
       return;
@@ -1424,6 +1454,9 @@ function App() {
       setLastVerifiedAddress('');
       setFormTvs([]);
       setOtherQuantities({});
+      setCustomExtras([]);
+      setCustomExtraName('');
+      setCustomExtraPrice('');
       setNotes('');
       setCodAmount('');
       if (activeRouteContext) {
@@ -1707,8 +1740,17 @@ function App() {
       });
     }
 
+    const tempCustomExtras = [];
     // Reconstruir otros artículos no-TV
     ticket.tasks.forEach(t => {
+      if (t.tariffId && t.tariffId.startsWith('CUSTOM_')) {
+        tempCustomExtras.push({
+          id: t.tariffId,
+          name: t.name,
+          price: t.unitPrice || t.price || 0
+        });
+        return;
+      }
       const isTVRelated = (t.tariffId.startsWith('TV_ENT_') || 
                           t.tariffId.startsWith('TV_COMB_') || 
                           t.tariffId.startsWith('PM_') || 
@@ -1725,6 +1767,7 @@ function App() {
 
     setFormTvs(tempTvs);
     setOtherQuantities(tempOthers);
+    setCustomExtras(tempCustomExtras);
     setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
     setFormStep(1);
     setActiveTab('new_ticket');
@@ -1741,6 +1784,9 @@ function App() {
     setPostcode('');
     setFormTvs([]);
     setOtherQuantities({});
+    setCustomExtras([]);
+    setCustomExtraName('');
+    setCustomExtraPrice('');
     setNotes('');
     setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
@@ -3116,6 +3162,83 @@ function App() {
               </div>
             </div>
 
+            {/* SECCIÓN C: CONCEPTOS ADICIONALES (EXTRAS PERSONALIZADOS) */}
+            <div className="block-section" style={{ textAlign: 'left' }}>
+              <div className="block-title">➕ Conceptos Adicionales (Extras Especiales)</div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Registra servicios extras no contemplados en la tarifa estándar (ej. subida por escalera, ayudante adicional, etc.)
+              </p>
+              
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                <div style={{ flex: 2, minWidth: '200px' }}>
+                  <span className="input-label" style={{ margin: '0 0 4px 0' }}>Descripción del Servicio Extra</span>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Ej: Subida por escaleras (10 pisos)"
+                    value={customExtraName}
+                    onChange={(e) => setCustomExtraName(e.target.value)}
+                    disabled={isClosed}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: '100px' }}>
+                  <span className="input-label" style={{ margin: '0 0 4px 0' }}>Precio (€)</span>
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    placeholder="Ej: 20"
+                    value={customExtraPrice}
+                    onChange={(e) => setCustomExtraPrice(e.target.value)}
+                    disabled={isClosed}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary"
+                    onClick={() => {
+                      if (!customExtraName.trim()) {
+                        triggerAlert('Escribe una descripción para el concepto adicional', 'error');
+                        return;
+                      }
+                      if (!customExtraPrice || parseFloat(customExtraPrice) < 0) {
+                        triggerAlert('Introduce un precio válido', 'error');
+                        return;
+                      }
+                      addCustomExtra();
+                    }}
+                    style={{ height: '42px', margin: 0, padding: '0 20px', width: 'auto' }}
+                    disabled={isClosed}
+                  >
+                    Añadir Extra
+                  </button>
+                </div>
+              </div>
+
+              {/* Listado de Extras Añadidos */}
+              {customExtras.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {customExtras.map(extra => (
+                    <div key={extra.id} className="task-item-row" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '10px 15px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                      <span style={{ fontWeight: '600' }}>✨ {extra.name}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <span style={{ fontWeight: '700', color: 'var(--success)' }}>{extra.price.toFixed(2)} €</span>
+                        <button 
+                          type="button" 
+                          className="btn btn-danger btn-small"
+                          onClick={() => removeCustomExtra(extra.id)}
+                          style={{ width: 'auto', margin: 0, padding: '4px 8px' }}
+                          disabled={isClosed}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="wizard-footer">
               <button 
                 type="button" 
@@ -3130,8 +3253,9 @@ function App() {
                 onClick={() => {
                   const hasTvs = formTvs.length > 0;
                   const hasPackages = Object.values(otherQuantities).some(qty => qty > 0);
-                  if (!hasTvs && !hasPackages) {
-                    triggerAlert('Debes registrar al menos un televisor o un paquete/servicio en este reparto.', 'error');
+                  const hasCustom = customExtras.length > 0;
+                  if (!hasTvs && !hasPackages && !hasCustom) {
+                    triggerAlert('Debes registrar al menos un televisor, paquete, o servicio extra en este reparto.', 'error');
                     return;
                   }
                   setFormStep(3);
@@ -4300,7 +4424,7 @@ function App() {
                           <ul style={{ margin: 0, paddingLeft: '15px', fontSize: '0.82rem', lineHeight: '1.4' }}>
                             {ticket.tasks.map((task, idx) => {
                               const tariff = tariffs.find(tar => tar.id === task.tariffId);
-                              const name = tariff ? tariff.name : task.tariffId;
+                              const name = tariff ? tariff.name : (task.name || task.tariffId);
                               return (
                                 <li key={idx}>
                                   {name} <span style={{ color: 'var(--text-muted)' }}>(x{task.quantity})</span>

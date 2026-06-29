@@ -179,12 +179,15 @@ export function addTicket(ticketData) {
 
   let totalCalculado = 0;
   const detailedTasks = ticketData.tasks.map(task => {
-    const price = calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+    const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_');
+    const price = isCustom 
+      ? (task.price || task.unitPrice || 0) 
+      : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
     const subtotal = price * task.quantity;
     totalCalculado += subtotal;
     const tariff = tariffs.find(t => t.id === task.tariffId);
 
-    let name = tariff ? tariff.name : 'Desconocido';
+    let name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
     if (task.brand && task.inches) {
       const isComb = task.tariffId.includes('COMB');
       const typeStr = isComb ? 'Ent+Rec' : (task.tariffId.includes('ENT') ? 'Entrega' : '');
@@ -240,12 +243,15 @@ export function updateTicket(updatedTicket) {
 
   let totalCalculado = 0;
   const detailedTasks = updatedTicket.tasks.map(task => {
-    const price = calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+    const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_');
+    const price = isCustom 
+      ? (task.price || task.unitPrice || 0) 
+      : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
     const subtotal = price * task.quantity;
     totalCalculado += subtotal;
     const tariff = tariffs.find(t => t.id === task.tariffId);
 
-    let name = tariff ? tariff.name : 'Desconocido';
+    let name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
     if (task.brand && task.inches) {
       const isComb = task.tariffId.includes('COMB');
       const typeStr = isComb ? 'Ent+Rec' : (task.tariffId.includes('ENT') ? 'Entrega' : '');
