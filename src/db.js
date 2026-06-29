@@ -152,14 +152,25 @@ export async function syncFromCloud() {
         password: u.password,
         label: u.label,
         role: u.role,
-        canSearch: u.can_search || false
+        canSearch: u.can_search || false,
+        createdBy: u.created_by || 'admin'
       }));
       localStorage.setItem('delivery_users', JSON.stringify(localUsers));
     }
 
     // Pull Tariffs
     const { data: tariffs, error: errTariffs } = await supabase.from('delivery_tariffs').select('*');
-    if (tariffs && !errTariffs) localStorage.setItem('delivery_tariffs', JSON.stringify(tariffs));
+    if (tariffs && !errTariffs) {
+      const localTariffs = tariffs.map(t => ({
+        id: t.id,
+        name: t.name,
+        block: t.block,
+        type: t.type,
+        value: parseFloat(t.value) || 0,
+        createdBy: t.created_by || null
+      }));
+      localStorage.setItem('delivery_tariffs', JSON.stringify(localTariffs));
+    }
 
     // Pull Tickets
     const { data: tickets, error: errTickets } = await supabase.from('delivery_tickets').select('*');
@@ -185,14 +196,26 @@ export async function syncFromCloud() {
         completedLat: t.completed_lat,
         completedLng: t.completed_lng,
         routeOrder: t.route_order,
-        createdAt: t.created_at
+        createdAt: t.created_at,
+        createdBy: t.created_by || 'admin'
       }));
       localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
     }
 
     // Pull Shifts
     const { data: shifts, error: errShifts } = await supabase.from('delivery_shifts').select('*');
-    if (shifts && !errShifts) localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
+    if (shifts && !errShifts) {
+      const localShifts = shifts.map(s => ({
+        id: s.id,
+        furgoId: s.furgo_id,
+        date: s.date,
+        status: s.status,
+        openedAt: s.opened_at,
+        closedAt: s.closed_at,
+        createdBy: s.created_by || 'admin'
+      }));
+      localStorage.setItem('delivery_shifts', JSON.stringify(localShifts));
+    }
 
     // Pull Settings
     const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
@@ -348,7 +371,8 @@ export function saveUsers(users) {
           password: u.password,
           label: u.label,
           role: u.role,
-          can_search: u.canSearch || false
+          can_search: u.canSearch || false,
+          created_by: u.createdBy || 'admin'
         }));
         await supabase.from('delivery_users').upsert(formatted);
       } catch (e) {
@@ -382,7 +406,15 @@ export function saveTariffs(tariffs) {
   if (supabase) {
     (async () => {
       try {
-        await supabase.from('delivery_tariffs').upsert(tariffs);
+        const formatted = tariffs.map(t => ({
+          id: t.id,
+          name: t.name,
+          block: t.block,
+          type: t.type,
+          value: t.value,
+          created_by: t.createdBy || null
+        }));
+        await supabase.from('delivery_tariffs').upsert(formatted);
       } catch (e) {
         console.error("Error saving tariffs to Supabase:", e);
       }
@@ -421,7 +453,8 @@ export function saveTickets(tickets) {
           completed_lat: t.completedLat,
           completed_lng: t.completedLng,
           route_order: t.routeOrder,
-          created_at: t.createdAt
+          created_at: t.createdAt,
+          created_by: t.createdBy || 'admin'
         }));
         await supabase.from('delivery_tickets').upsert(formatted);
       } catch (e) {
@@ -503,7 +536,8 @@ export function addTicket(ticketData) {
     createdAt: new Date().toISOString(),
     lat: ticketData.lat || null,
     lng: ticketData.lng || null,
-    routeOrder: ticketData.routeOrder || null
+    routeOrder: ticketData.routeOrder || null,
+    createdBy: ticketData.createdBy || 'admin'
   };
 
   tickets.push(newTicket);
@@ -532,7 +566,8 @@ export function addTicket(ticketData) {
           completed_lat: newTicket.completedLat,
           completed_lng: newTicket.completedLng,
           route_order: newTicket.routeOrder,
-          created_at: newTicket.createdAt
+          created_at: newTicket.createdAt,
+          created_by: newTicket.createdBy || 'admin'
         });
       } catch (e) {
         console.error("Error pushing ticket to Supabase:", e);
@@ -601,7 +636,8 @@ export function updateTicket(updatedTicket) {
       lng: updatedTicket.lng !== undefined ? updatedTicket.lng : tickets[index].lng,
       completedLat: updatedTicket.completedLat !== undefined ? updatedTicket.completedLat : tickets[index].completedLat,
       completedLng: updatedTicket.completedLng !== undefined ? updatedTicket.completedLng : tickets[index].completedLng,
-      routeOrder: updatedTicket.routeOrder !== undefined ? updatedTicket.routeOrder : tickets[index].routeOrder
+      routeOrder: updatedTicket.routeOrder !== undefined ? updatedTicket.routeOrder : tickets[index].routeOrder,
+      createdBy: updatedTicket.createdBy || tickets[index].createdBy || 'admin'
     };
     saveTickets(tickets);
     if (supabase) {
@@ -629,7 +665,8 @@ export function updateTicket(updatedTicket) {
             completed_lat: t.completedLat,
             completed_lng: t.completedLng,
             route_order: t.routeOrder,
-            created_at: t.createdAt
+            created_at: t.createdAt,
+            created_by: t.createdBy || 'admin'
           });
         } catch (e) {
           console.error("Error updating ticket in Supabase:", e);
@@ -710,7 +747,16 @@ export function saveShifts(shifts) {
   if (supabase) {
     (async () => {
       try {
-        await supabase.from('delivery_shifts').upsert(shifts);
+        const formatted = shifts.map(s => ({
+          id: s.id,
+          furgo_id: s.furgoId,
+          date: s.date,
+          status: s.status,
+          opened_at: s.openedAt || null,
+          closed_at: s.closedAt || null,
+          created_by: s.createdBy || 'admin'
+        }));
+        await supabase.from('delivery_shifts').upsert(formatted);
       } catch (e) {
         console.error("Error saving shifts to Supabase:", e);
       }
