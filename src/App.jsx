@@ -2276,30 +2276,17 @@ function App() {
           flexDirection: 'column', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          padding: '40px 20px', 
+          padding: '30px 20px', 
           gap: '15px' 
         }}
       >
-        <div style={{
-          width: '60px',
-          height: '60px',
-          borderRadius: '50%',
-          background: 'rgba(99, 102, 241, 0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--primary)',
-          boxShadow: '0 0 20px rgba(99, 102, 241, 0.2)'
-        }}>
-          <Plus size={32} />
-        </div>
-        <h2 style={{ margin: 0, fontWeight: '700' }}>Planificación de Ruta</h2>
+        <h2 style={{ margin: 0, fontWeight: '700' }}>Gestiona paradas</h2>
 
         <button
           type="button"
           className="btn btn-primary"
           onClick={() => setShowCreateRouteFormFields(true)}
-          style={{ width: 'auto', minWidth: '200px', height: '45px', marginTop: '10px' }}
+          style={{ width: 'auto', minWidth: '200px', height: '45px', marginTop: '5px' }}
         >
           🚀 Crear Ruta
         </button>
@@ -5461,7 +5448,7 @@ function App() {
             <div style={{ textAlign: 'center', marginBottom: '10px' }}>
               <TrendingUp size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
               <h1 className="login-title" style={{ fontWeight: '800', letterSpacing: '-0.03em', margin: 0 }}>{appName}</h1>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>Gestiona paradas</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>Inicia sesión para gestionar tus repartos y ganancias</p>
             </div>
 
             {loginError && (
