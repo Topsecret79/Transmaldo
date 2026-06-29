@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation as CapGeolocation } from '@capacitor/geolocation';
 
 // Asegurar Leaflet en el objeto global para compatibilidad
 if (typeof window !== 'undefined') {
@@ -463,42 +465,88 @@ function App() {
 
   // Lógica de rastreo GPS en tiempo real para choferes
   useEffect(() => {
-    if (isTrackingActive && currentUser && currentUser.role === 'repartidor') {
-      if ('geolocation' in navigator) {
-        setGpsStatus('active');
-        watchIdRef.current = navigator.geolocation.watchPosition(
-          (position) => {
-            const { latitude, longitude } = position.coords;
-            saveDriverLocation(currentUser.id, latitude, longitude);
+    let active = true;
+    
+    const startTracking = async () => {
+      if (isTrackingActive && currentUser && currentUser.role === 'repartidor') {
+        if (Capacitor.isNativePlatform()) {
+          try {
+            const permission = await CapGeolocation.requestPermissions();
+            if (!active) return;
+            if (permission.location !== 'granted') {
+              setGpsStatus('error');
+              return;
+            }
             setGpsStatus('active');
-          },
-          (error) => {
-            console.error("GPS Tracking Error:", error);
+            watchIdRef.current = await CapGeolocation.watchPosition(
+              { enableHighAccuracy: true, timeout: 10000 },
+              (position, err) => {
+                if (!active) return;
+                if (err) {
+                  console.error("Capacitor watchPosition error:", err);
+                  setGpsStatus('error');
+                  return;
+                }
+                if (position) {
+                  const { latitude, longitude } = position.coords;
+                  saveDriverLocation(currentUser.id, latitude, longitude);
+                  setGpsStatus('active');
+                }
+              }
+            );
+          } catch (err) {
+            console.error("Capacitor Geolocation exception:", err);
             setGpsStatus('error');
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
           }
-        );
+        } else {
+          // Standard browser Geolocation
+          if ('geolocation' in navigator) {
+            setGpsStatus('active');
+            watchIdRef.current = navigator.geolocation.watchPosition(
+              (position) => {
+                if (!active) return;
+                const { latitude, longitude } = position.coords;
+                saveDriverLocation(currentUser.id, latitude, longitude);
+                setGpsStatus('active');
+              },
+              (error) => {
+                if (!active) return;
+                console.error("GPS Tracking Error:", error);
+                setGpsStatus('error');
+              },
+              {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+              }
+            );
+          } else {
+            console.error("Geolocation not supported by this browser.");
+            setGpsStatus('error');
+          }
+        }
       } else {
-        console.error("Geolocation not supported by this browser.");
-        setGpsStatus('error');
+        stopTracking();
       }
-    } else {
+    };
+
+    const stopTracking = () => {
       if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+        if (Capacitor.isNativePlatform()) {
+          CapGeolocation.clearWatch({ id: watchIdRef.current }).catch(err => console.error("Error clearing native watch:", err));
+        } else {
+          navigator.geolocation.clearWatch(watchIdRef.current);
+        }
         watchIdRef.current = null;
       }
       setGpsStatus('inactive');
-    }
+    };
+
+    startTracking();
 
     return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
+      active = false;
+      stopTracking();
     };
   }, [isTrackingActive, currentUser]);
 
