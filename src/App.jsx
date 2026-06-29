@@ -326,6 +326,7 @@ function App() {
   // Cada TV: { id: string, inches: number, action: 'entrega'|'recogida'|'combinado', pmType: 'none'|'basic'|'complex', cuelgue: boolean, recogidaViejaType: 'none'|'urbantz'|'no_urbantz' }
   const [formTvs, setFormTvs] = useState([]);
   const [selectedMapTicket, setSelectedMapTicket] = useState(null);
+  const [isMapPanelExpanded, setIsMapPanelExpanded] = useState(true);
 
   // Estados temporales para añadir una TV nueva al listado
   const [tempTvInches, setTempTvInches] = useState('55');
@@ -1071,6 +1072,7 @@ function App() {
 
   const handleSelectMapTicket = (ticket) => {
     setSelectedMapTicket(ticket);
+    setIsMapPanelExpanded(true);
     if (mapSelectTimerRef.current) {
       clearTimeout(mapSelectTimerRef.current);
     }
@@ -3646,83 +3648,106 @@ function App() {
 
     return (
       <div className="map-floating-details">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
           <div style={{ flex: 1 }}>
             <div className="map-floating-title-container">
               <span className="map-floating-badge-stop">Parada #{stopIndex || '?'}</span>
               <h4 className="map-floating-title">{ticketToShow.customerName || ''}</h4>
             </div>
-            <p className="map-floating-subtitle">🚚 Chofer: {furgoLabel} • {statusText}</p>
+            {isMapPanelExpanded && (
+              <p className="map-floating-subtitle">🚚 Chofer: {furgoLabel} • {statusText}</p>
+            )}
           </div>
-          {selectedMapTicket && (
-            <button 
-              type="button" 
-              className="map-floating-close-btn"
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+            <button
+              type="button"
+              className="map-floating-toggle-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedMapTicket(null);
+                setIsMapPanelExpanded(!isMapPanelExpanded);
+                if (mapSelectTimerRef.current) {
+                  clearTimeout(mapSelectTimerRef.current);
+                  mapSelectTimerRef.current = null;
+                }
               }}
+              title={isMapPanelExpanded ? "Minimizar panel" : "Ver detalles"}
             >
-              ✕
+              {isMapPanelExpanded ? '▼' : '▲'}
             </button>
-          )}
-        </div>
-
-        <div className="map-floating-info-row" style={{ marginTop: '8px' }}>
-          <span style={{ fontSize: '1rem', flexShrink: 0 }}>📍</span>
-          <span className="map-floating-info-text">{getShortAddressString(ticketToShow.address)} {ticketToShow.postcode && `(CP ${ticketToShow.postcode})`}</span>
-        </div>
-
-        {ticketToShow.phone && (
-          <div className="map-floating-info-row">
-            <span style={{ fontSize: '1rem', flexShrink: 0 }}>📞</span>
-            <a href={`tel:${ticketToShow.phone}`} className="map-floating-phone-link">
-              {ticketToShow.phone}
-            </a>
+            {selectedMapTicket && (
+              <button 
+                type="button" 
+                className="map-floating-close-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedMapTicket(null);
+                }}
+              >
+                ✕
+              </button>
+            )}
           </div>
-        )}
-
-        {/* Resumen rápido de artículos de la parada */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '8px' }}>
-          {(ticketToShow.tasks || []).map((task, idx) => {
-            if (!task) return null;
-            return (
-              <span key={idx} className="map-floating-task-badge">
-                {task.name || ''} {task.quantity > 1 && `x${task.quantity}`}
-              </span>
-            );
-          })}
-          {ticketToShow.codAmount && parseFloat(ticketToShow.codAmount) > 0 && (
-            <span className="map-floating-task-badge" style={{ background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)', color: '#fbbf24', fontWeight: '700' }}>
-              💵 Reembolso: {parseFloat(ticketToShow.codAmount).toFixed(2)} €
-            </span>
-          )}
         </div>
 
-        {/* Botones de acción rápida */}
-        <div className="map-floating-actions-container">
-          <a 
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ticketToShow.address || '')}`} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="btn btn-primary btn-small map-floating-action-btn"
-            style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
-          >
-            🗺️ Iniciar GPS
-          </a>
-          {ticketToShow.phone && (
-            <a 
-              href={`tel:${ticketToShow.phone}`}
-              className="btn btn-secondary btn-small map-floating-action-btn"
-              style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
-            >
+        {isMapPanelExpanded && (
+          <>
+            <div className="map-floating-info-row" style={{ marginTop: '4px' }}>
+              <span style={{ fontSize: '1rem', flexShrink: 0 }}>📍</span>
+              <span className="map-floating-info-text">{getShortAddressString(ticketToShow.address)} {ticketToShow.postcode && `(CP ${ticketToShow.postcode})`}</span>
+            </div>
+
+            {ticketToShow.phone && (
+              <div className="map-floating-info-row">
+                <span style={{ fontSize: '1rem', flexShrink: 0 }}>📞</span>
+                <a href={`tel:${ticketToShow.phone}`} className="map-floating-phone-link">
+                  {ticketToShow.phone}
+                </a>
+              </div>
+            )}
+
+            {/* Resumen rápido de artículos de la parada */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '6px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '6px' }}>
+              {(ticketToShow.tasks || []).map((task, idx) => {
+                if (!task) return null;
+                return (
+                  <span key={idx} className="map-floating-task-badge">
+                    {task.name || ''} {task.quantity > 1 && `x${task.quantity}`}
+                  </span>
+                );
+              })}
+              {ticketToShow.codAmount && parseFloat(ticketToShow.codAmount) > 0 && (
+                <span className="map-floating-task-badge" style={{ background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)', color: '#fbbf24', fontWeight: '700' }}>
+                  💵 Reembolso: {parseFloat(ticketToShow.codAmount).toFixed(2)} €
+                </span>
+              )}
+            </div>
+
+            {/* Botones de acción rápida */}
+            <div className="map-floating-actions-container">
+              <a 
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ticketToShow.address || '')}`} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="btn btn-primary btn-small map-floating-action-btn"
+                style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
+              >
+                🗺️ Iniciar GPS
+              </a>
+              {ticketToShow.phone && (
+                <a 
+                  href={`tel:${ticketToShow.phone}`}
+                  className="btn btn-secondary btn-small map-floating-action-btn"
+                  style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
+                >
               📞 Llamar
             </a>
           )}
         </div>
-      </div>
-    );
-  };
+      </>
+    )}
+  </div>
+);
+};
 
   // --- SECCIÓN DE BÚSQUEDA GENERAL ---
   const renderSearchSection = () => {
