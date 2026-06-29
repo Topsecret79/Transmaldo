@@ -2279,7 +2279,10 @@ function App() {
           alignItems: 'center', 
           justifyContent: 'center', 
           padding: '30px 20px', 
-          gap: '15px' 
+          gap: '12px',
+          maxWidth: '340px',
+          width: '100%',
+          margin: '20px auto'
         }}
       >
         <div style={{
