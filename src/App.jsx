@@ -2670,11 +2670,6 @@ function App() {
                   </div>
                 )}
               </div>
-
-              <div className="input-group">
-                <span className="input-label">Importe a Cobrar / Reembolso (€)</span>
-                <input type="number" step="0.01" min="0" className="form-input" placeholder="Ej. 150.00 (0 si no)" value={codAmount} onChange={(e) => setCodAmount(e.target.value)} disabled={isClosed} />
-              </div>
             </div>
 
             <div className="wizard-footer" style={{ justifyContent: 'flex-end' }}>
@@ -3022,6 +3017,20 @@ function App() {
                   })}
                 </ul>
               </div>
+            </div>
+
+            <div className="input-group">
+              <span className="input-label">Importe a Cobrar / Reembolso (€)</span>
+              <input 
+                type="number" 
+                step="0.01" 
+                min="0" 
+                className="form-input" 
+                placeholder="Ej. 150.00 (deja vacío o 0 si no hay cobro)" 
+                value={codAmount} 
+                onChange={(e) => setCodAmount(e.target.value)} 
+                disabled={isClosed} 
+              />
             </div>
 
             <div className="input-group">
