@@ -229,25 +229,29 @@ export async function syncFromCloud() {
       const userId = sessionUser ? sessionUser.id : null;
 
       // Module Price
-      const mPriceKey = userId ? `module_price_${userId}` : 'module_price';
-      let mPrice = settings.find(s => s.key === mPriceKey);
-      if (!mPrice && userId) {
-        mPrice = settings.find(s => s.key === 'module_price');
-      }
-      if (mPrice) {
-        if (userId) localStorage.setItem(`delivery_module_price_${userId}`, JSON.stringify(parseFloat(mPrice.value)));
-        localStorage.setItem('delivery_module_price', JSON.stringify(parseFloat(mPrice.value)));
+      if (userId) {
+        const mPriceKey = `module_price_${userId}`;
+        let mPrice = settings.find(s => s.key === mPriceKey);
+        if (!mPrice) {
+          mPrice = settings.find(s => s.key === 'module_price');
+        }
+        if (mPrice) {
+          localStorage.setItem(`delivery_module_price_${userId}`, JSON.stringify(parseFloat(mPrice.value)));
+          localStorage.setItem('delivery_module_price', JSON.stringify(parseFloat(mPrice.value)));
+        }
       }
       
       // App Name
-      const appNameKey = userId ? `app_name_${userId}` : 'app_name';
-      let appNameSetting = settings.find(s => s.key === appNameKey);
-      if (!appNameSetting && userId) {
-        appNameSetting = settings.find(s => s.key === 'app_name');
-      }
-      if (appNameSetting) {
-        if (userId) localStorage.setItem(`delivery_app_name_${userId}`, appNameSetting.value);
-        localStorage.setItem('delivery_app_name', appNameSetting.value);
+      if (userId) {
+        const appNameKey = `app_name_${userId}`;
+        let appNameSetting = settings.find(s => s.key === appNameKey);
+        if (!appNameSetting) {
+          appNameSetting = settings.find(s => s.key === 'app_name');
+        }
+        if (appNameSetting) {
+          localStorage.setItem(`delivery_app_name_${userId}`, appNameSetting.value);
+          localStorage.setItem('delivery_app_name', appNameSetting.value);
+        }
       }
     }
 
