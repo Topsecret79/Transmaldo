@@ -962,6 +962,7 @@ function App() {
 
 
   const loadData = () => {
+    let u = currentUser;
     try {
       const rawTickets = getTickets() || [];
       const rawTariffs = getTariffs() || [];
@@ -969,8 +970,7 @@ function App() {
       const rawShifts = getShifts() || [];
       
       const savedUser = localStorage.getItem('delivery_session');
-      let u = currentUser;
-      if (!u && savedUser) {
+      if (!u && savedUser && savedUser !== 'null') {
         try {
           u = JSON.parse(savedUser);
         } catch (e) {
