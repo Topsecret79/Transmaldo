@@ -2282,6 +2282,21 @@ function App() {
     triggerAlert('Contraseña actualizada');
   };
 
+  const handleUpdateUser = (id, newLabel, newPassword) => {
+    if (!newLabel.trim()) {
+      triggerAlert('El nombre visible no puede estar vacío', 'error');
+      return;
+    }
+    if (!newPassword.trim()) {
+      triggerAlert('La contraseña no puede estar vacía', 'error');
+      return;
+    }
+    const updated = users.map(u => (u.id === id ? { ...u, label: newLabel.trim(), password: newPassword.trim() } : u));
+    saveUsers(updated);
+    setUsers(updated);
+    triggerAlert('Datos de usuario actualizados correctamente');
+  };
+
   const handleDeleteTicket = (id) => {
     const ticket = tickets.find(t => t.id === id);
     if (!ticket) return;
@@ -5921,72 +5936,87 @@ function App() {
                 <div className="block-title">Usuarios y Furgonetas Activas</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
                   {visibleUsers.map(u => (
-                    <div key={u.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '15px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                    <div key={u.id} style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '15px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)' }}>{u.label}</span>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <span className="badge badge-primary" style={{ textTransform: 'capitalize' }}>
-                            {u.role === 'superadmin' ? 'Super Admin' : u.role === 'admin' ? 'Administrador' : 'Repartidor'}
-                          </span>
-                          {u.id !== 'admin' && u.id !== currentUser.id && (
-                            <button 
-                              type="button" 
-                              onClick={() => {
-                                if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente a ${u.label}?`)) {
-                                  deleteUser(u.id);
-                                  triggerAlert('Usuario eliminado correctamente');
-                                  loadData();
-                                }
-                              }} 
-                              className="btn btn-danger btn-small" 
-                              style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px', margin: 0, width: 'auto' }}
-                            >
-                              <Trash2 size={12} /> Eliminar
-                            </button>
-                          )}
-                        </div>
+                        <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)' }}>
+                          👤 {u.username} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({u.role === 'superadmin' ? 'Super Admin' : u.role === 'admin' ? 'Administrador' : 'Repartidor'})</span>
+                        </span>
+                        {u.id !== 'admin' && u.id !== currentUser.id && (
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente a ${u.label}?`)) {
+                                deleteUser(u.id);
+                                triggerAlert('Usuario eliminado correctamente');
+                                loadData();
+                              }
+                            }} 
+                            className="btn btn-danger btn-small" 
+                            style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px', margin: 0, width: 'auto' }}
+                          >
+                            <Trash2 size={12} /> Eliminar
+                          </button>
+                        )}
                       </div>
+
                       <form 
                         onSubmit={(e) => {
                           e.preventDefault();
-                          const val = e.target.elements.user_password.value;
-                          handleUpdateUserPassword(u.id, val);
+                          const labelVal = e.target.elements.user_label.value;
+                          const passwordVal = e.target.elements.user_password.value;
+                          handleUpdateUser(u.id, labelVal, passwordVal);
                         }} 
-                        style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', margin: 0 }}
+                        style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', margin: 0 }}
                       >
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Contraseña / PIN:</span>
-                        <input 
-                          type="text" 
-                          name="user_password"
-                          className="form-input" 
-                          defaultValue={u.password} 
-                          style={{ padding: '4px 8px', flex: 1, fontSize: '0.85rem', minWidth: '80px' }} 
-                          required
-                        />
-                        <button 
-                          type="submit" 
-                          className="btn btn-secondary btn-small"
-                          style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          💾 Guardar
-                        </button>
-                      </form>
-                      {currentUser.role === 'superadmin' && u.id !== 'admin' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
-                          <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre / Identificador</span>
                             <input 
-                              type="checkbox" 
-                              checked={!!u.canSearch} 
-                              onChange={() => {
-                                toggleUserSearchPermission(u.id);
-                                triggerAlert(`Permiso de buscador modificado para ${u.label}`);
-                                loadData();
-                              }} 
+                              type="text" 
+                              name="user_label"
+                              className="form-input" 
+                              defaultValue={u.label} 
+                              style={{ padding: '6px 10px', fontSize: '0.85rem' }} 
+                              required
                             />
-                            Permitir acceso al Buscador General
-                          </label>
+                          </div>
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <span className="input-label" style={{ fontSize: '0.75rem' }}>Contraseña / PIN</span>
+                            <input 
+                              type="text" 
+                              name="user_password"
+                              className="form-input" 
+                              defaultValue={u.password} 
+                              style={{ padding: '6px 10px', fontSize: '0.85rem' }} 
+                              required
+                            />
+                          </div>
                         </div>
-                      )}
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center', marginTop: '5px' }}>
+                          {currentUser.role === 'superadmin' && u.id !== 'admin' && (
+                            <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginRight: 'auto' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={!!u.canSearch} 
+                                onChange={() => {
+                                  toggleUserSearchPermission(u.id);
+                                  triggerAlert(`Permiso de buscador modificado para ${u.label}`);
+                                  loadData();
+                                }} 
+                              />
+                              Buscador General
+                            </label>
+                          )}
+                          <button 
+                            type="submit" 
+                            className="btn btn-secondary btn-small"
+                            style={{ margin: 0, padding: '6px 12px', fontSize: '0.8rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          >
+                            💾 Guardar Cambios
+                          </button>
+                        </div>
+                      </form>
                     </div>
                   ))}
                 </div>
