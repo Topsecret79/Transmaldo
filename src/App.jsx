@@ -531,7 +531,10 @@ function App() {
     let uId = null;
     try {
       const savedUser = localStorage.getItem('delivery_session');
-      if (savedUser) uId = JSON.parse(savedUser).id;
+      if (savedUser && savedUser !== 'null') {
+        const parsed = JSON.parse(savedUser);
+        if (parsed) uId = parsed.id;
+      }
     } catch (e) {}
     return getAppName(uId);
   };
