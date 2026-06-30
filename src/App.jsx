@@ -132,7 +132,8 @@ import {
   getDriverLocations,
   toggleUserSearchPermission,
   onDataSync,
-  reinitSupabase
+  reinitSupabase,
+  getSupabaseClient
 } from './db';
 
 initDB();
@@ -1024,13 +1025,49 @@ function App() {
     setTimeout(() => setAlertMsg({ text: '', type: '' }), 4000);
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
-    const dbUsers = getUsers();
-    const foundUser = dbUsers.find(
-      u => u.username.toLowerCase() === usernameInput.toLowerCase() && u.password === passwordInput
+    
+    const username = usernameInput.trim();
+    const password = passwordInput.trim();
+    
+    const dbUsers = getUsers() || [];
+    let foundUser = dbUsers.find(
+      u => u.username.toLowerCase() === username.toLowerCase() && u.password === password
     );
+
+    // Fallback: Si no se encuentra localmente, hacer consulta en vivo a Supabase
+    if (!foundUser) {
+      const supabaseClient = getSupabaseClient();
+      if (supabaseClient) {
+        try {
+          const { data: cloudUsers, error } = await supabaseClient
+            .from('delivery_users')
+            .select('*')
+            .ilike('username', username)
+            .eq('password', password);
+            
+          if (cloudUsers && cloudUsers.length > 0 && !error) {
+            const u = cloudUsers[0];
+            foundUser = {
+              id: u.id,
+              username: u.username,
+              password: u.password,
+              label: u.label,
+              role: u.role,
+              canSearch: u.can_search || false,
+              createdBy: u.created_by || 'admin'
+            };
+            // Guardarlo localmente en la lista de usuarios para futuras cargas offline
+            const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
+            saveUsers(updatedUsers);
+          }
+        } catch (err) {
+          console.error("Live login query failed:", err);
+        }
+      }
+    }
 
     if (foundUser) {
       setCurrentUser(foundUser);
@@ -1038,6 +1075,7 @@ function App() {
       setActiveTab((foundUser.role === 'admin' || foundUser.role === 'superadmin') ? 'dashboard' : 'new_ticket');
       setUsernameInput('');
       setPasswordInput('');
+      await reinitSupabase(); // Forzar sincronización inmediata de sus datos tras iniciar sesión
       loadData();
       triggerAlert(`¡Bienvenido, ${foundUser.label}!`);
     } else {
