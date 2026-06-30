@@ -1099,7 +1099,7 @@ export async function geocodeAddress(addressText) {
   try {
     const countryCode = localStorage.getItem('search_country_code') || 'es';
     const cityBias = localStorage.getItem('search_city_bias') || 'Barcelona';
-    const strictCity = localStorage.getItem('search_strict_city') !== 'false';
+    const strictCity = localStorage.getItem('search_strict_city') === 'true';
 
     let searchQuery = normalizeSpanishAddressQuery(addressText);
     const hasComma = searchQuery.includes(',');

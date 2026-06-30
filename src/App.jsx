@@ -493,7 +493,7 @@ function App() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [searchCountryCode, setSearchCountryCode] = useState(localStorage.getItem('search_country_code') || 'es');
   const [searchCityBias, setSearchCityBias] = useState(localStorage.getItem('search_city_bias') || 'Barcelona');
-  const [searchStrictCity, setSearchStrictCity] = useState(localStorage.getItem('search_strict_city') !== 'false');
+  const [searchStrictCity, setSearchStrictCity] = useState(localStorage.getItem('search_strict_city') === 'true');
   const [spellingSuggestions, setSpellingSuggestions] = useState([]);
 
   // Derived state for role-based data partitioning (independent invoicing per administrator)
@@ -974,6 +974,11 @@ function App() {
 
   const loadData = () => {
     let u = currentUser;
+    if (localStorage.getItem('search_strict_city_migrated') !== 'v1') {
+      localStorage.setItem('search_strict_city', 'false');
+      localStorage.setItem('search_strict_city_migrated', 'v1');
+      setSearchStrictCity(false);
+    }
     try {
       const rawTickets = getTickets() || [];
       const rawTariffs = getTariffs() || [];
