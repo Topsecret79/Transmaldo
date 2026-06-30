@@ -129,6 +129,10 @@ import {
   saveRouteStartAddr,
   getRouteEndAddr,
   saveRouteEndAddr,
+  getGoogleMapsKey,
+  saveGoogleMapsKey,
+  getMapboxToken,
+  saveMapboxToken,
   addTariff,
   deleteTariff,
   geocodeAddress,
@@ -494,6 +498,8 @@ function App() {
   const [searchCountryCode, setSearchCountryCode] = useState(localStorage.getItem('search_country_code') || 'es');
   const [searchCityBias, setSearchCityBias] = useState(localStorage.getItem('search_city_bias') || 'Barcelona');
   const [searchStrictCity, setSearchStrictCity] = useState(localStorage.getItem('search_strict_city') === 'true');
+  const [googleKeyInput, setGoogleKeyInput] = useState(getGoogleMapsKey());
+  const [mapboxTokenInput, setMapboxTokenInput] = useState(getMapboxToken());
   const [spellingSuggestions, setSpellingSuggestions] = useState([]);
 
   // Derived state for role-based data partitioning (independent invoicing per administrator)
@@ -1035,6 +1041,8 @@ function App() {
     }
     setRouteStartAddr(getRouteStartAddr(u?.id));
     setRouteEndAddr(getRouteEndAddr(u?.id));
+    setGoogleKeyInput(getGoogleMapsKey());
+    setMapboxTokenInput(getMapboxToken());
   };
 
   const triggerAlert = (text, type = 'success') => {
@@ -1552,8 +1560,8 @@ function App() {
         });
       } else {
         setAddressVerification({ 
-          status: 'error', 
-          message: '🔴 Dirección no localizada. Revisa la ortografía o añade la ciudad (ej: Calle Mayor 10, Madrid).' 
+          status: 'warning', 
+          message: '⚠️ Dirección no localizada en el mapa. Puedes continuar y guardar la parada de todas formas.' 
         });
         setLastVerifiedAddress('');
       }
@@ -3161,7 +3169,7 @@ function App() {
                 {addressVerification.message && (
                   <div style={{ 
                     fontSize: '0.78rem', marginTop: '6px', 
-                    color: addressVerification.status === 'success' ? '#34d399' : addressVerification.status === 'verifying' ? '#a78bfa' : '#f87171',
+                    color: addressVerification.status === 'success' ? '#34d399' : addressVerification.status === 'warning' ? '#fbbf24' : addressVerification.status === 'verifying' ? '#a78bfa' : '#f87171',
                     fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px'
                   }}>
                     {addressVerification.message}
@@ -5874,6 +5882,50 @@ function App() {
                 style={{ width: 'auto', marginTop: '20px', height: '42px' }}
               >
                 Guardar Puntos Predeterminados
+              </button>
+            </div>
+
+            {/* API Keys de Proveedores de Mapas */}
+            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
+              <div className="block-title">🗺️ Motores de Geolocalización Premium (Google Maps / Mapbox)</div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Si deseas una precisión perfecta en la geolocalización de toda España (incluyendo abreviaturas de calles y lenguas regionales), puedes ingresar tu token de Mapbox o clave de Google Maps. Si se dejan en blanco, la aplicación usará el geolocalizador gratuito OpenStreetMap de forma automática.
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">Mapbox Access Token (Recomendado - 100k búsquedas gratis)</span>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="pk.eyJ1Ijoi..." 
+                    value={mapboxTokenInput}
+                    onChange={(e) => setMapboxTokenInput(e.target.value)}
+                  />
+                </div>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">Google Maps API Key</span>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="AIzaSy..." 
+                    value={googleKeyInput}
+                    onChange={(e) => setGoogleKeyInput(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={() => {
+                  saveGoogleMapsKey(googleKeyInput);
+                  saveMapboxToken(mapboxTokenInput);
+                  triggerAlert('Configuración de mapas guardada y sincronizada correctamente');
+                }}
+                style={{ width: 'auto', marginTop: '20px', height: '42px' }}
+              >
+                Guardar API Keys de Mapas
               </button>
             </div>
 

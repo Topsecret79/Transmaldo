@@ -155,6 +155,12 @@ export async function initializeSupabaseTables() {
       if (!keys.includes('default_end_addr')) {
         toInsert.push({ key: 'default_end_addr', value: localStorage.getItem('delivery_default_end_addr') || 'Barcelona, España' });
       }
+      if (!keys.includes('google_maps_api_key')) {
+        toInsert.push({ key: 'google_maps_api_key', value: '' });
+      }
+      if (!keys.includes('mapbox_access_token')) {
+        toInsert.push({ key: 'mapbox_access_token', value: '' });
+      }
       if (toInsert.length > 0) {
         await supabase.from('delivery_settings').insert(toInsert);
       }
@@ -304,6 +310,16 @@ export async function syncFromCloud() {
           localStorage.setItem(`delivery_end_addr_${userId}`, endSetting.value);
           localStorage.setItem('delivery_default_end_addr', endSetting.value);
         }
+      }
+
+      // Google Maps Key & Mapbox Token
+      const googleKeySetting = settings.find(s => s.key === 'google_maps_api_key');
+      if (googleKeySetting) {
+        localStorage.setItem('delivery_google_maps_api_key', googleKeySetting.value);
+      }
+      const mapboxTokenSetting = settings.find(s => s.key === 'mapbox_access_token');
+      if (mapboxTokenSetting) {
+        localStorage.setItem('delivery_mapbox_access_token', mapboxTokenSetting.value);
       }
     }
 
@@ -1093,9 +1109,62 @@ export function normalizeSpanishAddressQuery(queryText) {
   return q;
 }
 
-// Convertir texto de dirección a coordenadas mediante Nominatim (OSM)
+// Convertir texto de dirección a coordenadas mediante Google Maps, Mapbox o Nominatim (OSM)
 export async function geocodeAddress(addressText) {
   if (!addressText || !addressText.trim()) return null;
+  
+  const googleKey = localStorage.getItem('delivery_google_maps_api_key') || '';
+  const mapboxToken = localStorage.getItem('delivery_mapbox_access_token') || '';
+
+  // 1. Google Maps Geocoding
+  if (googleKey.trim()) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressText.trim())}&key=${googleKey.trim()}&language=es`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.status === 'OK' && data.results && data.results.length > 0) {
+          const result = data.results[0];
+          const lat = result.geometry.location.lat;
+          const lng = result.geometry.location.lng;
+          const displayName = result.formatted_address;
+          let postcode = '';
+          const pcComponent = result.address_components.find(c => c.types.includes('postal_code'));
+          if (pcComponent) postcode = pcComponent.long_name;
+          return { lat, lng, displayName, postcode };
+        }
+      }
+    } catch (e) {
+      console.error("Google Maps Geocoding failed:", e);
+    }
+  }
+
+  // 2. Mapbox Geocoding
+  if (mapboxToken.trim()) {
+    try {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addressText.trim())}.json?access_token=${mapboxToken.trim()}&country=es&language=es,ca,eu,gl&limit=1`;
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.features && data.features.length > 0) {
+          const feature = data.features[0];
+          const lng = feature.geometry.coordinates[0];
+          const lat = feature.geometry.coordinates[1];
+          const displayName = feature.place_name;
+          let postcode = '';
+          if (feature.context) {
+            const pc = feature.context.find(c => c.id.startsWith('postcode'));
+            if (pc) postcode = pc.text;
+          }
+          return { lat, lng, displayName, postcode };
+        }
+      }
+    } catch (e) {
+      console.error("Mapbox Geocoding failed:", e);
+    }
+  }
+
+  // 3. Fallback: Free Nominatim (OSM)
   try {
     const countryCode = localStorage.getItem('search_country_code') || 'es';
     const cityBias = localStorage.getItem('search_city_bias') || 'Barcelona';
@@ -1245,6 +1314,31 @@ export function saveRouteEndAddr(addr, userId) {
     const key = userId ? `default_end_addr_${userId}` : 'default_end_addr';
     supabase.from('delivery_settings').upsert({ key, value: addr.trim() }).then(({ error }) => {
       if (error) console.error("Error saving end address setting to cloud:", error);
+    });
+  }
+}
+
+// Obtener API Keys de mapas
+export function getGoogleMapsKey() {
+  return localStorage.getItem('delivery_google_maps_api_key') || '';
+}
+export function saveGoogleMapsKey(key) {
+  localStorage.setItem('delivery_google_maps_api_key', key.trim());
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({ key: 'google_maps_api_key', value: key.trim() }).then(({ error }) => {
+      if (error) console.error("Error saving google maps key to cloud:", error);
+    });
+  }
+}
+
+export function getMapboxToken() {
+  return localStorage.getItem('delivery_mapbox_access_token') || '';
+}
+export function saveMapboxToken(token) {
+  localStorage.setItem('delivery_mapbox_access_token', token.trim());
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({ key: 'mapbox_access_token', value: token.trim() }).then(({ error }) => {
+      if (error) console.error("Error saving mapbox token to cloud:", error);
     });
   }
 }
