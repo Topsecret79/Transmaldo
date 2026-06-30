@@ -4070,11 +4070,15 @@ function App() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '10px' }}>
                               <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)' }}>Servicios:</div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                {t.tasks.map((task, idx) => (
-                                  <span key={idx} className="badge badge-primary" style={{ fontSize: '0.78rem', padding: '4px 8px' }}>
-                                    {task.name} (x{task.quantity})
-                                  </span>
-                                ))}
+                                {t.tasks.map((task, idx) => {
+                                  const tariff = tariffs.find(tar => tar.id === task.tariffId);
+                                  const name = task.name || (tariff ? tariff.name : task.tariffId);
+                                  return (
+                                    <span key={idx} className="badge badge-primary" style={{ fontSize: '0.78rem', padding: '4px 8px' }}>
+                                      {name} (x{task.quantity})
+                                    </span>
+                                  );
+                                })}
                               </div>
                             </div>
 
@@ -4686,7 +4690,7 @@ function App() {
                           <ul style={{ margin: 0, paddingLeft: '15px', fontSize: '0.82rem', lineHeight: '1.4' }}>
                             {ticket.tasks.map((task, idx) => {
                               const tariff = tariffs.find(tar => tar.id === task.tariffId);
-                              const name = tariff ? tariff.name : (task.name || task.tariffId);
+                              const name = task.name || (tariff ? tariff.name : task.tariffId);
                               return (
                                 <li key={idx}>
                                   {name} <span style={{ color: 'var(--text-muted)' }}>(x{task.quantity})</span>
@@ -5165,9 +5169,16 @@ function App() {
                         <td style={{ fontStyle: 'italic', fontSize: '0.85rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.notes}>{t.notes || '-'}</td>
                         <td>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                            {t.tasks && t.tasks.map((task, idx) => (
-                              <span key={idx} className="badge badge-secondary" style={{ border: '1px solid var(--panel-border)', fontSize: '0.7rem' }}>{(task && task.name) || ''} (x{(task && task.quantity) || 1})</span>
-                            ))}
+                            {t.tasks && t.tasks.map((task, idx) => {
+                              if (!task) return null;
+                              const tariff = tariffs.find(tar => tar.id === task.tariffId);
+                              const name = task.name || (tariff ? tariff.name : task.tariffId);
+                              return (
+                                <span key={idx} className="badge badge-secondary" style={{ border: '1px solid var(--panel-border)', fontSize: '0.7rem' }}>
+                                  {name} (x{task.quantity || 1})
+                                </span>
+                              );
+                            })}
                           </div>
                         </td>
                         <td style={{ fontWeight: '700', color: t.status === 'failed' ? 'var(--text-muted)' : 'var(--success)' }}>
@@ -6160,11 +6171,15 @@ function App() {
                               <MapPin size={11} /> {t.address}
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
-                              {t.tasks && t.tasks.map((task, sIdx) => (
-                                <span key={sIdx} className="badge badge-primary" style={{ fontSize: '0.72rem', padding: '2px 6px', background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)', border: '1px solid rgba(79, 70, 229, 0.15)' }}>
-                                  {task.name} (x{task.quantity})
-                                </span>
-                              ))}
+                              {t.tasks && t.tasks.map((task, sIdx) => {
+                                const tariff = tariffs.find(tar => tar.id === task.tariffId);
+                                const name = task.name || (tariff ? tariff.name : task.tariffId);
+                                return (
+                                  <span key={sIdx} className="badge badge-primary" style={{ fontSize: '0.72rem', padding: '2px 6px', background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)', border: '1px solid rgba(79, 70, 229, 0.15)' }}>
+                                    {name} (x{task.quantity})
+                                  </span>
+                                );
+                              })}
                             </div>
                           </div>
                         ))}
