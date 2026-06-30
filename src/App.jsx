@@ -552,10 +552,16 @@ function App() {
   useEffect(() => {
     loadData();
     const savedUser = localStorage.getItem('delivery_session');
-    if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      setCurrentUser(parsed);
-      setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+    if (savedUser && savedUser !== 'null') {
+      try {
+        const parsed = JSON.parse(savedUser);
+        if (parsed && parsed.role) {
+          setCurrentUser(parsed);
+          setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+        }
+      } catch (e) {
+        console.error("Error parsing saved user session on mount:", e);
+      }
     }
 
     reinitSupabase();
