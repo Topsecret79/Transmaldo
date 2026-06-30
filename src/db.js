@@ -735,13 +735,38 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
       tickets[index].completedLng = completedLng;
       tickets[index].completedAt = new Date().toISOString();
     }
+
+    // Auto-reassignment if finalized (success or failed) and has [Ruta Original: XXX] in notes
+    if ((status === 'success' || status === 'failed') && tickets[index].notes && tickets[index].notes.startsWith('[Ruta Original: ')) {
+      const notesStr = tickets[index].notes;
+      const endIdx = notesStr.indexOf(']');
+      if (endIdx !== -1) {
+        const origLabel = notesStr.substring(16, endIdx).trim();
+        const users = JSON.parse(localStorage.getItem('delivery_users')) || [];
+        const targetUser = users.find(u => 
+          u.label.toLowerCase() === origLabel.toLowerCase() || 
+          u.username.toLowerCase() === origLabel.toLowerCase()
+        );
+        if (targetUser) {
+          const helperUser = users.find(u => u.id === tickets[index].furgoId);
+          const helperLabel = helperUser ? helperUser.label : tickets[index].furgoId;
+          tickets[index].notes = `${notesStr} (Auxilio realizado por ${helperLabel})`.trim();
+          tickets[index].furgoId = targetUser.id;
+          tickets[index].furgoLabel = targetUser.label;
+        }
+      }
+    }
+
     saveTickets(tickets);
     if (supabase) {
       supabase.from('delivery_tickets').update({
         status: status,
         failure_reason: failureReason,
         completed_lat: completedLat,
-        completed_lng: completedLng
+        completed_lng: completedLng,
+        notes: tickets[index].notes,
+        furgo_id: tickets[index].furgoId,
+        furgo_label: tickets[index].furgoLabel || null
       }).eq('id', ticketId).then(({ error }) => {
         if (error) console.error("Error updating ticket status in Supabase:", error);
       });

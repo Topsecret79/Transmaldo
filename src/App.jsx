@@ -327,6 +327,7 @@ function App() {
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [ticketRoute, setTicketRoute] = useState('');
+  const [originalRouteLabel, setOriginalRouteLabel] = useState('');
   const [codAmount, setCodAmount] = useState('');
 
   // Lista de TVs añadidas al ticket actual
@@ -1667,6 +1668,11 @@ function App() {
     );
     const assignedFurgoId = targetUser ? targetUser.id : (editingTicketId ? editingFurgoId : currentUser.id);
 
+    let finalNotes = notes.trim();
+    if (originalRouteLabel) {
+      finalNotes = `[Ruta Original: ${originalRouteLabel}] ${finalNotes}`.trim();
+    }
+
     // Datos del ticket estructurados
     const ticketData = {
       id: editingTicketId || undefined,
@@ -1676,7 +1682,7 @@ function App() {
       phone: phone.trim(),
       address: address.trim(),
       postcode: postcode.trim(),
-      notes: notes.trim(),
+      notes: finalNotes,
       codAmount: parseFloat(codAmount) || 0,
       tasks: tasksArray,
       routeName: routeName || undefined,
@@ -1896,7 +1902,17 @@ function App() {
     } : { status: 'idle', message: '' });
     setLastVerifiedAddress(ticket.lat ? ticket.address : '');
     setTicketDate(ticket.date);
-    setNotes(ticket.notes || '');
+    let parsedNotes = ticket.notes || '';
+    let origLabel = '';
+    if (parsedNotes.startsWith('[Ruta Original: ')) {
+      const endIdx = parsedNotes.indexOf(']');
+      if (endIdx !== -1) {
+        origLabel = parsedNotes.substring(16, endIdx).trim();
+        parsedNotes = parsedNotes.substring(endIdx + 1).trim();
+      }
+    }
+    setOriginalRouteLabel(origLabel);
+    setNotes(parsedNotes);
     setTicketRoute(ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId);
 
     // Reconstruir TVs y otros artículos a partir de las tareas guardadas en el ticket
@@ -2064,6 +2080,7 @@ function App() {
     setNotes('');
     setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
+    setOriginalRouteLabel('');
     setTicketDate(new Date().toISOString().split('T')[0]);
     setSpellingSuggestions([]);
     setFormStep(1);
@@ -3027,6 +3044,22 @@ function App() {
               <div className="input-group">
                 <span className="input-label">Código Postal</span>
                 <input type="text" className="form-input" placeholder="Ej. 08208" value={postcode} onChange={(e) => setPostcode(e.target.value.trim())} disabled={isClosed} />
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">¿Pertenece a otra Ruta? (Ruta Original)</span>
+                <select 
+                  className="form-input" 
+                  value={originalRouteLabel} 
+                  onChange={(e) => setOriginalRouteLabel(e.target.value)} 
+                  disabled={isClosed}
+                  style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
+                >
+                  <option value="">No (Pertenece a la furgoneta asignada)</option>
+                  {activeRepartidores.map(u => (
+                    <option key={u.id} value={u.label}>{u.label}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
