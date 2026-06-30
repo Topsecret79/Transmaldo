@@ -3771,7 +3771,7 @@ function App() {
                         >
                           Ver Resumen Guardado
                         </button>
-                        {dayTickets.length > 0 && (
+                        {/* {dayTickets.length > 0 && (
                           <button 
                             type="button" 
                             onClick={handleExportCircuit} 
@@ -3780,7 +3780,7 @@ function App() {
                           >
                             <FileSpreadsheet size={14} /> Exportar a Circuit
                           </button>
-                        )}
+                        )} */}
                       </div>
                     );
                   } else {
@@ -3801,7 +3801,7 @@ function App() {
                         >
                           Finalizar Turno
                         </button>
-                        {dayTickets.length > 0 && (
+                        {/* {dayTickets.length > 0 && (
                           <button 
                             type="button" 
                             onClick={handleExportCircuit} 
@@ -3810,7 +3810,7 @@ function App() {
                           >
                             <FileSpreadsheet size={14} /> Exportar a Circuit
                           </button>
-                        )}
+                        )} */}
                       </div>
                     );
                   }
