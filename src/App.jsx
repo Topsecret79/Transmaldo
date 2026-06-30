@@ -6381,7 +6381,7 @@ function App() {
           minHeight: '80vh',
           padding: '20px'
         }}>
-          <form onSubmit={handleLogin} className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
+          <form onSubmit={handleLogin} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ textAlign: 'center', marginBottom: '10px' }}>
               <TrendingUp size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
               <h1 className="login-title" style={{ fontWeight: '800', letterSpacing: '-0.03em', margin: 0 }}>{appName}</h1>
@@ -6403,6 +6403,7 @@ function App() {
                 value={usernameInput} 
                 onChange={(e) => setUsernameInput(e.target.value)} 
                 required 
+                autoComplete="off"
               />
             </div>
 
@@ -6416,6 +6417,7 @@ function App() {
                   value={passwordInput} 
                   onChange={(e) => setPasswordInput(e.target.value)} 
                   required 
+                  autoComplete="new-password"
                   style={{ paddingRight: '45px' }}
                 />
                 <button
