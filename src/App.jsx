@@ -6399,7 +6399,7 @@ function App() {
               <input 
                 type="text" 
                 className="form-input" 
-                placeholder="Ej. furgo1" 
+                placeholder="" 
                 value={usernameInput} 
                 onChange={(e) => setUsernameInput(e.target.value)} 
                 required 
@@ -6413,7 +6413,7 @@ function App() {
                 <input 
                   type={showPassword ? "text" : "password"} 
                   className="form-input" 
-                  placeholder="Escribe tu contraseña" 
+                  placeholder="" 
                   value={passwordInput} 
                   onChange={(e) => setPasswordInput(e.target.value)} 
                   required 
