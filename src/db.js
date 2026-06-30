@@ -24,6 +24,7 @@ export function getSupabaseClient() {
 }
 
 let isSyncing = false;
+let realtimeChannel = null;
 
 export async function reinitSupabase() {
   if (isSyncing) return;
@@ -37,7 +38,26 @@ export async function reinitSupabase() {
     
     if (activeUrl && activeKey) {
       try {
+        const oldClient = supabase;
         supabase = createClient(activeUrl, activeKey);
+        
+        try {
+          if (realtimeChannel && oldClient) {
+            oldClient.removeChannel(realtimeChannel);
+          }
+        } catch (err) {}
+
+        try {
+          realtimeChannel = supabase
+            .channel('delivery-realtime-sync')
+            .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+              syncFromCloud();
+            })
+            .subscribe();
+        } catch (err) {
+          console.error("Error subscribing to Supabase Realtime:", err);
+        }
+
         await initializeSupabaseTables();
         await syncFromCloud();
       } catch (e) {

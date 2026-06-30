@@ -595,11 +595,26 @@ function App() {
       loadData();
     });
 
-    const interval = setInterval(() => {
+    const handleRefresh = () => {
       reinitSupabase();
-    }, 15000);
+    };
 
-    return () => clearInterval(interval);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleRefresh();
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleRefresh);
+
+    const interval = setInterval(handleRefresh, 15000);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleRefresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -1031,6 +1046,55 @@ function App() {
       setTariffs(finalTariffs);
       setUsers(finalUsers);
       setShifts(finalShifts);
+      
+      // Extraer rutas activas de los tickets para que se sincronicen entre dispositivos
+      const extractedRoutes = [];
+      const routeKeys = new Set();
+      
+      finalTickets.forEach(t => {
+        if (t.routeName && t.date && t.furgoId) {
+          const key = `${t.routeName}|${t.date}|${t.furgoId}`;
+          if (!routeKeys.has(key)) {
+            routeKeys.add(key);
+            extractedRoutes.push({
+              id: key,
+              name: t.routeName,
+              date: t.date,
+              furgoId: t.furgoId
+            });
+          }
+        }
+      });
+
+      // Ordenar rutas por fecha ascendente
+      extractedRoutes.sort((a, b) => a.date.localeCompare(b.date));
+
+      setActiveRoutes(prev => {
+        const merged = [...prev];
+        extractedRoutes.forEach(ext => {
+          const exists = merged.some(r => 
+            r.name.toLowerCase() === ext.name.toLowerCase() && 
+            r.date === ext.date && 
+            r.furgoId === ext.furgoId
+          );
+          if (!exists) {
+            merged.push(ext);
+          }
+        });
+        return merged;
+      });
+
+      // Auto-seleccionar la última ruta activa del chofer si no hay ninguna seleccionada
+      if (u && u.role === 'repartidor') {
+        const myExtractedRoutes = extractedRoutes.filter(r => r.furgoId === u.id);
+        if (myExtractedRoutes.length > 0 && !currentRouteId) {
+          const latestRoute = myExtractedRoutes[myExtractedRoutes.length - 1];
+          setCurrentRouteId(latestRoute.id);
+          setTicketDate(latestRoute.date);
+          setTicketRoute(latestRoute.furgoId);
+          setRouteName(latestRoute.name);
+        }
+      }
       
       if (u && u.role === 'repartidor') {
         setNewRouteFurgoId(u.id);
@@ -2966,7 +3030,7 @@ function App() {
       }
 
       const newRoute = {
-        id: Date.now().toString(),
+        id: `${cleanName}|${newRouteDate}|${selectedFurgoId}`,
         name: cleanName,
         date: newRouteDate,
         furgoId: selectedFurgoId
