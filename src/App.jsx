@@ -132,6 +132,7 @@ import {
   addTariff,
   deleteTariff,
   geocodeAddress,
+  normalizeSpanishAddressQuery,
   saveDriverLocation,
   getDriverLocations,
   toggleUserSearchPermission,
@@ -416,7 +417,7 @@ function App() {
         const { latitude, longitude } = position.coords;
         try {
           const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`;
-          const response = await fetch(url, { headers: { 'Accept-Language': 'es', 'Accept': 'application/json' } });
+          const response = await fetch(url, { headers: { 'Accept-Language': 'es,ca,eu,gl,en;q=0.9', 'Accept': 'application/json' } });
           if (response.ok) {
             const data = await response.json();
             const displayName = data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
@@ -1198,7 +1199,7 @@ function App() {
       const cityBias = searchCityBias || 'Barcelona';
       const strictCity = searchStrictCity;
 
-      let searchQuery = queryText.trim();
+      let searchQuery = normalizeSpanishAddressQuery(queryText);
       const hasComma = searchQuery.includes(',');
       const hasPostalCode = /\b\d{5}\b/.test(searchQuery);
       const commonCities = ['sabadell', 'terrassa', 'badalona', 'hospitalet', 'mataro', 'cornella', 'sant cugat', 'girona', 'tarragona', 'lleida', 'vic', 'manresa', 'sitges', 'castelldefels', 'viladecans', 'prat', 'rubi', 'granollers', 'mollet', 'figueres', 'reus', 'santiago', 'sevilla', 'bilbao', 'madrid', 'valencia', 'zaragoza', 'malaga', 'murcia', 'palma', 'las palmas', 'alicante', 'cordoba', 'valladolid', 'vigo', 'gijon'];
@@ -1213,7 +1214,8 @@ function App() {
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQuery)}`;
       const response = await fetch(url, {
         headers: {
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Accept-Language': 'es,ca,eu,gl,en;q=0.9'
         }
       });
       if (response.ok) {
@@ -1223,7 +1225,12 @@ function App() {
           const strippedQuery = searchQuery.replace(/^\s*(carrer\s+(de\s+|d')?|calle\s+(de\s+)?|avinguda\s+(de\s+|d')?|avenida\s+(de\s+)?|paseo\s+(de\s+)?|passeig\s+(de\s+|d')?|plaza\s+(de\s+)?|plaça\s+(de\s+|d')?|ronda\s+(de\s+)?|via\s+|vía\s+|camí\s+(de\s+|d')?|cami\s+(de\s+|d')?|carretera\s+(de\s+)?|ctra\s+|pasaje\s+(de\s+)?|passatge\s+(de\s+|d')?|ptge\s+)/i, '').trim();
           if (strippedQuery && strippedQuery !== searchQuery) {
             const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(strippedQuery)}`;
-            const fallbackRes = await fetch(fallbackUrl, { headers: { 'Accept': 'application/json' } });
+            const fallbackRes = await fetch(fallbackUrl, { 
+              headers: { 
+                'Accept': 'application/json',
+                'Accept-Language': 'es,ca,eu,gl,en;q=0.9'
+              } 
+            });
             if (fallbackRes.ok) {
               data = await fallbackRes.json();
             }

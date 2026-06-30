@@ -1071,6 +1071,28 @@ export function getDriverLocations() {
   }
 }
 
+// Normalizar abreviaturas comunes en España y sus lenguas regionales
+export function normalizeSpanishAddressQuery(queryText) {
+  if (!queryText) return '';
+  let q = queryText.trim();
+  
+  // Abreviaturas comunes en castellano y catalán
+  q = q.replace(/\bc\/[o\s]?/gi, 'Calle '); // c/ -> Calle
+  q = q.replace(/\bc\.\s+/gi, 'Calle ');  // c. -> Calle
+  q = q.replace(/\bav\b\.?/gi, 'Avenida'); // av -> Avenida
+  q = q.replace(/\bavda\.?/gi, 'Avenida'); // avda -> Avenida
+  q = q.replace(/\bpl\b\.?/gi, 'Plaza');   // pl -> Plaza
+  q = q.replace(/\bpº/gi, 'Paseo');       // pº -> Paseo
+  q = q.replace(/\bp\.\º/gi, 'Paseo');    // p.º -> Paseo
+  q = q.replace(/\bctra\.?/gi, 'Carretera'); // ctra -> Carretera
+  q = q.replace(/\brbla\.?/gi, 'Rambla');   // rbla -> Rambla
+  q = q.replace(/\bpol\b\.?\s*(ind\b\.?)?/gi, 'Polígono Industrial '); // pol. ind. -> Polígono Industrial
+  
+  // Limpiar espacios dobles
+  q = q.replace(/\s+/g, ' ').trim();
+  return q;
+}
+
 // Convertir texto de dirección a coordenadas mediante Nominatim (OSM)
 export async function geocodeAddress(addressText) {
   if (!addressText || !addressText.trim()) return null;
@@ -1079,7 +1101,7 @@ export async function geocodeAddress(addressText) {
     const cityBias = localStorage.getItem('search_city_bias') || 'Barcelona';
     const strictCity = localStorage.getItem('search_strict_city') !== 'false';
 
-    let searchQuery = addressText.trim();
+    let searchQuery = normalizeSpanishAddressQuery(addressText);
     const hasComma = searchQuery.includes(',');
     const hasPostalCode = /\b\d{5}\b/.test(searchQuery);
     const commonCities = ['sabadell', 'terrassa', 'badalona', 'hospitalet', 'mataro', 'cornella', 'sant cugat', 'girona', 'tarragona', 'lleida', 'vic', 'manresa', 'sitges', 'castelldefels', 'viladecans', 'prat', 'rubi', 'granollers', 'mollet', 'figueres', 'reus', 'santiago', 'sevilla', 'bilbao', 'madrid', 'valencia', 'zaragoza', 'malaga', 'murcia', 'palma', 'las palmas', 'alicante', 'cordoba', 'valladolid', 'vigo', 'gijon'];
@@ -1094,7 +1116,8 @@ export async function geocodeAddress(addressText) {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQuery)}`;
     const response = await fetch(url, {
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Accept-Language': 'es,ca,eu,gl,en;q=0.9'
       }
     });
     if (!response.ok) return null;
@@ -1104,7 +1127,12 @@ export async function geocodeAddress(addressText) {
       const strippedQuery = searchQuery.replace(/^\s*(carrer\s+(de\s+|d')?|calle\s+(de\s+)?|avinguda\s+(de\s+|d')?|avenida\s+(de\s+)?|paseo\s+(de\s+)?|passeig\s+(de\s+|d')?|plaza\s+(de\s+)?|plaça\s+(de\s+|d')?|ronda\s+(de\s+)?|via\s+|vía\s+|camí\s+(de\s+|d')?|cami\s+(de\s+|d')?|carretera\s+(de\s+)?|ctra\s+|pasaje\s+(de\s+)?|passatge\s+(de\s+|d')?|ptge\s+)/i, '').trim();
       if (strippedQuery && strippedQuery !== searchQuery) {
         const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(strippedQuery)}`;
-        const fallbackRes = await fetch(fallbackUrl, { headers: { 'Accept': 'application/json' } });
+        const fallbackRes = await fetch(fallbackUrl, { 
+          headers: { 
+            'Accept': 'application/json',
+            'Accept-Language': 'es,ca,eu,gl,en;q=0.9'
+          } 
+        });
         if (fallbackRes.ok) {
           data = await fallbackRes.json();
         }
