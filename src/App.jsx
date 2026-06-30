@@ -5915,16 +5915,31 @@ function App() {
                           )}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <form 
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const val = e.target.elements.user_password.value;
+                          handleUpdateUserPassword(u.id, val);
+                        }} 
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', margin: 0 }}
+                      >
                         <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Contraseña / PIN:</span>
                         <input 
                           type="text" 
+                          name="user_password"
                           className="form-input" 
                           defaultValue={u.password} 
-                          onBlur={(e) => handleUpdateUserPassword(u.id, e.target.value)} 
-                          style={{ padding: '4px 8px', flex: 1, fontSize: '0.85rem' }} 
+                          style={{ padding: '4px 8px', flex: 1, fontSize: '0.85rem', minWidth: '80px' }} 
+                          required
                         />
-                      </div>
+                        <button 
+                          type="submit" 
+                          className="btn btn-secondary btn-small"
+                          style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          💾 Guardar
+                        </button>
+                      </form>
                       {currentUser.role === 'superadmin' && u.id !== 'admin' && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '5px' }}>
                           <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
