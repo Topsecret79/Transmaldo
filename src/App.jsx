@@ -1208,6 +1208,72 @@ function App() {
     }
     setIsSearchingSuggestions(true);
     try {
+      const googleKey = localStorage.getItem('delivery_google_maps_api_key') || '';
+      const mapboxToken = localStorage.getItem('delivery_mapbox_access_token') || '';
+
+      // 1. Mapbox Geocoding Suggestions
+      if (mapboxToken.trim()) {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(queryText.trim())}.json?access_token=${mapboxToken.trim()}&country=es&language=es,ca,eu,gl&limit=5`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.features) {
+            const formatted = data.features.map(feat => {
+              let postcode = '';
+              if (feat.context) {
+                const pc = feat.context.find(c => c.id.startsWith('postcode'));
+                if (pc) postcode = pc.text;
+              }
+              let road = feat.text || '';
+              return {
+                lat: feat.geometry.coordinates[1].toString(),
+                lon: feat.geometry.coordinates[0].toString(),
+                display_name: feat.place_name,
+                address: {
+                  road: road,
+                  postcode: postcode
+                }
+              };
+            });
+            setSuggestions(formatted);
+            setIsSearchingSuggestions(false);
+            return;
+          }
+        }
+      }
+
+      // 2. Google Maps Geocoding Suggestions
+      if (googleKey.trim()) {
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(queryText.trim())}&key=${googleKey.trim()}&language=es`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.status === 'OK' && data.results) {
+            const formatted = data.results.slice(0, 5).map(result => {
+              const lat = result.geometry.location.lat.toString();
+              const lon = result.geometry.location.lng.toString();
+              const displayName = result.formatted_address;
+              let postcode = '';
+              const pcComponent = result.address_components.find(c => c.types.includes('postal_code'));
+              if (pcComponent) postcode = pcComponent.long_name;
+              return {
+                lat,
+                lon,
+                display_name: displayName,
+                address: {
+                  road: result.address_components[0]?.long_name || '',
+                  postcode
+                }
+              };
+            });
+            setSuggestions(formatted);
+            setIsSearchingSuggestions(false);
+            return;
+          }
+        }
+      }
+
+      // 3. Fallback: Free Nominatim (OSM)
       const countryCode = searchCountryCode || 'es';
       const cityBias = searchCityBias || 'Barcelona';
       const strictCity = searchStrictCity;
