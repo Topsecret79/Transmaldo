@@ -1095,6 +1095,12 @@ function App() {
     setEstimatedDuration(duration);
   }, [formTvs, otherQuantities]);
 
+  useEffect(() => {
+    if (activeRouteContext && activeRouteContext.date) {
+      setShiftSummaryDate(activeRouteContext.date);
+    }
+  }, [activeRouteContext]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
@@ -1905,7 +1911,9 @@ function App() {
       u.label.toLowerCase() === ticketRoute.toLowerCase() || 
       u.id.toLowerCase() === ticketRoute.toLowerCase()
     );
-    const assignedFurgoId = targetUser ? targetUser.id : (editingTicketId ? editingFurgoId : currentUser.id);
+    const assignedFurgoId = currentUser?.role === 'repartidor'
+      ? currentUser.id
+      : (targetUser ? targetUser.id : (editingTicketId ? editingFurgoId : currentUser.id));
 
     let finalNotes = notes.trim();
     finalNotes = encodeTicketNotes(timeSlot, estimatedDuration, finalNotes);
@@ -2949,7 +2957,9 @@ function App() {
         return;
       }
       
-      const selectedFurgoId = newRouteFurgoId || (activeRepartidores[0]?.id || '');
+      const selectedFurgoId = currentUser?.role === 'repartidor' 
+        ? currentUser.id 
+        : (newRouteFurgoId || (activeRepartidores[0]?.id || ''));
       if (!selectedFurgoId) {
         triggerAlert('Por favor, asigna una furgoneta o chofer', 'error');
         return;
@@ -3211,11 +3221,11 @@ function App() {
           <div 
             className={`step-node ${formStep === 2 ? 'active' : ''}`}
             onClick={() => {
-              if (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper)) {
+              if (customerName.trim() && address.trim() && (ticketRoute || currentUser?.role === 'repartidor' || isAdminOrSuper)) {
                 setFormStep(2);
               }
             }}
-            style={{ cursor: (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper)) ? 'pointer' : 'not-allowed' }}
+            style={{ cursor: (customerName.trim() && address.trim() && (ticketRoute || currentUser?.role === 'repartidor' || isAdminOrSuper)) ? 'pointer' : 'not-allowed' }}
           >
             <span className="step-circle">2</span>
             <span>Mercancía y Cierre</span>
@@ -3232,26 +3242,23 @@ function App() {
                   <input type="date" className="form-input" value={ticketDate} onChange={(e) => setTicketDate(e.target.value)} required disabled={isClosed} />
                 </div>
 
-                {!isAdminOrSuper ? (
+                {currentUser?.role !== 'repartidor' && (
                   <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">Adjudicar a la Ruta de</span>
+                    <span className="input-label">{editingTicketId ? 'Furgoneta asignada' : 'Asignar a la Furgoneta'}</span>
                     <select 
                       className="form-input" 
-                      value={ticketRoute} 
-                      onChange={(e) => setTicketRoute(e.target.value)} 
+                      value={editingTicketId ? editingFurgoId : ticketRoute} 
+                      onChange={(e) => {
+                        if (editingTicketId) {
+                          setEditingFurgoId(e.target.value);
+                        } else {
+                          setTicketRoute(e.target.value);
+                        }
+                      }} 
                       required
                       disabled={isClosed}
                     >
-                      <option value="">Selecciona Ruta / Chofer...</option>
-                      {activeRepartidores.map(u => (
-                        <option key={u.id} value={u.label}>{u.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : editingTicketId && (
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">Furgoneta asignada</span>
-                    <select className="form-input" value={editingFurgoId} onChange={(e) => setEditingFurgoId(e.target.value)} required disabled={isClosed}>
+                      <option value="">Selecciona Chofer / Furgoneta...</option>
                       {activeRepartidores.map(u => (
                         <option key={u.id} value={u.id}>{u.label}</option>
                       ))}
@@ -3542,8 +3549,8 @@ function App() {
                     triggerAlert('Por favor, indica la dirección de entrega.', 'error');
                     return;
                   }
-                  if (!ticketRoute && !isAdminOrSuper) {
-                    triggerAlert('Por favor, selecciona una ruta.', 'error');
+                  if (!ticketRoute && currentUser?.role !== 'repartidor') {
+                    triggerAlert('Por favor, selecciona una furgoneta o ruta.', 'error');
                     return;
                   }
                   setFormStep(2);
