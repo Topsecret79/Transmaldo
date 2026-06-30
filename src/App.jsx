@@ -360,9 +360,30 @@ function App() {
   const [formTvs, setFormTvs] = useState([]);
   const [selectedMapTicket, setSelectedMapTicket] = useState(null);
   const [isMapPanelExpanded, setIsMapPanelExpanded] = useState(true);
-  const [activeRoutes, setActiveRoutes] = useState([]);
-  const [currentRouteId, setCurrentRouteId] = useState(null);
+  const [activeRoutes, setActiveRoutes] = useState(() => {
+    try {
+      const saved = localStorage.getItem('delivery_active_routes');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [currentRouteId, setCurrentRouteId] = useState(() => {
+    return localStorage.getItem('delivery_current_route_id') || null;
+  });
   const activeRouteContext = activeRoutes.find(r => r.id === currentRouteId);
+
+  useEffect(() => {
+    localStorage.setItem('delivery_active_routes', JSON.stringify(activeRoutes));
+  }, [activeRoutes]);
+
+  useEffect(() => {
+    if (currentRouteId !== null) {
+      localStorage.setItem('delivery_current_route_id', currentRouteId);
+    } else {
+      localStorage.removeItem('delivery_current_route_id');
+    }
+  }, [currentRouteId]);
   const [showCreateRouteFormFields, setShowCreateRouteFormFields] = useState(false);
   const [newRouteName, setNewRouteName] = useState('');
   const [newRouteDate, setNewRouteDate] = useState(new Date().toISOString().split('T')[0]);
@@ -599,7 +620,7 @@ function App() {
     reinitSupabase();
 
     onDataSync(() => {
-      loadData();
+      loadDataRef.current();
     });
 
     const handleRefresh = () => {
@@ -1128,6 +1149,11 @@ function App() {
     setGoogleKeyInput(getGoogleMapsKey());
     setMapboxTokenInput(getMapboxToken());
   };
+
+  const loadDataRef = useRef(loadData);
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  });
 
   const triggerAlert = (text, type = 'success') => {
     setAlertMsg({ text, type });
