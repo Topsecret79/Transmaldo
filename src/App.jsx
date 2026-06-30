@@ -2827,17 +2827,17 @@ function App() {
                   margin: 0,
                   height: '32px',
                   display: 'inline-block',
-                  background: 'rgba(255,255,255,0.05)',
-                  borderColor: 'rgba(99, 102, 241, 0.3)',
-                  color: '#fff'
+                  background: 'var(--input-bg)',
+                  borderColor: 'var(--input-border)',
+                  color: 'var(--text-main)'
                 }}
               >
                 {activeRoutes.map(r => (
-                  <option key={r.id} value={r.id} style={{ background: '#121214' }}>
+                  <option key={r.id} value={r.id} style={{ background: 'var(--panel-bg)', color: 'var(--text-main)' }}>
                     {r.name} ({r.date})
                   </option>
                 ))}
-                <option value="new" style={{ background: '#121214', fontWeight: 'bold', color: 'var(--primary)' }}>
+                <option value="new" style={{ background: 'var(--panel-bg)', fontWeight: 'bold', color: 'var(--primary)' }}>
                   ➕ Crear Otra Ruta...
                 </option>
               </select>
