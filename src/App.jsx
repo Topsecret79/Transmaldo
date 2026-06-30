@@ -144,7 +144,11 @@ import {
   toggleUserSearchPermission,
   onDataSync,
   reinitSupabase,
-  getSupabaseClient
+  getSupabaseClient,
+  getKmPrice,
+  saveKmPrice,
+  getRouteKms,
+  saveRouteKms
 } from './db';
 
 initDB();
@@ -287,6 +291,8 @@ function App() {
   const [tickets, setTickets] = useState([]);
   const [tariffs, setTariffs] = useState([]);
   const [modulePrice, setModulePrice] = useState(3.81);
+  const [kmPrice, setKmPrice] = useState(0.43);
+  const [shiftKmsInput, setShiftKmsInput] = useState('');
   const [users, setUsers] = useState([]);
   const loggedInUserObj = users.find(u => u.id === currentUser?.id) || currentUser;
   const hasSearchPermission = loggedInUserObj && (
@@ -1112,6 +1118,7 @@ function App() {
     }
     
     setModulePrice(getModulePrice(u?.id) || 3.81);
+    setKmPrice(getKmPrice(u?.id) || 0.43);
     setAppName(getAppName(u?.id) || 'My Delivery Team');
     if (activeTab !== 'users') {
       setAppNameInput(getAppName(u?.id) || 'My Delivery Team');
@@ -2499,6 +2506,12 @@ function App() {
     recalculateAllTickets(tariffs, val);
   };
 
+  const handleUpdateKmPrice = (newPrice) => {
+    const val = parseFloat(newPrice) || 0;
+    saveKmPrice(val, currentUser?.id);
+    setKmPrice(val);
+  };
+
   const recalculateAllTickets = (activeTariffs, activeModulePrice) => {
     const allTickets = getTickets();
     const updatedTickets = allTickets.map(ticket => {
@@ -2587,6 +2600,8 @@ function App() {
 
     if (window.confirm(confirmMsg)) {
       const summary = getShiftSummary(furgoId, date);
+      const kms = parseFloat(shiftKmsInput) || 0;
+      saveRouteKms(furgoId, date, kms);
       closeShift(furgoId, date, summary);
       triggerAlert('Turno cerrado y resumen diario generado con éxito');
       setShowShiftModal(false);
@@ -2856,10 +2871,28 @@ function App() {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
-    // Resumen General (Solo suma ganancias de repartos con Éxito)
+    // Resumen General (Solo suma ganancias de repartos con Éxito y kilometraje)
     const successTickets = filteredTickets.filter(t => t.status === 'success' || !t.status);
-    const totalEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
     const furgos = activeRepartidores.map(u => u.id);
+
+    let totalKms = 0;
+    let totalMileageEarnings = 0;
+    furgos.forEach(fid => {
+      const fShifts = shifts.filter(s => 
+        s.furgoId === fid && 
+        s.status === 'closed' &&
+        (!adminStartDate || s.date >= adminStartDate) &&
+        (!adminEndDate || s.date <= adminEndDate)
+      );
+      fShifts.forEach(s => {
+        const kms = getRouteKms(fid, s.date);
+        totalKms += kms;
+        totalMileageEarnings += kms * kmPrice;
+      });
+    });
+
+    const totalBaseEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
+    const totalEarnings = totalBaseEarnings + totalMileageEarnings;
     const totalIVA = totalEarnings * 0.21;
     const totalRetencion = totalEarnings * 0.01;
     const totalNet = totalEarnings + totalIVA - totalRetencion;
@@ -2868,7 +2901,9 @@ function App() {
     const summaryData = [
       [`CONTROL DE FACTURACIÓN DE REPARTOS (Periodo: ${adminStartDate || 'inicio'} a ${adminEndDate || 'hoy'})`],
       [],
-      ['Facturación Total Acumulada (Base Imponible)', `${totalEarnings.toFixed(2)} €`],
+      ['Facturación Total Acumulada (Base Imponible + Kms)', `${totalEarnings.toFixed(2)} €`],
+      ['  - Base Imponible Servicios', `${totalBaseEarnings.toFixed(2)} €`],
+      ['  - Importe por Kilometraje', `${totalMileageEarnings.toFixed(2)} € (Total: ${totalKms.toFixed(1)} km)`],
       ['IVA Acumulado (+21%)', `${totalIVA.toFixed(2)} €`],
       ['Retención Acumulada (-1%)', `${totalRetencion.toFixed(2)} €`],
       ['Total Neto Facturado', `${totalNet.toFixed(2)} €`],
@@ -2876,14 +2911,27 @@ function App() {
       ['Total Entregas con Éxito (Facturadas)', successTickets.length],
       ['Total Reembolsos Cobrados', `${totalCOD.toFixed(2)} €`],
       [],
-      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)', 'Reembolsos Cobrados (€)'],
+      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Kilómetros Recorridos', 'Importe Kilometraje (€)', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)', 'Reembolsos Cobrados (€)'],
     ];
 
     furgos.forEach(fid => {
       const fTickets = filteredTickets.filter(t => t.furgoId === fid);
       const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
       const label = users.find(u => u.id === fid)?.label || fid;
-      const earnings = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+
+      const fShifts = shifts.filter(s => 
+        s.furgoId === fid && 
+        s.status === 'closed' &&
+        (!adminStartDate || s.date >= adminStartDate) &&
+        (!adminEndDate || s.date <= adminEndDate)
+      );
+      let fKms = 0;
+      fShifts.forEach(s => {
+        fKms += getRouteKms(fid, s.date);
+      });
+      const fMileageEarnings = fKms * kmPrice;
+
+      const earnings = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0) + fMileageEarnings;
       const iva = earnings * 0.21;
       const ret = earnings * 0.01;
       const net = earnings + iva - ret;
@@ -2892,6 +2940,8 @@ function App() {
         label, 
         fTickets.length, 
         fSuccess.length,
+        `${fKms.toFixed(1)} km`,
+        `${fMileageEarnings.toFixed(2)} €`,
         `${earnings.toFixed(2)} €`,
         `${iva.toFixed(2)} €`,
         `-${ret.toFixed(2)} €`,
@@ -4258,6 +4308,8 @@ function App() {
                         <button 
                           type="button" 
                           onClick={() => {
+                            const existingKms = getRouteKms(currentUser.id, targetDate);
+                            setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
                             setShiftSummaryDate(targetDate);
                             setShiftSummaryFurgoId(currentUser.id);
                             setShowShiftModal(true);
@@ -4290,7 +4342,11 @@ function App() {
                               triggerAlert('No puedes cerrar un turno sin registrar entregas para ese día.', 'error');
                               return;
                             }
-                            handleConfirmCloseShift(currentUser.id, targetDate);
+                            const existingKms = getRouteKms(currentUser.id, targetDate);
+                            setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
+                            setShiftSummaryDate(targetDate);
+                            setShiftSummaryFurgoId(currentUser.id);
+                            setShowShiftModal(true);
                           }} 
                           className="btn btn-primary btn-small"
                           style={{ margin: 0, padding: '8px 14px', background: 'var(--warning)', color: '#000', fontWeight: '700' }}
@@ -5402,9 +5458,8 @@ function App() {
     });
 
     const successTickets = filteredAdminTickets.filter(t => t.status === 'success' || !t.status);
-    const totalEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
     const furgos = activeRepartidores.map(u => u.id);
-    
+
     const furgoData = furgos.reduce((acc, fid) => {
       const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid);
       const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
@@ -5423,15 +5478,37 @@ function App() {
         });
       });
 
+      // Get all closed shifts for this furgoneta in the filtered period
+      const fShifts = shifts.filter(s => 
+        s.furgoId === fid && 
+        s.status === 'closed' &&
+        (!adminStartDate || s.date >= adminStartDate) &&
+        (!adminEndDate || s.date <= adminEndDate)
+      );
+      
+      let fMileageEarnings = 0;
+      let fKms = 0;
+      fShifts.forEach(s => {
+        const kms = getRouteKms(fid, s.date);
+        fKms += kms;
+        fMileageEarnings += kms * kmPrice;
+      });
+
       acc[fid] = {
         count: fTickets.length,
         successCount: fSuccess.length,
-        earnings: fSuccess.reduce((sum, t) => sum + t.totalPrice, 0),
+        earnings: fSuccess.reduce((sum, t) => sum + t.totalPrice, 0) + fMileageEarnings,
+        mileageEarnings: fMileageEarnings,
+        kms: fKms,
         pms,
         deliveries
       };
       return acc;
     }, {});
+
+    const totalMileageEarnings = furgos.reduce((sum, fid) => sum + (furgoData[fid]?.mileageEarnings || 0), 0);
+    const totalEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0) + totalMileageEarnings;
+    const totalKmsAllFurgos = furgos.reduce((sum, fid) => sum + (furgoData[fid]?.kms || 0), 0);
 
     const maxEarnings = Math.max(...Object.values(furgoData).map(d => d.earnings), 1);
 
@@ -5512,9 +5589,10 @@ function App() {
             </div>
 
             <div className="dashboard-grid">
-              <div className="stat-card success">
+              <div className="stat-card success" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <p>Total Mes</p>
-                <div className="stat-val">{totalEarnings.toFixed(2)} €</div>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{totalEarnings.toFixed(2)} €</div>
+                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>Incluye {totalMileageEarnings.toFixed(2)} € km ({totalKmsAllFurgos.toFixed(1)} km)</span>
               </div>
               <div className="stat-card info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <p>Entregas</p>
@@ -5558,6 +5636,8 @@ function App() {
                         <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
                         <th style={{ textAlign: 'center' }}>PMs</th>
                         <th style={{ textAlign: 'center' }}>Entregas</th>
+                        <th style={{ textAlign: 'center' }}>Kms</th>
+                        <th style={{ textAlign: 'right' }}>Kilometraje €</th>
                         <th style={{ textAlign: 'right' }}>Base Imponible</th>
                         <th style={{ textAlign: 'right' }}>IVA (+21%)</th>
                         <th style={{ textAlign: 'right' }}>Retención (-1%)</th>
@@ -5566,7 +5646,7 @@ function App() {
                     </thead>
                     <tbody>
                       {furgos.map(fid => {
-                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0, pms: 0, deliveries: 0 };
+                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0, mileageEarnings: 0, kms: 0, pms: 0, deliveries: 0 };
                         const base = data.earnings;
                         const iva = base * 0.21;
                         const retencion = base * 0.01;
@@ -5578,6 +5658,8 @@ function App() {
                             <td style={{ textAlign: 'center' }}>{data.successCount} / {data.count}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.pms}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.deliveries}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.kms.toFixed(1)} km</td>
+                            <td style={{ textAlign: 'right', fontWeight: '500', color: 'var(--primary)' }}>{data.mileageEarnings.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', fontWeight: '500' }}>{base.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: '500' }}>+{iva.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>-{retencion.toFixed(2)} €</td>
@@ -6006,6 +6088,8 @@ function App() {
                             <td style={{ textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                               <button 
                                 onClick={() => {
+                                  const existingKms = getRouteKms(s.furgoId, s.date);
+                                  setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
                                   setShiftSummaryDate(s.date);
                                   setShiftSummaryFurgoId(s.furgoId);
                                   setShowShiftModal(true);
@@ -6351,10 +6435,17 @@ function App() {
                   </form>
                 </div>
 
-                <div className="block-section" style={{ marginBottom: '20px' }}>
-                  <div className="block-title">Valor Unitario del Módulo</div>
-                  <input type="number" step="0.01" className="form-input" value={modulePrice} onChange={(e) => handleUpdateModulePrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '10px' }}>Actualmente, cada módulo equivale a {modulePrice.toFixed(2)} €.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+                  <div className="block-section" style={{ marginBottom: 0 }}>
+                    <div className="block-title">Valor Unitario del Módulo</div>
+                    <input type="number" step="0.01" className="form-input" value={modulePrice} onChange={(e) => handleUpdateModulePrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '10px' }}>Actualmente, cada módulo equivale a {modulePrice.toFixed(2)} €.</p>
+                  </div>
+                  <div className="block-section" style={{ marginBottom: 0 }}>
+                    <div className="block-title">Precio por Kilómetro (€/km)</div>
+                    <input type="number" step="0.01" className="form-input" value={kmPrice} onChange={(e) => handleUpdateKmPrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '10px' }}>Actualmente, cada km recorrido equivale a {kmPrice.toFixed(2)} €.</p>
+                  </div>
                 </div>
 
                 <div className="block-section">
@@ -7071,6 +7162,39 @@ function App() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--success)', fontWeight: '600' }}>
                          <span>Total Dinero Cobrado:</span>
                          <strong>{summary.totalCODAmount.toFixed(2)} €</strong>
+                      </div>
+                    )}
+                    
+                    {/* Sección de Kilometraje en el Resumen */}
+                    {existingShift ? (
+                      (() => {
+                        const recordedKms = getRouteKms(targetFurgoId, targetDate);
+                        return recordedKms > 0 ? (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px dashed var(--panel-border)', marginTop: '6px', color: 'var(--primary)', fontWeight: '600' }}>
+                            <span>Kilometraje ({recordedKms} km a {kmPrice.toFixed(2)}€/km):</span>
+                            <strong>+ {(recordedKms * kmPrice).toFixed(2)} €</strong>
+                          </div>
+                        ) : null;
+                      })()
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                        <span style={{ fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>🏁 Kilómetros de la Ruta:</span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <input 
+                            type="number" 
+                            step="0.1" 
+                            className="form-input" 
+                            placeholder="Introduce kms recorridos" 
+                            value={shiftKmsInput} 
+                            onChange={(e) => setShiftKmsInput(e.target.value)} 
+                            style={{ flex: 1, padding: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', height: '36px', margin: 0 }} 
+                          />
+                          <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>km</span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                          <span>Tarifa: {kmPrice.toFixed(2)} €/km</span>
+                          <span>Importe: <strong style={{ color: '#fff' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
+                        </div>
                       </div>
                     )}
                     

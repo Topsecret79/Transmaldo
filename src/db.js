@@ -341,6 +341,26 @@ export async function syncFromCloud() {
       if (mapboxTokenSetting) {
         localStorage.setItem('delivery_mapbox_access_token', mapboxTokenSetting.value);
       }
+
+      // Km Price
+      if (userId) {
+        const kmPriceKey = `km_price_${userId}`;
+        let kmPriceSetting = settings.find(s => s.key === kmPriceKey);
+        if (!kmPriceSetting) {
+          kmPriceSetting = settings.find(s => s.key === 'km_price');
+        }
+        if (kmPriceSetting) {
+          localStorage.setItem(`delivery_km_price_${userId}`, kmPriceSetting.value);
+          localStorage.setItem('delivery_km_price', kmPriceSetting.value);
+        }
+      }
+
+      // Route Kilometers
+      settings.forEach(s => {
+        if (s.key && s.key.startsWith('route_kms_')) {
+          localStorage.setItem(`delivery_${s.key}`, s.value);
+        }
+      });
     }
 
     notifySync();
@@ -1055,6 +1075,51 @@ export function saveAppName(name, userId) {
     const key = userId ? `app_name_${userId}` : 'app_name';
     supabase.from('delivery_settings').upsert({ key, value: name.trim() }).then(({ error }) => {
       if (error) console.error("Error saving app name to Supabase:", error);
+    });
+  }
+}
+
+// Obtener precio de kilómetro
+export function getKmPrice(userId) {
+  if (userId) {
+    const custom = localStorage.getItem(`delivery_km_price_${userId}`);
+    if (custom) return parseFloat(custom) || 0.43;
+  }
+  const globalPrice = localStorage.getItem('delivery_km_price');
+  return globalPrice !== null ? (parseFloat(globalPrice) || 0.43) : 0.43;
+}
+
+// Guardar precio de kilómetro
+export function saveKmPrice(price, userId) {
+  const pStr = price.toString();
+  if (userId) {
+    localStorage.setItem(`delivery_km_price_${userId}`, pStr);
+  }
+  localStorage.setItem('delivery_km_price', pStr);
+  if (supabase) {
+    const key = userId ? `km_price_${userId}` : 'km_price';
+    supabase.from('delivery_settings').upsert({ key, value: pStr }).then(({ error }) => {
+      if (error) console.error("Error saving km price to Supabase:", error);
+    });
+  }
+}
+
+// Obtener kms de una ruta
+export function getRouteKms(furgoId, date) {
+  const key = `delivery_route_kms_${furgoId}_${date}`;
+  const kms = localStorage.getItem(key);
+  return kms !== null ? (parseFloat(kms) || 0) : 0;
+}
+
+// Guardar kms de una ruta
+export function saveRouteKms(furgoId, date, kms) {
+  const key = `delivery_route_kms_${furgoId}_${date}`;
+  const kStr = kms.toString();
+  localStorage.setItem(key, kStr);
+  if (supabase) {
+    const dbKey = `route_kms_${furgoId}_${date}`;
+    supabase.from('delivery_settings').upsert({ key: dbKey, value: kStr }).then(({ error }) => {
+      if (error) console.error("Error saving route kms to Supabase:", error);
     });
   }
 }
