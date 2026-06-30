@@ -1026,10 +1026,14 @@ function App() {
       setUsers(finalUsers);
       setShifts(finalShifts);
       
-      const activeRepartidores = finalUsers.filter(usr => usr && usr.role === 'repartidor');
-      if (activeRepartidores.length > 0) {
-        if (!activeRepartidores.some(r => r.id === newRouteFurgoId)) {
-          setNewRouteFurgoId(activeRepartidores[0].id);
+      if (u && u.role === 'repartidor') {
+        setNewRouteFurgoId(u.id);
+      } else {
+        const activeRepartidores = finalUsers.filter(usr => usr && usr.role === 'repartidor');
+        if (activeRepartidores.length > 0) {
+          if (!activeRepartidores.some(r => r.id === newRouteFurgoId)) {
+            setNewRouteFurgoId(activeRepartidores[0].id);
+          }
         }
       }
     } catch (err) {
@@ -2939,20 +2943,22 @@ function App() {
               />
             </div>
 
-            <div className="input-group">
-              <span className="input-label">Asignar Chofer / Furgoneta</span>
-              <select 
-                className="form-input" 
-                value={newRouteFurgoId}
-                onChange={(e) => setNewRouteFurgoId(e.target.value)}
-                required
-              >
-                <option value="" disabled>Selecciona furgoneta...</option>
-                {activeRepartidores.map(u => (
-                  <option key={u.id} value={u.id}>{u.label}</option>
-                ))}
-              </select>
-            </div>
+            {currentUser?.role !== 'repartidor' && (
+              <div className="input-group">
+                <span className="input-label">Asignar Chofer / Furgoneta</span>
+                <select 
+                  className="form-input" 
+                  value={newRouteFurgoId}
+                  onChange={(e) => setNewRouteFurgoId(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>Selecciona furgoneta...</option>
+                  {activeRepartidores.map(u => (
+                    <option key={u.id} value={u.id}>{u.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
@@ -2988,6 +2994,10 @@ function App() {
 
   // --- RENDERIZADO DEL FORMULARIO ---
   const renderTicketForm = () => {
+    const displayedActiveRoutes = currentUser?.role === 'repartidor'
+      ? activeRoutes.filter(r => r.furgoId === currentUser.id)
+      : activeRoutes;
+
     if (!activeRouteContext && !editingTicketId) {
       return renderCreateRouteForm();
     }
@@ -3047,7 +3057,7 @@ function App() {
                   color: 'var(--text-main)'
                 }}
               >
-                {activeRoutes.map(r => (
+                {displayedActiveRoutes.map(r => (
                   <option key={r.id} value={r.id} style={{ background: 'var(--panel-bg)', color: 'var(--text-main)' }}>
                     {r.name} ({r.date})
                   </option>
