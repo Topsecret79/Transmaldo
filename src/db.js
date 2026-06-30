@@ -401,7 +401,9 @@ const DEFAULT_TARIFFS = [
   { id: 'SSUE', name: 'Soporte de Suelo', block: 'Otros', type: 'modules', value: 3 },
   { id: 'ALTA', name: 'Altavoces', block: 'Otros', type: 'modules', value: 3 },
   { id: 'TDIC', name: 'Toca discos', block: 'Otros', type: 'modules', value: 3 },
-  { id: 'PROY', name: 'Proyector', block: 'Otros', type: 'modules', value: 3 }
+  { id: 'PROY', name: 'Proyector', block: 'Otros', type: 'modules', value: 3 },
+  { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Otros', type: 'fixed', value: 100 },
+  { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 }
 ];
 
 export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74, 75, 77, 83, 85, 98, 100, 115];
@@ -451,6 +453,14 @@ export function initDB() {
         current.push(
           { id: 'PM_BSND', name: 'Puesta en Marcha Barra de Sonido', block: 'Otros', type: 'modules', value: 3 },
           { id: 'CUELGUE_BSND', name: 'Cuelgue Barra de Sonido', block: 'Otros', type: 'modules', value: 8 }
+        );
+      }
+
+      const hasUrgente = current.some(t => t.id === 'URGENTE_100');
+      if (!hasUrgente) {
+        current.push(
+          { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Otros', type: 'fixed', value: 100 },
+          { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 }
         );
       }
       localStorage.setItem('delivery_tariffs', JSON.stringify(current));

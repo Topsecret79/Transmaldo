@@ -373,6 +373,7 @@ function App() {
   const [customExtras, setCustomExtras] = useState([]);
   const [customExtraName, setCustomExtraName] = useState('');
   const [customExtraPrice, setCustomExtraPrice] = useState('');
+  const [urgenteType, setUrgenteType] = useState('none'); // 'none' | '100' | '120'
 
   // Cierre de turno
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -1964,6 +1965,19 @@ function App() {
       });
     });
 
+    // 4. Añadir Servicio Urgente si aplica
+    if (urgenteType === '100') {
+      tasksArray.push({
+        tariffId: 'URGENTE_100',
+        quantity: 1
+      });
+    } else if (urgenteType === '120') {
+      tasksArray.push({
+        tariffId: 'URGENTE_120',
+        quantity: 1
+      });
+    }
+
     if (tasksArray.length === 0) {
       triggerAlert('Debes registrar al menos un artículo o servicio', 'error');
       return;
@@ -2038,6 +2052,7 @@ function App() {
       setCustomExtras([]);
       setCustomExtraName('');
       setCustomExtraPrice('');
+      setUrgenteType('none');
       setNotes('');
       setTimeSlot('any');
       setEstimatedDuration(10);
@@ -2357,8 +2372,18 @@ function App() {
 
     const tempCustomExtras = [];
     const tempDescriptions = {};
+    let localUrgente = 'none';
+
     // Reconstruir otros artículos no-TV y sus descripciones de paquetería
     ticket.tasks.forEach(t => {
+      if (t.tariffId === 'URGENTE_100') {
+        localUrgente = '100';
+        return;
+      }
+      if (t.tariffId === 'URGENTE_120') {
+        localUrgente = '120';
+        return;
+      }
       if (t.tariffId && t.tariffId.startsWith('CUSTOM_')) {
         tempCustomExtras.push({
           id: t.tariffId,
@@ -2394,6 +2419,7 @@ function App() {
     setOtherQuantities(tempOthers);
     setOtherDescriptions(tempDescriptions);
     setCustomExtras(tempCustomExtras);
+    setUrgenteType(localUrgente);
     setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
     setFormStep(1);
     setActiveTab('new_ticket');
@@ -2413,6 +2439,7 @@ function App() {
     setCustomExtras([]);
     setCustomExtraName('');
     setCustomExtraPrice('');
+    setUrgenteType('none');
     setNotes('');
     setTimeSlot('any');
     setEstimatedDuration(10);
@@ -3827,6 +3854,58 @@ function App() {
               )}
             </div>
 
+            {/* SECCIÓN URGENTE */}
+            <div className="block-section" style={{ textAlign: 'left', border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.03)' }}>
+              <div className="block-title" style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>⚡ Servicio Urgente Especial</div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Si este reparto es un servicio urgente especial que sale en cualquier momento, selecciona la tarifa correspondiente para que se compute en las ganancias:
+              </p>
+              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={`action-pill-opt ${urgenteType === 'none' ? 'active' : ''}`}
+                  onClick={() => !isClosed && setUrgenteType('none')}
+                  style={{ flex: 1, height: '40px', minWidth: '120px', borderRadius: '8px', cursor: isClosed ? 'not-allowed' : 'pointer' }}
+                >
+                  No es Urgente
+                </button>
+                <button
+                  type="button"
+                  className={`action-pill-opt ${urgenteType === '100' ? 'active' : ''}`}
+                  onClick={() => !isClosed && setUrgenteType('100')}
+                  style={{ 
+                    flex: 1, 
+                    height: '40px', 
+                    minWidth: '120px', 
+                    borderRadius: '8px', 
+                    cursor: isClosed ? 'not-allowed' : 'pointer',
+                    borderColor: urgenteType === '100' ? '#ef4444' : '', 
+                    color: urgenteType === '100' ? '#fff' : '', 
+                    background: urgenteType === '100' ? 'rgba(239, 68, 68, 0.2)' : '' 
+                  }}
+                >
+                  Urgente 100€
+                </button>
+                <button
+                  type="button"
+                  className={`action-pill-opt ${urgenteType === '120' ? 'active' : ''}`}
+                  onClick={() => !isClosed && setUrgenteType('120')}
+                  style={{ 
+                    flex: 1, 
+                    height: '40px', 
+                    minWidth: '120px', 
+                    borderRadius: '8px', 
+                    cursor: isClosed ? 'not-allowed' : 'pointer',
+                    borderColor: urgenteType === '120' ? '#ef4444' : '', 
+                    color: urgenteType === '120' ? '#fff' : '', 
+                    background: urgenteType === '120' ? 'rgba(239, 68, 68, 0.2)' : '' 
+                  }}
+                >
+                  Urgente 120€
+                </button>
+              </div>
+            </div>
+
             {/* SECCIÓN B: PAQUETERÍA Y OTROS */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', textAlign: 'left' }}>
               <div className="block-section">
@@ -3863,7 +3942,7 @@ function App() {
                 {(() => {
                   const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
                   const soundbarItems = soundbarIds.map(id => itemsOtros.find(item => item.id === id)).filter(Boolean);
-                  const otherItems = itemsOtros.filter(item => !soundbarIds.includes(item.id));
+                  const otherItems = itemsOtros.filter(item => !soundbarIds.includes(item.id) && item.id !== 'URGENTE_100' && item.id !== 'URGENTE_120');
                   const sortedOtros = [...soundbarItems, ...otherItems];
                   
                   return sortedOtros.map(t => (
