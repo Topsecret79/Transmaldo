@@ -23,7 +23,7 @@ export function getSupabaseClient() {
   return supabase;
 }
 
-export function reinitSupabase() {
+export async function reinitSupabase() {
   const url = localStorage.getItem('supabase_url');
   const key = localStorage.getItem('supabase_key');
   
@@ -33,8 +33,8 @@ export function reinitSupabase() {
   if (activeUrl && activeKey) {
     try {
       supabase = createClient(activeUrl, activeKey);
-      initializeSupabaseTables();
-      syncFromCloud();
+      await initializeSupabaseTables();
+      await syncFromCloud();
     } catch (e) {
       console.error("Error re-initializing Supabase client:", e);
       supabase = null;
