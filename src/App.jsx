@@ -342,6 +342,7 @@ function App() {
   const [timeSlot, setTimeSlot] = useState('any');
   const [estimatedDuration, setEstimatedDuration] = useState(10);
   const [routeStartTime, setRouteStartTime] = useState('09:00');
+  const [isDurationManuallyEdited, setIsDurationManuallyEdited] = useState(false);
   const [ticketRoute, setTicketRoute] = useState('');
   const [originalRouteLabel, setOriginalRouteLabel] = useState('');
   const [codAmount, setCodAmount] = useState('');
@@ -1062,6 +1063,7 @@ function App() {
   };
 
   useEffect(() => {
+    if (isDurationManuallyEdited) return;
     let duration = 10; // Base: 10 mins
 
     if (formTvs.length > 0) {
@@ -1967,6 +1969,7 @@ function App() {
       setNotes('');
       setTimeSlot('any');
       setEstimatedDuration(10);
+      setIsDurationManuallyEdited(false);
       setCodAmount('');
       setShowHelperRoute(false);
       setShowCod(false);
@@ -2171,6 +2174,7 @@ function App() {
     const parsed = parseTicketNotes(parsedNotes);
     setTimeSlot(parsed.timeSlot);
     setEstimatedDuration(parsed.estimatedDuration);
+    setIsDurationManuallyEdited(true);
     setNotes(parsed.cleanNotes);
     setShowCod(ticket.codAmount > 0);
     setTicketRoute(ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId);
@@ -2340,6 +2344,7 @@ function App() {
     setNotes('');
     setTimeSlot('any');
     setEstimatedDuration(10);
+    setIsDurationManuallyEdited(false);
     setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
     setOriginalRouteLabel('');
@@ -3515,7 +3520,10 @@ function App() {
                     className="form-input" 
                     min="1" 
                     value={estimatedDuration} 
-                    onChange={(e) => setEstimatedDuration(parseInt(e.target.value, 10) || 10)} 
+                    onChange={(e) => { 
+                      setEstimatedDuration(parseInt(e.target.value, 10) || 0); 
+                      setIsDurationManuallyEdited(true); 
+                    }} 
                     disabled={isClosed} 
                   />
                 </div>
