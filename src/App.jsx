@@ -6413,7 +6413,7 @@ function App() {
                 <input 
                   type={showPassword ? "text" : "password"} 
                   className="form-input" 
-                  placeholder="••••" 
+                  placeholder="Escribe tu contraseña" 
                   value={passwordInput} 
                   onChange={(e) => setPasswordInput(e.target.value)} 
                   required 
