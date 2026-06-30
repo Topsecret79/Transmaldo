@@ -1021,7 +1021,9 @@ function App() {
     
     setModulePrice(getModulePrice(u?.id) || 3.81);
     setAppName(getAppName(u?.id) || 'LogiEarn');
-    setAppNameInput(getAppName(u?.id) || 'LogiEarn');
+    if (activeTab !== 'users') {
+      setAppNameInput(getAppName(u?.id) || 'LogiEarn');
+    }
   };
 
   const triggerAlert = (text, type = 'success') => {
