@@ -374,6 +374,7 @@ function App() {
   const [routeEndAddr, setRouteEndAddr] = useState(localStorage.getItem('delivery_default_end_addr') || 'Madrid, España');
   const [startSuggestions, setStartSuggestions] = useState([]);
   const [endSuggestions, setEndSuggestions] = useState([]);
+  const [otherDescriptions, setOtherDescriptions] = useState({});
 
   const handleFetchRouteSuggestions = async (queryText, type) => {
     const setTarget = type === 'start' ? setStartSuggestions : setEndSuggestions;
@@ -1085,6 +1086,27 @@ function App() {
 
   // Cambiar cantidades de otros artículos (Paquetería y Otros)
   const handleOtherQtyChange = (tariffId, change) => {
+    const isPaqueteria = ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(tariffId);
+    
+    if (change > 0 && isPaqueteria) {
+      const desc = prompt("Describe el artículo o mercancía a cargar (ej: ventilador de techo):");
+      if (desc === null) return; // User cancelled
+      const finalDesc = desc.trim() || 'Mercancía genérica';
+      
+      setOtherDescriptions(prev => {
+        const curList = prev[tariffId] || [];
+        return { ...prev, [tariffId]: [...curList, finalDesc] };
+      });
+    } else if (change < 0 && isPaqueteria) {
+      setOtherDescriptions(prev => {
+        const curList = prev[tariffId] || [];
+        if (curList.length === 0) return prev;
+        const newList = [...curList];
+        newList.pop(); // Remove the last one
+        return { ...prev, [tariffId]: newList };
+      });
+    }
+
     setOtherQuantities(prev => {
       const cur = prev[tariffId] || 0;
       const newVal = Math.max(0, cur + change);
@@ -1542,10 +1564,24 @@ function App() {
     // 2. Añadir otros artículos no-TV que tengan cantidad mayor a 0
     Object.entries(otherQuantities).forEach(([tariffId, quantity]) => {
       if (quantity > 0) {
-        tasksArray.push({
-          tariffId,
-          quantity
-        });
+        const isPaqueteria = ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(tariffId);
+        if (isPaqueteria) {
+          const descs = otherDescriptions[tariffId] || [];
+          for (let i = 0; i < quantity; i++) {
+            const desc = descs[i] || 'Mercancía';
+            const originalTariff = tariffs.find(t => t.id === tariffId);
+            tasksArray.push({
+              tariffId,
+              quantity: 1,
+              name: `${originalTariff?.name || 'Paquetería'} (${desc})`
+            });
+          }
+        } else {
+          tasksArray.push({
+            tariffId,
+            quantity
+          });
+        }
       }
     });
 
@@ -1909,7 +1945,8 @@ function App() {
     }
 
     const tempCustomExtras = [];
-    // Reconstruir otros artículos no-TV
+    const tempDescriptions = {};
+    // Reconstruir otros artículos no-TV y sus descripciones de paquetería
     ticket.tasks.forEach(t => {
       if (t.tariffId && t.tariffId.startsWith('CUSTOM_')) {
         tempCustomExtras.push({
@@ -1929,12 +1966,22 @@ function App() {
                           t.tariffId !== 'CUELGUE_BSND';
 
       if (!isTVRelated) {
-        tempOthers[t.tariffId] = t.quantity;
+        tempOthers[t.tariffId] = (tempOthers[t.tariffId] || 0) + t.quantity;
+        const isPaqueteria = ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(t.tariffId);
+        if (isPaqueteria) {
+          const match = t.name ? t.name.match(/\(([^)]+)\)/) : null;
+          const desc = match ? match[1] : 'Mercancía';
+          if (!tempDescriptions[t.tariffId]) tempDescriptions[t.tariffId] = [];
+          for (let i = 0; i < t.quantity; i++) {
+            tempDescriptions[t.tariffId].push(desc);
+          }
+        }
       }
     });
 
     setFormTvs(tempTvs);
     setOtherQuantities(tempOthers);
+    setOtherDescriptions(tempDescriptions);
     setCustomExtras(tempCustomExtras);
     setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
     setFormStep(1);
@@ -3296,16 +3343,31 @@ function App() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', textAlign: 'left' }}>
               <div className="block-section">
                 <div className="block-title">📦 Bloque Paquetería (Unidades)</div>
-                {itemsPaqueteria.map(t => (
-                  <div key={t.id} className="task-item-row">
-                    <span className="task-item-label">{t.name}</span>
-                    <div className="qty-counter">
-                      <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
-                      <span className="qty-val">{otherQuantities[t.id] || 0}</span>
-                      <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                {itemsPaqueteria.map(t => {
+                  const qty = otherQuantities[t.id] || 0;
+                  const descs = otherDescriptions[t.id] || [];
+                  return (
+                    <div key={t.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '10px 0' }}>
+                      <div className="task-item-row" style={{ borderBottom: 'none', padding: 0 }}>
+                        <span className="task-item-label">{t.name}</span>
+                        <div className="qty-counter">
+                          <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                          <span className="qty-val">{qty}</span>
+                          <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                        </div>
+                      </div>
+                      {qty > 0 && descs.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '10px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          {descs.map((d, i) => (
+                            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              📦 Item {i + 1}: <strong style={{ color: '#fff' }}>{d}</strong>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="block-section">
@@ -4652,143 +4714,7 @@ function App() {
                         <td style={{ textAlign: 'center' }}>
                           <button
                             type="button"
-                            onClick={() => {
-                              setEditingTicketId(ticket.id);
-                              setEditingFurgoId(ticket.furgoId);
-                              setCustomerName(ticket.customerName);
-                              setPhone(ticket.phone || '');
-                              setAddress(ticket.address);
-                              setPostcode(ticket.postcode || '');
-                              setNotes(ticket.notes || '');
-                              setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
-                              setTicketRoute(driverLabel);
-                              setTicketDate(ticket.date);
-                              
-                              const tempTvs = [];
-                              const tempOthers = {};
-                              
-                              const tvMainTasks = ticket.tasks.filter(t => t.tariffId.startsWith('TV_ENT_') || t.tariffId.startsWith('TV_COMB_'));
-                              const pmTasks = ticket.tasks.filter(t => t.tariffId.startsWith('PM_') && t.tariffId !== 'PM_BSND');
-                              const cuelgueTasks = ticket.tasks.filter(t => t.tariffId.startsWith('CUELGUE_') && t.tariffId !== 'CUELGUE_BSND');
-                              const viejaTasks = ticket.tasks.filter(t => t.tariffId === 'TV_VIEJA_URB' || t.tariffId === 'TV_VIEJA_NO_URB');
-                              
-                              let pmIndex = 0;
-                              let cuelgueIndex = 0;
-                              let viejaIndex = 0;
-                              
-                              tvMainTasks.forEach((mTask, idx) => {
-                                const isComb = mTask.tariffId.includes('COMB');
-                                let range = '49';
-                                if (mTask.tariffId.includes('74')) range = '74';
-                                if (mTask.tariffId.includes('115')) range = '115';
-                                
-                                let pmType = 'none';
-                                if (pmIndex < pmTasks.length) {
-                                  const pmMatch = pmTasks[pmIndex++];
-                                  pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
-                                }
-                                
-                                let cuelgue = false;
-                                if (cuelgueIndex < cuelgueTasks.length) {
-                                  cuelgueIndex++;
-                                  cuelgue = true;
-                                }
-                                
-                                let recogidaViejaType = 'none';
-                                if (viejaIndex < viejaTasks.length) {
-                                  const viejaMatch = viejaTasks[viejaIndex++];
-                                  recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
-                                }
-                                
-                                tempTvs.push({
-                                  id: 'tv_' + idx + Date.now().toString(),
-                                  inches: range,
-                                  action: isComb ? 'combinado' : (mTask.name.includes('Recogida') && !mTask.name.includes('Entrega') ? 'recogida' : 'entrega'),
-                                  pmType,
-                                  cuelgue,
-                                  recogidaViejaType
-                                });
-                              });
-                              
-                              while (pmIndex < pmTasks.length) {
-                                const pmMatch = pmTasks[pmIndex++];
-                                let range = '49';
-                                if (pmMatch.tariffId.includes('74')) range = '74';
-                                if (pmMatch.tariffId.includes('115')) range = '115';
-                                
-                                const pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
-                                
-                                let cuelgue = false;
-                                if (cuelgueIndex < cuelgueTasks.length) {
-                                  cuelgueIndex++;
-                                  cuelgue = true;
-                                }
-                                
-                                let recogidaViejaType = 'none';
-                                if (viejaIndex < viejaTasks.length) {
-                                  const viejaMatch = viejaTasks[viejaIndex++];
-                                  recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
-                                }
-                                
-                                tempTvs.push({
-                                  id: 'tv_pm_' + pmIndex + Date.now().toString(),
-                                  inches: range,
-                                  action: 'solo_pm',
-                                  pmType,
-                                  cuelgue,
-                                  recogidaViejaType
-                                });
-                              }
-
-                              while (cuelgueIndex < cuelgueTasks.length) {
-                                const cuelgueMatch = cuelgueTasks[cuelgueIndex++];
-                                let range = '49';
-                                if (cuelgueMatch.tariffId.includes('74')) range = '74';
-                                if (cuelgueMatch.tariffId.includes('115')) range = '115';
-                                const inches = range === '49' ? 43 : range === '74' ? 55 : 75;
-                                
-                                let recogidaViejaType = 'none';
-                                if (viejaIndex < viejaTasks.length) {
-                                  const viejaMatch = viejaTasks[viejaIndex++];
-                                  recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
-                                }
-                                
-                                tempTvs.push({
-                                  id: 'tv_cuelgue_' + cuelgueIndex + Date.now().toString(),
-                                  inches: range,
-                                  action: 'solo_cuelgue',
-                                  pmType: 'none',
-                                  cuelgue: true,
-                                  recogidaViejaType
-                                });
-                              }
-                              
-                              ticket.tasks.forEach(t => {
-                                const isTVRelated = (t.tariffId.startsWith('TV_ENT_') || 
-                                                    t.tariffId.startsWith('TV_COMB_') || 
-                                                    t.tariffId.startsWith('PM_') || 
-                                                    t.tariffId.startsWith('CUELGUE_') || 
-                                                    t.tariffId === 'TV_VIEJA_URB' || 
-                                                    t.tariffId === 'TV_VIEJA_NO_URB') &&
-                                                    t.tariffId !== 'PM_BSND' &&
-                                                    t.tariffId !== 'CUELGUE_BSND';
-                                
-                                if (!isTVRelated) {
-                                  tempOthers[t.tariffId] = t.quantity;
-                                }
-                              });
-                              
-                              setFormTvs(tempTvs);
-                              setOtherQuantities(tempOthers);
-                              setAddressVerification({
-                                status: 'success',
-                                message: `🟢 Dirección verificada`,
-                                coords: { lat: ticket.lat, lng: ticket.lng }
-                              });
-                              setLastVerifiedAddress(ticket.address);
-                              
-                              setActiveTab('new_ticket');
-                            }}
+                            onClick={() => startEditing(ticket)}
                             className="btn btn-secondary btn-small"
                             style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                           >
