@@ -137,11 +137,27 @@ export async function initializeSupabaseTables() {
     const { data: cloudSettings } = await supabase.from('delivery_settings').select('key');
     if (!cloudSettings || cloudSettings.length === 0) {
       const mPrice = parseFloat(localStorage.getItem('delivery_module_price')) || 3.81;
-      const appName = localStorage.getItem('delivery_app_name') || 'LogiEarn';
+      const appName = localStorage.getItem('delivery_app_name') || 'My Delivery Team';
+      const startAddr = localStorage.getItem('delivery_default_start_addr') || 'Barcelona, España';
+      const endAddr = localStorage.getItem('delivery_default_end_addr') || 'Barcelona, España';
       await supabase.from('delivery_settings').insert([
         { key: 'module_price', value: mPrice.toString() },
-        { key: 'app_name', value: appName }
+        { key: 'app_name', value: appName },
+        { key: 'default_start_addr', value: startAddr },
+        { key: 'default_end_addr', value: endAddr }
       ]);
+    } else {
+      const keys = cloudSettings.map(s => s.key);
+      const toInsert = [];
+      if (!keys.includes('default_start_addr')) {
+        toInsert.push({ key: 'default_start_addr', value: localStorage.getItem('delivery_default_start_addr') || 'Barcelona, España' });
+      }
+      if (!keys.includes('default_end_addr')) {
+        toInsert.push({ key: 'default_end_addr', value: localStorage.getItem('delivery_default_end_addr') || 'Barcelona, España' });
+      }
+      if (toInsert.length > 0) {
+        await supabase.from('delivery_settings').insert(toInsert);
+      }
     }
   } catch (e) {
     console.error("Error seeding Supabase tables:", e);
@@ -264,6 +280,29 @@ export async function syncFromCloud() {
           }
           localStorage.setItem(`delivery_app_name_${userId}`, val);
           localStorage.setItem('delivery_app_name', val);
+        }
+      }
+
+      // Start & End Addresses
+      if (userId) {
+        const startKey = `default_start_addr_${userId}`;
+        let startSetting = settings.find(s => s.key === startKey);
+        if (!startSetting) {
+          startSetting = settings.find(s => s.key === 'default_start_addr');
+        }
+        if (startSetting) {
+          localStorage.setItem(`delivery_start_addr_${userId}`, startSetting.value);
+          localStorage.setItem('delivery_default_start_addr', startSetting.value);
+        }
+
+        const endKey = `default_end_addr_${userId}`;
+        let endSetting = settings.find(s => s.key === endKey);
+        if (!endSetting) {
+          endSetting = settings.find(s => s.key === 'default_end_addr');
+        }
+        if (endSetting) {
+          localStorage.setItem(`delivery_end_addr_${userId}`, endSetting.value);
+          localStorage.setItem('delivery_default_end_addr', endSetting.value);
         }
       }
     }
@@ -1134,6 +1173,52 @@ export function toggleUserSearchPermission(userId) {
     return { success: true, user };
   }
   return { success: false, error: 'Usuario no encontrado' };
+}
+
+// Obtener punto de inicio predeterminado
+export function getRouteStartAddr(userId) {
+  if (userId) {
+    const custom = localStorage.getItem(`delivery_start_addr_${userId}`);
+    if (custom) return custom;
+  }
+  return localStorage.getItem('delivery_default_start_addr') || 'Barcelona, España';
+}
+
+// Guardar punto de inicio predeterminado
+export function saveRouteStartAddr(addr, userId) {
+  if (userId) {
+    localStorage.setItem(`delivery_start_addr_${userId}`, addr.trim());
+  }
+  localStorage.setItem('delivery_default_start_addr', addr.trim());
+  if (supabase) {
+    const key = userId ? `default_start_addr_${userId}` : 'default_start_addr';
+    supabase.from('delivery_settings').upsert({ key, value: addr.trim() }).then(({ error }) => {
+      if (error) console.error("Error saving start address setting to cloud:", error);
+    });
+  }
+}
+
+// Obtener punto de fin predeterminado
+export function getRouteEndAddr(userId) {
+  if (userId) {
+    const custom = localStorage.getItem(`delivery_end_addr_${userId}`);
+    if (custom) return custom;
+  }
+  return localStorage.getItem('delivery_default_end_addr') || 'Barcelona, España';
+}
+
+// Guardar punto de fin predeterminado
+export function saveRouteEndAddr(addr, userId) {
+  if (userId) {
+    localStorage.setItem(`delivery_end_addr_${userId}`, addr.trim());
+  }
+  localStorage.setItem('delivery_default_end_addr', addr.trim());
+  if (supabase) {
+    const key = userId ? `default_end_addr_${userId}` : 'default_end_addr';
+    supabase.from('delivery_settings').upsert({ key, value: addr.trim() }).then(({ error }) => {
+      if (error) console.error("Error saving end address setting to cloud:", error);
+    });
+  }
 }
 
 

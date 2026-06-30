@@ -125,6 +125,10 @@ import {
   deleteUser,
   getAppName,
   saveAppName,
+  getRouteStartAddr,
+  saveRouteStartAddr,
+  getRouteEndAddr,
+  saveRouteEndAddr,
   addTariff,
   deleteTariff,
   geocodeAddress,
@@ -374,8 +378,8 @@ function App() {
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
   const mapInstanceRef = useRef(null);
-  const [routeStartAddr, setRouteStartAddr] = useState(localStorage.getItem('delivery_default_start_addr') || 'Madrid, España');
-  const [routeEndAddr, setRouteEndAddr] = useState(localStorage.getItem('delivery_default_end_addr') || 'Madrid, España');
+  const [routeStartAddr, setRouteStartAddr] = useState(getRouteStartAddr());
+  const [routeEndAddr, setRouteEndAddr] = useState(getRouteEndAddr());
   const [startSuggestions, setStartSuggestions] = useState([]);
   const [endSuggestions, setEndSuggestions] = useState([]);
   const [otherDescriptions, setOtherDescriptions] = useState({});
@@ -1023,6 +1027,8 @@ function App() {
     if (activeTab !== 'users') {
       setAppNameInput(getAppName(u?.id) || 'My Delivery Team');
     }
+    setRouteStartAddr(getRouteStartAddr(u?.id));
+    setRouteEndAddr(getRouteEndAddr(u?.id));
   };
 
   const triggerAlert = (text, type = 'success') => {
@@ -1093,6 +1099,8 @@ function App() {
     setCurrentUser(null);
     setAppName('My Delivery Team');
     setAppNameInput('My Delivery Team');
+    setRouteStartAddr(getRouteStartAddr());
+    setRouteEndAddr(getRouteEndAddr());
     setActiveTab('');
     setEditingTicketId(null);
     triggerAlert('Sesión cerrada correctamente');
@@ -1772,13 +1780,8 @@ function App() {
 
     setIsOptimizing(true);
     
-    if (currentUser.role === 'repartidor') {
-      localStorage.setItem(`delivery_start_addr_${currentUser.id}`, routeStartAddr);
-      localStorage.setItem(`delivery_end_addr_${currentUser.id}`, routeEndAddr);
-    } else {
-      localStorage.setItem('delivery_default_start_addr', routeStartAddr);
-      localStorage.setItem('delivery_default_end_addr', routeEndAddr);
-    }
+    saveRouteStartAddr(routeStartAddr, currentUser.id);
+    saveRouteEndAddr(routeEndAddr, currentUser.id);
 
     try {
       let startCoords = null;
@@ -5814,6 +5817,54 @@ function App() {
               </div>
             </div>
             
+            {/* Puntos de Inicio y Fin de Ruta Predeterminados */}
+            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
+              <div className="block-title">📍 Direcciones de Inicio y Fin de Ruta Predeterminadas</div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Define las ubicaciones iniciales y finales para la optimización de las rutas de tus choferes. Esto se sincronizará con la base de datos para todo tu equipo.
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">Ubicación de Salida / Punto de Partida</span>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Ej: Calle Gran Via, Sabadell, Barcelona" 
+                    value={routeStartAddr}
+                    onChange={(e) => setRouteStartAddr(e.target.value)}
+                  />
+                </div>
+                <div className="input-group" style={{ marginBottom: 0 }}>
+                  <span className="input-label">Ubicación de Llegada / Fin de Ruta</span>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Ej: Calle Gran Via, Sabadell, Barcelona" 
+                    value={routeEndAddr}
+                    onChange={(e) => setRouteEndAddr(e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={() => {
+                  if (!routeStartAddr.trim() || !routeEndAddr.trim()) {
+                    triggerAlert('Las direcciones no pueden estar vacías', 'error');
+                    return;
+                  }
+                  saveRouteStartAddr(routeStartAddr, currentUser?.id);
+                  saveRouteEndAddr(routeEndAddr, currentUser?.id);
+                  triggerAlert('Puntos de ruta predeterminados guardados y sincronizados');
+                }}
+                style={{ width: 'auto', marginTop: '20px', height: '42px' }}
+              >
+                Guardar Puntos Predeterminados
+              </button>
+            </div>
+
             {/* Conexión a Supabase */}
             <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px' }}>
               <div className="block-title">☁️ Conexión de Base de Datos Cloud (Supabase)</div>
