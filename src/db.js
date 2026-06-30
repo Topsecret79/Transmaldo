@@ -1343,6 +1343,35 @@ export function saveMapboxToken(token) {
   }
 }
 
+// Parsear información de franja horaria y duración codificada en las notas
+export function parseTicketNotes(notesText) {
+  let timeSlot = 'any';
+  let estimatedDuration = 10; // 10 minutos por defecto
+  let cleanNotes = notesText || '';
+
+  const slotMatch = cleanNotes.match(/^\[Horario:\s*([^\]]+)\]/);
+  if (slotMatch) {
+    const rawSlot = slotMatch[1].trim().toLowerCase();
+    timeSlot = rawSlot === 'mañana' ? 'morning' : rawSlot === 'tarde' ? 'afternoon' : 'any';
+    cleanNotes = cleanNotes.replace(/^\[Horario:\s*[^\]]+\]\s*/, '');
+  }
+
+  const durationMatch = cleanNotes.match(/^\[Duracion:\s*(\d+)\s*min\]/);
+  if (durationMatch) {
+    estimatedDuration = parseInt(durationMatch[1], 10);
+    cleanNotes = cleanNotes.replace(/^\[Duracion:\s*\d+\s*min\]\s*/, '');
+  }
+
+  return { timeSlot, estimatedDuration, cleanNotes };
+}
+
+// Codificar franja horaria y duración como prefijo en las notas
+export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText) {
+  const slotStr = timeSlot === 'morning' ? 'Mañana' : timeSlot === 'afternoon' ? 'Tarde' : 'Cualquiera';
+  const prefix = `[Horario: ${slotStr}] [Duracion: ${estimatedDuration || 10} min] `;
+  return (prefix + (cleanNotesText || '').trim()).trim();
+}
+
 
 
 

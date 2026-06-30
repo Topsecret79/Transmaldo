@@ -134,6 +134,8 @@ import {
   getMapboxToken,
   saveMapboxToken,
   addTariff,
+  parseTicketNotes,
+  encodeTicketNotes,
   deleteTariff,
   geocodeAddress,
   normalizeSpanishAddressQuery,
@@ -337,6 +339,9 @@ function App() {
   const mapSelectTimerRef = useRef(null);
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  const [timeSlot, setTimeSlot] = useState('any');
+  const [estimatedDuration, setEstimatedDuration] = useState(10);
+  const [routeStartTime, setRouteStartTime] = useState('09:00');
   const [ticketRoute, setTicketRoute] = useState('');
   const [originalRouteLabel, setOriginalRouteLabel] = useState('');
   const [codAmount, setCodAmount] = useState('');
@@ -1055,6 +1060,38 @@ function App() {
     setAlertMsg({ text, type });
     setTimeout(() => setAlertMsg({ text: '', type: '' }), 4000);
   };
+
+  useEffect(() => {
+    let duration = 10; // Base: 10 mins
+
+    if (formTvs.length > 0) {
+      duration = 15; // Primera TV: 15 mins
+      duration += (formTvs.length - 1) * 10; // Adicionales: 10 mins c/u
+
+      formTvs.forEach(tv => {
+        if (tv.pmType === 'basic') duration += 15;
+        else if (tv.pmType === 'complex') duration += 30;
+
+        if (tv.cuelgue) duration += 30;
+        if (tv.recogidaViejaType && tv.recogidaViejaType !== 'none') duration += 5;
+      });
+    }
+
+    // Otros elementos (paquetes o accesorios)
+    let totalOthers = 0;
+    Object.values(otherQuantities).forEach(qty => {
+      totalOthers += (qty || 0);
+    });
+    if (totalOthers > 0 && formTvs.length === 0) {
+      // Si solo es paquetería
+      duration = 10 + (totalOthers - 1) * 5;
+    } else if (totalOthers > 0) {
+      // Si acompaña a la TV
+      duration += totalOthers * 3;
+    }
+
+    setEstimatedDuration(duration);
+  }, [formTvs, otherQuantities]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -1869,6 +1906,7 @@ function App() {
     const assignedFurgoId = targetUser ? targetUser.id : (editingTicketId ? editingFurgoId : currentUser.id);
 
     let finalNotes = notes.trim();
+    finalNotes = encodeTicketNotes(timeSlot, estimatedDuration, finalNotes);
     if (originalRouteLabel) {
       finalNotes = `[Ruta Original: ${originalRouteLabel}] ${finalNotes}`.trim();
     }
@@ -1927,6 +1965,8 @@ function App() {
       setCustomExtraName('');
       setCustomExtraPrice('');
       setNotes('');
+      setTimeSlot('any');
+      setEstimatedDuration(10);
       setCodAmount('');
       setShowHelperRoute(false);
       setShowCod(false);
@@ -2032,30 +2072,45 @@ function App() {
         return R * c;
       };
 
-      const unvisited = [...ticketsWithCoords];
+      const parsedTickets = ticketsWithCoords.map(t => {
+        const parsed = parseTicketNotes(t.notes);
+        return { ...t, timeSlot: parsed.timeSlot, estimatedDuration: parsed.estimatedDuration };
+      });
+
+      const morningTickets = parsedTickets.filter(t => t.timeSlot === 'morning');
+      const anyTickets = parsedTickets.filter(t => t.timeSlot === 'any' || !t.timeSlot);
+      const afternoonTickets = parsedTickets.filter(t => t.timeSlot === 'afternoon');
+
       const route = [];
       let currentPos = startCoords;
 
-      while (unvisited.length > 0) {
-        let nearestIdx = -1;
-        let minDistance = Infinity;
+      const optimizeGroup = (group) => {
+        const unvisited = [...group];
+        while (unvisited.length > 0) {
+          let nearestIdx = -1;
+          let minDistance = Infinity;
 
-        for (let i = 0; i < unvisited.length; i++) {
-          const dist = getDistance(currentPos, unvisited[i]);
-          if (dist < minDistance) {
-            minDistance = dist;
-            nearestIdx = i;
+          for (let i = 0; i < unvisited.length; i++) {
+            const dist = getDistance(currentPos, unvisited[i]);
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestIdx = i;
+            }
+          }
+
+          if (nearestIdx !== -1) {
+            const nextTicket = unvisited.splice(nearestIdx, 1)[0];
+            route.push(nextTicket);
+            currentPos = { lat: nextTicket.lat, lng: nextTicket.lng };
+          } else {
+            break;
           }
         }
+      };
 
-        if (nearestIdx !== -1) {
-          const nextTicket = unvisited.splice(nearestIdx, 1)[0];
-          route.push(nextTicket);
-          currentPos = { lat: nextTicket.lat, lng: nextTicket.lng };
-        } else {
-          break;
-        }
-      }
+      optimizeGroup(morningTickets);
+      optimizeGroup(anyTickets);
+      optimizeGroup(afternoonTickets);
 
       route.forEach((ticket, index) => {
         ticket.routeOrder = index + 1;
@@ -2111,7 +2166,12 @@ function App() {
     }
     setOriginalRouteLabel(origLabel);
     setShowHelperRoute(!!origLabel);
-    setNotes(parsedNotes);
+    
+    // Parsear franja horaria y duración
+    const parsed = parseTicketNotes(parsedNotes);
+    setTimeSlot(parsed.timeSlot);
+    setEstimatedDuration(parsed.estimatedDuration);
+    setNotes(parsed.cleanNotes);
     setShowCod(ticket.codAmount > 0);
     setTicketRoute(ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId);
 
@@ -2278,6 +2338,8 @@ function App() {
     setCustomExtraName('');
     setCustomExtraPrice('');
     setNotes('');
+    setTimeSlot('any');
+    setEstimatedDuration(10);
     setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
     setOriginalRouteLabel('');
@@ -3429,6 +3491,35 @@ function App() {
                   </select>
                 </div>
               )}
+
+              {/* Franja Horaria y Tiempo Estimado */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '10px', borderTop: '1px dashed var(--panel-border)', paddingTop: '15px' }}>
+                <div className="input-group">
+                  <span className="input-label">⏳ Franja Horaria de Entrega</span>
+                  <select
+                    className="form-input"
+                    value={timeSlot}
+                    onChange={(e) => setTimeSlot(e.target.value)}
+                    disabled={isClosed}
+                  >
+                    <option value="any">Indiferente / Todo el día</option>
+                    <option value="morning">☀️ Mañana (09:00 - 14:00)</option>
+                    <option value="afternoon">🌙 Tarde (16:00 - 20:00)</option>
+                  </select>
+                </div>
+
+                <div className="input-group">
+                  <span className="input-label">⏱️ Tiempo Estimado en Parada (minutos)</span>
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    min="1" 
+                    value={estimatedDuration} 
+                    onChange={(e) => setEstimatedDuration(parseInt(e.target.value, 10) || 10)} 
+                    disabled={isClosed} 
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="wizard-footer" style={{ justifyContent: 'flex-end' }}>
@@ -3866,6 +3957,56 @@ function App() {
     const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
     const dateTickets = sortTicketsByRouteOrder(userTickets.filter(t => t.date === targetDate));
 
+    const minutesToHHMM = (totalMins) => {
+      const h = Math.floor(totalMins / 60) % 24;
+      const m = Math.floor(totalMins % 60);
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+    const hhmmToMinutes = (timeStr) => {
+      const parts = (timeStr || '09:00').split(':');
+      return (parseInt(parts[0], 10) || 9) * 60 + (parseInt(parts[1], 10) || 0);
+    };
+
+    const timelineSchedules = {};
+    if (dateTickets.length > 0) {
+      let lastPos = { lat: 41.3879, lng: 2.16992 };
+      let currentTime = hhmmToMinutes(routeStartTime);
+
+      const getDistanceSimple = (c1, c2) => {
+        const R = 6371;
+        const dLat = (c2.lat - c1.lat) * Math.PI / 180;
+        const dLng = (c2.lng - c1.lng) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) * 
+          Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+      };
+
+      dateTickets.forEach((ticket, idx) => {
+        const parsed = parseTicketNotes(ticket.notes);
+        let ticketLat = ticket.lat ? parseFloat(ticket.lat) : lastPos.lat;
+        let ticketLng = ticket.lng ? parseFloat(ticket.lng) : lastPos.lng;
+        
+        const dist = idx === 0 ? 0 : getDistanceSimple(lastPos, { lat: ticketLat, lng: ticketLng });
+        const travelMins = Math.round((dist / 35) * 60); // 35 km/h
+        
+        const arrivalTime = currentTime + travelMins;
+        const departureTime = arrivalTime + parsed.estimatedDuration;
+        
+        timelineSchedules[ticket.id] = {
+          arrival: minutesToHHMM(arrivalTime),
+          departure: minutesToHHMM(departureTime),
+          duration: parsed.estimatedDuration,
+          timeSlot: parsed.timeSlot === 'morning' ? 'Mañana' : parsed.timeSlot === 'afternoon' ? 'Tarde' : 'Indiferente'
+        };
+        
+        lastPos = { lat: ticketLat, lng: ticketLng };
+        currentTime = departureTime;
+      });
+    }
+
     return (
       <div>
         <div className="tab-container">
@@ -3934,6 +4075,17 @@ function App() {
                     value={targetDate} 
                     onChange={(e) => setShiftSummaryDate(e.target.value)} 
                     style={{ width: '160px', padding: '8px 12px' }}
+                  />
+                </div>
+
+                <div className="input-group" style={{ marginBottom: 0, flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+                  <span className="input-label" style={{ margin: 0, fontWeight: '700' }}>🕒 Salida:</span>
+                  <input 
+                    type="time" 
+                    className="form-input" 
+                    value={routeStartTime} 
+                    onChange={(e) => setRouteStartTime(e.target.value)} 
+                    style={{ width: '110px', padding: '8px 12px' }}
                   />
                 </div>
                 
@@ -4252,6 +4404,40 @@ function App() {
                                 )}
                               </div>
                             </div>
+                            
+                            {/* Cronograma Estimado */}
+                            {timelineSchedules[t.id] && (
+                              <div style={{
+                                background: 'rgba(99, 102, 241, 0.08)',
+                                border: '1px solid rgba(99, 102, 241, 0.15)',
+                                borderRadius: '8px',
+                                padding: '8px 12px',
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '12px',
+                                fontSize: '0.8rem',
+                                color: 'var(--text-main)',
+                                marginBottom: '12px',
+                                marginTop: '4px',
+                                alignItems: 'center'
+                              }}>
+                                <span>🕒 <strong>Llegada:</strong> {timelineSchedules[t.id].arrival}</span>
+                                <span>⌛ <strong>Parada:</strong> {timelineSchedules[t.id].duration} min</span>
+                                <span>🛫 <strong>Salida:</strong> {timelineSchedules[t.id].departure}</span>
+                                <span style={{
+                                  marginLeft: 'auto',
+                                  fontSize: '0.72rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: timelineSchedules[t.id].timeSlot === 'Mañana' ? 'rgba(251, 191, 36, 0.15)' : timelineSchedules[t.id].timeSlot === 'Tarde' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                  color: timelineSchedules[t.id].timeSlot === 'Mañana' ? '#fbbf24' : timelineSchedules[t.id].timeSlot === 'Tarde' ? '#38bdf8' : 'var(--text-muted)',
+                                  border: timelineSchedules[t.id].timeSlot === 'Mañana' ? '1px solid rgba(251, 191, 36, 0.25)' : timelineSchedules[t.id].timeSlot === 'Tarde' ? '1px solid rgba(56, 189, 248, 0.25)' : '1px solid var(--panel-border)',
+                                  fontWeight: 'bold'
+                                }}>
+                                  🎯 Horario: {timelineSchedules[t.id].timeSlot}
+                                </span>
+                              </div>
+                            )}
 
                             {/* Contacto y Notas */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.85rem' }}>
@@ -5446,7 +5632,47 @@ function App() {
                              )}
                           </div>
                         </td>
-                        <td style={{ fontStyle: 'italic', fontSize: '0.85rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.notes}>{t.notes || '-'}</td>
+                        <td>
+                          {(() => {
+                            const parsed = parseTicketNotes(t.notes);
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                  {parsed.timeSlot !== 'any' && (
+                                    <span className="badge" style={{
+                                      fontSize: '0.65rem',
+                                      padding: '1px 5px',
+                                      background: parsed.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                                      color: parsed.timeSlot === 'morning' ? '#fbbf24' : '#38bdf8',
+                                      border: parsed.timeSlot === 'morning' ? '1px solid rgba(251, 191, 36, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+                                      fontWeight: 'bold',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {parsed.timeSlot === 'morning' ? '☀️ Mañana' : '🌙 Tarde'}
+                                    </span>
+                                  )}
+                                  <span className="badge" style={{
+                                    fontSize: '0.65rem',
+                                    padding: '1px 5px',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    color: 'var(--text-muted)',
+                                    fontWeight: 'bold',
+                                    borderRadius: '4px'
+                                  }}>
+                                    ⏱️ {parsed.estimatedDuration} min
+                                  </span>
+                                </div>
+                                <span 
+                                  style={{ fontStyle: 'italic', fontSize: '0.85rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} 
+                                  title={parsed.cleanNotes}
+                                >
+                                  {parsed.cleanNotes || '-'}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                        </td>
                         <td>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                             {t.tasks && t.tasks.map((task, idx) => {
