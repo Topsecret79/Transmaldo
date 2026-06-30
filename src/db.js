@@ -257,8 +257,13 @@ export async function syncFromCloud() {
           appNameSetting = settings.find(s => s.key === 'app_name');
         }
         if (appNameSetting) {
-          localStorage.setItem(`delivery_app_name_${userId}`, appNameSetting.value);
-          localStorage.setItem('delivery_app_name', appNameSetting.value);
+          let val = appNameSetting.value;
+          if (val === 'My Delevery Team' || val === 'MY Delevery Team' || val.toLowerCase().includes('delevery')) {
+            val = 'My Delivery Team';
+            supabase.from('delivery_settings').upsert({ key: appNameSetting.key, value: 'My Delivery Team' }).then(() => {});
+          }
+          localStorage.setItem(`delivery_app_name_${userId}`, val);
+          localStorage.setItem('delivery_app_name', val);
         }
       }
     }
@@ -939,9 +944,20 @@ export function deleteUser(userId) {
 export function getAppName(userId) {
   if (userId) {
     const customName = localStorage.getItem(`delivery_app_name_${userId}`);
-    if (customName) return customName;
+    if (customName) {
+      if (customName === 'My Delevery Team' || customName === 'MY Delevery Team' || customName.toLowerCase().includes('delevery')) {
+        localStorage.setItem(`delivery_app_name_${userId}`, 'My Delivery Team');
+        return 'My Delivery Team';
+      }
+      return customName;
+    }
   }
-  return localStorage.getItem('delivery_app_name') || 'My Delivery Team';
+  const globalName = localStorage.getItem('delivery_app_name');
+  if (globalName === 'My Delevery Team' || globalName === 'MY Delevery Team' || (globalName && globalName.toLowerCase().includes('delevery'))) {
+    localStorage.setItem('delivery_app_name', 'My Delivery Team');
+    return 'My Delivery Team';
+  }
+  return globalName || 'My Delivery Team';
 }
 
 // Guardar nombre de la aplicación
