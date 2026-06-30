@@ -1003,7 +1003,7 @@ function App() {
           finalShifts = rawShifts.filter(s => s && (s.createdBy === u.id || myUserIds.includes(s.furgoId)));
         } else if (u.role === 'repartidor') {
           finalTickets = rawTickets.filter(t => t && t.furgoId === u.id);
-          finalUsers = rawUsers.filter(usr => usr && usr.id === u.id);
+          finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.createdBy || usr.id === u.id || usr.id === u.createdBy));
           finalShifts = rawShifts.filter(s => s && s.furgoId === u.id);
         }
       }
