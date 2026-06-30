@@ -4044,9 +4044,29 @@ function App() {
                           >
                             {/* Cabecera de la Tarjeta */}
                             <div className="driver-card-header">
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, flexWrap: 'wrap' }}>
                                 <div className="driver-card-index">#{stopIndex}</div>
                                 <div className="driver-card-title">{t.customerName}</div>
+                                {t.notes && t.notes.startsWith('[Ruta Original: ') && (() => {
+                                  const endIdx = t.notes.indexOf(']');
+                                  const label = endIdx !== -1 ? t.notes.substring(16, endIdx) : 'Otra';
+                                  return (
+                                    <span className="badge" style={{ 
+                                      fontSize: '0.72rem', 
+                                      padding: '2px 8px', 
+                                      background: 'rgba(245, 158, 11, 0.15)', 
+                                      border: '1px solid rgba(245, 158, 11, 0.3)', 
+                                      color: '#fbbf24',
+                                      borderRadius: '6px',
+                                      fontWeight: 'bold',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      🔄 Auxilio de {label}
+                                    </span>
+                                  );
+                                })()}
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {statusBadge}
