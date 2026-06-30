@@ -3212,7 +3212,7 @@ function App() {
                   }} 
                   style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                 />
-                🔄 Este paquete es auxilio de otra furgoneta (Ruta Original)
+                🔄 Pertenece a otra ruta
               </label>
 
               {showHelperRoute && (
