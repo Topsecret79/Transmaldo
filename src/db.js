@@ -23,24 +23,32 @@ export function getSupabaseClient() {
   return supabase;
 }
 
+let isSyncing = false;
+
 export async function reinitSupabase() {
-  const url = localStorage.getItem('supabase_url');
-  const key = localStorage.getItem('supabase_key');
-  
-  const activeUrl = url === 'none' ? null : (url || defaultUrl);
-  const activeKey = url === 'none' ? null : (key || defaultKey);
-  
-  if (activeUrl && activeKey) {
-    try {
-      supabase = createClient(activeUrl, activeKey);
-      await initializeSupabaseTables();
-      await syncFromCloud();
-    } catch (e) {
-      console.error("Error re-initializing Supabase client:", e);
+  if (isSyncing) return;
+  isSyncing = true;
+  try {
+    const url = localStorage.getItem('supabase_url');
+    const key = localStorage.getItem('supabase_key');
+    
+    const activeUrl = url === 'none' ? null : (url || defaultUrl);
+    const activeKey = url === 'none' ? null : (key || defaultKey);
+    
+    if (activeUrl && activeKey) {
+      try {
+        supabase = createClient(activeUrl, activeKey);
+        await initializeSupabaseTables();
+        await syncFromCloud();
+      } catch (e) {
+        console.error("Error re-initializing Supabase client:", e);
+        supabase = null;
+      }
+    } else {
       supabase = null;
     }
-  } else {
-    supabase = null;
+  } finally {
+    isSyncing = false;
   }
 }
 
