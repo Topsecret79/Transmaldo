@@ -552,13 +552,11 @@ function App() {
   useEffect(() => {
     loadData();
     const savedUser = localStorage.getItem('delivery_session');
-    let hasSession = false;
     if (savedUser && savedUser !== 'null') {
       try {
         const parsed = JSON.parse(savedUser);
         if (parsed && parsed.role) {
           setCurrentUser(parsed);
-          hasSession = true;
           setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
         }
       } catch (e) {
@@ -566,19 +564,14 @@ function App() {
       }
     }
 
-    if (hasSession) {
-      reinitSupabase();
-    }
+    reinitSupabase();
 
     onDataSync(() => {
       loadData();
     });
 
     const interval = setInterval(() => {
-      const activeSession = localStorage.getItem('delivery_session');
-      if (activeSession && activeSession !== 'null') {
-        reinitSupabase();
-      }
+      reinitSupabase();
     }, 15000);
 
     return () => clearInterval(interval);
