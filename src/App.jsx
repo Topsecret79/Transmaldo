@@ -330,6 +330,8 @@ function App() {
   const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isListeningName, setIsListeningName] = useState(false);
+  const [isListeningStart, setIsListeningStart] = useState(false);
+  const [isListeningEnd, setIsListeningEnd] = useState(false);
   const [formStep, setFormStep] = useState(1);
   const debounceTimerRef = useRef(null);
   const mapSelectTimerRef = useRef(null);
@@ -1486,6 +1488,102 @@ function App() {
     } catch (err) {
       console.error("Failed to start SpeechRecognition:", err);
       setIsListeningName(false);
+    }
+  };
+
+  const handleStartStartVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      triggerAlert('La búsqueda por voz no es compatible con tu navegador actual. Usa Chrome o Safari.', 'error');
+      return;
+    }
+
+    if (isListeningStart) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-ES';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListeningStart(true);
+      triggerAlert('🎙️ Micrófono activado. Por favor, dicta la dirección de salida...', 'info');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      if (transcript && transcript.trim()) {
+        setRouteStartAddr(transcript);
+        triggerAlert('🎙️ Dirección de salida capturada con éxito');
+      }
+    };
+
+    recognition.onerror = (e) => {
+      console.error("Speech recognition error:", e);
+      if (e.error === 'not-allowed') {
+        triggerAlert('Permiso de micrófono denegado. Habilita el acceso en tu navegador.', 'error');
+      } else {
+        triggerAlert('No se pudo entender la dirección. Intenta hablar más claro.', 'warning');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListeningStart(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to start SpeechRecognition:", err);
+      setIsListeningStart(false);
+    }
+  };
+
+  const handleStartEndVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      triggerAlert('La búsqueda por voz no es compatible con tu navegador actual. Usa Chrome o Safari.', 'error');
+      return;
+    }
+
+    if (isListeningEnd) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-ES';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListeningEnd(true);
+      triggerAlert('🎙️ Micrófono activado. Por favor, dicta la dirección de llegada...', 'info');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      if (transcript && transcript.trim()) {
+        setRouteEndAddr(transcript);
+        triggerAlert('🎙️ Dirección de llegada capturada con éxito');
+      }
+    };
+
+    recognition.onerror = (e) => {
+      console.error("Speech recognition error:", e);
+      if (e.error === 'not-allowed') {
+        triggerAlert('Permiso de micrófono denegado. Habilita el acceso en tu navegador.', 'error');
+      } else {
+        triggerAlert('No se pudo entender la dirección. Intenta hablar más claro.', 'warning');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListeningEnd(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error("Failed to start SpeechRecognition:", err);
+      setIsListeningEnd(false);
     }
   };
 
@@ -5912,7 +6010,23 @@ function App() {
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                 <div className="input-group" style={{ marginBottom: 0 }}>
-                  <span className="input-label">Ubicación de Salida / Punto de Partida</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="input-label">Ubicación de Salida / Punto de Partida</span>
+                    {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                      <button 
+                        type="button" 
+                        onClick={handleStartStartVoiceInput}
+                        className={`btn btn-small ${isListeningStart ? 'btn-danger' : 'btn-secondary'}`}
+                        style={{ 
+                          padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
+                          background: isListeningStart ? '#ef4444' : '', borderColor: isListeningStart ? '#ef4444' : '', color: '#fff',
+                          animation: isListeningStart ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                        }}
+                      >
+                        🎙️ {isListeningStart ? 'Escuchando...' : 'Dictar'}
+                      </button>
+                    )}
+                  </div>
                   <input 
                     type="text" 
                     className="form-input" 
@@ -5922,7 +6036,23 @@ function App() {
                   />
                 </div>
                 <div className="input-group" style={{ marginBottom: 0 }}>
-                  <span className="input-label">Ubicación de Llegada / Fin de Ruta</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="input-label">Ubicación de Llegada / Fin de Ruta</span>
+                    {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                      <button 
+                        type="button" 
+                        onClick={handleStartEndVoiceInput}
+                        className={`btn btn-small ${isListeningEnd ? 'btn-danger' : 'btn-secondary'}`}
+                        style={{ 
+                          padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
+                          background: isListeningEnd ? '#ef4444' : '', borderColor: isListeningEnd ? '#ef4444' : '', color: '#fff',
+                          animation: isListeningEnd ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                        }}
+                      >
+                        🎙️ {isListeningEnd ? 'Escuchando...' : 'Dictar'}
+                      </button>
+                    )}
+                  </div>
                   <input 
                     type="text" 
                     className="form-input" 
