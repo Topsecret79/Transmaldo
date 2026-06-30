@@ -499,6 +499,15 @@ function App() {
     return u.createdBy === currentUser.id;
   });
 
+  const teamRepartidores = users.filter(u => {
+    if (u.role !== 'repartidor') return false;
+    if (!currentUser) return false;
+    if (currentUser.role === 'superadmin') return true;
+    if (currentUser.role === 'admin') return u.createdBy === currentUser.id;
+    // For repartidor: see all repartidores created by the same admin who created this repartidor
+    return u.createdBy === currentUser.createdBy;
+  });
+
   const visibleUsers = users.filter(u => {
     if (!currentUser) return false;
     if (currentUser.role === 'superadmin') return true;
@@ -3056,7 +3065,7 @@ function App() {
                   style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
                 >
                   <option value="">No (Pertenece a la furgoneta asignada)</option>
-                  {activeRepartidores.map(u => (
+                  {teamRepartidores.map(u => (
                     <option key={u.id} value={u.label}>{u.label}</option>
                   ))}
                 </select>
