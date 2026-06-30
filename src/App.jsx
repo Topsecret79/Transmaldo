@@ -372,6 +372,114 @@ function App() {
   const mapInstanceRef = useRef(null);
   const [routeStartAddr, setRouteStartAddr] = useState(localStorage.getItem('delivery_default_start_addr') || 'Madrid, España');
   const [routeEndAddr, setRouteEndAddr] = useState(localStorage.getItem('delivery_default_end_addr') || 'Madrid, España');
+  const [startSuggestions, setStartSuggestions] = useState([]);
+  const [endSuggestions, setEndSuggestions] = useState([]);
+
+  const handleFetchRouteSuggestions = async (queryText, type) => {
+    const setTarget = type === 'start' ? setStartSuggestions : setEndSuggestions;
+    if (!queryText || queryText.trim().length < 3) {
+      setTarget([]);
+      return;
+    }
+    try {
+      const countryCode = searchCountryCode || 'es';
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(queryText.trim())}`;
+      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (response.ok) {
+        const data = await response.json();
+        setTarget(data || []);
+      }
+    } catch (err) {
+      console.error("Error fetching route suggestions:", err);
+    }
+  };
+
+  const fillCurrentLocation = (targetField) => {
+    if (!navigator.geolocation) {
+      triggerAlert('La geolocalización no está soportada por tu navegador', 'error');
+      return;
+    }
+    
+    triggerAlert('Obteniendo tu ubicación actual...', 'info');
+    
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`;
+          const response = await fetch(url, { headers: { 'Accept-Language': 'es', 'Accept': 'application/json' } });
+          if (response.ok) {
+            const data = await response.json();
+            const displayName = data.display_name || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+            if (targetField === 'start') {
+              setRouteStartAddr(displayName);
+              triggerAlert('Ubicación de partida actualizada');
+            } else {
+              setRouteEndAddr(displayName);
+              triggerAlert('Ubicación de llegada actualizada');
+            }
+          } else {
+            const coordsStr = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+            if (targetField === 'start') {
+              setRouteStartAddr(coordsStr);
+            } else {
+              setRouteEndAddr(coordsStr);
+            }
+            triggerAlert('Ubicación obtenida (coordenadas)');
+          }
+        } catch (err) {
+          console.error("Error reverse geocoding:", err);
+          const coordsStr = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+          if (targetField === 'start') {
+            setRouteStartAddr(coordsStr);
+          } else {
+            setRouteEndAddr(coordsStr);
+          }
+          triggerAlert('Ubicación obtenida (coordenadas)');
+        }
+      },
+      (error) => {
+        console.error("Error obtaining location:", error);
+        triggerAlert('No se pudo acceder a tu ubicación. Comprueba los permisos.', 'error');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+  const renderRouteSuggestions = (type) => {
+    const list = type === 'start' ? startSuggestions : endSuggestions;
+    const setTarget = type === 'start' ? setStartSuggestions : setEndSuggestions;
+    const setAddr = type === 'start' ? setRouteStartAddr : setRouteEndAddr;
+    
+    if (list.length === 0) return null;
+    
+    return (
+      <ul style={{
+        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999,
+        background: 'rgba(20, 16, 38, 0.98)', border: '1px solid var(--panel-border)', borderRadius: 'var(--border-radius-md)',
+        padding: '4px 0', margin: '4px 0 0 0', listStyle: 'none', maxHeight: '150px', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.6)'
+      }}>
+        {list.map((sug, index) => (
+          <li 
+            key={index}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setAddr(sug.display_name);
+              setTarget([]);
+            }}
+            style={{
+              padding: '10px 14px', cursor: 'pointer', fontSize: '0.85rem', color: '#ffffff',
+              borderBottom: index < list.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+              transition: 'background 0.2s', lineHeight: '1.4', textAlign: 'left'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.35)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            📍 {sug.display_name}
+          </li>
+        ))}
+      </ul>
+    );
+  };
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [searchCountryCode, setSearchCountryCode] = useState(localStorage.getItem('search_country_code') || 'es');
   const [searchCityBias, setSearchCityBias] = useState(localStorage.getItem('search_city_bias') || 'Barcelona');
@@ -3583,25 +3691,57 @@ function App() {
               </p>
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
-                <div className="input-group" style={{ marginBottom: 0 }}>
-                  <span className="input-label">🏁 Punto de Partida (Inicio)</span>
+                <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
+                  <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>🏁 Punto de Partida (Inicio)</span>
+                    <button
+                      type="button"
+                      onClick={() => fillCurrentLocation('start')}
+                      style={{
+                        background: 'transparent', border: 'none', color: 'var(--primary)',
+                        fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                      }}
+                    >
+                      📍 Usar GPS
+                    </button>
+                  </span>
                   <input 
                     type="text" 
                     className="form-input" 
                     placeholder="Ej: Mi Casa, Calle X, Madrid" 
                     value={routeStartAddr} 
-                    onChange={(e) => setRouteStartAddr(e.target.value)} 
+                    onChange={(e) => {
+                      setRouteStartAddr(e.target.value);
+                      handleFetchRouteSuggestions(e.target.value, 'start');
+                    }}
                   />
+                  {renderRouteSuggestions('start')}
                 </div>
-                <div className="input-group" style={{ marginBottom: 0 }}>
-                  <span className="input-label">🏁 Punto de Llegada (Retorno/Fin)</span>
+                <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
+                  <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>🏁 Punto de Llegada (Retorno/Fin)</span>
+                    <button
+                      type="button"
+                      onClick={() => fillCurrentLocation('end')}
+                      style={{
+                        background: 'transparent', border: 'none', color: 'var(--primary)',
+                        fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                      }}
+                    >
+                      📍 Usar GPS
+                    </button>
+                  </span>
                   <input 
                     type="text" 
                     className="form-input" 
                     placeholder="Ej: Almacén, Calle Y, Madrid (o vacío)" 
                     value={routeEndAddr} 
-                    onChange={(e) => setRouteEndAddr(e.target.value)} 
+                    onChange={(e) => {
+                      setRouteEndAddr(e.target.value);
+                      handleFetchRouteSuggestions(e.target.value, 'end');
+                    }}
                   />
+                  {renderRouteSuggestions('end')}
                 </div>
                 <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
@@ -4930,25 +5070,57 @@ function App() {
                 </p>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">🏁 Punto de Partida (Inicio)</span>
+                  <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
+                    <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>🏁 Punto de Partida (Inicio)</span>
+                      <button
+                        type="button"
+                        onClick={() => fillCurrentLocation('start')}
+                        style={{
+                          background: 'transparent', border: 'none', color: 'var(--primary)',
+                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                        }}
+                      >
+                        📍 Usar GPS
+                      </button>
+                    </span>
                     <input 
                       type="text" 
                       className="form-input" 
                       placeholder="Ej: Calle del Almacén 1, Madrid" 
                       value={routeStartAddr} 
-                      onChange={(e) => setRouteStartAddr(e.target.value)} 
+                      onChange={(e) => {
+                        setRouteStartAddr(e.target.value);
+                        handleFetchRouteSuggestions(e.target.value, 'start');
+                      }}
                     />
+                    {renderRouteSuggestions('start')}
                   </div>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">🏁 Punto de Llegada (Retorno/Fin)</span>
+                  <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
+                    <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>🏁 Punto de Llegada (Retorno/Fin)</span>
+                      <button
+                        type="button"
+                        onClick={() => fillCurrentLocation('end')}
+                        style={{
+                          background: 'transparent', border: 'none', color: 'var(--primary)',
+                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                        }}
+                      >
+                        📍 Usar GPS
+                      </button>
+                    </span>
                     <input 
                       type="text" 
                       className="form-input" 
                       placeholder="Ej: Calle del Almacén 1, Madrid (o vacío)" 
                       value={routeEndAddr} 
-                      onChange={(e) => setRouteEndAddr(e.target.value)} 
+                      onChange={(e) => {
+                        setRouteEndAddr(e.target.value);
+                        handleFetchRouteSuggestions(e.target.value, 'end');
+                      }}
                     />
+                    {renderRouteSuggestions('end')}
                   </div>
                   <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
                     <button 
@@ -5311,25 +5483,57 @@ function App() {
                 </p>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">🏁 Punto de Partida (Inicio)</span>
+                  <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
+                    <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>🏁 Punto de Partida (Inicio)</span>
+                      <button
+                        type="button"
+                        onClick={() => fillCurrentLocation('start')}
+                        style={{
+                          background: 'transparent', border: 'none', color: 'var(--primary)',
+                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                        }}
+                      >
+                        📍 Usar GPS
+                      </button>
+                    </span>
                     <input 
                       type="text" 
                       className="form-input" 
                       placeholder="Ej: Calle del Almacén 1, Madrid" 
                       value={routeStartAddr} 
-                      onChange={(e) => setRouteStartAddr(e.target.value)} 
+                      onChange={(e) => {
+                        setRouteStartAddr(e.target.value);
+                        handleFetchRouteSuggestions(e.target.value, 'start');
+                      }}
                     />
+                    {renderRouteSuggestions('start')}
                   </div>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">🏁 Punto de Llegada (Retorno/Fin)</span>
+                  <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
+                    <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>🏁 Punto de Llegada (Retorno/Fin)</span>
+                      <button
+                        type="button"
+                        onClick={() => fillCurrentLocation('end')}
+                        style={{
+                          background: 'transparent', border: 'none', color: 'var(--primary)',
+                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                        }}
+                      >
+                        📍 Usar GPS
+                      </button>
+                    </span>
                     <input 
                       type="text" 
                       className="form-input" 
                       placeholder="Ej: Calle del Almacén 1, Madrid (o vacío)" 
                       value={routeEndAddr} 
-                      onChange={(e) => setRouteEndAddr(e.target.value)} 
+                      onChange={(e) => {
+                        setRouteEndAddr(e.target.value);
+                        handleFetchRouteSuggestions(e.target.value, 'end');
+                      }}
                     />
+                    {renderRouteSuggestions('end')}
                   </div>
                   <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
                     <button 
