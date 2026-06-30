@@ -3057,7 +3057,7 @@ function App() {
                   disabled={isClosed}
                   style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
                 >
-                  <option value="">No (Pertenece a la furgoneta asignada)</option>
+                  <option value="">Selecciona Ruta Original...</option>
                   {teamRepartidores.map(u => (
                     <option key={u.id} value={u.label}>{u.label}</option>
                   ))}
