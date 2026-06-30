@@ -220,11 +220,35 @@ export async function syncFromCloud() {
     // Pull Settings
     const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
     if (settings && !errSettings) {
-      const mPrice = settings.find(s => s.key === 'module_price');
-      if (mPrice) localStorage.setItem('delivery_module_price', JSON.stringify(parseFloat(mPrice.value)));
+      let sessionUser = null;
+      try {
+        const savedUser = localStorage.getItem('delivery_session');
+        if (savedUser) sessionUser = JSON.parse(savedUser);
+      } catch (e) {}
+
+      const userId = sessionUser ? sessionUser.id : null;
+
+      // Module Price
+      const mPriceKey = userId ? `module_price_${userId}` : 'module_price';
+      let mPrice = settings.find(s => s.key === mPriceKey);
+      if (!mPrice && userId) {
+        mPrice = settings.find(s => s.key === 'module_price');
+      }
+      if (mPrice) {
+        if (userId) localStorage.setItem(`delivery_module_price_${userId}`, JSON.stringify(parseFloat(mPrice.value)));
+        localStorage.setItem('delivery_module_price', JSON.stringify(parseFloat(mPrice.value)));
+      }
       
-      const appNameSetting = settings.find(s => s.key === 'app_name');
-      if (appNameSetting) localStorage.setItem('delivery_app_name', appNameSetting.value);
+      // App Name
+      const appNameKey = userId ? `app_name_${userId}` : 'app_name';
+      let appNameSetting = settings.find(s => s.key === appNameKey);
+      if (!appNameSetting && userId) {
+        appNameSetting = settings.find(s => s.key === 'app_name');
+      }
+      if (appNameSetting) {
+        if (userId) localStorage.setItem(`delivery_app_name_${userId}`, appNameSetting.value);
+        localStorage.setItem('delivery_app_name', appNameSetting.value);
+      }
     }
 
     notifySync();
@@ -379,15 +403,23 @@ export function saveUsers(users) {
   }
 }
 
-export function getModulePrice() {
+export function getModulePrice(userId) {
   initDB();
+  if (userId) {
+    const customPrice = localStorage.getItem(`delivery_module_price_${userId}`);
+    if (customPrice) return parseFloat(customPrice);
+  }
   return parseFloat(localStorage.getItem('delivery_module_price'));
 }
 
-export function saveModulePrice(price) {
+export function saveModulePrice(price, userId) {
+  if (userId) {
+    localStorage.setItem(`delivery_module_price_${userId}`, JSON.stringify(price));
+  }
   localStorage.setItem('delivery_module_price', JSON.stringify(price));
   if (supabase) {
-    supabase.from('delivery_settings').upsert({ key: 'module_price', value: price.toString() }).then(({ error }) => {
+    const key = userId ? `module_price_${userId}` : 'module_price';
+    supabase.from('delivery_settings').upsert({ key, value: price.toString() }).then(({ error }) => {
       if (error) console.error("Error saving module price to Supabase:", error);
     });
   }
@@ -867,15 +899,23 @@ export function deleteUser(userId) {
 }
 
 // Obtener nombre de la aplicación
-export function getAppName() {
+export function getAppName(userId) {
+  if (userId) {
+    const customName = localStorage.getItem(`delivery_app_name_${userId}`);
+    if (customName) return customName;
+  }
   return localStorage.getItem('delivery_app_name') || 'LogiEarn';
 }
 
 // Guardar nombre de la aplicación
-export function saveAppName(name) {
+export function saveAppName(name, userId) {
+  if (userId) {
+    localStorage.setItem(`delivery_app_name_${userId}`, name.trim());
+  }
   localStorage.setItem('delivery_app_name', name.trim());
   if (supabase) {
-    supabase.from('delivery_settings').upsert({ key: 'app_name', value: name.trim() }).then(({ error }) => {
+    const key = userId ? `app_name_${userId}` : 'app_name';
+    supabase.from('delivery_settings').upsert({ key, value: name.trim() }).then(({ error }) => {
       if (error) console.error("Error saving app name to Supabase:", error);
     });
   }

@@ -527,8 +527,16 @@ function App() {
   });
 
   // Nombre dinámico de la aplicación
-  const [appName, setAppName] = useState(getAppName());
-  const [appNameInput, setAppNameInput] = useState(getAppName());
+  const getInitialAppName = () => {
+    let uId = null;
+    try {
+      const savedUser = localStorage.getItem('delivery_session');
+      if (savedUser) uId = JSON.parse(savedUser).id;
+    } catch (e) {}
+    return getAppName(uId);
+  };
+  const [appName, setAppName] = useState(getInitialAppName());
+  const [appNameInput, setAppNameInput] = useState(getInitialAppName());
   const [appTheme, setAppTheme] = useState(localStorage.getItem('delivery_app_theme') || 'theme-emerald');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -995,9 +1003,9 @@ function App() {
       console.error("Error loading data in App.jsx:", err);
     }
     
-    setModulePrice(getModulePrice() || 3.81);
-    setAppName(getAppName() || 'LogiEarn');
-    setAppNameInput(getAppName() || 'LogiEarn');
+    setModulePrice(getModulePrice(u?.id) || 3.81);
+    setAppName(getAppName(u?.id) || 'LogiEarn');
+    setAppNameInput(getAppName(u?.id) || 'LogiEarn');
   };
 
   const triggerAlert = (text, type = 'success') => {
@@ -1029,6 +1037,8 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('delivery_session');
     setCurrentUser(null);
+    setAppName('LogiEarn');
+    setAppNameInput('LogiEarn');
     setActiveTab('');
     setEditingTicketId(null);
     triggerAlert('Sesión cerrada correctamente');
@@ -2050,7 +2060,7 @@ function App() {
 
   const handleUpdateModulePrice = (newPrice) => {
     const val = parseFloat(newPrice) || 0;
-    saveModulePrice(val);
+    saveModulePrice(val, currentUser?.id);
     setModulePrice(val);
     recalculateAllTickets(tariffs, val);
   };
@@ -5668,7 +5678,7 @@ function App() {
                       triggerAlert('El nombre de la aplicación no puede estar vacío', 'error');
                       return;
                     }
-                    saveAppName(appNameInput);
+                    saveAppName(appNameInput, currentUser?.id);
                     setAppName(appNameInput.trim());
                     triggerAlert('Nombre de la aplicación actualizado con éxito');
                   }} style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '15px' }}>
