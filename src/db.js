@@ -908,7 +908,7 @@ export function getAppName(userId) {
     const customName = localStorage.getItem(`delivery_app_name_${userId}`);
     if (customName) return customName;
   }
-  return localStorage.getItem('delivery_app_name') || 'LogiEarn';
+  return localStorage.getItem('delivery_app_name') || 'My Delevery Team';
 }
 
 // Guardar nombre de la aplicación

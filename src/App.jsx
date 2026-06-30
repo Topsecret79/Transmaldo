@@ -1020,9 +1020,9 @@ function App() {
     }
     
     setModulePrice(getModulePrice(u?.id) || 3.81);
-    setAppName(getAppName(u?.id) || 'LogiEarn');
+    setAppName(getAppName(u?.id) || 'My Delevery Team');
     if (activeTab !== 'users') {
-      setAppNameInput(getAppName(u?.id) || 'LogiEarn');
+      setAppNameInput(getAppName(u?.id) || 'My Delevery Team');
     }
   };
 
@@ -1055,8 +1055,8 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('delivery_session');
     setCurrentUser(null);
-    setAppName('LogiEarn');
-    setAppNameInput('LogiEarn');
+    setAppName('My Delevery Team');
+    setAppNameInput('My Delevery Team');
     setActiveTab('');
     setEditingTicketId(null);
     triggerAlert('Sesión cerrada correctamente');
