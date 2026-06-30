@@ -4247,16 +4247,32 @@ function App() {
                 <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                   <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>🏁 Punto de Partida (Inicio)</span>
-                    <button
-                      type="button"
-                      onClick={() => fillCurrentLocation('start')}
-                      style={{
-                        background: 'transparent', border: 'none', color: 'var(--primary)',
-                        fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
-                      }}
-                    >
-                      📍 Usar GPS
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                        <button
+                          type="button"
+                          onClick={handleStartStartVoiceInput}
+                          style={{
+                            background: 'transparent', border: 'none', color: isListeningStart ? 'var(--danger)' : 'var(--primary)',
+                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                            fontWeight: isListeningStart ? 'bold' : 'normal',
+                            animation: isListeningStart ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                          }}
+                        >
+                          🎙️ {isListeningStart ? 'Escuchando...' : 'Dictar'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => fillCurrentLocation('start')}
+                        style={{
+                          background: 'transparent', border: 'none', color: 'var(--primary)',
+                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                        }}
+                      >
+                        📍 Usar GPS
+                      </button>
+                    </div>
                   </span>
                   <input 
                     type="text" 
@@ -4273,16 +4289,32 @@ function App() {
                 <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                   <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>🏁 Punto de Llegada (Retorno/Fin)</span>
-                    <button
-                      type="button"
-                      onClick={() => fillCurrentLocation('end')}
-                      style={{
-                        background: 'transparent', border: 'none', color: 'var(--primary)',
-                        fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
-                      }}
-                    >
-                      📍 Usar GPS
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                        <button
+                          type="button"
+                          onClick={handleStartEndVoiceInput}
+                          style={{
+                            background: 'transparent', border: 'none', color: isListeningEnd ? 'var(--danger)' : 'var(--primary)',
+                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                            fontWeight: isListeningEnd ? 'bold' : 'normal',
+                            animation: isListeningEnd ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                          }}
+                        >
+                          🎙️ {isListeningEnd ? 'Escuchando...' : 'Dictar'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => fillCurrentLocation('end')}
+                        style={{
+                          background: 'transparent', border: 'none', color: 'var(--primary)',
+                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                        }}
+                      >
+                        📍 Usar GPS
+                      </button>
+                    </div>
                   </span>
                   <input 
                     type="text" 
@@ -5548,16 +5580,32 @@ function App() {
                   <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                     <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>🏁 Punto de Partida (Inicio)</span>
-                      <button
-                        type="button"
-                        onClick={() => fillCurrentLocation('start')}
-                        style={{
-                          background: 'transparent', border: 'none', color: 'var(--primary)',
-                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
-                        }}
-                      >
-                        📍 Usar GPS
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                          <button
+                            type="button"
+                            onClick={handleStartStartVoiceInput}
+                            style={{
+                              background: 'transparent', border: 'none', color: isListeningStart ? 'var(--danger)' : 'var(--primary)',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: isListeningStart ? 'bold' : 'normal',
+                              animation: isListeningStart ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                            }}
+                          >
+                            🎙️ {isListeningStart ? 'Escuchando...' : 'Dictar'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => fillCurrentLocation('start')}
+                          style={{
+                            background: 'transparent', border: 'none', color: 'var(--primary)',
+                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                          }}
+                        >
+                          📍 Usar GPS
+                        </button>
+                      </div>
                     </span>
                     <input 
                       type="text" 
@@ -5574,16 +5622,32 @@ function App() {
                   <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                     <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>🏁 Punto de Llegada (Retorno/Fin)</span>
-                      <button
-                        type="button"
-                        onClick={() => fillCurrentLocation('end')}
-                        style={{
-                          background: 'transparent', border: 'none', color: 'var(--primary)',
-                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
-                        }}
-                      >
-                        📍 Usar GPS
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                          <button
+                            type="button"
+                            onClick={handleStartEndVoiceInput}
+                            style={{
+                              background: 'transparent', border: 'none', color: isListeningEnd ? 'var(--danger)' : 'var(--primary)',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: isListeningEnd ? 'bold' : 'normal',
+                              animation: isListeningEnd ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                            }}
+                          >
+                            🎙️ {isListeningEnd ? 'Escuchando...' : 'Dictar'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => fillCurrentLocation('end')}
+                          style={{
+                            background: 'transparent', border: 'none', color: 'var(--primary)',
+                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                          }}
+                        >
+                          📍 Usar GPS
+                        </button>
+                      </div>
                     </span>
                     <input 
                       type="text" 
@@ -6008,16 +6072,32 @@ function App() {
                   <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                     <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>🏁 Punto de Partida (Inicio)</span>
-                      <button
-                        type="button"
-                        onClick={() => fillCurrentLocation('start')}
-                        style={{
-                          background: 'transparent', border: 'none', color: 'var(--primary)',
-                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
-                        }}
-                      >
-                        📍 Usar GPS
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                          <button
+                            type="button"
+                            onClick={handleStartStartVoiceInput}
+                            style={{
+                              background: 'transparent', border: 'none', color: isListeningStart ? 'var(--danger)' : 'var(--primary)',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: isListeningStart ? 'bold' : 'normal',
+                              animation: isListeningStart ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                            }}
+                          >
+                            🎙️ {isListeningStart ? 'Escuchando...' : 'Dictar'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => fillCurrentLocation('start')}
+                          style={{
+                            background: 'transparent', border: 'none', color: 'var(--primary)',
+                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                          }}
+                        >
+                          📍 Usar GPS
+                        </button>
+                      </div>
                     </span>
                     <input 
                       type="text" 
@@ -6034,16 +6114,32 @@ function App() {
                   <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                     <span className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>🏁 Punto de Llegada (Retorno/Fin)</span>
-                      <button
-                        type="button"
-                        onClick={() => fillCurrentLocation('end')}
-                        style={{
-                          background: 'transparent', border: 'none', color: 'var(--primary)',
-                          fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
-                        }}
-                      >
-                        📍 Usar GPS
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                          <button
+                            type="button"
+                            onClick={handleStartEndVoiceInput}
+                            style={{
+                              background: 'transparent', border: 'none', color: isListeningEnd ? 'var(--danger)' : 'var(--primary)',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: isListeningEnd ? 'bold' : 'normal',
+                              animation: isListeningEnd ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                            }}
+                          >
+                            🎙️ {isListeningEnd ? 'Escuchando...' : 'Dictar'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => fillCurrentLocation('end')}
+                          style={{
+                            background: 'transparent', border: 'none', color: 'var(--primary)',
+                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0
+                          }}
+                        >
+                          📍 Usar GPS
+                        </button>
+                      </div>
                     </span>
                     <input 
                       type="text" 
