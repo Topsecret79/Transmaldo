@@ -499,7 +499,7 @@ function App() {
     return u.createdBy === currentUser.id;
   });
 
-  const teamRepartidores = (getUsers() || []).filter(u => u.role === 'repartidor');
+  const teamRepartidores = users.filter(u => u.role === 'repartidor');
 
   const visibleUsers = users.filter(u => {
     if (!currentUser) return false;
