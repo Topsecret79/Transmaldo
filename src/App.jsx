@@ -329,6 +329,8 @@ function App() {
   const [ticketRoute, setTicketRoute] = useState('');
   const [originalRouteLabel, setOriginalRouteLabel] = useState('');
   const [codAmount, setCodAmount] = useState('');
+  const [showHelperRoute, setShowHelperRoute] = useState(false);
+  const [showCod, setShowCod] = useState(false);
 
   // Lista de TVs añadidas al ticket actual
   // Cada TV: { id: string, inches: number, action: 'entrega'|'recogida'|'combinado', pmType: 'none'|'basic'|'complex', cuelgue: boolean, recogidaViejaType: 'none'|'urbantz'|'no_urbantz' }
@@ -1730,6 +1732,9 @@ function App() {
       setCustomExtraPrice('');
       setNotes('');
       setCodAmount('');
+      setShowHelperRoute(false);
+      setShowCod(false);
+      setOriginalRouteLabel('');
       if (activeRouteContext) {
         setTicketDate(activeRouteContext.date);
         setTicketRoute(activeRouteContext.furgoId);
@@ -1914,7 +1919,9 @@ function App() {
       }
     }
     setOriginalRouteLabel(origLabel);
+    setShowHelperRoute(!!origLabel);
     setNotes(parsedNotes);
+    setShowCod(ticket.codAmount > 0);
     setTicketRoute(ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId);
 
     // Reconstruir TVs y otros artículos a partir de las tareas guardadas en el ticket
@@ -2083,6 +2090,8 @@ function App() {
     setCodAmount('');
     setTicketRoute(currentUser ? currentUser.label : '');
     setOriginalRouteLabel('');
+    setShowHelperRoute(false);
+    setShowCod(false);
     setTicketDate(new Date().toISOString().split('T')[0]);
     setSpellingSuggestions([]);
     setFormStep(1);
@@ -2932,13 +2941,12 @@ function App() {
             style={{ cursor: formStep > 1 ? 'pointer' : 'default' }}
           >
             <span className="step-circle">1</span>
-            <span>Ubicación y Cliente</span>
+            <span>Datos de Entrega</span>
           </div>
           <div style={{ flex: 1, height: '2px', background: 'rgba(255,255,255,0.05)', minWidth: '20px' }}></div>
           <div 
-            className={`step-node ${formStep === 2 ? 'active' : formStep > 2 ? 'completed' : ''}`}
+            className={`step-node ${formStep === 2 ? 'active' : ''}`}
             onClick={() => {
-              // Validar paso 1 antes de permitir saltar al 2 haciendo clic en los nodos
               if (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper)) {
                 setFormStep(2);
               }
@@ -2946,23 +2954,7 @@ function App() {
             style={{ cursor: (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper)) ? 'pointer' : 'not-allowed' }}
           >
             <span className="step-circle">2</span>
-            <span>Artículos y Servicios</span>
-          </div>
-          <div style={{ flex: 1, height: '2px', background: 'rgba(255,255,255,0.05)', minWidth: '20px' }}></div>
-          <div 
-            className={`step-node ${formStep === 3 ? 'active' : ''}`}
-            onClick={() => {
-              // Validar paso 2 antes de permitir saltar al 3 haciendo clic en los nodos
-              const hasTvs = formTvs.length > 0;
-              const hasPackages = Object.values(otherQuantities).some(qty => qty > 0);
-              if (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper) && (hasTvs || hasPackages)) {
-                setFormStep(3);
-              }
-            }}
-            style={{ cursor: (customerName.trim() && address.trim() && (ticketRoute || isAdminOrSuper) && (formTvs.length > 0 || Object.values(otherQuantities).some(qty => qty > 0))) ? 'pointer' : 'not-allowed' }}
-          >
-            <span className="step-circle">3</span>
-            <span>Observaciones y Guardar</span>
+            <span>Mercancía y Cierre</span>
           </div>
         </div>
 
@@ -3005,66 +2997,7 @@ function App() {
               </div>
             ) : null}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
-              <div className="input-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="input-label">Cliente</span>
-                  {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
-                    <button
-                      type="button"
-                      onClick={handleStartNameVoiceInput}
-                      className={`btn btn-small ${isListeningName ? 'btn-danger' : 'btn-secondary'}`}
-                      style={{ 
-                        width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px',
-                        display: 'flex', alignItems: 'center', gap: '3px',
-                        background: isListeningName ? '#ef4444' : '', borderColor: isListeningName ? '#ef4444' : '', color: '#fff',
-                        animation: isListeningName ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
-                      }}
-                      disabled={isClosed}
-                    >
-                      🎙️ {isListeningName ? 'Escuchando...' : 'Dictar'}
-                    </button>
-                  )}
-                </div>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="Ej. Jaime Rodríguez" 
-                  value={customerName} 
-                  onChange={(e) => setCustomerName(e.target.value)} 
-                  onBlur={() => setCustomerName(formatCustomerName(customerName))}
-                  required 
-                  disabled={isClosed} 
-                />
-              </div>
-
-              <div className="input-group">
-                <span className="input-label">Teléfono</span>
-                <input type="tel" className="form-input" placeholder="Ej. 612345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isClosed} />
-              </div>
-
-              <div className="input-group">
-                <span className="input-label">Código Postal</span>
-                <input type="text" className="form-input" placeholder="Ej. 08208" value={postcode} onChange={(e) => setPostcode(e.target.value.trim())} disabled={isClosed} />
-              </div>
-
-              <div className="input-group">
-                <span className="input-label">¿Pertenece a otra Ruta? (Ruta Original)</span>
-                <select 
-                  className="form-input" 
-                  value={originalRouteLabel} 
-                  onChange={(e) => setOriginalRouteLabel(e.target.value)} 
-                  disabled={isClosed}
-                  style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
-                >
-                  <option value="">Selecciona Ruta Original...</option>
-                  {teamRepartidores.map(u => (
-                    <option key={u.id} value={u.label}>{u.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
+            {/* 1. Dirección Primero */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
               <div className="input-group" style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3220,6 +3153,85 @@ function App() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* 2. Cliente, Teléfono y Código Postal */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginTop: '10px' }}>
+              <div className="input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="input-label">Cliente</span>
+                  {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                    <button
+                      type="button"
+                      onClick={handleStartNameVoiceInput}
+                      className={`btn btn-small ${isListeningName ? 'btn-danger' : 'btn-secondary'}`}
+                      style={{ 
+                        width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.7rem', height: '20px',
+                        display: 'flex', alignItems: 'center', gap: '3px',
+                        background: isListeningName ? '#ef4444' : '', borderColor: isListeningName ? '#ef4444' : '', color: '#fff',
+                        animation: isListeningName ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                      }}
+                      disabled={isClosed}
+                    >
+                      🎙️ {isListeningName ? 'Escuchando...' : 'Dictar'}
+                    </button>
+                  )}
+                </div>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder="Ej. Jaime Rodríguez" 
+                  value={customerName} 
+                  onChange={(e) => setCustomerName(e.target.value)} 
+                  onBlur={() => setCustomerName(formatCustomerName(customerName))}
+                  required 
+                  disabled={isClosed} 
+                />
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">Teléfono</span>
+                <input type="tel" className="form-input" placeholder="Ej. 612345678" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isClosed} />
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">Código Postal</span>
+                <input type="text" className="form-input" placeholder="Ej. 08208" value={postcode} onChange={(e) => setPostcode(e.target.value.trim())} disabled={isClosed} />
+              </div>
+            </div>
+
+            {/* 3. Selección de Auxilio de Ruta */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontWeight: '600' }}>
+                <input 
+                  type="checkbox" 
+                  checked={showHelperRoute} 
+                  onChange={(e) => {
+                    setShowHelperRoute(e.target.checked);
+                    if (!e.target.checked) setOriginalRouteLabel('');
+                  }} 
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                🔄 Este paquete es auxilio de otra furgoneta (Ruta Original)
+              </label>
+
+              {showHelperRoute && (
+                <div className="input-group" style={{ animation: 'fadeIn 0.2s ease' }}>
+                  <span className="input-label" style={{ fontSize: '0.8rem' }}>Selecciona Furgoneta Propietaria (Ruta Original)</span>
+                  <select 
+                    className="form-input" 
+                    value={originalRouteLabel} 
+                    onChange={(e) => setOriginalRouteLabel(e.target.value)} 
+                    disabled={isClosed}
+                    style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
+                  >
+                    <option value="">Selecciona Ruta Original...</option>
+                    {teamRepartidores.map(u => (
+                      <option key={u.id} value={u.label}>{u.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="wizard-footer" style={{ justifyContent: 'flex-end' }}>
@@ -3578,104 +3590,46 @@ function App() {
               )}
             </div>
 
-            <div className="wizard-footer">
-              <button 
-                type="button" 
-                onClick={() => setFormStep(1)} 
-                className="btn btn-secondary"
-                style={{ width: 'auto' }}
-              >
-                ← Atrás
-              </button>
-              <button 
-                type="button" 
-                onClick={() => {
-                  const hasTvs = formTvs.length > 0;
-                  const hasPackages = Object.values(otherQuantities).some(qty => qty > 0);
-                  const hasCustom = customExtras.length > 0;
-                  if (!hasTvs && !hasPackages && !hasCustom) {
-                    triggerAlert('Debes registrar al menos un televisor, paquete, o servicio extra en este reparto.', 'error');
-                    return;
-                  }
-                  setFormStep(3);
-                }} 
-                className="btn btn-primary"
-                style={{ width: 'auto' }}
-              >
-                Continuar a Confirmación ➔
-              </button>
-            </div>
-          </div>
-        )}
+            {/* COD Reembolso y Observaciones */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px', borderTop: '1px dashed var(--panel-border)', paddingTop: '15px' }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontWeight: '600' }}>
+                <input 
+                  type="checkbox" 
+                  checked={showCod} 
+                  onChange={(e) => {
+                    setShowCod(e.target.checked);
+                    if (!e.target.checked) setCodAmount('');
+                  }} 
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                💵 Este reparto tiene cobro contra reembolso (COD)
+              </label>
 
-        {/* PASO 3: NOTAS Y CONFIRMACIÓN */}
-        {formStep === 3 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease', textAlign: 'left' }}>
-            <div className="block-section" style={{ background: 'rgba(99, 102, 241, 0.03)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '20px' }}>
-              <div className="block-title" style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                📋 Resumen del Reparto a Registrar
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                <div><strong>Cliente:</strong> {customerName}</div>
-                {phone && <div><strong>Teléfono:</strong> {phone}</div>}
-                <div><strong>Dirección:</strong> {address} {postcode && `(CP ${postcode})`}</div>
-                {parseFloat(codAmount) > 0 && (
-                  <div style={{ color: 'var(--warning)', fontWeight: '700' }}>
-                    💵 Cobro Reembolso: {parseFloat(codAmount).toFixed(2)} €
-                  </div>
-                )}
-                
-                <div style={{ borderTop: '1px dashed var(--panel-border)', margin: '10px 0' }}></div>
-                
-                <div><strong>Carga y Servicios:</strong></div>
-                <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {formTvs.map((tv, idx) => {
-                    const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : tv.action === 'solo_cuelgue' ? 'Solo Cuelgue' : 'Entrega + Recogida';
-                    return (
-                      <li key={idx}>
-                        Televisión {tv.brand || 'Genérica'} de {tv.inches}" ({actionText}) 
-                        {tv.pmType !== 'none' && ` + PM (${tv.pmType === 'basic' ? 'Básica' : 'Compleja'})`}
-                        {tv.cuelgue && ` + Cuelgue en Pared`}
-                        {tv.recogidaViejaType !== 'none' && ` + Retirada TV Vieja`}
-                      </li>
-                    );
-                  })}
-                  {Object.entries(otherQuantities).map(([tariffId, quantity]) => {
-                    if (quantity <= 0) return null;
-                    const tariff = tariffs.find(t => t.id === tariffId);
-                    return (
-                      <li key={tariffId}>
-                        {tariff ? tariff.name : tariffId} (x{quantity})
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+              {showCod && (
+                <div className="input-group" style={{ animation: 'fadeIn 0.2s ease' }}>
+                  <span className="input-label" style={{ fontSize: '0.8rem' }}>Importe a Cobrar / Reembolso (€)</span>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    min="0" 
+                    className="form-input" 
+                    placeholder="Ej. 150.00" 
+                    value={codAmount} 
+                    onChange={(e) => setCodAmount(e.target.value)} 
+                    disabled={isClosed} 
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="input-group">
-              <span className="input-label">Importe a Cobrar / Reembolso (€)</span>
-              <input 
-                type="number" 
-                step="0.01" 
-                min="0" 
-                className="form-input" 
-                placeholder="Ej. 150.00 (deja vacío o 0 si no hay cobro)" 
-                value={codAmount} 
-                onChange={(e) => setCodAmount(e.target.value)} 
-                disabled={isClosed} 
-              />
-            </div>
-
-            <div className="input-group">
+            <div className="input-group" style={{ marginTop: '15px' }}>
               <span className="input-label">Observaciones / Instrucciones del Reparto</span>
               <textarea 
                 className="form-input" 
                 placeholder="Escribe aquí notas adicionales, indicaciones de timbre, portales, etc." 
                 value={notes} 
                 onChange={(e) => setNotes(e.target.value)} 
-                style={{ minHeight: '100px', resize: 'vertical', padding: '12px' }}
+                style={{ minHeight: '80px', resize: 'vertical', padding: '12px' }}
                 disabled={isClosed}
               />
             </div>
@@ -3683,7 +3637,7 @@ function App() {
             <div className="wizard-footer">
               <button 
                 type="button" 
-                onClick={() => setFormStep(2)} 
+                onClick={() => setFormStep(1)} 
                 className="btn btn-secondary"
                 style={{ width: 'auto' }}
               >
