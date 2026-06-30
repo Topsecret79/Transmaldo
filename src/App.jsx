@@ -499,14 +499,7 @@ function App() {
     return u.createdBy === currentUser.id;
   });
 
-  const teamRepartidores = users.filter(u => {
-    if (u.role !== 'repartidor') return false;
-    if (!currentUser) return false;
-    if (currentUser.role === 'superadmin') return true;
-    if (currentUser.role === 'admin') return u.createdBy === currentUser.id;
-    // For repartidor: see all repartidores created by the same admin who created this repartidor
-    return u.createdBy === currentUser.createdBy;
-  });
+  const teamRepartidores = (getUsers() || []).filter(u => u.role === 'repartidor');
 
   const visibleUsers = users.filter(u => {
     if (!currentUser) return false;
