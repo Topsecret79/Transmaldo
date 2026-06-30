@@ -1019,9 +1019,9 @@ function App() {
     }
     
     setModulePrice(getModulePrice(u?.id) || 3.81);
-    setAppName(getAppName(u?.id) || 'My Delevery Team');
+    setAppName(getAppName(u?.id) || 'My Delivery Team');
     if (activeTab !== 'users') {
-      setAppNameInput(getAppName(u?.id) || 'My Delevery Team');
+      setAppNameInput(getAppName(u?.id) || 'My Delivery Team');
     }
   };
 
@@ -1091,8 +1091,8 @@ function App() {
   const handleLogout = () => {
     localStorage.removeItem('delivery_session');
     setCurrentUser(null);
-    setAppName('My Delevery Team');
-    setAppNameInput('My Delevery Team');
+    setAppName('My Delivery Team');
+    setAppNameInput('My Delivery Team');
     setActiveTab('');
     setEditingTicketId(null);
     triggerAlert('Sesión cerrada correctamente');

@@ -941,7 +941,7 @@ export function getAppName(userId) {
     const customName = localStorage.getItem(`delivery_app_name_${userId}`);
     if (customName) return customName;
   }
-  return localStorage.getItem('delivery_app_name') || 'My Delevery Team';
+  return localStorage.getItem('delivery_app_name') || 'My Delivery Team';
 }
 
 // Guardar nombre de la aplicación
