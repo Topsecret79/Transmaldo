@@ -4565,22 +4565,27 @@ function App() {
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', color: 'var(--primary)' }}>
               🗺️ Mapa de Mi Ruta ({targetDate})
             </h3>
-            <div>
-              <div 
-                key={`driver-map-${targetDate}-${activeTab}`}
-                id="driver-map" 
-                style={{ 
-                  height: '450px', 
-                  width: '100%', 
-                  borderRadius: 'var(--border-radius-lg)', 
-                  border: '1px solid var(--panel-border)',
-                  background: '#1e1e1e',
-                  boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
-                  zIndex: 1
-                }}
-              ></div>
+            <div className="map-split-container">
+              <div className="map-split-left">
+                <div 
+                  key={`driver-map-${targetDate}-${activeTab}`}
+                  id="driver-map" 
+                  style={{ 
+                    height: '100%', 
+                    width: '100%', 
+                    borderRadius: 'var(--border-radius-lg)', 
+                    border: '1px solid var(--panel-border)',
+                    background: '#1e1e1e',
+                    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
+                    zIndex: 1
+                  }}
+                ></div>
+              </div>
+              
+              <div className="map-split-right">
+                {renderMapStopsList(false)}
+              </div>
             </div>
-            {renderMapStopsList(false)}
           </div>
         )}
 
@@ -5712,12 +5717,12 @@ function App() {
     }
 
     return (
-      <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 5px 0' }}>
           📋 Secuencia de Paradas ({sortedDayTickets.length})
         </h3>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {sortedDayTickets.map((t, index) => {
             const isSuccess = t.status === 'success';
             const isFailed = t.status === 'failed';
@@ -6800,21 +6805,72 @@ function App() {
                 50% { transform: scale(1.15); opacity: 1; }
                 100% { transform: scale(0.9); opacity: 0.6; }
               }
+
+              .map-split-container {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+                margin-top: 15px;
+                height: auto;
+              }
+              
+              .map-split-left {
+                width: 100%;
+                height: 380px;
+                position: sticky;
+                top: 70px;
+                z-index: 10;
+              }
+              
+              .map-split-right {
+                width: 100%;
+                max-height: 400px;
+                overflow-y: auto;
+                padding-right: 5px;
+              }
+
+              @media (min-width: 992px) {
+                .map-split-container {
+                  flex-direction: row;
+                  height: 600px;
+                  align-items: stretch;
+                }
+                
+                .map-split-left {
+                  width: 60%;
+                  height: 100% !important;
+                  position: relative;
+                  top: 0;
+                  z-index: 1;
+                }
+                
+                .map-split-right {
+                  width: 40%;
+                  max-height: 100% !important;
+                  height: 100%;
+                }
+              }
             `}</style>
 
-            <div>
-              <div 
-                key={`admin-map-${mapFilterDate}-${mapFilterFurgo}-${activeTab}`}
-                id="admin-map" 
-                style={{ 
-                  height: '550px', 
-                  borderRadius: '12px', 
-                  border: '1px solid var(--panel-border)', 
-                  background: '#1e1e1e',
-                  boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
-                  zIndex: 1
-                }}
-              ></div>
+            <div className="map-split-container">
+              <div className="map-split-left">
+                <div 
+                  key={`admin-map-${mapFilterDate}-${mapFilterFurgo}-${activeTab}`}
+                  id="admin-map" 
+                  style={{ 
+                    height: '100%', 
+                    borderRadius: '12px', 
+                    border: '1px solid var(--panel-border)', 
+                    background: '#1e1e1e',
+                    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
+                    zIndex: 1
+                  }}
+                ></div>
+              </div>
+              
+              <div className="map-split-right">
+                {renderMapStopsList(true)}
+              </div>
             </div>
             
             <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
@@ -6839,8 +6895,6 @@ function App() {
                 <span>Repartidor en Vivo (Últimas 6h)</span>
               </div>
             </div>
-
-            {renderMapStopsList(true)}
 
             {mapFilterFurgo !== 'all' && (
               <div className="glass-panel" style={{ marginTop: '20px', padding: '20px', border: '1px solid var(--panel-border)', borderRadius: '12px', textAlign: 'left', background: 'rgba(255,255,255,0.01)' }}>
