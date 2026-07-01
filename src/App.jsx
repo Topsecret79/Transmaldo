@@ -343,6 +343,8 @@ function App() {
   const [formStep, setFormStep] = useState(1);
   const debounceTimerRef = useRef(null);
   const mapSelectTimerRef = useRef(null);
+  const formMapRef = useRef(null);
+  const formMarkerRef = useRef(null);
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [timeSlot, setTimeSlot] = useState('any');
@@ -1198,6 +1200,80 @@ function App() {
       setShiftSummaryDate(activeRouteContext.date);
     }
   }, [activeRouteContext]);
+
+  useEffect(() => {
+    const mapEl = document.getElementById('form-mini-map');
+    if (mapEl && window.L && addressVerification.status === 'success' && addressVerification.coords) {
+      const { lat, lng } = addressVerification.coords;
+      const latLng = [lat, lng];
+
+      if (!formMapRef.current) {
+        const map = window.L.map('form-mini-map', {
+          zoomControl: false,
+          attributionControl: false
+        }).setView(latLng, 16);
+
+        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          maxZoom: 20
+        }).addTo(map);
+
+        const marker = window.L.marker(latLng, {
+          draggable: true
+        }).addTo(map);
+
+        marker.on('dragend', () => {
+          const newPos = marker.getLatLng();
+          setAddressVerification(prev => ({
+            ...prev,
+            coords: {
+              ...prev.coords,
+              lat: parseFloat(newPos.lat.toFixed(6)),
+              lng: parseFloat(newPos.lng.toFixed(6))
+            }
+          }));
+        });
+
+        map.on('click', (e) => {
+          const newPos = e.latlng;
+          marker.setLatLng(newPos);
+          setAddressVerification(prev => ({
+            ...prev,
+            coords: {
+              ...prev.coords,
+              lat: parseFloat(newPos.lat.toFixed(6)),
+              lng: parseFloat(newPos.lng.toFixed(6))
+            }
+          }));
+        });
+
+        window.L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        formMapRef.current = map;
+        formMarkerRef.current = marker;
+      } else {
+        const map = formMapRef.current;
+        const marker = formMarkerRef.current;
+        // Only set view and position if they actually changed to prevent infinite loops on dragging
+        const currentCenter = map.getCenter();
+        const currentMarkerLatLng = marker.getLatLng();
+        if (Math.abs(currentMarkerLatLng.lat - lat) > 0.00001 || Math.abs(currentMarkerLatLng.lng - lng) > 0.00001) {
+          marker.setLatLng(latLng);
+        }
+        if (Math.abs(currentCenter.lat - lat) > 0.001 || Math.abs(currentCenter.lng - lng) > 0.001) {
+          map.setView(latLng, 16);
+        }
+        map.invalidateSize();
+      }
+    }
+
+    return () => {
+      if (!document.getElementById('form-mini-map') && formMapRef.current) {
+        formMapRef.current.remove();
+        formMapRef.current = null;
+        formMarkerRef.current = null;
+      }
+    };
+  }, [addressVerification.status, addressVerification.coords]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -3588,6 +3664,78 @@ function App() {
                     fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px'
                   }}>
                     {addressVerification.message}
+                  </div>
+                )}
+
+                {addressVerification.status === 'success' && addressVerification.coords && (
+                  <div style={{ marginTop: '12px', background: 'rgba(255, 255, 255, 0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#c7d2fe' }}>📍 Ubicación Confirmada:</span>
+                      <a 
+                        href={`https://www.google.com/maps/search/?api=1&query=${addressVerification.coords.lat},${addressVerification.coords.lng}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-secondary btn-small"
+                        style={{ width: 'auto', margin: 0, padding: '2px 8px', fontSize: '0.72rem', height: '22px', display: 'flex', alignItems: 'center', gap: '3px', border: '1px solid rgba(79, 70, 229, 0.4)', color: '#c7d2fe', background: 'rgba(79, 70, 229, 0.1)' }}
+                      >
+                        🌐 Google Maps / Vista Satélite
+                      </a>
+                    </div>
+
+                    <div style={{ position: 'relative' }}>
+                      <div 
+                        id="form-mini-map" 
+                        style={{ 
+                          height: '200px', 
+                          width: '100%', 
+                          borderRadius: '6px', 
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          background: '#1e1e1e',
+                          zIndex: 1 
+                        }}
+                      ></div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', textAlign: 'left', fontStyle: 'italic', lineHeight: '1.3' }}>
+                        💡 Arrastra el marcador en el mapa o haz clic para ajustar la posición exacta de entrega.
+                      </div>
+                    </div>
+
+                    {/* Editor de Coordenadas Manuales */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '5px' }}>
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <span className="input-label" style={{ fontSize: '0.7rem', margin: '0 0 2px 0', textTransform: 'uppercase', opacity: 0.8 }}>Latitud</span>
+                        <input 
+                          type="number" 
+                          step="0.000001" 
+                          className="form-input" 
+                          style={{ padding: '4px 8px', fontSize: '0.8rem', height: '28px', margin: 0, textAlign: 'center', fontWeight: '600' }}
+                          value={addressVerification.coords.lat} 
+                          onChange={(e) => {
+                            const latVal = parseFloat(e.target.value) || 0;
+                            setAddressVerification(prev => ({
+                              ...prev,
+                              coords: { ...prev.coords, lat: latVal }
+                            }));
+                          }} 
+                        />
+                      </div>
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <span className="input-label" style={{ fontSize: '0.7rem', margin: '0 0 2px 0', textTransform: 'uppercase', opacity: 0.8 }}>Longitud</span>
+                        <input 
+                          type="number" 
+                          step="0.000001" 
+                          className="form-input" 
+                          style={{ padding: '4px 8px', fontSize: '0.8rem', height: '28px', margin: 0, textAlign: 'center', fontWeight: '600' }}
+                          value={addressVerification.coords.lng} 
+                          onChange={(e) => {
+                            const lngVal = parseFloat(e.target.value) || 0;
+                            setAddressVerification(prev => ({
+                              ...prev,
+                              coords: { ...prev.coords, lng: lngVal }
+                            }));
+                          }} 
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
