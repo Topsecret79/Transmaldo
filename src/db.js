@@ -441,7 +441,7 @@ const DEFAULT_TARIFFS = [
   { id: 'SSUE', name: 'Soporte de Suelo', block: 'Otros', type: 'modules', value: 3 },
   { id: 'ALTA', name: 'Altavoces', block: 'Otros', type: 'modules', value: 3 },
   { id: 'TDIC', name: 'Toca discos', block: 'Otros', type: 'modules', value: 3 },
-  { id: 'PROY', name: 'Proyector', block: 'Otros', type: 'modules', value: 3 },
+  { id: 'PROY', name: 'Proyector', block: 'Otros', type: 'fixed', value: 5.23 },
   { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Otros', type: 'fixed', value: 100 },
   { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 }
 ];
@@ -513,6 +513,13 @@ export function initDB() {
       if (bsndItem && (bsndItem.type !== 'fixed' || bsndItem.value !== 5.23)) {
         bsndItem.type = 'fixed';
         bsndItem.value = 5.23;
+      }
+      
+      // Migrate PROY to fixed 5.23 (equivalent to small TV / soundbar)
+      const proyItem = current.find(t => t.id === 'PROY');
+      if (proyItem && (proyItem.type !== 'fixed' || proyItem.value !== 5.23)) {
+        proyItem.type = 'fixed';
+        proyItem.value = 5.23;
       }
       
       localStorage.setItem('delivery_tariffs', JSON.stringify(current));
