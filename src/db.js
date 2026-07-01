@@ -393,10 +393,7 @@ export async function syncFromCloud() {
 }
 
 const DEFAULT_USERS = [
-  { id: 'admin', username: 'admin', label: 'Super Administrador', role: 'superadmin', password: 'admin' },
-  { id: 'furgo1', username: 'furgo1', label: 'Furgoneta 1', role: 'repartidor', password: '1111' },
-  { id: 'furgo2', username: 'furgo2', label: 'Furgoneta 2', role: 'repartidor', password: '2222' },
-  { id: 'furgo3', username: 'furgo3', label: 'Furgoneta 3', role: 'repartidor', password: '3333' }
+  { id: 'admin', username: 'admin', label: 'Super Administrador', role: 'superadmin', password: 'admin' }
 ];
 
 const DEFAULT_MODULE_PRICE = 3.81;
@@ -456,15 +453,19 @@ export function initDB() {
   if (!localStorage.getItem('delivery_users')) {
     localStorage.setItem('delivery_users', JSON.stringify(DEFAULT_USERS));
   } else {
-    // Migration: make sure 'admin' user has 'superadmin' role
+    // Migration: remove old default vans and make sure 'admin' user has 'superadmin' role
     try {
-      let current = JSON.parse(localStorage.getItem('delivery_users'));
+      let current = JSON.parse(localStorage.getItem('delivery_users')) || [];
+      current = current.filter(u => u && u.id !== 'furgo1' && u.id !== 'furgo2' && u.id !== 'furgo3');
+      
       const adminUser = current.find(u => u.id === 'admin');
-      if (adminUser && adminUser.role === 'admin') {
-        adminUser.role = 'superadmin';
-        adminUser.label = 'Super Administrador';
-        localStorage.setItem('delivery_users', JSON.stringify(current));
+      if (adminUser) {
+        if (adminUser.role === 'admin') {
+          adminUser.role = 'superadmin';
+          adminUser.label = 'Super Administrador';
+        }
       }
+      localStorage.setItem('delivery_users', JSON.stringify(current));
     } catch (e) {
       console.error("Error migrating admin user role:", e);
     }
