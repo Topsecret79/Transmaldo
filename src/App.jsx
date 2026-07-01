@@ -25,34 +25,42 @@ const sortTicketsByRouteOrder = (ticketList) => {
 const getShortAddressString = (addressStr) => {
   if (!addressStr) return '';
   const parts = addressStr.split(',').map(p => p.trim());
-  if (parts.length <= 3) return addressStr;
-
+  
+  // Filter out country and regions first
   const cleanParts = parts.filter(p => {
     const lp = p.toLowerCase();
     if (lp === 'españa' || lp === 'spain') return false;
-    if (/^\d{5}$/.test(lp)) return false;
     const regions = ['catalunya', 'cataluña', 'madrid', 'andalucía', 'andalucia', 'país vasco', 'pais vasco', 'galicia', 'comunidad valenciana', 'valencia', 'aragón', 'aragon', 'castilla', 'murcia', 'extremadura', 'asturias', 'cantabria', 'navarra', 'la rioja', 'baleares', 'canarias'];
     if (regions.includes(lp)) return false;
-    const provinces = ['barcelona', 'madrid', 'sevilla', 'valencia', 'alicante', 'málaga', 'malaga', 'cádiz', 'cadiz', 'vizcaya', 'bizkaia', 'gipuzkoa', 'guipúzcoa', 'coruña', 'a coruña', 'asturias', 'zaragoza', 'pontevedra', 'las palmas', 'santa cruz', 'tarragona', 'girona', 'gerona', 'lleida', 'lerida', 'murcia', 'córdoba', 'cordoba', 'toledo', 'huelva', 'jaén', 'jaen', 'almería', 'almeria', 'granada', 'castellón', 'castellon', 'valladolid', 'badajoz', 'navarra', 'cantabria', 'ourense', 'lugo', 'cáceres', 'caceres', 'ciudad real', 'albacete', 'burgos', 'salamanca', 'león', 'leon', 'rioja', 'la rioja', 'cuenca', 'teruel', 'soria', 'segovia', 'ávila', 'avila', 'guadalajara', 'palencia', 'zamora', 'huesca'];
-    if (provinces.includes(lp)) return false;
-    const zones = ['vallès occidental', 'valles occidental', 'vallès oriental', 'valles oriental', 'baix llobregat', 'barcelonès', 'barcelones', 'maresme'];
-    if (zones.includes(lp)) return false;
     return true;
   });
 
-  if (cleanParts.length === 0) return addressStr;
-  if (cleanParts.length <= 3) return cleanParts.join(', ');
+  if (cleanParts.length <= 1) return addressStr;
 
-  const first = cleanParts[0];
-  const second = cleanParts[1];
-  const last = cleanParts[cleanParts.length - 1];
-  
-  const isNum = /\d/.test(second) || second.toLowerCase().includes('s/n') || second.length <= 4;
-  
-  if (isNum) {
-    return `${first}, ${second}, ${last}`;
+  // Let's analyze the last two parts of cleanParts
+  const lastIndex = cleanParts.length - 1;
+  const lastPart = cleanParts[lastIndex];
+  const secondLastPart = cleanParts[lastIndex - 1];
+
+  const provinces = ['barcelona', 'madrid', 'sevilla', 'valencia', 'alicante', 'málaga', 'malaga', 'cádiz', 'cadiz', 'vizcaya', 'bizkaia', 'gipuzkoa', 'guipúzcoa', 'coruña', 'a coruña', 'asturias', 'zaragoza', 'pontevedra', 'las palmas', 'santa cruz', 'tarragona', 'girona', 'gerona', 'lleida', 'lerida', 'murcia', 'córdoba', 'cordoba', 'toledo', 'huelva', 'jaén', 'jaen', 'almería', 'almeria', 'granada', 'castellón', 'castellon', 'valladolid', 'badajoz', 'navarra', 'cantabria', 'ourense', 'lugo', 'cáceres', 'caceres', 'ciudad real', 'albacete', 'burgos', 'salamanca', 'león', 'leon', 'rioja', 'la rioja', 'cuenca', 'teruel', 'soria', 'segovia', 'ávila', 'avila', 'guadalajara', 'palencia', 'zamora', 'huesca'];
+
+  // If the last part is a province, check if we should remove it
+  if (provinces.includes(lastPart.toLowerCase())) {
+    // If there is a second last part, and that part is NOT just a number (so it's likely a town name like Sabadell, Rubí, etc.)
+    const isNumberOnly = /^\d+$/.test(secondLastPart) || secondLastPart.toLowerCase().includes('s/n') || secondLastPart.length <= 4;
+    if (!isNumberOnly) {
+      // It has a town name before it, so we can drop the province name to avoid redundancy
+      cleanParts.pop();
+    }
   }
-  return `${first}, ${last}`;
+
+  // Also remove zones/comarcas if they are present at the end
+  const zones = ['vallès occidental', 'valles occidental', 'vallès oriental', 'valles oriental', 'baix llobregat', 'barcelonès', 'barcelones', 'maresme'];
+  if (cleanParts.length > 1 && zones.includes(cleanParts[cleanParts.length - 1].toLowerCase())) {
+    cleanParts.pop();
+  }
+
+  return cleanParts.join(', ');
 };
 
 // Obtener ruta por carreteras reales desde OSRM
