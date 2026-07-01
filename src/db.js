@@ -442,6 +442,7 @@ const DEFAULT_TARIFFS = [
   { id: 'ALTA', name: 'Altavoces', block: 'Otros', type: 'modules', value: 3 },
   { id: 'TDIC', name: 'Toca discos', block: 'Otros', type: 'modules', value: 3 },
   { id: 'PROY', name: 'Proyector', block: 'Otros', type: 'fixed', value: 5.23 },
+  { id: 'VTEC', name: 'Visita Técnica', block: 'Otros', type: 'modules', value: 5 },
   { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Otros', type: 'fixed', value: 100 },
   { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 }
 ];
@@ -520,6 +521,18 @@ export function initDB() {
       if (proyItem && (proyItem.type !== 'fixed' || proyItem.value !== 5.23)) {
         proyItem.type = 'fixed';
         proyItem.value = 5.23;
+      }
+      
+      // Migrate VTEC tariff (Visita Técnica 5 modules)
+      const hasVtec = current.some(t => t.id === 'VTEC');
+      if (!hasVtec) {
+        current.push({
+          id: 'VTEC',
+          name: 'Visita Técnica',
+          block: 'Otros',
+          type: 'modules',
+          value: 5
+        });
       }
       
       localStorage.setItem('delivery_tariffs', JSON.stringify(current));
