@@ -24,33 +24,37 @@ const sortTicketsByRouteOrder = (ticketList) => {
 // Formatear dirección larga a formato corto: Calle, Número, Población
 const getShortAddressString = (addressStr) => {
   if (!addressStr) return '';
-  const parts = addressStr.split(',').map(p => p.trim());
+  let parts = addressStr.split(',').map(p => p.trim());
   
-  // Filter out country and regions first
+  const provinces = ['barcelona', 'madrid', 'sevilla', 'valencia', 'alicante', 'málaga', 'malaga', 'cádiz', 'cadiz', 'vizcaya', 'bizkaia', 'gipuzkoa', 'guipúzcoa', 'coruña', 'a coruña', 'asturias', 'zaragoza', 'pontevedra', 'las palmas', 'santa cruz', 'tarragona', 'girona', 'gerona', 'lleida', 'lerida', 'murcia', 'córdoba', 'cordoba', 'toledo', 'huelva', 'jaén', 'jaen', 'almería', 'almeria', 'granada', 'castellón', 'castellon', 'valladolid', 'badajoz', 'navarra', 'cantabria', 'ourense', 'lugo', 'cáceres', 'caceres', 'ciudad real', 'albacete', 'burgos', 'salamanca', 'león', 'leon', 'rioja', 'la rioja', 'cuenca', 'teruel', 'soria', 'segovia', 'ávila', 'avila', 'guadalajara', 'palencia', 'zamora', 'huesca'];
+  const regions = ['catalunya', 'cataluña', 'madrid', 'andalucía', 'andalucia', 'país vasco', 'pais vasco', 'galicia', 'comunidad valenciana', 'valencia', 'aragón', 'aragon', 'castilla', 'murcia', 'extremadura', 'asturias', 'cantabria', 'navarra', 'la rioja', 'baleares', 'canarias', 'españa', 'spain'];
+
+  // Clean each part (remove parenthesized provinces/countries/regions)
+  parts = parts.map(p => {
+    let cleaned = p;
+    cleaned = cleaned.replace(/\s*\([^)]+\)\s*/g, ' ').trim();
+    return cleaned;
+  }).filter(p => p.length > 0);
+
+  // Filter out parts that are exactly countries or regions
   const cleanParts = parts.filter(p => {
     const lp = p.toLowerCase();
-    if (lp === 'españa' || lp === 'spain') return false;
-    const regions = ['catalunya', 'cataluña', 'madrid', 'andalucía', 'andalucia', 'país vasco', 'pais vasco', 'galicia', 'comunidad valenciana', 'valencia', 'aragón', 'aragon', 'castilla', 'murcia', 'extremadura', 'asturias', 'cantabria', 'navarra', 'la rioja', 'baleares', 'canarias'];
     if (regions.includes(lp)) return false;
     return true;
   });
 
   if (cleanParts.length <= 1) return addressStr;
 
-  // Let's analyze the last two parts of cleanParts
   const lastIndex = cleanParts.length - 1;
   const lastPart = cleanParts[lastIndex];
   const secondLastPart = cleanParts[lastIndex - 1];
 
-  const provinces = ['barcelona', 'madrid', 'sevilla', 'valencia', 'alicante', 'málaga', 'malaga', 'cádiz', 'cadiz', 'vizcaya', 'bizkaia', 'gipuzkoa', 'guipúzcoa', 'coruña', 'a coruña', 'asturias', 'zaragoza', 'pontevedra', 'las palmas', 'santa cruz', 'tarragona', 'girona', 'gerona', 'lleida', 'lerida', 'murcia', 'córdoba', 'cordoba', 'toledo', 'huelva', 'jaén', 'jaen', 'almería', 'almeria', 'granada', 'castellón', 'castellon', 'valladolid', 'badajoz', 'navarra', 'cantabria', 'ourense', 'lugo', 'cáceres', 'caceres', 'ciudad real', 'albacete', 'burgos', 'salamanca', 'león', 'leon', 'rioja', 'la rioja', 'cuenca', 'teruel', 'soria', 'segovia', 'ávila', 'avila', 'guadalajara', 'palencia', 'zamora', 'huesca'];
-
   // If the last part is a province, check if we should remove it
   if (provinces.includes(lastPart.toLowerCase())) {
-    // If there is a second last part, and that part is NOT just a number (so it's likely a town name like Sabadell, Rubí, etc.)
+    // If there is a second last part, and that part is NOT just a number (so it's likely a town name)
     const isNumberOnly = /^\d+$/.test(secondLastPart) || secondLastPart.toLowerCase().includes('s/n') || secondLastPart.length <= 4;
     if (!isNumberOnly) {
-      // It has a town name before it, so we can drop the province name to avoid redundancy
-      cleanParts.pop();
+      cleanParts.pop(); // Remove the province
     }
   }
 
@@ -4812,14 +4816,9 @@ function App() {
                                     <ChevronDown size={18} />
                                   </span>
                                   <div className="driver-card-index" style={{ margin: 0, padding: '2px 8px', fontSize: '0.85rem', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>#{stopIndex}</div>
-                                  <div style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
-                                    {getShortAddressString(t.address)}
+                                  <div style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }} title={`${getShortAddressString(t.address)}${t.postcode ? ` - CP ${t.postcode}` : ''}`}>
+                                    {getShortAddressString(t.address)}{t.postcode ? ` - CP ${t.postcode}` : ''}
                                   </div>
-                                  {t.postcode && (
-                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--panel-border)', whiteSpace: 'nowrap' }}>
-                                      {t.postcode}
-                                    </span>
-                                  )}
                                 </div>
                                 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
@@ -5005,20 +5004,7 @@ function App() {
                               marginTop: '10px'
                             }}>
                               <div style={{ fontSize: '0.85rem', lineHeight: '1.3' }}>
-                                {t.postcode && (
-                                  <span className="badge" style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.7rem', 
-                                    marginRight: '6px',
-                                    background: 'rgba(99, 102, 241, 0.15)',
-                                    border: '1px solid rgba(99, 102, 241, 0.3)',
-                                    color: '#a5b4fc',
-                                    borderRadius: '4px'
-                                  }}>
-                                    CP {t.postcode}
-                                  </span>
-                                )}
-                                <strong>{getShortAddressString(t.address)}</strong>
+                                <strong>{getShortAddressString(t.address)}{t.postcode ? ` - CP ${t.postcode}` : ''}</strong>
                               </div>
                               <a 
                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
