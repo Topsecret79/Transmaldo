@@ -433,7 +433,7 @@ const DEFAULT_TARIFFS = [
   { id: 'CUELGUE_115', name: 'Cuelgue en Pared 75" a 115"', block: 'Instalaciones', type: 'modules', value: 10 },
 
   // Otros Elementos
-  { id: 'BSND', name: 'Barra de Sonido', block: 'Otros', type: 'modules', value: 3 },
+  { id: 'BSND', name: 'Barra de Sonido', block: 'Otros', type: 'fixed', value: 5.23 },
   { id: 'PM_BSND', name: 'Puesta en Marcha Barra de Sonido', block: 'Otros', type: 'modules', value: 3 },
   { id: 'CUELGUE_BSND', name: 'Cuelgue Barra de Sonido', block: 'Otros', type: 'modules', value: 8 },
   { id: 'MFRA', name: 'Marco Frame', block: 'Otros', type: 'modules', value: 3 },
@@ -507,6 +507,14 @@ export function initDB() {
           { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 }
         );
       }
+      
+      // Migrate BSND to fixed 5.23 (equivalent to small TV)
+      const bsndItem = current.find(t => t.id === 'BSND');
+      if (bsndItem && (bsndItem.type !== 'fixed' || bsndItem.value !== 5.23)) {
+        bsndItem.type = 'fixed';
+        bsndItem.value = 5.23;
+      }
+      
       localStorage.setItem('delivery_tariffs', JSON.stringify(current));
     } catch (e) {
       console.error("Error migrating tariffs:", e);
