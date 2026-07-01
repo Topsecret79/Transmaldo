@@ -2805,7 +2805,7 @@ function App() {
   };
 
   const getShiftSummary = (furgoId, date) => {
-    const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date && (t.status === 'success' || !t.status));
+    const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date && t.status !== 'failed');
     
     let totalTvs = 0;
     let totalPV = 0;
@@ -4861,6 +4861,19 @@ function App() {
                           style={{ margin: 0, padding: '8px 14px', background: 'var(--warning)', color: '#000', fontWeight: '700' }}
                         >
                           Finalizar Turno
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            setShiftKmsInput('');
+                            setShiftSummaryDate(targetDate);
+                            setShiftSummaryFurgoId(currentUser.id);
+                            setShowShiftModal(true);
+                          }} 
+                          className="btn btn-secondary btn-small"
+                          style={{ margin: 0, padding: '8px 14px', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)' }}
+                        >
+                          📊 Ver Resumen del Día
                         </button>
                         {/* {dayTickets.length > 0 && (
                           <button 
