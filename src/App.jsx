@@ -8260,6 +8260,42 @@ function App() {
                       </div>
                     )}
                     
+                    {(() => {
+                      const isShiftClosed = existingShift && existingShift.status === 'closed';
+                      const billableTickets = dayTickets.filter(t => !isShiftClosed || (t.status === 'success' || !t.status));
+                      const totalDeliveryEarnings = billableTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
+                      
+                      const recordedKms = existingShift ? getRouteKms(targetFurgoId, targetDate) : (parseFloat(shiftKmsInput) || 0);
+                      const totalMileageEarnings = recordedKms * kmPrice;
+                      const grandTotalEarnings = totalDeliveryEarnings + totalMileageEarnings;
+                      
+                      return (
+                        <div style={{ 
+                          background: 'rgba(99, 102, 241, 0.08)', 
+                          border: '1px solid rgba(99, 102, 241, 0.3)', 
+                          borderRadius: '8px', 
+                          padding: '12px', 
+                          marginTop: '10px', 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '4px' 
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                            <span>Ganancia Entregas:</span>
+                            <span>{totalDeliveryEarnings.toFixed(2)} €</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                            <span>Ganancia Kilometraje:</span>
+                            <span>{totalMileageEarnings.toFixed(2)} €</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.98rem', fontWeight: '700', color: 'var(--primary)', borderTop: '1px solid rgba(99, 102, 241, 0.2)', paddingTop: '4px', marginTop: '2px' }}>
+                            <span>💰 TOTAL GANADO (DÍA):</span>
+                            <span>{grandTotalEarnings.toFixed(2)} €</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    
                     <div style={{ borderBottom: '1px dashed var(--panel-border)', margin: '10px 0' }}></div>
                     <div style={{ fontWeight: '700', fontSize: '0.9rem', marginBottom: '5px' }}>Clientes y Servicios Realizados:</div>
                     {dayTickets.length === 0 ? (
