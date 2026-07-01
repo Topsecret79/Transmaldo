@@ -296,6 +296,35 @@ function App() {
       .join(' ');
   };
   const [currentUser, setCurrentUser] = useState(null);
+  const [serviceType, setServiceType] = useState('entrega');
+
+  const getTicketServiceType = (t) => {
+    if (!t || !t.notes) return 'entrega';
+    const notesLower = t.notes.toLowerCase();
+    if (notesLower.includes('[cuelgue]') || notesLower.includes('cuelgue') || notesLower.includes('colgar') || notesLower.includes('soporte')) {
+      return 'cuelgue';
+    }
+    if (notesLower.includes('[puesta_marcha]') || notesLower.includes('puesta en marcha') || notesLower.includes('puesta_en_marcha') || notesLower.includes('instalar') || notesLower.includes('instalacion')) {
+      return 'puesta_marcha';
+    }
+    if (notesLower.includes('[tarde]') || notesLower.includes('servicio de tarde') || notesLower.includes('por la tarde') || notesLower.includes('tarde')) {
+      return 'tarde';
+    }
+    return 'entrega';
+  };
+
+  const getTicketColor = (t) => {
+    if (!t) return '#fbbf24';
+    if (t.status === 'success') return '#10b981';
+    if (t.status === 'failed') return '#ef4444';
+    
+    const sType = getTicketServiceType(t);
+    if (sType === 'cuelgue') return '#a855f7'; // Violeta/Morado
+    if (sType === 'puesta_marcha') return '#ec4899'; // Rosa/Magenta
+    if (sType === 'tarde') return '#f97316'; // Naranja
+    
+    return t.status === 'transit' ? '#38bdf8' : '#fbbf24';
+  };
   const isAdminOrSuper = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
@@ -973,10 +1002,8 @@ function App() {
             const latLng = [latNum, lngNum];
             bounds.push(latLng);
 
-            const isSuccess = t.status === 'success';
-            const isFailed = t.status === 'failed';
-            const isTransit = t.status === 'transit';
-            const statusColor = isSuccess ? '#10b981' : isFailed ? '#ef4444' : isTransit ? '#38bdf8' : '#fbbf24';
+            const statusColor = getTicketColor(t);
+            const textColor = (statusColor === '#a855f7' || statusColor === '#ec4899' || statusColor === '#ef4444') ? '#fff' : '#000';
 
             const markerHtml = `
               <div style="
@@ -984,7 +1011,7 @@ function App() {
                 height: 24px; 
                 border-radius: 50%; 
                 background-color: ${statusColor}; 
-                color: #000; 
+                color: ${textColor}; 
                 font-weight: 800; 
                 font-size: 11px; 
                 display: flex; 
@@ -2218,6 +2245,14 @@ function App() {
       : (targetUser ? targetUser.id : (editingTicketId ? editingFurgoId : currentUser.id));
 
     let finalNotes = notes.trim();
+    if (serviceType === 'cuelgue') {
+      finalNotes = `[CUELGUE] ${finalNotes}`.trim();
+    } else if (serviceType === 'puesta_marcha') {
+      finalNotes = `[PUESTA_MARCHA] ${finalNotes}`.trim();
+    } else if (serviceType === 'tarde') {
+      finalNotes = `[TARDE] ${finalNotes}`.trim();
+    }
+    
     finalNotes = encodeTicketNotes(timeSlot, estimatedDuration, finalNotes);
     if (originalRouteLabel) {
       finalNotes = `[Ruta Original: ${originalRouteLabel}] ${finalNotes}`.trim();
@@ -2277,6 +2312,7 @@ function App() {
       setCustomExtraName('');
       setCustomExtraPrice('');
       setUrgenteType('none');
+      setServiceType('entrega');
       setNotes('');
       setTimeSlot('any');
       setEstimatedDuration(10);
@@ -2486,7 +2522,22 @@ function App() {
     setTimeSlot(parsed.timeSlot);
     setEstimatedDuration(parsed.estimatedDuration);
     setIsDurationManuallyEdited(true);
-    setNotes(parsed.cleanNotes);
+    let cleanNotesText = parsed.cleanNotes;
+    let sType = 'entrega';
+    if (cleanNotesText.includes('[CUELGUE]')) {
+      sType = 'cuelgue';
+      cleanNotesText = cleanNotesText.replace('[CUELGUE]', '').trim();
+    } else if (cleanNotesText.includes('[PUESTA_MARCHA]')) {
+      sType = 'puesta_marcha';
+      cleanNotesText = cleanNotesText.replace('[PUESTA_MARCHA]', '').trim();
+    } else if (cleanNotesText.includes('[TARDE]')) {
+      sType = 'tarde';
+      cleanNotesText = cleanNotesText.replace('[TARDE]', '').trim();
+    } else {
+      sType = getTicketServiceType(ticket);
+    }
+    setServiceType(sType);
+    setNotes(cleanNotesText);
     setShowCod(ticket.codAmount > 0);
     setTicketRoute(ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId);
 
@@ -2664,6 +2715,7 @@ function App() {
     setCustomExtraName('');
     setCustomExtraPrice('');
     setUrgenteType('none');
+    setServiceType('entrega');
     setNotes('');
     setTimeSlot('any');
     setEstimatedDuration(10);
@@ -3970,6 +4022,34 @@ function App() {
               {/* Franja Horaria y Tiempo Estimado */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '10px', borderTop: '1px dashed var(--panel-border)', paddingTop: '15px' }}>
                 <div className="input-group">
+                  <span className="input-label">🎨 Tipo de Servicio (Color Parada)</span>
+                  <select
+                    className="form-input"
+                    value={serviceType}
+                    onChange={(e) => {
+                      const newType = e.target.value;
+                      setServiceType(newType);
+                      if (newType === 'tarde') {
+                        setTimeSlot('afternoon');
+                      }
+                    }}
+                    disabled={isClosed}
+                    style={{
+                      borderLeft: `4px solid ${
+                        serviceType === 'cuelgue' ? '#a855f7' :
+                        serviceType === 'puesta_marcha' ? '#ec4899' :
+                        serviceType === 'tarde' ? '#f97316' : 'var(--primary)'
+                      }`
+                    }}
+                  >
+                    <option value="entrega">📦 Entrega Estándar (Azul / Amarillo)</option>
+                    <option value="cuelgue">📺 Cuelgue de TV (Violeta)</option>
+                    <option value="puesta_marcha">⚙️ Puesta en Marcha (Rosa)</option>
+                    <option value="tarde">🌙 Servicio de Tarde (Naranja)</option>
+                  </select>
+                </div>
+
+                <div className="input-group">
                   <span className="input-label">⏳ Franja Horaria de Entrega</span>
                   <select
                     className="form-input"
@@ -4947,13 +5027,31 @@ function App() {
                         const stopIndex = dateTickets.findIndex(ticket => ticket.id === t.id) + 1;
                         const isCollapsed = !!collapsedTicketIds[t.id];
                         
-                        let statusBadge = <span className="badge badge-warning" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>🟡 Pendiente</span>;
-                        if (t.status === 'success') {
+                        const cardColor = getTicketColor(t);
+                        const isSuccess = t.status === 'success';
+                        const isFailed = t.status === 'failed';
+                        const isTransit = t.status === 'transit';
+                        
+                        let statusBadge = <span className="badge badge-warning" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: cardColor, color: '#000' }}>🟡 Pendiente</span>;
+                        if (isSuccess) {
                           statusBadge = <span className="badge badge-success" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#10b981', color: '#fff' }}>🟢 Éxito</span>;
-                        } else if (t.status === 'failed') {
+                        } else if (isFailed) {
                           statusBadge = <span className="badge badge-danger" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#ef4444', color: '#fff' }}>🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>;
-                        } else if (t.status === 'transit') {
-                          statusBadge = <span className="badge" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#38bdf8', color: '#0f172a' }}>🔵 En Camino</span>;
+                        } else {
+                          const sType = getTicketServiceType(t);
+                          if (sType === 'cuelgue') {
+                            statusBadge = <span className="badge" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#a855f7', color: '#fff' }}>📺 Cuelgue</span>;
+                          } else if (sType === 'puesta_marcha') {
+                            statusBadge = <span className="badge" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#ec4899', color: '#fff' }}>⚙️ Puesta en Marcha</span>;
+                          } else if (sType === 'tarde') {
+                            statusBadge = <span className="badge" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#f97316', color: '#fff' }}>🌙 Servicio Tarde</span>;
+                          } else {
+                            if (isTransit) {
+                              statusBadge = <span className="badge" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#38bdf8', color: '#0f172a' }}>🔵 En Camino</span>;
+                            } else {
+                              statusBadge = <span className="badge badge-warning" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#fbbf24', color: '#000' }}>🟡 Pendiente</span>;
+                            }
+                          }
                         }
 
                         if (isCollapsed) {
@@ -4962,7 +5060,7 @@ function App() {
                               key={t.id} 
                               className="driver-card" 
                               style={{
-                                borderLeft: t.status === 'transit' ? '4px solid #38bdf8' : t.status === 'success' ? '4px solid #10b981' : t.status === 'failed' ? '4px solid #ef4444' : '1px solid var(--panel-border)',
+                                borderLeft: `4px solid ${cardColor}`,
                                 textAlign: 'left',
                                 padding: '10px 14px'
                               }}
@@ -5004,7 +5102,7 @@ function App() {
                             key={t.id} 
                             className="driver-card" 
                             style={{
-                              borderLeft: t.status === 'transit' ? '4px solid #38bdf8' : t.status === 'success' ? '4px solid #10b981' : t.status === 'failed' ? '4px solid #ef4444' : '1px solid var(--panel-border)',
+                              borderLeft: `4px solid ${cardColor}`,
                               textAlign: 'left'
                             }}
                           >
@@ -5726,8 +5824,26 @@ function App() {
             const isSuccess = t.status === 'success';
             const isFailed = t.status === 'failed';
             const isTransit = t.status === 'transit';
-            const statusColor = isSuccess ? '#10b981' : isFailed ? '#ef4444' : isTransit ? '#38bdf8' : '#fbbf24';
-            const statusLabel = isSuccess ? 'Entregado' : isFailed ? 'Fallido' : isTransit ? 'En Camino' : 'Pendiente';
+            
+            const statusColor = getTicketColor(t);
+            
+            let statusLabel = 'Pendiente';
+            if (isSuccess) {
+              statusLabel = 'Entregado';
+            } else if (isFailed) {
+              statusLabel = 'Fallido';
+            } else {
+              const sType = getTicketServiceType(t);
+              if (sType === 'cuelgue') {
+                statusLabel = 'Cuelgue';
+              } else if (sType === 'puesta_marcha') {
+                statusLabel = 'Puesta en Marcha';
+              } else if (sType === 'tarde') {
+                statusLabel = 'Servicio Tarde';
+              } else {
+                statusLabel = isTransit ? 'En Camino' : 'Pendiente';
+              }
+            }
             
             const isSelected = selectedMapTicket && selectedMapTicket.id === t.id;
             const furgoLabel = users.find(u => u.id === t.furgoId)?.label || t.furgoId || '';
@@ -6562,9 +6678,36 @@ function App() {
                         <td>
                           {(() => {
                             const parsed = parseTicketNotes(t.notes);
+                            let cleanNotesText = parsed.cleanNotes;
+                            let sType = 'entrega';
+                            if (cleanNotesText.includes('[CUELGUE]')) {
+                              sType = 'cuelgue';
+                              cleanNotesText = cleanNotesText.replace('[CUELGUE]', '').trim();
+                            } else if (cleanNotesText.includes('[PUESTA_MARCHA]')) {
+                              sType = 'puesta_marcha';
+                              cleanNotesText = cleanNotesText.replace('[PUESTA_MARCHA]', '').trim();
+                            } else if (cleanNotesText.includes('[TARDE]')) {
+                              sType = 'tarde';
+                              cleanNotesText = cleanNotesText.replace('[TARDE]', '').trim();
+                            } else {
+                              sType = getTicketServiceType(t);
+                            }
                             return (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                  {sType !== 'entrega' && (
+                                    <span className="badge" style={{
+                                      fontSize: '0.65rem',
+                                      padding: '1px 5px',
+                                      background: sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.15)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(249, 115, 22, 0.15)',
+                                      color: sType === 'cuelgue' ? '#a855f7' : sType === 'puesta_marcha' ? '#ec4899' : '#f97316',
+                                      border: sType === 'cuelgue' ? '1px solid rgba(168, 85, 247, 0.25)' : sType === 'puesta_marcha' ? '1px solid rgba(236, 72, 153, 0.25)' : '1px solid rgba(249, 115, 22, 0.25)',
+                                      fontWeight: 'bold',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {sType === 'cuelgue' ? '📺 Cuelgue' : sType === 'puesta_marcha' ? '⚙️ Puesta en Marcha' : '🌙 Servicio Tarde'}
+                                    </span>
+                                  )}
                                   {parsed.timeSlot !== 'any' && (
                                     <span className="badge" style={{
                                       fontSize: '0.65rem',
@@ -6592,9 +6735,9 @@ function App() {
                                 </div>
                                 <span 
                                   style={{ fontStyle: 'italic', fontSize: '0.85rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} 
-                                  title={parsed.cleanNotes}
+                                  title={cleanNotesText}
                                 >
-                                  {parsed.cleanNotes || '-'}
+                                  {cleanNotesText || '-'}
                                 </span>
                               </div>
                             );
@@ -6625,20 +6768,38 @@ function App() {
                             
                             let badgeClass = 'badge-warning';
                             let badgeText = '🟡 Pendiente';
+                            let badgeStyle = { fontSize: '0.75rem' };
                             
-                            if (isSuccess || (!t.status)) {
+                            if (isSuccess) {
                               badgeClass = 'badge-success';
                               badgeText = '🟢 Éxito';
                             } else if (isFailed) {
                               badgeClass = 'badge-danger';
                               badgeText = `🔴 Fallido ${t.failureReason ? `(${t.failureReason})` : ''}`;
-                            } else if (isTransit) {
-                              badgeClass = 'badge-primary';
-                              badgeText = '🔵 En Camino';
+                            } else {
+                              const sType = getTicketServiceType(t);
+                              if (sType === 'cuelgue') {
+                                badgeStyle = { fontSize: '0.75rem', background: '#a855f7', color: '#fff', border: '1px solid rgba(168, 85, 247, 0.4)' };
+                                badgeText = '📺 Cuelgue';
+                              } else if (sType === 'puesta_marcha') {
+                                badgeStyle = { fontSize: '0.75rem', background: '#ec4899', color: '#fff', border: '1px solid rgba(236, 72, 153, 0.4)' };
+                                badgeText = '⚙️ Puesta en Marcha';
+                              } else if (sType === 'tarde') {
+                                badgeStyle = { fontSize: '0.75rem', background: '#f97316', color: '#fff', border: '1px solid rgba(249, 115, 22, 0.4)' };
+                                badgeText = '🌙 Servicio Tarde';
+                              } else {
+                                if (isTransit) {
+                                  badgeStyle = { fontSize: '0.75rem', background: '#38bdf8', color: '#0f172a', border: '1px solid rgba(56, 189, 248, 0.4)' };
+                                  badgeText = '🔵 En Camino';
+                                } else {
+                                  badgeClass = 'badge-warning';
+                                  badgeText = '🟡 Pendiente';
+                                }
+                              }
                             }
                             
                             return (
-                              <span className={`badge ${badgeClass}`} style={{ fontSize: '0.75rem' }} title={t.failureReason}>
+                              <span className={`badge ${badgeClass}`} style={badgeStyle} title={t.failureReason}>
                                 {badgeText}
                               </span>
                             );
