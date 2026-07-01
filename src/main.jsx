@@ -9,7 +9,7 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-// Registrar Service Worker para soporte PWA
+// Registrar Service Worker para soporte PWA y recarga automática en actualizaciones
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js')
@@ -17,5 +17,15 @@ if ('serviceWorker' in navigator) {
         console.log('SW registrado:', reg.scope);
       })
       .catch(err => console.warn('Fallo al registrar SW:', err));
+  });
+
+  // Escuchar cuando el nuevo SW toma el control y recargar la página para aplicar los cambios
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!refreshing) {
+      refreshing = true;
+      console.log('Detectada actualización de la app. Recargando...');
+      window.location.reload();
+    }
   });
 }
