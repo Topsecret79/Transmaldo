@@ -458,6 +458,8 @@ function App() {
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
   const mapInstanceRef = useRef(null);
+  const mapLayerGroupRef = useRef(null);
+  const lastFittedRef = useRef('');
   const [routeStartAddr, setRouteStartAddr] = useState(getRouteStartAddr());
   const [routeEndAddr, setRouteEndAddr] = useState(getRouteEndAddr());
   const [startSuggestions, setStartSuggestions] = useState([]);
@@ -820,55 +822,56 @@ function App() {
       if ((isAdminMap || isDriverMap) && window.L) {
         const mapElementId = isAdminMap ? 'admin-map' : 'driver-map';
 
-        // 1. Destruir mapa previo si existe
-        if (mapInstanceRef.current !== null) {
-          try {
-            mapInstanceRef.current.remove();
-          } catch (e) {
-            console.error("Error removing map instance:", e);
-          }
-          mapInstanceRef.current = null;
+        let map = mapInstanceRef.current;
+
+        // 1. Inicializar nuevo mapa si no existe
+        if (map === null) {
+          map = window.L.map(mapElementId, {
+            zoomControl: true,
+            attributionControl: true
+          }).setView([41.3879, 2.16992], 12);
+          mapInstanceRef.current = map;
+
+          // Deseleccionar pin al hacer clic en el fondo del mapa
+          map.on('click', (e) => {
+            if (e.originalEvent.target.closest('.leaflet-marker-icon')) return;
+            setSelectedMapTicket(null);
+          });
+
+          // Cargar capas de mapa (Estándar, Satélite de Esri, Topográfico)
+          const osm = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
+          });
+
+          const satellite = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+            maxZoom: 19
+          });
+
+          const topo = window.L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)',
+            maxZoom: 17
+          });
+
+          osm.addTo(map);
+
+          const baseMaps = {
+            "Mapa Estándar 🗺️": osm,
+            "Satélite 🛰️": satellite,
+            "Topográfico ⛰️": topo
+          };
+          window.L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
         }
 
-        // 2. Inicializar nuevo mapa (centrado en Barcelona por defecto)
-        const map = window.L.map(mapElementId, {
-          zoomControl: true,
-          attributionControl: true
-        }).setView([41.3879, 2.16992], 12);
-        mapInstanceRef.current = map;
+        // 2. Inicializar o limpiar el LayerGroup de marcadores y polilíneas
+        if (!mapLayerGroupRef.current) {
+          mapLayerGroupRef.current = window.L.layerGroup().addTo(map);
+        } else {
+          mapLayerGroupRef.current.clearLayers();
+        }
 
-        // Deseleccionar pin al hacer clic en el fondo del mapa
-        map.on('click', (e) => {
-          if (e.originalEvent.target.closest('.leaflet-marker-icon')) return;
-          setSelectedMapTicket(null);
-        });
-
-        // 3. Cargar capas de mapa (Estándar, Satélite de Esri, Topográfico)
-        const osm = window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-          maxZoom: 19
-        });
-
-        const satellite = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-          maxZoom: 19
-        });
-
-        const topo = window.L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-          attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)',
-          maxZoom: 17
-        });
-
-        osm.addTo(map);
-
-        const baseMaps = {
-          "Mapa Estándar 🗺️": osm,
-          "Satélite 🛰️": satellite,
-          "Topográfico ⛰️": topo
-        };
-        window.L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
-
-        // 4. Filtrar y ordenar los tickets geocodificados
+        // 3. Filtrar y ordenar los tickets geocodificados
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
         
         const dayTickets = tickets.filter(t => {
@@ -898,7 +901,7 @@ function App() {
         const bounds = [];
         const COLORS = ['#a78bfa', '#38bdf8', '#34d399', '#f472b6', '#fbbf24', '#f43f5e'];
 
-        // 5. Dibujar marcadores de paradas y líneas de ruta (polilíneas)
+        // 4. Dibujar marcadores de paradas y líneas de ruta (polilíneas)
         Object.keys(ticketsByDriver).forEach((fid, idx) => {
           const driverTickets = ticketsByDriver[fid];
           const driverColor = COLORS[idx % COLORS.length];
@@ -942,7 +945,7 @@ function App() {
             });
 
             window.L.marker(latLng, { icon: markerIcon })
-              .addTo(map)
+              .addTo(mapLayerGroupRef.current)
               .on('click', () => {
                 handleSelectMapTicket(t);
               });
@@ -962,7 +965,7 @@ function App() {
               weight: 3,
               opacity: 0.75,
               dashArray: '6, 6'
-            }).addTo(map);
+            }).addTo(mapLayerGroupRef.current);
 
             // Cargar trazado de carreteras reales asíncronamente desde OSRM
             fetchRoadRoute(routeCoords.map(c => ({ lat: c[0], lng: c[1] })))
@@ -978,7 +981,7 @@ function App() {
           }
         });
 
-        // 6. Dibujar repartidores en tiempo real
+        // 5. Dibujar repartidores en tiempo real
         const liveLocations = getDriverLocations();
         Object.entries(liveLocations).forEach(([fid, loc]) => {
           if (!loc || loc.lat === undefined || loc.lng === undefined) return;
@@ -1039,13 +1042,15 @@ function App() {
           `;
 
           window.L.marker(latLng, { icon: liveIcon })
-            .addTo(map)
+            .addTo(mapLayerGroupRef.current)
             .bindPopup(popupContent);
         });
 
-        // 7. Auto-ajustar el zoom del mapa para mostrar todos los puntos
-        if (bounds.length > 0) {
+        // 6. Auto-ajustar el zoom del mapa para mostrar todos los puntos (solo al iniciar o cambiar filtros)
+        const currentFilterKey = `${activeTab}_${targetDate}_${mapFilterFurgo}_${shiftSummaryDate}`;
+        if (bounds.length > 0 && lastFittedRef.current !== currentFilterKey) {
           map.fitBounds(bounds, { padding: [50, 50] });
+          lastFittedRef.current = currentFilterKey;
         }
 
         // Forzar recalculo de dimensiones para corregir pantallas grises o en blanco
@@ -1055,13 +1060,16 @@ function App() {
 
     return () => {
       clearTimeout(timer);
-      if (mapInstanceRef.current !== null) {
+      const isAdminMap = document.getElementById('admin-map');
+      const isDriverMap = document.getElementById('driver-map');
+      if (!isAdminMap && !isDriverMap && mapInstanceRef.current !== null) {
         try {
           mapInstanceRef.current.remove();
         } catch (e) {
           console.error("Error removing map instance:", e);
         }
         mapInstanceRef.current = null;
+        mapLayerGroupRef.current = null;
       }
     };
   }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser]);
