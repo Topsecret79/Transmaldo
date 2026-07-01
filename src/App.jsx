@@ -8019,6 +8019,24 @@ function App() {
             </div>
           )}
           <div className="user-badge"><User size={14} />{currentUser.label}</div>
+          <button 
+            onClick={async () => {
+              if (window.confirm('¿Quieres comprobar y forzar la descarga de la última versión de la aplicación?')) {
+                if ('serviceWorker' in navigator) {
+                  const regs = await navigator.serviceWorker.getRegistrations();
+                  for (let r of regs) {
+                    await r.unregister();
+                  }
+                }
+                window.location.reload(true);
+              }
+            }} 
+            className="btn btn-secondary btn-small" 
+            style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
+            title="Forzar actualización de versión"
+          >
+            🔄
+          </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
       </header>
