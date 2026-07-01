@@ -406,6 +406,49 @@ function App() {
     }
   }, [ticketDate]);
 
+  useEffect(() => {
+    if (!address || address.trim().length < 5) {
+      setDuplicateWarning(null);
+      return;
+    }
+    
+    const normalize = (str) => {
+      if (!str) return '';
+      let s = str.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/\bcalle\b|\bc\/\b|\bc\.\b/gi, 'c')
+        .replace(/\bavenida\b|\bavda\b|\bav\b/gi, 'av')
+        .replace(/\bplaza\b|\bpl\b/gi, 'pl')
+        .replace(/[^a-z0-9]/g, '');
+      return s;
+    };
+
+    const normInput = normalize(address);
+    if (normInput.length < 5) {
+      setDuplicateWarning(null);
+      return;
+    }
+
+    const dayTickets = tickets.filter(t => t.date === ticketDate);
+    const duplicate = dayTickets.find(t => {
+      if (editingTicketId && t.id === editingTicketId) return false;
+      const normTicket = normalize(t.address);
+      return normTicket === normInput || (normTicket.length > 8 && normInput.length > 8 && (normTicket.includes(normInput) || normInput.includes(normTicket)));
+    });
+
+    if (duplicate) {
+      const driverLabel = users.find(u => u.id === duplicate.furgoId)?.label || duplicate.furgoId;
+      setDuplicateWarning({
+        id: duplicate.id,
+        clientName: duplicate.clientName || 'Cliente sin nombre',
+        routeName: duplicate.routeName || 'Sin ruta',
+        driver: driverLabel
+      });
+    } else {
+      setDuplicateWarning(null);
+    }
+  }, [address, ticketDate, tickets, editingTicketId, users]);
+
   const [collapsedTicketIds, setCollapsedTicketIds] = useState(() => {
     try {
       const saved = localStorage.getItem('delivery_collapsed_tickets');
@@ -466,6 +509,7 @@ function App() {
   const mapInstanceRef = useRef(null);
   const mapLayerGroupRef = useRef(null);
   const lastFittedRef = useRef('');
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [routeStartAddr, setRouteStartAddr] = useState(getRouteStartAddr());
   const [routeEndAddr, setRouteEndAddr] = useState(getRouteEndAddr());
   const [startSuggestions, setStartSuggestions] = useState([]);
@@ -2031,6 +2075,13 @@ function App() {
     if (!customerName.trim() || !address.trim()) {
       triggerAlert('Por favor, rellena el cliente y dirección', 'error');
       return;
+    }
+
+    if (duplicateWarning) {
+      const confirmSave = window.confirm(
+        `⚠️ DIRECCIÓN DUPLICADA DETECTADA\n\nYa existe una parada registrada para hoy (${ticketDate}) con esta misma dirección:\n- Cliente: ${duplicateWarning.clientName}\n- Ruta: ${duplicateWarning.routeName}\n- Chofer: ${duplicateWarning.driver}\n\n¿Estás seguro de que deseas guardar este reparto de todas formas?`
+      );
+      if (!confirmSave) return;
     }
 
     const checkFurgoId = editingTicketId ? editingFurgoId : currentUser.id;
@@ -3668,6 +3719,31 @@ function App() {
                           : 'none'
                   }}
                 />
+
+                {duplicateWarning && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '10px 14px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid #ef4444',
+                    borderRadius: '8px',
+                    color: '#fca5a5',
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}>
+                    <strong style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      ⚠️ ¡Dirección Duplicada Detectada!
+                    </strong>
+                    <span>
+                      Ya existe una parada registrada hoy para esta dirección en la ruta <strong>"{duplicateWarning.routeName}"</strong> ({duplicateWarning.driver}).
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: '#f3f4f6' }}>
+                      Cliente: <strong>{duplicateWarning.clientName}</strong>
+                    </span>
+                  </div>
+                )}
 
                 {spellingSuggestions.length > 0 && (
                   <div style={{
