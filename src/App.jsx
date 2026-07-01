@@ -4568,7 +4568,6 @@ function App() {
             <div className="map-split-container">
               <div className="map-split-left">
                 <div 
-                  key={`driver-map-${targetDate}-${activeTab}`}
                   id="driver-map" 
                   style={{ 
                     height: '100%', 
@@ -6810,7 +6809,6 @@ function App() {
             <div className="map-split-container">
               <div className="map-split-left">
                 <div 
-                  key={`admin-map-${mapFilterDate}-${mapFilterFurgo}-${activeTab}`}
                   id="admin-map" 
                   style={{ 
                     height: '100%', 
