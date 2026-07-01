@@ -758,15 +758,18 @@ tr:hover td {
 .chart-bar-container {
   display: flex;
   align-items: flex-end;
-  height: 200px;
-  gap: 15px;
-  padding: 10px 0;
+  height: 225px;
+  gap: 20px;
+  padding: 10px 5px 15px 5px;
   border-bottom: 1px solid var(--panel-border);
   margin-bottom: 10px;
+  overflow-x: auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chart-bar-column {
-  flex: 1;
+  flex: 0 0 110px;
   display: flex;
   flex-direction: column;
   align-items: center;
