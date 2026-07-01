@@ -321,7 +321,7 @@ function App() {
   const [ticketFilterPostcode, setTicketFilterPostcode] = useState('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [alertMsg, setAlertMsg] = useState({ text: '', type: '' });
-  const [driverFilter, setDriverFilter] = useState('all');
+  const [driverFilter, setDriverFilter] = useState('active_reparto');
   const [quickFailTicketId, setQuickFailTicketId] = useState(null);
 
   // Rango de fechas para cortes de facturación del Administrador
@@ -4730,36 +4730,82 @@ function App() {
                 );
               })()}
 
-              {/* Botones de Filtrado Rápido */}
+              {/* Botones de Filtrado Rápido estilo Ventanas */}
               {dateTickets.length > 0 && (
-                <div className="filter-pills">
+                <div style={{
+                  display: 'flex',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  padding: '4px',
+                  borderRadius: '12px',
+                  border: '1px solid var(--panel-border)',
+                  marginBottom: '20px',
+                  gap: '4px'
+                }}>
                   <button 
                     type="button" 
-                    onClick={() => setDriverFilter('all')} 
-                    className={`filter-pill ${driverFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setDriverFilter('active_reparto')} 
+                    style={{
+                      flex: 1,
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: driverFilter === 'active_reparto' ? 'var(--primary)' : 'transparent',
+                      color: driverFilter === 'active_reparto' ? '#fff' : 'var(--text-muted)',
+                      fontWeight: '700',
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
                   >
-                    Todas ({dateTickets.length})
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => setDriverFilter('pending')} 
-                    className={`filter-pill ${driverFilter === 'pending' ? 'active' : ''}`}
-                  >
-                    Pendientes ({dateTickets.filter(t => !t.status || t.status === 'pending').length})
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => setDriverFilter('transit')} 
-                    className={`filter-pill ${driverFilter === 'transit' ? 'active' : ''}`}
-                  >
-                    En Ruta ({dateTickets.filter(t => t.status === 'transit').length})
+                    🚚 En Reparto ({dateTickets.filter(t => !t.status || t.status === 'pending' || t.status === 'transit').length})
                   </button>
                   <button 
                     type="button" 
                     onClick={() => setDriverFilter('completed')} 
-                    className={`filter-pill ${driverFilter === 'completed' ? 'active' : ''}`}
+                    style={{
+                      flex: 1,
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: driverFilter === 'completed' ? '#10b981' : 'transparent',
+                      color: driverFilter === 'completed' ? '#fff' : 'var(--text-muted)',
+                      fontWeight: '700',
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
                   >
-                    Completadas ({dateTickets.filter(t => t.status === 'success' || t.status === 'failed').length})
+                    ✅ Completadas ({dateTickets.filter(t => t.status === 'success' || t.status === 'failed').length})
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setDriverFilter('all')} 
+                    style={{
+                      flex: 0.5,
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: driverFilter === 'all' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      color: driverFilter === 'all' ? 'var(--text-main)' : 'var(--text-muted)',
+                      fontWeight: '700',
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    Todas ({dateTickets.length})
                   </button>
                 </div>
               )}
@@ -4769,8 +4815,7 @@ function App() {
               ) : (
                 (() => {
                   const filteredTickets = dateTickets.filter(t => {
-                    if (driverFilter === 'pending') return !t.status || t.status === 'pending';
-                    if (driverFilter === 'transit') return t.status === 'transit';
+                    if (driverFilter === 'active_reparto') return !t.status || t.status === 'pending' || t.status === 'transit';
                     if (driverFilter === 'completed') return t.status === 'success' || t.status === 'failed';
                     return true;
                   });
