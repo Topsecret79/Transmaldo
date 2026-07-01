@@ -88,6 +88,7 @@ import {
   Download, 
   Trash2, 
   Plus, 
+  ChevronDown,
   LogOut, 
   Lock, 
   User, 
