@@ -6947,6 +6947,7 @@ function App() {
                     <tbody>
                       {visibleShifts.map(s => {
                         const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
+                        const summary = (s.summary && Object.keys(s.summary).length > 0) ? s.summary : getShiftSummary(s.furgoId, s.date);
                         return (
                           <tr key={s.id}>
                             <td style={{ fontWeight: '600' }}>
@@ -6963,12 +6964,12 @@ function App() {
                             <td style={{ fontSize: '0.85rem' }}>{new Date(s.closedAt).toLocaleString()}</td>
                             <td style={{ fontSize: '0.85rem' }}>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                <span>Cli: <strong>{s.summary ? s.summary.ticketsCount : 0}</strong></span> |
-                                <span>TV: <strong>{s.summary ? s.summary.totalTvs : 0}</strong></span> |
-                                <span>PV/GV: <strong>{s.summary ? s.summary.totalPV : 0}/{s.summary ? s.summary.totalGV : 0}</strong></span> |
-                                <span>PM/Cuelgues: <strong>{s.summary ? s.summary.totalPM : 0}/{s.summary ? s.summary.totalCuelgues : 0}</strong></span>
-                                {s.summary && s.summary.totalCODAmount > 0 && (
-                                  <> | <span>Cobrado: <strong style={{ color: 'var(--success)' }}>{s.summary.totalCODAmount.toFixed(2)} €</strong></span></>
+                                <span>Cli: <strong>{summary ? summary.ticketsCount : 0}</strong></span> |
+                                <span>TV: <strong>{summary ? summary.totalTvs : 0}</strong></span> |
+                                <span>PV/GV: <strong>{summary ? summary.totalPV : 0}/{summary ? summary.totalGV : 0}</strong></span> |
+                                <span>PM/Cuelgues: <strong>{summary ? summary.totalPM : 0}/{summary ? summary.totalCuelgues : 0}</strong></span>
+                                {summary && summary.totalCODAmount > 0 && (
+                                  <> | <span>Cobrado: <strong style={{ color: 'var(--success)' }}>{summary.totalCODAmount.toFixed(2)} €</strong></span></>
                                 )}
                               </div>
                             </td>
@@ -8059,7 +8060,7 @@ function App() {
                 const furgoLabel = users.find(u => u.id === targetFurgoId)?.label || targetFurgoId;
                 const existingShift = shifts.find(s => s.furgoId === targetFurgoId && s.date === targetDate);
                 
-                const rawSummary = existingShift ? existingShift.summary : getShiftSummary(targetFurgoId, targetDate);
+                const rawSummary = (existingShift && existingShift.summary && Object.keys(existingShift.summary).length > 0) ? existingShift.summary : getShiftSummary(targetFurgoId, targetDate);
                 const summary = rawSummary || {
                   ticketsCount: 0,
                   totalTvs: 0,
