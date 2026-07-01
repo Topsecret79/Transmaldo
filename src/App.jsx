@@ -394,6 +394,30 @@ function App() {
       localStorage.removeItem('delivery_current_route_id');
     }
   }, [currentRouteId]);
+
+  const [collapsedTicketIds, setCollapsedTicketIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('delivery_collapsed_tickets');
+      const parsed = saved ? JSON.parse(saved) : null;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('delivery_collapsed_tickets', JSON.stringify(collapsedTicketIds));
+  }, [collapsedTicketIds]);
+
+  const toggleCollapse = (id) => {
+    setCollapsedTicketIds(prev => {
+      const current = prev && typeof prev === 'object' ? prev : {};
+      return {
+        ...current,
+        [id]: !current[id]
+      };
+    });
+  };
   const [showCreateRouteFormFields, setShowCreateRouteFormFields] = useState(false);
   const [newRouteName, setNewRouteName] = useState('');
   const [newRouteDate, setNewRouteDate] = useState(new Date().toISOString().split('T')[0]);
