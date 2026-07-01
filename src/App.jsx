@@ -6805,51 +6805,6 @@ function App() {
                 50% { transform: scale(1.15); opacity: 1; }
                 100% { transform: scale(0.9); opacity: 0.6; }
               }
-
-              .map-split-container {
-                display: flex;
-                flex-direction: column;
-                gap: 15px;
-                margin-top: 15px;
-                height: 720px;
-                align-items: stretch;
-              }
-              
-              .map-split-left {
-                width: 100%;
-                height: 320px;
-                flex-shrink: 0;
-              }
-              
-              .map-split-right {
-                width: 100%;
-                flex-grow: 1;
-                overflow-y: auto;
-                padding-right: 5px;
-                border-top: 1px solid var(--panel-border);
-                padding-top: 15px;
-              }
-
-              @media (min-width: 992px) {
-                .map-split-container {
-                  flex-direction: row;
-                  height: 650px;
-                }
-                
-                .map-split-left {
-                  width: 55%;
-                  height: 100% !important;
-                }
-                
-                .map-split-right {
-                  width: 45%;
-                  height: 100% !important;
-                  border-top: none;
-                  padding-top: 0;
-                  border-left: 1px solid var(--panel-border);
-                  padding-left: 15px;
-                }
-              }
             `}</style>
 
             <div className="map-split-container">
@@ -7703,6 +7658,53 @@ function App() {
 
   return (
     <>
+      <style>{`
+        .map-split-container {
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+          margin-top: 15px;
+          height: 720px;
+          align-items: stretch;
+        }
+        
+        .map-split-left {
+          width: 100%;
+          height: 320px;
+          flex-shrink: 0;
+        }
+        
+        .map-split-right {
+          width: 100%;
+          flex-grow: 1;
+          overflow-y: auto;
+          padding-right: 5px;
+          border-top: 1px solid var(--panel-border);
+          padding-top: 15px;
+        }
+
+        @media (min-width: 992px) {
+          .map-split-container {
+            flex-direction: row;
+            height: 650px;
+          }
+          
+          .map-split-left {
+            width: 55%;
+            height: 100% !important;
+          }
+          
+          .map-split-right {
+            width: 45%;
+            height: 100% !important;
+            border-top: none;
+            padding-top: 0;
+            border-left: 1px solid var(--panel-border);
+            padding-left: 15px;
+          }
+        }
+      `}</style>
+
       {alertMsg.text && (
         <div style={{
           position: 'fixed', top: '20px', right: '20px', zIndex: 1100,
