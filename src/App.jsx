@@ -6584,6 +6584,24 @@ function App() {
             </div>
 
             {ticketFilterFurgo !== 'all' && ticketFilterDate && (
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShiftKmsInput('');
+                    setShiftSummaryDate(ticketFilterDate);
+                    setShiftSummaryFurgoId(ticketFilterFurgo);
+                    setShowShiftModal(true);
+                  }}
+                  className="btn btn-secondary btn-small"
+                  style={{ width: 'auto', margin: 0, padding: '8px 16px', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  📊 Ver Resumen en Directo ({ticketFilterDate})
+                </button>
+              </div>
+            )}
+
+            {ticketFilterFurgo !== 'all' && ticketFilterDate && (
               <div className="glass-panel" style={{ marginTop: '10px', marginBottom: '25px', padding: '20px', border: '1px solid var(--panel-border)', borderRadius: '12px', textAlign: 'left', background: 'rgba(255,255,255,0.01)' }}>
                 <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', margin: '0 0 10px 0', fontSize: '1.05rem' }}>
                   ⚡ Optimización de Ruta (Furgoneta: {activeRepartidores.find(r => r.id === ticketFilterFurgo)?.label || ticketFilterFurgo})
