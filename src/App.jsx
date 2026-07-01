@@ -400,6 +400,12 @@ function App() {
     }
   }, [currentRouteId]);
 
+  useEffect(() => {
+    if (ticketDate) {
+      setMapFilterDate(ticketDate);
+    }
+  }, [ticketDate]);
+
   const [collapsedTicketIds, setCollapsedTicketIds] = useState(() => {
     try {
       const saved = localStorage.getItem('delivery_collapsed_tickets');
@@ -1157,6 +1163,9 @@ function App() {
       setActiveRoutes(prev => {
         const merged = [...prev];
         extractedRoutes.forEach(ext => {
+          const isClosed = getShiftStatus(ext.furgoId, ext.date) === 'closed';
+          if (isClosed) return; // Evitar re-introducir rutas cerradas
+          
           const exists = merged.some(r => 
             r.name.toLowerCase() === ext.name.toLowerCase() && 
             r.date === ext.date && 
@@ -3454,7 +3463,11 @@ function App() {
               type="button"
               className="btn btn-secondary btn-small"
               onClick={() => {
-                if (window.confirm(`¿Seguro que quieres finalizar y cerrar la ruta "${activeRouteContext.name}"? Se quitará de la lista de rutas activas.`)) {
+                if (window.confirm(`¿Seguro que quieres finalizar y cerrar la ruta "${activeRouteContext.name}"? Se quitará de la lista de rutas activas y se cerrará el turno de este chofer.`)) {
+                  // Generar resumen y cerrar turno
+                  const summary = getShiftSummary(activeRouteContext.furgoId, activeRouteContext.date);
+                  closeShift(activeRouteContext.furgoId, activeRouteContext.date, summary);
+
                   const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
                   setActiveRoutes(remaining);
                   const nextRoute = remaining[remaining.length - 1];
@@ -3469,6 +3482,7 @@ function App() {
                     setTicketRoute('');
                     setRouteName('');
                   }
+                  triggerAlert('Ruta finalizada, turno cerrado y resumen diario generado con éxito');
                 }
               }}
               style={{ width: 'auto', margin: 0, padding: '6px 12px' }}
