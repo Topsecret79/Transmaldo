@@ -1725,8 +1725,9 @@ function App() {
     if (city) shortParts.push(city);
     
     const finalAddress = shortParts.length > 0 ? shortParts.join(', ') : sug.display_name;
+    const shortAddress = getShortAddressString(finalAddress);
 
-    setAddress(finalAddress);
+    setAddress(shortAddress);
 
     const extractedPostcode = sug.address && sug.address.postcode ? sug.address.postcode : '';
     if (extractedPostcode) {
@@ -1738,7 +1739,7 @@ function App() {
       message: `🟢 Dirección verificada correctamente (GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)})`,
       coords: { lat, lng }
     });
-    setLastVerifiedAddress(sug.display_name);
+    setLastVerifiedAddress(shortAddress);
     setSuggestions([]);
     setSpellingSuggestions([]);
   };
@@ -2069,15 +2070,16 @@ function App() {
         if (coords.postcode) {
           setPostcode(coords.postcode);
         }
-        if (coords.displayName && coords.displayName.trim() !== trimmed) {
-          setAddress(coords.displayName);
-          setLastVerifiedAddress(coords.displayName);
+        const shortDisplayName = coords.displayName ? getShortAddressString(coords.displayName) : trimmed;
+        if (coords.displayName && shortDisplayName !== trimmed) {
+          setAddress(shortDisplayName);
+          setLastVerifiedAddress(shortDisplayName);
         } else {
           setLastVerifiedAddress(trimmed);
         }
         setAddressVerification({ 
           status: 'success', 
-          message: `🟢 Verificada como: ${coords.displayName || trimmed}`,
+          message: `🟢 Verificada como: ${shortDisplayName}`,
           coords
         });
       } else {
