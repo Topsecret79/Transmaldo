@@ -2817,41 +2817,63 @@ function App() {
     let totalCuelgues = 0;
     let totalVieja = 0;
     let totalOtros = 0;
+    let otherDetails = [];
     let totalCODAmount = 0;
     
     dayTickets.forEach(t => {
       totalCODAmount += t.codAmount || 0;
       t.tasks.forEach(task => {
-        const tariff = tariffs.find(tar => tar.id === task.tariffId);
+        const tid = task.tariffId || '';
+        
+        // Handle custom tasks
+        if (tid.startsWith('CUSTOM_')) {
+          totalOtros += task.quantity;
+          const customName = task.name || 'Concepto adicional';
+          const existing = otherDetails.find(d => d.name === customName);
+          if (existing) {
+            existing.quantity += task.quantity;
+          } else {
+            otherDetails.push({ name: customName, quantity: task.quantity });
+          }
+          return;
+        }
+        
+        const tariff = tariffs.find(tar => tar.id === tid);
         if (!tariff) return;
         
         if (tariff.block === 'Televisores') {
-          if (task.tariffId === 'TV_VIEJA_URB' || task.tariffId === 'TV_VIEJA_NO_URB') {
+          if (tid === 'TV_VIEJA_URB' || tid === 'TV_VIEJA_NO_URB') {
             totalVieja += task.quantity;
           } else {
             totalTvs += task.quantity;
-            if (task.tariffId.endsWith('_49')) {
+            if (tid.endsWith('_49')) {
               tvs49 += task.quantity;
-            } else if (task.tariffId.endsWith('_74')) {
+            } else if (tid.endsWith('_74')) {
               tvs74 += task.quantity;
-            } else if (task.tariffId.endsWith('_115')) {
+            } else if (tid.endsWith('_115')) {
               tvs115 += task.quantity;
             }
           }
         } else if (tariff.block === 'Paquetería') {
-          if (task.tariffId.includes('PV')) {
+          if (tid.includes('PV')) {
             totalPV += task.quantity;
-          } else if (task.tariffId.includes('GV')) {
+          } else if (tid.includes('GV')) {
             totalGV += task.quantity;
           }
-        } else if (tariff.block === 'Instalaciones' || task.tariffId.startsWith('PM_') || task.tariffId.startsWith('CUELGUE_')) {
-          if (task.tariffId.startsWith('PM_')) {
+        } else if (tariff.block === 'Instalaciones' || tid.startsWith('PM_') || tid.startsWith('CUELGUE_')) {
+          if (tid.startsWith('PM_')) {
             totalPM += task.quantity;
-          } else if (task.tariffId.startsWith('CUELGUE_')) {
+          } else if (tid.startsWith('CUELGUE_')) {
             totalCuelgues += task.quantity;
           }
         } else {
           totalOtros += task.quantity;
+          const existing = otherDetails.find(d => d.name === tariff.name);
+          if (existing) {
+            existing.quantity += task.quantity;
+          } else {
+            otherDetails.push({ name: tariff.name, quantity: task.quantity });
+          }
         }
       });
     });
@@ -2868,6 +2890,7 @@ function App() {
       totalCuelgues,
       totalVieja,
       totalOtros,
+      otherDetails,
       totalCODAmount
     };
   };
@@ -8117,6 +8140,7 @@ function App() {
                   totalCuelgues: 0,
                   totalVieja: 0,
                   totalOtros: 0,
+                  otherDetails: [],
                   totalCODAmount: 0
                 };
                 
@@ -8179,6 +8203,23 @@ function App() {
                        <span>Otros Accesorios:</span>
                        <strong>{summary.totalOtros}</strong>
                     </div>
+                    {summary.totalOtros > 0 && summary.otherDetails && summary.otherDetails.length > 0 && (
+                      <div style={{ 
+                        marginLeft: '15px', 
+                        paddingLeft: '12px', 
+                        fontSize: '0.85rem', 
+                        color: 'var(--text-muted)', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: '2px', 
+                        borderLeft: '2px solid var(--panel-border)', 
+                        margin: '2px 0 6px 0' 
+                      }}>
+                        {summary.otherDetails.map((det, idx) => (
+                          <div key={idx}>• {det.name}: <strong>{det.quantity}</strong></div>
+                        ))}
+                      </div>
+                    )}
                     {summary.totalCODAmount > 0 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', color: 'var(--success)', fontWeight: '600' }}>
                          <span>Total Dinero Cobrado:</span>
