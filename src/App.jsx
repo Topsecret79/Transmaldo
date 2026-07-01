@@ -3360,7 +3360,10 @@ function App() {
     }
 
     const itemsPaqueteria = tariffs.filter(t => t.block === 'Paquetería');
-    const itemsOtros = tariffs.filter(t => t.block === 'Otros');
+    const itemsOtros = tariffs.filter(t => {
+      const isTvInstallation = t.id.startsWith('PM_BAS_') || t.id.startsWith('PM_COMP_') || t.id.startsWith('CUELGUE_');
+      return t.block === 'Otros' || (t.block === 'Instalaciones' && !isTvInstallation);
+    });
 
     const activeCheckFurgo = editingTicketId ? editingFurgoId : currentUser.id;
     const isClosed = getShiftStatus(activeCheckFurgo, ticketDate) === 'closed' && !isAdminOrSuper;
