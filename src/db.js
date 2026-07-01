@@ -361,6 +361,29 @@ export async function syncFromCloud() {
           localStorage.setItem(`delivery_${s.key}`, s.value);
         }
       });
+
+      // Pull Driver Locations from Supabase
+      const locations = {};
+      settings.forEach(s => {
+        if (s.key && s.key.startsWith('loc_')) {
+          const fid = s.key.substring(4);
+          try {
+            const val = JSON.parse(s.value);
+            if (val && typeof val === 'object' && val.lat !== undefined && val.lng !== undefined) {
+              locations[fid] = {
+                lat: parseFloat(val.lat),
+                lng: parseFloat(val.lng),
+                updatedAt: val.updatedAt || new Date().toISOString()
+              };
+            }
+          } catch (e) {
+            console.error(`Error parsing location for ${fid}:`, e);
+          }
+        }
+      });
+      if (Object.keys(locations).length > 0) {
+        localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+      }
     }
 
     notifySync();
