@@ -4756,6 +4756,7 @@ function App() {
                       {filteredTickets.map((t) => {
                         const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
                         const stopIndex = dateTickets.findIndex(ticket => ticket.id === t.id) + 1;
+                        const isCollapsed = !!collapsedTicketIds[t.id];
                         
                         let statusBadge = <span className="badge badge-warning" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>🟡 Pendiente</span>;
                         if (t.status === 'success') {
@@ -4764,6 +4765,54 @@ function App() {
                           statusBadge = <span className="badge badge-danger" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#ef4444', color: '#fff' }}>🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>;
                         } else if (t.status === 'transit') {
                           statusBadge = <span className="badge" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#38bdf8', color: '#0f172a' }}>🔵 En Camino</span>;
+                        }
+
+                        if (isCollapsed) {
+                          return (
+                            <div 
+                              key={t.id} 
+                              className="driver-card" 
+                              style={{
+                                borderLeft: t.status === 'transit' ? '4px solid #38bdf8' : t.status === 'success' ? '4px solid #10b981' : t.status === 'failed' ? '4px solid #ef4444' : '1px solid var(--panel-border)',
+                                textAlign: 'left',
+                                padding: '10px 14px'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                                <div 
+                                  onClick={() => toggleCollapse(t.id)} 
+                                  style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, cursor: 'pointer', overflow: 'hidden' }}
+                                >
+                                  <span style={{ color: 'var(--primary)', display: 'inline-flex', transform: 'rotate(-90deg)', transition: 'transform 0.2s', marginRight: '2px' }} title="Expandir parada">
+                                    <ChevronDown size={18} />
+                                  </span>
+                                  <div className="driver-card-index" style={{ margin: 0, padding: '2px 8px', fontSize: '0.85rem', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>#{stopIndex}</div>
+                                  <div style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                                    {getShortAddressString(t.address)}
+                                  </div>
+                                  {t.postcode && (
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--panel-border)', whiteSpace: 'nowrap' }}>
+                                      {t.postcode}
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                  {statusBadge}
+                                  <a 
+                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="btn btn-secondary btn-small"
+                                    style={{ display: 'inline-flex', padding: '8px', margin: 0, width: 'auto', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)' }}
+                                    title="Iniciar GPS"
+                                  >
+                                    <MapPin size={14} color="var(--primary)" />
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+                          );
                         }
 
                         return (
@@ -4778,6 +4827,13 @@ function App() {
                             {/* Cabecera de la Tarjeta */}
                             <div className="driver-card-header">
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, flexWrap: 'wrap' }}>
+                                <span 
+                                  onClick={() => toggleCollapse(t.id)} 
+                                  style={{ color: 'var(--primary)', cursor: 'pointer', display: 'inline-flex', marginRight: '4px', transition: 'transform 0.2s' }}
+                                  title="Minimizar parada"
+                                >
+                                  <ChevronDown size={18} />
+                                </span>
                                 <div className="driver-card-index">#{stopIndex}</div>
                                 <div className="driver-card-title">{t.customerName}</div>
                                 {t.notes && t.notes.startsWith('[Ruta Original: ') && (() => {
@@ -4920,7 +4976,8 @@ function App() {
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              gap: '10px'
+                              gap: '10px',
+                              marginTop: '10px'
                             }}>
                               <div style={{ fontSize: '0.85rem', lineHeight: '1.3' }}>
                                 {t.postcode && (
@@ -4952,7 +5009,7 @@ function App() {
 
                             {/* Cobro Contra Reembolso */}
                             {t.codAmount > 0 && (
-                              <div style={{ alignSelf: 'flex-start' }}>
+                              <div style={{ alignSelf: 'flex-start', marginTop: '10px' }}>
                                 <div className={`driver-card-cod ${t.status === 'success' ? 'success' : t.status === 'failed' ? 'failed' : ''}`}>
                                   💵 {t.status === 'success' ? 'Cobrado: ' : t.status === 'failed' ? 'No cobrado: ' : 'Cobrar en Destino: '} 
                                   <strong>{t.codAmount.toFixed(2)} €</strong>
@@ -4961,7 +5018,7 @@ function App() {
                             )}
 
                             {/* Tareas / Servicios */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '10px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '10px', marginTop: '10px' }}>
                               <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)' }}>Servicios:</div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                 {t.tasks.map((task, idx) => {
