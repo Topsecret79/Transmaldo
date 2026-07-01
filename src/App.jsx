@@ -4565,7 +4565,7 @@ function App() {
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', color: 'var(--primary)' }}>
               🗺️ Mapa de Mi Ruta ({targetDate})
             </h3>
-            <div style={{ position: 'relative' }}>
+            <div>
               <div 
                 key={`driver-map-${targetDate}-${activeTab}`}
                 id="driver-map" 
@@ -4579,8 +4579,8 @@ function App() {
                   zIndex: 1
                 }}
               ></div>
-              {renderMapFloatingPanel()}
             </div>
+            {renderMapStopsList(false)}
           </div>
         )}
 
@@ -5687,6 +5687,219 @@ function App() {
 );
 };
 
+  const renderMapStopsList = (isAdminMap) => {
+    const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
+    
+    const dayTickets = (tickets || []).filter(t => {
+      if (!t) return false;
+      if (t.date !== targetDate) return false;
+      if (isAdminMap) {
+        if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+      } else {
+        if (t.furgoId !== currentUser?.id) return false;
+      }
+      return true;
+    });
+
+    const sortedDayTickets = sortTicketsByRouteOrder(dayTickets);
+
+    if (sortedDayTickets.length === 0) {
+      return (
+        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          No hay paradas planificadas para este día.
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 5px 0' }}>
+          📋 Secuencia de Paradas ({sortedDayTickets.length})
+        </h3>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
+          {sortedDayTickets.map((t, index) => {
+            const isSuccess = t.status === 'success';
+            const isFailed = t.status === 'failed';
+            const isTransit = t.status === 'transit';
+            const statusColor = isSuccess ? '#10b981' : isFailed ? '#ef4444' : isTransit ? '#38bdf8' : '#fbbf24';
+            const statusLabel = isSuccess ? 'Entregado' : isFailed ? 'Fallido' : isTransit ? 'En Camino' : 'Pendiente';
+            
+            const isSelected = selectedMapTicket && selectedMapTicket.id === t.id;
+            const furgoLabel = users.find(u => u.id === t.furgoId)?.label || t.furgoId || '';
+
+            return (
+              <div 
+                key={t.id}
+                onClick={() => {
+                  setSelectedMapTicket(t);
+                  const latNum = parseFloat(t.lat);
+                  const lngNum = parseFloat(t.lng);
+                  if (mapInstanceRef.current && !isNaN(latNum) && !isNaN(lngNum)) {
+                    mapInstanceRef.current.setView([latNum, lngNum], 16);
+                  }
+                }}
+                className="glass-panel"
+                style={{
+                  padding: '15px',
+                  border: isSelected ? '2px solid var(--primary)' : '1px solid var(--panel-border)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  background: isSelected ? 'rgba(79, 70, 229, 0.08)' : 'rgba(255, 255, 255, 0.01)',
+                  textAlign: 'left',
+                  boxShadow: isSelected ? '0 0 15px rgba(79, 70, 229, 0.2)' : 'none',
+                  borderRadius: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '26px',
+                      height: '26px',
+                      borderRadius: '50%',
+                      background: statusColor,
+                      color: '#000',
+                      fontWeight: '800',
+                      fontSize: '0.85rem',
+                      boxShadow: `0 0 8px ${statusColor}40`
+                    }}>
+                      {index + 1}
+                    </span>
+                    <strong style={{ fontSize: '0.95rem', color: '#fff' }}>{t.customerName || 'Cliente sin nombre'}</strong>
+                  </div>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    background: `${statusColor}20`,
+                    color: statusColor,
+                    fontWeight: '800',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {statusLabel}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <span style={{ flexShrink: 0 }}>📍</span>
+                    <span>{getShortAddressString(t.address)} {t.postcode && `(CP ${t.postcode})`}</span>
+                  </div>
+                  {t.phone && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ flexShrink: 0 }}>📞</span>
+                      <a href={`tel:${t.phone}`} style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: '600' }} onClick={e => e.stopPropagation()}>{t.phone}</a>
+                    </div>
+                  )}
+                  {isAdminMap && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      <span>🚚</span>
+                      <span>Vehículo: <strong>{furgoLabel}</strong></span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Resumen de artículos */}
+                {((t.tasks || []).length > 0 || (t.codAmount && parseFloat(t.codAmount) > 0)) && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '4px', paddingTop: '6px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                    {(t.tasks || []).map((task, idx) => {
+                      if (!task) return null;
+                      const tariff = tariffs.find(tar => tar.id === task.tariffId);
+                      const taskName = tariff ? tariff.name : task.tariffId;
+                      return (
+                        <span key={idx} style={{
+                          fontSize: '0.7rem',
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          color: 'var(--text-main)',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontWeight: '500'
+                        }}>
+                          {task.quantity}x {taskName}
+                        </span>
+                      );
+                    })}
+                    {t.codAmount && parseFloat(t.codAmount) > 0 && (
+                      <span style={{
+                        fontSize: '0.7rem',
+                        background: 'rgba(251, 191, 36, 0.15)',
+                        border: '1px solid rgba(251, 191, 36, 0.3)',
+                        color: '#fbbf24',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontWeight: '700'
+                      }}>
+                        💵 Reembolso: {parseFloat(t.codAmount).toFixed(2)} €
+                      </span>
+                    )}
+                  </div>
+                )}
+                
+                {/* Notas y motivo de fallo en panel expandido */}
+                {isSelected && (
+                  <div style={{
+                    marginTop: '5px',
+                    paddingTop: '8px',
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                    fontSize: '0.8rem',
+                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}>
+                    {t.notes && (
+                      <div>
+                        <strong>Notas:</strong> {t.notes}
+                      </div>
+                    )}
+                    {isFailed && t.failureReason && (
+                      <div style={{ color: '#ef4444' }}>
+                        <strong>Motivo de Fallo:</strong> {t.failureReason}
+                      </div>
+                    )}
+                    
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                      <a 
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address || '')}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="btn btn-primary btn-small"
+                        style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, height: 'auto' }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        🧭 Navegar
+                      </a>
+                      
+                      {isAdminMap && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startEditingTicket(t);
+                          }}
+                          className="btn btn-secondary btn-small"
+                          style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto' }}
+                        >
+                          ✏️ Editar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   // --- SECCIÓN DE BÚSQUEDA GENERAL ---
   const renderSearchSection = () => {
     return (
@@ -6589,7 +6802,7 @@ function App() {
               }
             `}</style>
 
-            <div style={{ position: 'relative' }}>
+            <div>
               <div 
                 key={`admin-map-${mapFilterDate}-${mapFilterFurgo}-${activeTab}`}
                 id="admin-map" 
@@ -6602,7 +6815,6 @@ function App() {
                   zIndex: 1
                 }}
               ></div>
-              {renderMapFloatingPanel()}
             </div>
             
             <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
@@ -6627,6 +6839,8 @@ function App() {
                 <span>Repartidor en Vivo (Últimas 6h)</span>
               </div>
             </div>
+
+            {renderMapStopsList(true)}
 
             {mapFilterFurgo !== 'all' && (
               <div className="glass-panel" style={{ marginTop: '20px', padding: '20px', border: '1px solid var(--panel-border)', borderRadius: '12px', textAlign: 'left', background: 'rgba(255,255,255,0.01)' }}>
