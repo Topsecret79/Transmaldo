@@ -2808,6 +2808,9 @@ function App() {
     const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date && t.status !== 'failed');
     
     let totalTvs = 0;
+    let tvs49 = 0;
+    let tvs74 = 0;
+    let tvs115 = 0;
     let totalPV = 0;
     let totalGV = 0;
     let totalPM = 0;
@@ -2827,6 +2830,13 @@ function App() {
             totalVieja += task.quantity;
           } else {
             totalTvs += task.quantity;
+            if (task.tariffId.endsWith('_49')) {
+              tvs49 += task.quantity;
+            } else if (task.tariffId.endsWith('_74')) {
+              tvs74 += task.quantity;
+            } else if (task.tariffId.endsWith('_115')) {
+              tvs115 += task.quantity;
+            }
           }
         } else if (tariff.block === 'Paquetería') {
           if (task.tariffId.includes('PV')) {
@@ -2849,6 +2859,9 @@ function App() {
     return {
       ticketsCount: dayTickets.length,
       totalTvs,
+      tvs49,
+      tvs74,
+      tvs115,
       totalPV,
       totalGV,
       totalPM,
@@ -8095,6 +8108,9 @@ function App() {
                 const summary = rawSummary || {
                   ticketsCount: 0,
                   totalTvs: 0,
+                  tvs49: 0,
+                  tvs74: 0,
+                  tvs115: 0,
                   totalPV: 0,
                   totalGV: 0,
                   totalPM: 0,
@@ -8122,6 +8138,23 @@ function App() {
                        <span>TVs Entregadas:</span>
                        <strong>{summary.totalTvs}</strong>
                     </div>
+                    {summary.totalTvs > 0 && (
+                      <div style={{ 
+                        marginLeft: '15px', 
+                        paddingLeft: '12px', 
+                        fontSize: '0.85rem', 
+                        color: 'var(--text-muted)', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        gap: '2px', 
+                        borderLeft: '2px solid var(--panel-border)', 
+                        margin: '2px 0 6px 0' 
+                      }}>
+                        <div>• Medianas (&le; 49"): <strong>{summary.tvs49 || 0}</strong></div>
+                        <div>• Grandes (50" a 74"): <strong>{summary.tvs74 || 0}</strong></div>
+                        <div>• Gigantes (75" a 115"): <strong>{summary.tvs115 || 0}</strong></div>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                        <span>Pequeño Volumen (PV):</span>
                        <strong>{summary.totalPV}</strong>
