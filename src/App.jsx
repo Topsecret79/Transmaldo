@@ -3361,19 +3361,57 @@ function App() {
 
     const activeRepartidores = users.filter(u => u.role === 'repartidor');
 
+    const todayStr = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    const formatSpanishDate = (dateStr) => {
+      if (!dateStr) return '';
+      const parts = dateStr.split('-');
+      if (parts.length < 3) return dateStr;
+      return `${parts[2]}/${parts[1]}`;
+    };
+
+    const handleQuickCreate = (targetDate, label) => {
+      const defaultName = `Ruta ${label} (${formatSpanishDate(targetDate)})`;
+      const selectedFurgoId = currentUser?.role === 'repartidor' 
+        ? currentUser.id 
+        : (newRouteFurgoId || (activeRepartidores[0]?.id || ''));
+      
+      const newRoute = {
+        id: `${defaultName}|${targetDate}|${selectedFurgoId}`,
+        name: defaultName,
+        date: targetDate,
+        furgoId: selectedFurgoId
+      };
+
+      setActiveRoutes(prev => [...prev, newRoute]);
+      setCurrentRouteId(newRoute.id);
+      setShowCreateRouteFormFields(false);
+
+      setTicketDate(targetDate);
+      setTicketRoute(selectedFurgoId);
+      setRouteName(defaultName);
+      setFormStep(1);
+      setNewRouteName('');
+      
+      triggerAlert(`🚀 Ruta "${defaultName}" creada para el ${formatSpanishDate(targetDate)}. ¡Añade las paradas!`);
+    };
+
     const handleCreateRouteSubmit = (e) => {
       e.preventDefault();
-      const cleanName = newRouteName.trim();
-      if (!cleanName) {
-        triggerAlert('Por favor, introduce un nombre para la ruta', 'error');
-        return;
-      }
+      const cleanName = newRouteName.trim() || `Ruta ${formatSpanishDate(newRouteDate)}`;
       
       const selectedFurgoId = currentUser?.role === 'repartidor' 
         ? currentUser.id 
         : (newRouteFurgoId || (activeRepartidores[0]?.id || ''));
       if (!selectedFurgoId) {
         triggerAlert('Por favor, asigna una furgoneta o chofer', 'error');
+        return;
+      }
+      if (!newRouteDate) {
+        triggerAlert('Por favor, selecciona una fecha para la ruta', 'error');
         return;
       }
 
@@ -3407,16 +3445,68 @@ function App() {
           Crear Nueva Ruta
         </h2>
 
+        {/* Botones de creación rápida */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '5px' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => handleQuickCreate(todayStr, 'Hoy')}
+            style={{ 
+              height: '56px', 
+              background: 'rgba(99, 102, 241, 0.1)', 
+              color: '#fff', 
+              border: '1px solid var(--primary)',
+              borderRadius: '10px',
+              fontSize: '0.88rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ fontWeight: '800' }}>📅 Ruta para HOY</span>
+            <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>({formatSpanishDate(todayStr)})</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => handleQuickCreate(tomorrowStr, 'Mañana')}
+            style={{ 
+              height: '56px', 
+              background: 'rgba(168, 85, 247, 0.1)', 
+              color: '#fff', 
+              border: '1px solid #a855f7',
+              borderRadius: '10px',
+              fontSize: '0.88rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ fontWeight: '800', color: '#c084fc' }}>📅 Ruta para MAÑANA</span>
+            <span style={{ fontSize: '0.75rem', opacity: 0.8, color: '#c084fc' }}>({formatSpanishDate(tomorrowStr)})</span>
+          </button>
+        </div>
+
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', margin: '5px 0' }}>
+          — O CONFIGURA UNA FECHA PERSONALIZADA ABAJO —
+        </div>
+
         <form onSubmit={handleCreateRouteSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div className="input-group">
-            <span className="input-label">Nombre de la Ruta</span>
+            <span className="input-label">Nombre de la Ruta (Opcional)</span>
             <input 
               type="text" 
               className="form-input" 
-              placeholder="Ej: Ruta Sabadell, Ruta Norte, Ruta Especial..."
+              placeholder={`Ej: Ruta ${formatSpanishDate(newRouteDate)}`}
               value={newRouteName}
               onChange={(e) => setNewRouteName(e.target.value)}
-              required
             />
           </div>
 
@@ -3428,7 +3518,6 @@ function App() {
                 className="form-input" 
                 value={newRouteDate}
                 onChange={(e) => setNewRouteDate(e.target.value)}
-                required
               />
             </div>
 
@@ -3439,7 +3528,6 @@ function App() {
                   className="form-input" 
                   value={newRouteFurgoId}
                   onChange={(e) => setNewRouteFurgoId(e.target.value)}
-                  required
                 >
                   <option value="" disabled>Selecciona furgoneta...</option>
                   {activeRepartidores.map(u => (
@@ -3564,36 +3652,49 @@ function App() {
                 • Paradas en esta ruta: {tickets.filter(t => t.date === activeRouteContext.date && t.furgoId === activeRouteContext.furgoId).length}
               </span>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary btn-small"
-              onClick={() => {
-                if (window.confirm(`¿Seguro que quieres finalizar y cerrar la ruta "${activeRouteContext.name}"? Se quitará de la lista de rutas activas y se cerrará el turno de este chofer.`)) {
-                  // Generar resumen y cerrar turno
-                  const summary = getShiftSummary(activeRouteContext.furgoId, activeRouteContext.date);
-                  closeShift(activeRouteContext.furgoId, activeRouteContext.date, summary);
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => {
+                  setCurrentRouteId(null);
+                  setShowCreateRouteFormFields(true);
+                }}
+                style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)' }}
+              >
+                ➕ Nueva Ruta / Fecha
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => {
+                  if (window.confirm(`¿Seguro que quieres finalizar y cerrar la ruta "${activeRouteContext.name}"? Se quitará de la lista de rutas activas y se cerrará el turno de este chofer.`)) {
+                    // Generar resumen y cerrar turno
+                    const summary = getShiftSummary(activeRouteContext.furgoId, activeRouteContext.date);
+                    closeShift(activeRouteContext.furgoId, activeRouteContext.date, summary);
 
-                  const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
-                  setActiveRoutes(remaining);
-                  const nextRoute = remaining[remaining.length - 1];
-                  if (nextRoute) {
-                    setCurrentRouteId(nextRoute.id);
-                    setTicketDate(nextRoute.date);
-                    setTicketRoute(nextRoute.furgoId);
-                    setRouteName(nextRoute.name);
-                  } else {
-                    setCurrentRouteId(null);
-                    setTicketDate(new Date().toISOString().split('T')[0]);
-                    setTicketRoute('');
-                    setRouteName('');
+                    const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
+                    setActiveRoutes(remaining);
+                    const nextRoute = remaining[remaining.length - 1];
+                    if (nextRoute) {
+                      setCurrentRouteId(nextRoute.id);
+                      setTicketDate(nextRoute.date);
+                      setTicketRoute(nextRoute.furgoId);
+                      setRouteName(nextRoute.name);
+                    } else {
+                      setCurrentRouteId(null);
+                      setTicketDate(new Date().toISOString().split('T')[0]);
+                      setTicketRoute('');
+                      setRouteName('');
+                    }
+                    triggerAlert('Ruta finalizada, turno cerrado y resumen diario generado con éxito');
                   }
-                  triggerAlert('Ruta finalizada, turno cerrado y resumen diario generado con éxito');
-                }
-              }}
-              style={{ width: 'auto', margin: 0, padding: '6px 12px' }}
-            >
-              Finalizar esta Ruta
-            </button>
+                }}
+                style={{ width: 'auto', margin: 0, padding: '6px 12px' }}
+              >
+                Finalizar esta Ruta
+              </button>
+            </div>
           </div>
         )}
 
