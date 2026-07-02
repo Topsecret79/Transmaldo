@@ -1331,10 +1331,10 @@ function App() {
   }, [formTvs, otherQuantities]);
 
   useEffect(() => {
-    if (activeRouteContext && activeRouteContext.date) {
+    if (activeRouteContext && activeRouteContext.date && currentUser?.role !== 'repartidor') {
       setShiftSummaryDate(activeRouteContext.date);
     }
-  }, [activeRouteContext]);
+  }, [activeRouteContext, currentUser]);
 
   useEffect(() => {
     const mapEl = document.getElementById('form-mini-map');
@@ -2910,6 +2910,28 @@ function App() {
       const kms = parseFloat(shiftKmsInput) || 0;
       saveRouteKms(furgoId, date, kms);
       closeShift(furgoId, date, summary);
+
+      // Remove from activeRoutes
+      setActiveRoutes(prev => {
+        const remaining = prev.filter(r => !(r.furgoId === furgoId && r.date === date));
+        const targetRouteId = prev.find(r => r.furgoId === furgoId && r.date === date)?.id;
+        if (currentRouteId === targetRouteId) {
+          const nextRoute = remaining[remaining.length - 1];
+          if (nextRoute) {
+            setCurrentRouteId(nextRoute.id);
+            setTicketDate(nextRoute.date);
+            setTicketRoute(nextRoute.furgoId);
+            setRouteName(nextRoute.name);
+          } else {
+            setCurrentRouteId(null);
+            setTicketDate(new Date().toISOString().split('T')[0]);
+            setTicketRoute('');
+            setRouteName('');
+          }
+        }
+        return remaining;
+      });
+
       triggerAlert('Turno cerrado y resumen diario generado con éxito');
       setShowShiftModal(false);
       loadData();
