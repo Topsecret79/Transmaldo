@@ -6861,6 +6861,7 @@ function App() {
                                  CP {t.postcode}
                                </span>
                              )}
+                             {t.lat && t.lng ? '🟢 ' : '🔴 '}
                              <span>{getShortAddressString(t.address || '')}</span>
                              {t.address && (
                                <a 
