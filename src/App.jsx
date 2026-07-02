@@ -1954,7 +1954,7 @@ function App() {
     }
     mapSelectTimerRef.current = setTimeout(() => {
       setSelectedMapTicket(null);
-    }, 8000);
+    }, 60000);
   };
 
   const handleMoveTicketOrder = async (ticketId, direction) => {
@@ -4812,7 +4812,7 @@ function App() {
               🗺️ Mapa de Mi Ruta ({targetDate})
             </h3>
             <div className="map-split-container">
-              <div className="map-split-left">
+              <div className="map-split-left" style={{ position: 'relative' }}>
                 <div 
                   id="driver-map" 
                   style={{ 
@@ -4825,6 +4825,7 @@ function App() {
                     zIndex: 1
                   }}
                 ></div>
+                {renderMapFloatingPanel()}
               </div>
               
               <div className="map-split-right">
@@ -7307,7 +7308,7 @@ function App() {
             `}</style>
 
             <div className="map-split-container">
-              <div className="map-split-left">
+              <div className="map-split-left" style={{ position: 'relative' }}>
                 <div 
                   id="admin-map" 
                   style={{ 
@@ -7319,6 +7320,7 @@ function App() {
                     zIndex: 1
                   }}
                 ></div>
+                {renderMapFloatingPanel()}
               </div>
               
               <div className="map-split-right">
@@ -8271,7 +8273,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v68
+            🔄 v69
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
