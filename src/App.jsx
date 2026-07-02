@@ -1958,20 +1958,25 @@ function App() {
   };
 
   const handleMoveTicketOrder = async (ticketId, direction) => {
-    const currentList = getFilteredTickets();
-    const idx = currentList.findIndex(t => t.id === ticketId);
+    const ticketA = tickets.find(t => t.id === ticketId);
+    if (!ticketA) return;
+
+    const dayTickets = sortTicketsByRouteOrder(
+      tickets.filter(t => t.date === ticketA.date && t.furgoId === ticketA.furgoId)
+    );
+
+    const idx = dayTickets.findIndex(t => t.id === ticketId);
     if (idx === -1) return;
 
     if (direction === 'up' && idx === 0) return;
-    if (direction === 'down' && idx === currentList.length - 1) return;
+    if (direction === 'down' && idx === dayTickets.length - 1) return;
 
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    const ticketA = currentList[idx];
-    const ticketB = currentList[targetIdx];
+    const ticketB = dayTickets[targetIdx];
 
     const updatedTickets = tickets.map(t => {
       if (t.date === ticketA.date && t.furgoId === ticketA.furgoId) {
-        const itemIdx = currentList.findIndex(x => x.id === t.id);
+        const itemIdx = dayTickets.findIndex(x => x.id === t.id);
         let order = t.routeOrder;
         if (order === undefined || order === null || order === '') {
           order = itemIdx + 1;
@@ -5247,7 +5252,65 @@ function App() {
                                   <span style={{ color: 'var(--primary)', display: 'inline-flex', transform: 'rotate(-90deg)', transition: 'transform 0.2s', marginRight: '2px' }} title="Expandir parada">
                                     <ChevronDown size={18} />
                                   </span>
-                                  <div className="driver-card-index" style={{ margin: 0, padding: '2px 8px', fontSize: '0.85rem', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>#{stopIndex}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                                    <div className="driver-card-index" style={{ margin: 0, padding: '2px 8px', fontSize: '0.85rem', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>#{stopIndex}</div>
+                                    {(!isClosed || isAdminOrSuper) && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleMoveTicketOrder(t.id, 'up');
+                                          }}
+                                          className="btn btn-secondary btn-small"
+                                          style={{ 
+                                            padding: 0, 
+                                            fontSize: '0.55rem', 
+                                            margin: 0, 
+                                            visibility: stopIndex === 1 ? 'hidden' : 'visible', 
+                                            minWidth: '18px', 
+                                            height: '12px', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            borderRadius: '3px',
+                                            background: 'rgba(255,255,255,0.08)',
+                                            border: '1px solid var(--panel-border)',
+                                            color: '#fff'
+                                          }}
+                                          title="Subir parada"
+                                        >
+                                          ▲
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleMoveTicketOrder(t.id, 'down');
+                                          }}
+                                          className="btn btn-secondary btn-small"
+                                          style={{ 
+                                            padding: 0, 
+                                            fontSize: '0.55rem', 
+                                            margin: 0, 
+                                            visibility: stopIndex === dateTickets.length ? 'hidden' : 'visible', 
+                                            minWidth: '18px', 
+                                            height: '12px', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            borderRadius: '3px',
+                                            background: 'rgba(255,255,255,0.08)',
+                                            border: '1px solid var(--panel-border)',
+                                            color: '#fff'
+                                          }}
+                                          title="Bajar parada"
+                                        >
+                                          ▼
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                   <div style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }} title={`${getShortAddressString(t.address)}${t.postcode ? ` - CP ${t.postcode}` : ''}`}>
                                     {t.lat && t.lng ? '🟢 ' : '🔴 '}
                                     {getShortAddressString(t.address)}{t.postcode ? ` - CP ${t.postcode}` : ''}
@@ -5306,7 +5369,65 @@ function App() {
                                 >
                                   <ChevronDown size={18} />
                                 </span>
-                                <div className="driver-card-index">#{stopIndex}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                                  <div className="driver-card-index">#{stopIndex}</div>
+                                  {(!isClosed || isAdminOrSuper) && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleMoveTicketOrder(t.id, 'up');
+                                        }}
+                                        className="btn btn-secondary btn-small"
+                                        style={{ 
+                                          padding: 0, 
+                                          fontSize: '0.55rem', 
+                                          margin: 0, 
+                                          visibility: stopIndex === 1 ? 'hidden' : 'visible', 
+                                          minWidth: '18px', 
+                                          height: '12px', 
+                                          display: 'flex', 
+                                          alignItems: 'center', 
+                                          justifyContent: 'center',
+                                          borderRadius: '3px',
+                                          background: 'rgba(255,255,255,0.08)',
+                                          border: '1px solid var(--panel-border)',
+                                          color: '#fff'
+                                        }}
+                                        title="Subir parada"
+                                      >
+                                        ▲
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleMoveTicketOrder(t.id, 'down');
+                                        }}
+                                        className="btn btn-secondary btn-small"
+                                        style={{ 
+                                          padding: 0, 
+                                          fontSize: '0.55rem', 
+                                          margin: 0, 
+                                          visibility: stopIndex === dateTickets.length ? 'hidden' : 'visible', 
+                                          minWidth: '18px', 
+                                          height: '12px', 
+                                          display: 'flex', 
+                                          alignItems: 'center', 
+                                          justifyContent: 'center',
+                                          borderRadius: '3px',
+                                          background: 'rgba(255,255,255,0.08)',
+                                          border: '1px solid var(--panel-border)',
+                                          color: '#fff'
+                                        }}
+                                        title="Bajar parada"
+                                      >
+                                        ▼
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                                 <div className="driver-card-title">{t.customerName}</div>
                                 {t.notes && t.notes.startsWith('[Ruta Original: ') && (() => {
                                   const endIdx = t.notes.indexOf(']');
@@ -8150,7 +8271,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v67
+            🔄 v68
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
