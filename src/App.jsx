@@ -8704,7 +8704,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v76
+            🔄 v77
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
@@ -8914,21 +8914,46 @@ function App() {
                     {dayTickets.length === 0 ? (
                       <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>No hay repartos registrados.</div>
                     ) : (
-                      <div style={{ maxHeight: '200px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '6px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ maxHeight: '250px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '6px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {dayTickets.map((t, idx) => (
-                          <div key={t.id} style={{ fontSize: '0.85rem', borderBottom: idx < dayTickets.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', paddingBottom: idx < dayTickets.length - 1 ? '6px' : '0' }}>
+                          <div key={t.id} style={{ fontSize: '0.85rem', borderBottom: idx < dayTickets.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', paddingBottom: idx < dayTickets.length - 1 ? '8px' : '0' }}>
                             <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>{idx + 1}. {t.customerName}</div>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', marginBottom: '4px' }}>
+                            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', marginBottom: '6px' }}>
                               <MapPin size={11} /> {t.address}
                             </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                               {t.tasks && t.tasks.map((task, sIdx) => {
                                 const tariff = tariffs.find(tar => tar.id === task.tariffId);
-                                const name = task.name || (tariff ? tariff.name : task.tariffId);
+                                const baseName = task.name || (tariff ? tariff.name : task.tariffId);
+                                const isTv = tariff && tariff.block === 'Televisores' && task.tariffId !== 'TV_VIEJA_URB' && task.tariffId !== 'TV_VIEJA_NO_URB';
+                                const isPaqueteria = tariff && tariff.block === 'Paquetería';
+                                
+                                let label = baseName;
+                                let extra = null;
+
+                                if (isTv) {
+                                  // Mostrar marca y pulgadas de la TV
+                                  const brand = task.brand && task.brand !== 'Genérica' ? task.brand : null;
+                                  const inches = task.inches ? `${task.inches}"` : null;
+                                  if (brand || inches) {
+                                    extra = [brand, inches].filter(Boolean).join(' ');
+                                  }
+                                } else if (isPaqueteria) {
+                                  // El nombre ya lleva el artículo entre paréntesis, no hace falta extra
+                                  label = baseName;
+                                }
+
                                 return (
-                                  <span key={sIdx} className="badge badge-primary" style={{ fontSize: '0.72rem', padding: '2px 6px', background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)', border: '1px solid rgba(79, 70, 229, 0.15)' }}>
-                                    {name} (x{task.quantity})
-                                  </span>
+                                  <div key={sIdx} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.72rem', padding: '2px 8px', background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)', border: '1px solid rgba(79, 70, 229, 0.15)', borderRadius: '6px', fontWeight: '600' }}>
+                                      {label} (x{task.quantity})
+                                    </span>
+                                    {extra && (
+                                      <span style={{ fontSize: '0.7rem', padding: '2px 7px', background: 'rgba(251, 191, 36, 0.1)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.25)', borderRadius: '6px', fontWeight: '600' }}>
+                                        📺 {extra}
+                                      </span>
+                                    )}
+                                  </div>
                                 );
                               })}
                             </div>
