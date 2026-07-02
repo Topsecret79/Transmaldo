@@ -4135,21 +4135,15 @@ function App() {
                       </a>
                     </div>
 
-                    <div style={{ position: 'relative' }}>
+                    {/* El mapa se mantiene en el DOM pero oculto para evitar errores de inicialización de Leaflet */}
+                    <div style={{ display: 'none' }}>
                       <div 
                         id="form-mini-map" 
                         style={{ 
-                          height: '200px', 
-                          width: '100%', 
-                          borderRadius: '6px', 
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          background: '#1e1e1e',
-                          zIndex: 1 
+                          height: '0px', 
+                          width: '0px'
                         }}
                       ></div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', textAlign: 'left', fontStyle: 'italic', lineHeight: '1.3' }}>
-                        💡 Arrastra el marcador en el mapa o haz clic para ajustar la posición exacta de entrega.
-                      </div>
                     </div>
 
                     {/* Editor de Coordenadas Manuales */}
@@ -8486,7 +8480,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v74
+            🔄 v75
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
