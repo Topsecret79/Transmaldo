@@ -5256,13 +5256,28 @@ function App() {
                                 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                                   {statusBadge}
+                                  {(!isClosed || isAdminOrSuper) && (
+                                    <button 
+                                      type="button" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        startEditing(t);
+                                      }}
+                                      className="btn btn-secondary btn-small" 
+                                      style={{ margin: 0, padding: '6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'auto', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)', height: '32px', width: '32px' }}
+                                      title="Editar parada"
+                                    >
+                                      <Edit size={14} />
+                                    </button>
+                                  )}
                                   <a 
                                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
                                     target="_blank" 
                                     rel="noopener noreferrer" 
                                     className="btn btn-secondary btn-small"
-                                    style={{ display: 'inline-flex', padding: '8px', margin: 0, width: 'auto', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)' }}
+                                    style={{ display: 'inline-flex', padding: '8px', margin: 0, width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)', alignItems: 'center', justifyContent: 'center' }}
                                     title="Iniciar GPS"
+                                    onClick={e => e.stopPropagation()}
                                   >
                                     <MapPin size={14} color="var(--primary)" />
                                   </a>
