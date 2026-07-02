@@ -68,6 +68,66 @@ const getShortAddressString = (addressStr) => {
   return cleanParts.join(', ');
 };
 
+// Distancia geodésica simple entre dos coordenadas
+const getDistanceSimple = (c1, c2) => {
+  if (!c1 || !c2 || c1.lat === null || c1.lng === null || c2.lat === null || c2.lng === null || isNaN(c1.lat) || isNaN(c1.lng) || isNaN(c2.lat) || isNaN(c2.lng)) return 0;
+  const R = 6371;
+  const dLat = (c2.lat - c1.lat) * Math.PI / 180;
+  const dLng = (c2.lng - c1.lng) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) * 
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+// Calcular cronogramas de paradas acumulativos
+const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr) => {
+  const timelineSchedules = {};
+  if (!dateTickets || dateTickets.length === 0) return timelineSchedules;
+
+  const minutesToHHMM = (totalMins) => {
+    const h = Math.floor(totalMins / 60) % 24;
+    const m = Math.floor(totalMins % 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
+
+  const hhmmToMinutes = (timeStr) => {
+    const parts = (timeStr || '09:00').split(':');
+    return (parseInt(parts[0], 10) || 9) * 60 + (parseInt(parts[1], 10) || 0);
+  };
+
+  let lastPos = startCoords || { lat: 41.3879, lng: 2.16992 };
+  let currentTime = hhmmToMinutes(startTimeStr);
+
+  dateTickets.forEach((ticket, idx) => {
+    const parsed = parseTicketNotes(ticket.notes);
+    let ticketLat = ticket.lat ? parseFloat(ticket.lat) : lastPos.lat;
+    let ticketLng = ticket.lng ? parseFloat(ticket.lng) : lastPos.lng;
+    
+    const dist = getDistanceSimple(lastPos, { lat: ticketLat, lng: ticketLng });
+    const travelMins = Math.round((dist / 35) * 60); // 35 km/h
+    
+    const arrivalTime = currentTime + travelMins;
+    const departureTime = arrivalTime + parsed.estimatedDuration;
+    
+    timelineSchedules[ticket.id] = {
+      arrival: minutesToHHMM(arrivalTime),
+      departure: minutesToHHMM(departureTime),
+      duration: parsed.estimatedDuration,
+      distance: dist.toFixed(1),
+      travelMins,
+      timeSlot: parsed.timeSlot === 'morning' ? 'Mañana' : parsed.timeSlot === 'afternoon' ? 'Tarde' : 'Indiferente'
+    };
+    
+    lastPos = { lat: ticketLat, lng: ticketLng };
+    currentTime = departureTime;
+  });
+
+  return timelineSchedules;
+};
+
 // Obtener ruta por carreteras reales desde OSRM
 const fetchRoadRoute = async (points) => {
   if (!points || points.length < 2) return null;
@@ -162,7 +222,9 @@ import {
   getKmPrice,
   saveKmPrice,
   getRouteKms,
-  saveRouteKms
+  saveRouteKms,
+  getRouteStartTime,
+  saveRouteStartTime
 } from './db';
 
 initDB();
@@ -344,7 +406,25 @@ function App() {
   );
   const [shifts, setShifts] = useState([]);
 
-  const [activeTab, setActiveTab] = useState(''); 
+  // Función auxiliar para cargar borradores temporales
+  const getDraftVal = (key, defaultVal) => {
+    try {
+      const draft = localStorage.getItem('delivery_form_draft');
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        if (parsed && parsed[key] !== undefined) {
+          return parsed[key];
+        }
+      }
+    } catch (e) {
+      console.error("Error loading draft val for", key, e);
+    }
+    return defaultVal;
+  };
+
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('delivery_active_tab') || '';
+  }); 
   const [ticketFilterFurgo, setTicketFilterFurgo] = useState('all');
   const [ticketFilterDate, setTicketFilterDate] = useState('');
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
@@ -371,12 +451,12 @@ function App() {
   const [editingFurgoId, setEditingFurgoId] = useState('');
 
   // Estados del Formulario
-  const [customerName, setCustomerName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [postcode, setPostcode] = useState('');
-  const [addressVerification, setAddressVerification] = useState({ status: 'idle', message: '' });
-  const [lastVerifiedAddress, setLastVerifiedAddress] = useState('');
+  const [customerName, setCustomerName] = useState(() => getDraftVal('customerName', ''));
+  const [phone, setPhone] = useState(() => getDraftVal('phone', ''));
+  const [address, setAddress] = useState(() => getDraftVal('address', ''));
+  const [postcode, setPostcode] = useState(() => getDraftVal('postcode', ''));
+  const [addressVerification, setAddressVerification] = useState(() => getDraftVal('addressVerification', { status: 'idle', message: '' }));
+  const [lastVerifiedAddress, setLastVerifiedAddress] = useState(() => getDraftVal('lastVerifiedAddress', ''));
   const [suggestions, setSuggestions] = useState([]);
   const [isSearchingSuggestions, setIsSearchingSuggestions] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -388,21 +468,21 @@ function App() {
   const mapSelectTimerRef = useRef(null);
   const formMapRef = useRef(null);
   const formMarkerRef = useRef(null);
-  const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
-  const [timeSlot, setTimeSlot] = useState('any');
-  const [estimatedDuration, setEstimatedDuration] = useState(10);
-  const [routeStartTime, setRouteStartTime] = useState('09:00');
-  const [isDurationManuallyEdited, setIsDurationManuallyEdited] = useState(false);
-  const [ticketRoute, setTicketRoute] = useState('');
-  const [originalRouteLabel, setOriginalRouteLabel] = useState('');
-  const [codAmount, setCodAmount] = useState('');
+  const [ticketDate, setTicketDate] = useState(() => getDraftVal('ticketDate', new Date().toISOString().split('T')[0]));
+  const [notes, setNotes] = useState(() => getDraftVal('notes', ''));
+  const [timeSlot, setTimeSlot] = useState(() => getDraftVal('timeSlot', 'any'));
+  const [estimatedDuration, setEstimatedDuration] = useState(() => getDraftVal('estimatedDuration', 10));
+  const [routeStartTime, setRouteStartTime] = useState(() => getDraftVal('routeStartTime', '09:00'));
+  const [isDurationManuallyEdited, setIsDurationManuallyEdited] = useState(() => getDraftVal('isDurationManuallyEdited', false));
+  const [ticketRoute, setTicketRoute] = useState(() => getDraftVal('ticketRoute', ''));
+  const [originalRouteLabel, setOriginalRouteLabel] = useState(() => getDraftVal('originalRouteLabel', ''));
+  const [codAmount, setCodAmount] = useState(() => getDraftVal('codAmount', ''));
   const [showHelperRoute, setShowHelperRoute] = useState(false);
-  const [showCod, setShowCod] = useState(false);
+  const [showCod, setShowCod] = useState(() => getDraftVal('showCod', false));
 
   // Lista de TVs añadidas al ticket actual
   // Cada TV: { id: string, inches: number, action: 'entrega'|'recogida'|'combinado', pmType: 'none'|'basic'|'complex', cuelgue: boolean, recogidaViejaType: 'none'|'urbantz'|'no_urbantz' }
-  const [formTvs, setFormTvs] = useState([]);
+  const [formTvs, setFormTvs] = useState(() => getDraftVal('formTvs', []));
   const [selectedMapTicket, setSelectedMapTicket] = useState(null);
   const [isMapPanelExpanded, setIsMapPanelExpanded] = useState(true);
   const [activeRoutes, setActiveRoutes] = useState(() => {
@@ -514,11 +594,11 @@ function App() {
 
   // Cantidades de otros artículos no-TV (Paquetería y Otros Elementos)
   // { tariffId: quantity }
-  const [otherQuantities, setOtherQuantities] = useState({});
-  const [customExtras, setCustomExtras] = useState([]);
-  const [customExtraName, setCustomExtraName] = useState('');
-  const [customExtraPrice, setCustomExtraPrice] = useState('');
-  const [urgenteType, setUrgenteType] = useState('none'); // 'none' | '100' | '120'
+  const [otherQuantities, setOtherQuantities] = useState(() => getDraftVal('otherQuantities', {}));
+  const [customExtras, setCustomExtras] = useState(() => getDraftVal('customExtras', []));
+  const [customExtraName, setCustomExtraName] = useState(() => getDraftVal('customExtraName', ''));
+  const [customExtraPrice, setCustomExtraPrice] = useState(() => getDraftVal('customExtraPrice', ''));
+  const [urgenteType, setUrgenteType] = useState(() => getDraftVal('urgenteType', 'none')); // 'none' | '100' | '120'
 
   // Cierre de turno
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -545,6 +625,105 @@ function App() {
   const [startSuggestions, setStartSuggestions] = useState([]);
   const [endSuggestions, setEndSuggestions] = useState([]);
   const [otherDescriptions, setOtherDescriptions] = useState({});
+
+  const [routeStartCoords, setRouteStartCoords] = useState(null);
+  const [routeEndCoords, setRouteEndCoords] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    const updateStart = async () => {
+      if (routeStartAddr && routeStartAddr.trim()) {
+        const res = await geocodeAddress(routeStartAddr);
+        if (active && res && res.lat && res.lng) {
+          setRouteStartCoords({ lat: parseFloat(res.lat), lng: parseFloat(res.lng) });
+        }
+      } else {
+        if (active) setRouteStartCoords(null);
+      }
+    };
+    updateStart();
+    return () => { active = false; };
+  }, [routeStartAddr]);
+
+  useEffect(() => {
+    let active = true;
+    const updateEnd = async () => {
+      if (routeEndAddr && routeEndAddr.trim()) {
+        const res = await geocodeAddress(routeEndAddr);
+        if (active && res && res.lat && res.lng) {
+          setRouteEndCoords({ lat: parseFloat(res.lat), lng: parseFloat(res.lng) });
+        }
+      } else {
+        if (active) setRouteEndCoords(null);
+      }
+    };
+    updateEnd();
+    return () => { active = false; };
+  }, [routeEndAddr]);
+
+  // --- SALVADO AUTOMÁTICO DE BORRADORES Y PESTAÑA ACTIVA EN LOCALSTORAGE ---
+  useEffect(() => {
+    if (activeTab) {
+      localStorage.setItem('delivery_active_tab', activeTab);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (editingTicketId) {
+      return; // No guardar borrador si estamos editando
+    }
+    const draftData = {
+      customerName,
+      phone,
+      address,
+      postcode,
+      addressVerification,
+      lastVerifiedAddress,
+      ticketDate,
+      notes,
+      timeSlot,
+      estimatedDuration,
+      routeStartTime,
+      isDurationManuallyEdited,
+      ticketRoute,
+      originalRouteLabel,
+      codAmount,
+      showCod,
+      formTvs,
+      otherQuantities,
+      customExtras,
+      urgenteType
+    };
+    // Solo guardamos si el borrador tiene algo de contenido
+    const hasContent = customerName || phone || address || notes || formTvs.length > 0 || Object.keys(otherQuantities).length > 0 || customExtras.length > 0;
+    if (hasContent) {
+      localStorage.setItem('delivery_form_draft', JSON.stringify(draftData));
+    } else {
+      localStorage.removeItem('delivery_form_draft');
+    }
+  }, [
+    customerName,
+    phone,
+    address,
+    postcode,
+    addressVerification,
+    lastVerifiedAddress,
+    ticketDate,
+    notes,
+    timeSlot,
+    estimatedDuration,
+    routeStartTime,
+    isDurationManuallyEdited,
+    ticketRoute,
+    originalRouteLabel,
+    codAmount,
+    showCod,
+    formTvs,
+    otherQuantities,
+    customExtras,
+    urgenteType,
+    editingTicketId
+  ]);
 
   const handleFetchRouteSuggestions = async (queryText, type) => {
     const setTarget = type === 'start' ? setStartSuggestions : setEndSuggestions;
@@ -731,13 +910,30 @@ function App() {
         const parsed = JSON.parse(savedUser);
         if (parsed && parsed.role) {
           setCurrentUser(parsed);
-          setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+          const savedTab = localStorage.getItem('delivery_active_tab');
+          if (savedTab) {
+            setActiveTab(savedTab);
+          } else {
+            setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+          }
         }
       } catch (e) {
         console.error("Error parsing saved user session on mount:", e);
       }
     }
+  }, []);
 
+  useEffect(() => {
+    if (!currentUser) return;
+    const targetFurgo = currentUser.role === 'repartidor' ? currentUser.id : (activeTab === 'tickets' ? ticketFilterFurgo : mapFilterFurgo);
+    const targetDate = currentUser.role === 'repartidor' ? (shiftSummaryDate || new Date().toISOString().split('T')[0]) : (activeTab === 'tickets' ? ticketFilterDate : mapFilterDate);
+    if (targetFurgo && targetFurgo !== 'all' && targetDate) {
+      const time = getRouteStartTime(targetFurgo, targetDate);
+      setRouteStartTime(time);
+    }
+  }, [currentUser, activeTab, ticketFilterFurgo, mapFilterFurgo, ticketFilterDate, mapFilterDate, shiftSummaryDate]);
+
+  useEffect(() => {
     reinitSupabase();
 
     onDataSync(() => {
@@ -1550,6 +1746,8 @@ function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('delivery_session');
+    localStorage.removeItem('delivery_active_tab');
+    localStorage.removeItem('delivery_form_draft');
     setCurrentUser(null);
     setAppName('My Delivery Team');
     setAppNameInput('My Delivery Team');
@@ -2393,6 +2591,7 @@ function App() {
       addTicket(ticketData);
       triggerAlert('Registro guardado con éxito');
       // Resetear
+      localStorage.removeItem('delivery_form_draft');
       setCustomerName('');
       setPhone('');
       setAddress('');
@@ -2794,6 +2993,7 @@ function App() {
   };
 
   const cancelEditing = () => {
+    localStorage.removeItem('delivery_form_draft');
     setEditingTicketId(null);
     setEditingFurgoId('');
     setCustomerName('');
@@ -4929,55 +5129,7 @@ function App() {
     const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
     const dateTickets = sortTicketsByRouteOrder(userTickets.filter(t => t.date === targetDate));
 
-    const minutesToHHMM = (totalMins) => {
-      const h = Math.floor(totalMins / 60) % 24;
-      const m = Math.floor(totalMins % 60);
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    };
-    const hhmmToMinutes = (timeStr) => {
-      const parts = (timeStr || '09:00').split(':');
-      return (parseInt(parts[0], 10) || 9) * 60 + (parseInt(parts[1], 10) || 0);
-    };
-
-    const timelineSchedules = {};
-    if (dateTickets.length > 0) {
-      let lastPos = { lat: 41.3879, lng: 2.16992 };
-      let currentTime = hhmmToMinutes(routeStartTime);
-
-      const getDistanceSimple = (c1, c2) => {
-        const R = 6371;
-        const dLat = (c2.lat - c1.lat) * Math.PI / 180;
-        const dLng = (c2.lng - c1.lng) * Math.PI / 180;
-        const a = 
-          Math.sin(dLat/2) * Math.sin(dLat/2) +
-          Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) * 
-          Math.sin(dLng/2) * Math.sin(dLng/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-      };
-
-      dateTickets.forEach((ticket, idx) => {
-        const parsed = parseTicketNotes(ticket.notes);
-        let ticketLat = ticket.lat ? parseFloat(ticket.lat) : lastPos.lat;
-        let ticketLng = ticket.lng ? parseFloat(ticket.lng) : lastPos.lng;
-        
-        const dist = idx === 0 ? 0 : getDistanceSimple(lastPos, { lat: ticketLat, lng: ticketLng });
-        const travelMins = Math.round((dist / 35) * 60); // 35 km/h
-        
-        const arrivalTime = currentTime + travelMins;
-        const departureTime = arrivalTime + parsed.estimatedDuration;
-        
-        timelineSchedules[ticket.id] = {
-          arrival: minutesToHHMM(arrivalTime),
-          departure: minutesToHHMM(departureTime),
-          duration: parsed.estimatedDuration,
-          timeSlot: parsed.timeSlot === 'morning' ? 'Mañana' : parsed.timeSlot === 'afternoon' ? 'Tarde' : 'Indiferente'
-        };
-        
-        lastPos = { lat: ticketLat, lng: ticketLng };
-        currentTime = departureTime;
-      });
-    }
+    const timelineSchedules = calculateTimelineSchedules(dateTickets, routeStartCoords, routeStartTime);
 
     return (
       <div>
@@ -5698,6 +5850,8 @@ function App() {
                                 <span>🕒 <strong>Llegada:</strong> {timelineSchedules[t.id].arrival}</span>
                                 <span>⌛ <strong>Parada:</strong> {timelineSchedules[t.id].duration} min</span>
                                 <span>🛫 <strong>Salida:</strong> {timelineSchedules[t.id].departure}</span>
+                                <span>🛣️ <strong>Distancia:</strong> {timelineSchedules[t.id].distance} km</span>
+                                <span>🚗 <strong>Tránsito:</strong> {timelineSchedules[t.id].travelMins} min</span>
                                 <span style={{
                                   marginLeft: 'auto',
                                   fontSize: '0.72rem',
@@ -6326,10 +6480,28 @@ function App() {
       );
     }
 
+    const activeFurgo = isAdminMap ? mapFilterFurgo : currentUser?.id;
+    const startTime = getRouteStartTime(activeFurgo, targetDate);
+    const timelineSchedules = calculateTimelineSchedules(sortedDayTickets, routeStartCoords, startTime);
+
+    let totalDistance = 0;
+    let totalTransit = 0;
+    if (activeFurgo !== 'all') {
+      Object.values(timelineSchedules).forEach(s => {
+        totalDistance += parseFloat(s.distance) || 0;
+        totalTransit += s.travelMins || 0;
+      });
+    }
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 5px 0' }}>
-          📋 Secuencia de Paradas ({sortedDayTickets.length})
+        <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px', margin: '0 0 5px 0' }}>
+          <span>📋 Secuencia de Paradas ({sortedDayTickets.length})</span>
+          {activeFurgo !== 'all' && sortedDayTickets.length > 0 && (
+            <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold' }}>
+              🛣️ {totalDistance.toFixed(1)} km | 🚗 {totalTransit} min viaje
+            </span>
+          )}
         </h3>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -6437,6 +6609,30 @@ function App() {
                     </div>
                   )}
                 </div>
+
+                {/* Cronograma Estimado */}
+                {activeFurgo !== 'all' && timelineSchedules[t.id] && (
+                  <div style={{
+                    background: 'rgba(99, 102, 241, 0.08)',
+                    border: '1px solid rgba(99, 102, 241, 0.15)',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    fontSize: '0.8rem',
+                    color: 'var(--text-main)',
+                    marginTop: '8px',
+                    marginBottom: '4px',
+                    alignItems: 'center'
+                  }}>
+                    <span>🕒 <strong>Llegada:</strong> {timelineSchedules[t.id].arrival}</span>
+                    <span>⌛ <strong>Parada:</strong> {timelineSchedules[t.id].duration} min</span>
+                    <span>🛫 <strong>Salida:</strong> {timelineSchedules[t.id].departure}</span>
+                    <span>🛣️ <strong>Distancia:</strong> {timelineSchedules[t.id].distance} km</span>
+                    <span>🚗 <strong>Tránsito:</strong> {timelineSchedules[t.id].travelMins} min</span>
+                  </div>
+                )}
 
                 {/* Resumen de artículos */}
                 {((t.tasks || []).length > 0 || (t.codAmount && parseFloat(t.codAmount) > 0)) && (
@@ -7095,6 +7291,20 @@ function App() {
                     />
                     {renderRouteSuggestions('end')}
                   </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">🕒 Hora de Salida (Inicio)</span>
+                    <input 
+                      type="time" 
+                      className="form-input" 
+                      value={routeStartTime} 
+                      onChange={(e) => {
+                        const newTime = e.target.value;
+                        setRouteStartTime(newTime);
+                        saveRouteStartTime(ticketFilterFurgo, ticketFilterDate, newTime);
+                      }} 
+                      style={{ height: '45px', padding: '8px 12px' }}
+                    />
+                  </div>
                   <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
                     <button 
                       type="button" 
@@ -7640,6 +7850,20 @@ function App() {
                       }}
                     />
                     {renderRouteSuggestions('end')}
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">🕒 Hora de Salida (Inicio)</span>
+                    <input 
+                      type="time" 
+                      className="form-input" 
+                      value={routeStartTime} 
+                      onChange={(e) => {
+                        const newTime = e.target.value;
+                        setRouteStartTime(newTime);
+                        saveRouteStartTime(mapFilterFurgo, mapFilterDate, newTime);
+                      }} 
+                      style={{ height: '45px', padding: '8px 12px' }}
+                    />
                   </div>
                   <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
                     <button 
@@ -8480,7 +8704,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v75
+            🔄 v76
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
@@ -8608,12 +8832,22 @@ function App() {
                     {existingShift ? (
                       (() => {
                         const recordedKms = getRouteKms(targetFurgoId, targetDate);
-                        return recordedKms > 0 ? (
+                        if (recordedKms <= 0) return null;
+                        return (
                           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px dashed var(--panel-border)', marginTop: '6px', color: 'var(--primary)', fontWeight: '600' }}>
-                            <span>Kilometraje ({recordedKms} km a {kmPrice.toFixed(2)}€/km):</span>
-                            <strong>+ {(recordedKms * kmPrice).toFixed(2)} €</strong>
+                            {isAdminOrSuper ? (
+                              <>
+                                <span>Kilometraje ({recordedKms} km a {kmPrice.toFixed(2)}€/km):</span>
+                                <strong>+ {(recordedKms * kmPrice).toFixed(2)} €</strong>
+                              </>
+                            ) : (
+                              <>
+                                <span>Kilometraje Recorrido:</span>
+                                <strong>{recordedKms} km</strong>
+                              </>
+                            )}
                           </div>
-                        ) : null;
+                        );
                       })()
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
@@ -8630,14 +8864,16 @@ function App() {
                           />
                           <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>km</span>
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                          <span>Tarifa: {kmPrice.toFixed(2)} €/km</span>
-                          <span>Importe: <strong style={{ color: '#fff' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
-                        </div>
+                        {isAdminOrSuper && (
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                            <span>Tarifa: {kmPrice.toFixed(2)} €/km</span>
+                            <span>Importe: <strong style={{ color: '#fff' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
+                          </div>
+                        )}
                       </div>
                     )}
                     
-                    {(() => {
+                    {isAdminOrSuper && (() => {
                       const isShiftClosed = existingShift && existingShift.status === 'closed';
                       const billableTickets = dayTickets.filter(t => !isShiftClosed || (t.status === 'success' || !t.status));
                       const totalDeliveryEarnings = billableTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);

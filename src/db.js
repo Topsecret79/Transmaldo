@@ -362,6 +362,13 @@ export async function syncFromCloud() {
         }
       });
 
+      // Route Start Time
+      settings.forEach(s => {
+        if (s.key && s.key.startsWith('route_start_time_')) {
+          localStorage.setItem(`delivery_${s.key}`, s.value);
+        }
+      });
+
       // Pull Driver Locations from Supabase
       const locations = {};
       settings.forEach(s => {
@@ -1522,6 +1529,30 @@ export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText) {
   const slotStr = timeSlot === 'morning' ? 'Mañana' : timeSlot === 'afternoon' ? 'Tarde' : 'Cualquiera';
   const prefix = `[Horario: ${slotStr}] [Duracion: ${estimatedDuration || 10} min] `;
   return (prefix + (cleanNotesText || '').trim()).trim();
+}
+
+// Obtener hora de inicio de una ruta
+export function getRouteStartTime(furgoId, date) {
+  if (furgoId && date) {
+    const key = `delivery_route_start_time_${furgoId}_${date}`;
+    const time = localStorage.getItem(key);
+    if (time) return time;
+  }
+  return '09:00';
+}
+
+// Guardar hora de inicio de una ruta
+export function saveRouteStartTime(furgoId, date, time) {
+  if (furgoId && date) {
+    const key = `delivery_route_start_time_${furgoId}_${date}`;
+    localStorage.setItem(key, time);
+    if (supabase) {
+      const dbKey = `route_start_time_${furgoId}_${date}`;
+      supabase.from('delivery_settings').upsert({ key: dbKey, value: time }).then(({ error }) => {
+        if (error) console.error("Error saving route start time to Supabase:", error);
+      });
+    }
+  }
 }
 
 
