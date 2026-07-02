@@ -8260,11 +8260,22 @@ function App() {
           <button 
             onClick={async () => {
               if (window.confirm('¿Quieres comprobar y forzar la descarga de la última versión de la aplicación?')) {
-                if ('serviceWorker' in navigator) {
-                  const regs = await navigator.serviceWorker.getRegistrations();
-                  for (let r of regs) {
-                    await r.unregister();
+                try {
+                  if ('caches' in window) {
+                    const keys = await caches.keys();
+                    for (let key of keys) {
+                      await caches.delete(key);
+                    }
                   }
+                  if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    for (let r of regs) {
+                      await r.unregister();
+                    }
+                  }
+                  sessionStorage.clear();
+                } catch (e) {
+                  console.error("Error al limpiar caché:", e);
                 }
                 window.location.reload(true);
               }
@@ -8273,7 +8284,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v69
+            🔄 v70
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
