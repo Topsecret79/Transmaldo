@@ -451,7 +451,11 @@ const DEFAULT_TARIFFS = [
   { id: 'PROY', name: 'Proyector', block: 'Otros', type: 'fixed', value: 5.23 },
   { id: 'VTEC', name: 'Visita Técnica', block: 'Otros', type: 'modules', value: 5 },
   { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Otros', type: 'fixed', value: 100 },
-  { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 }
+  { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 },
+  // Nuevos artículos
+  { id: 'ORDE', name: 'Ordenador', block: 'Otros', type: 'fixed', value: 5.23 },
+  { id: 'PANT', name: 'Pantalla', block: 'Otros', type: 'fixed', value: 5.23 },
+  { id: 'MCAD', name: 'Micro Cadena', block: 'Otros', type: 'fixed', value: 5.23 }
 ];
 
 export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74, 75, 77, 83, 85, 98, 100, 115];
@@ -540,6 +544,16 @@ export function initDB() {
           type: 'modules',
           value: 5
         });
+      }
+
+      // Migrate: add Ordenador, Pantalla and Micro Cadena if missing
+      const hasOrde = current.some(t => t.id === 'ORDE');
+      if (!hasOrde) {
+        current.push(
+          { id: 'ORDE', name: 'Ordenador', block: 'Otros', type: 'fixed', value: 5.23 },
+          { id: 'PANT', name: 'Pantalla', block: 'Otros', type: 'fixed', value: 5.23 },
+          { id: 'MCAD', name: 'Micro Cadena', block: 'Otros', type: 'fixed', value: 5.23 }
+        );
       }
       
       localStorage.setItem('delivery_tariffs', JSON.stringify(current));
