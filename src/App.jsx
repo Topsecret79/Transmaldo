@@ -5264,10 +5264,10 @@ function App() {
                                         startEditing(t);
                                       }}
                                       className="btn btn-secondary btn-small" 
-                                      style={{ margin: 0, padding: '6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'auto', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)', height: '32px', width: '32px' }}
+                                      style={{ margin: 0, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.4)', height: '32px', width: '32px' }}
                                       title="Editar parada"
                                     >
-                                      <Edit size={14} />
+                                      <Edit size={14} color="#fbbf24" />
                                     </button>
                                   )}
                                   <a 
@@ -5337,10 +5337,10 @@ function App() {
                                       type="button" 
                                       onClick={() => startEditing(t)} 
                                       className="btn btn-secondary btn-small" 
-                                      style={{ margin: 0, padding: '4px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'auto' }}
+                                      style={{ margin: 0, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.4)', height: '32px', width: '32px' }}
                                       title="Editar parada"
                                     >
-                                      <Edit size={12} />
+                                      <Edit size={14} color="#fbbf24" />
                                     </button>
                                     <button 
                                       type="button" 
@@ -8150,7 +8150,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄
+            🔄 v67
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
