@@ -5293,7 +5293,7 @@ function App() {
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {statusBadge}
-                                {!isClosed && (
+                                {(!isClosed || isAdminOrSuper) && (
                                   <div style={{ display: 'flex', gap: '4px' }}>
                                     <button 
                                       type="button" 
@@ -5506,7 +5506,7 @@ function App() {
                             })()}
 
                             {/* Acciones del Chofer en la Tarjeta */}
-                            {!isClosed && (
+                            {(!isClosed || isAdminOrSuper) && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '12px', marginTop: '4px' }}>
                                 {(!t.status || t.status === 'pending') ? (
                                   <button
@@ -6149,18 +6149,21 @@ function App() {
                         🧭 Navegar
                       </a>
                       
-                      {isAdminMap && (
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startEditingTicket(t);
-                          }}
-                          className="btn btn-secondary btn-small"
-                          style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto' }}
-                        >
-                          ✏️ Editar
-                        </button>
-                      )}
+                      {(() => {
+                        const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
+                        return (isAdminMap || (!isClosed || isAdminOrSuper)) ? (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEditing(t);
+                            }}
+                            className="btn btn-secondary btn-small"
+                            style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto' }}
+                          >
+                            ✏️ Editar
+                          </button>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 )}
