@@ -894,6 +894,14 @@ function App() {
 
   // Inicialización y actualización del Mapa Leaflet (Admin o Repartidor)
   useEffect(() => {
+    window.handleChangeMapStopOrder = (ticketId, targetValue) => {
+      const ticketToMove = tickets.find(tk => tk && tk.id === ticketId);
+      if (ticketToMove) {
+        changeTicketRouteOrder(ticketToMove, Number(targetValue));
+        triggerAlert(`Posición de la parada modificada a #${targetValue}`);
+      }
+    };
+
     const timer = setTimeout(() => {
       const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');
       const isDriverMap = activeTab === 'driver_map' && document.getElementById('driver-map');
@@ -1031,8 +1039,71 @@ function App() {
               iconAnchor: [12, 12]
             });
 
+            const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
+            const dayTicketsCount = driverTickets.length;
+            let optionsHtml = '';
+            for (let i = 1; i <= dayTicketsCount; i++) {
+              optionsHtml += `<option value="${i}" ${i === (seqIndex + 1) ? 'selected' : ''}>Parada #${i}</option>`;
+            }
+
+            const popupContent = `
+              <div style="
+                font-family: 'Inter', sans-serif; 
+                font-size: 0.88rem; 
+                color: #fff; 
+                padding: 4px;
+                min-width: 170px;
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+              ">
+                <strong style="color: #a78bfa; font-size: 0.92rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">
+                  ${t.customerName || 'Cliente'}
+                </strong>
+                <div style="font-size: 0.76rem; color: #d1d5db; line-height: 1.2;">
+                  📍 ${getShortAddressString(t.address)}
+                </div>
+                
+                ${(!isClosed || isAdminOrSuper) ? `
+                  <div style="
+                    margin-top: 6px; 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: space-between; 
+                    gap: 6px;
+                    border-top: 1px solid rgba(255,255,255,0.1);
+                    padding-top: 6px;
+                  ">
+                    <span style="font-size: 0.76rem; color: #9ca3af; font-weight: 600;">Posición:</span>
+                    <select 
+                      onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder('${t.id}', this.value)"
+                      style="
+                        background: var(--primary);
+                        border: 1px solid rgba(255,255,255,0.2);
+                        color: #fff;
+                        border-radius: 4px;
+                        padding: 2px 4px;
+                        font-size: 0.76rem;
+                        font-weight: 700;
+                        cursor: pointer;
+                        outline: none;
+                        height: 24px;
+                      "
+                    >
+                      ${optionsHtml}
+                    </select>
+                  </div>
+                ` : `
+                  <div style="font-size: 0.76rem; color: #9ca3af; font-weight: 700; margin-top: 4px;">
+                    Parada #${seqIndex + 1}
+                  </div>
+                `}
+              </div>
+            `;
+
             window.L.marker(latLng, { icon: markerIcon })
               .addTo(mapLayerGroupRef.current)
+              .bindPopup(popupContent, { maxWidth: 220 })
               .on('click', () => {
                 handleSelectMapTicket(t);
               });
@@ -1147,6 +1218,7 @@ function App() {
 
     return () => {
       clearTimeout(timer);
+      delete window.handleChangeMapStopOrder;
       const isAdminMap = document.getElementById('admin-map');
       const isDriverMap = document.getElementById('driver-map');
       if (!isAdminMap && !isDriverMap && mapInstanceRef.current !== null) {
@@ -8284,7 +8356,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v70
+            🔄 v71
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
