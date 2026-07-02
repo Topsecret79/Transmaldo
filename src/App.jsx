@@ -1414,68 +1414,75 @@ function App() {
       const { lat, lng } = addressVerification.coords;
       const latLng = [lat, lng];
 
-      if (!formMapRef.current) {
-        const map = window.L.map('form-mini-map', {
-          zoomControl: false,
-          attributionControl: false
-        }).setView(latLng, 16);
-
-        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          maxZoom: 20
-        }).addTo(map);
-
-        const marker = window.L.marker(latLng, {
-          draggable: true
-        }).addTo(map);
-
-        marker.on('dragend', () => {
-          const newPos = marker.getLatLng();
-          setAddressVerification(prev => ({
-            ...prev,
-            coords: {
-              ...prev.coords,
-              lat: parseFloat(newPos.lat.toFixed(6)),
-              lng: parseFloat(newPos.lng.toFixed(6))
-            }
-          }));
-        });
-
-        map.on('click', (e) => {
-          const newPos = e.latlng;
-          marker.setLatLng(newPos);
-          setAddressVerification(prev => ({
-            ...prev,
-            coords: {
-              ...prev.coords,
-              lat: parseFloat(newPos.lat.toFixed(6)),
-              lng: parseFloat(newPos.lng.toFixed(6))
-            }
-          }));
-        });
-
-        window.L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-        formMapRef.current = map;
-        formMarkerRef.current = marker;
-      } else {
-        const map = formMapRef.current;
-        const marker = formMarkerRef.current;
-        // Only set view and position if they actually changed to prevent infinite loops on dragging
-        const currentCenter = map.getCenter();
-        const currentMarkerLatLng = marker.getLatLng();
-        if (Math.abs(currentMarkerLatLng.lat - lat) > 0.00001 || Math.abs(currentMarkerLatLng.lng - lng) > 0.00001) {
-          marker.setLatLng(latLng);
+      // Siempre limpiar la instancia previa si existe para evitar contenedores huérfanos
+      if (formMapRef.current) {
+        try {
+          formMapRef.current.remove();
+        } catch (e) {
+          console.error("Error cleaning up previous form map:", e);
         }
-        if (Math.abs(currentCenter.lat - lat) > 0.001 || Math.abs(currentCenter.lng - lng) > 0.001) {
-          map.setView(latLng, 16);
-        }
-        map.invalidateSize();
+        formMapRef.current = null;
+        formMarkerRef.current = null;
       }
+
+      const map = window.L.map('form-mini-map', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView(latLng, 16);
+
+      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 20
+      }).addTo(map);
+
+      const marker = window.L.marker(latLng, {
+        draggable: true
+      }).addTo(map);
+
+      marker.on('dragend', () => {
+        const newPos = marker.getLatLng();
+        setAddressVerification(prev => ({
+          ...prev,
+          coords: {
+            ...prev.coords,
+            lat: parseFloat(newPos.lat.toFixed(6)),
+            lng: parseFloat(newPos.lng.toFixed(6))
+          }
+        }));
+      });
+
+      map.on('click', (e) => {
+        const newPos = e.latlng;
+        marker.setLatLng(newPos);
+        setAddressVerification(prev => ({
+          ...prev,
+          coords: {
+            ...prev.coords,
+            lat: parseFloat(newPos.lat.toFixed(6)),
+            lng: parseFloat(newPos.lng.toFixed(6))
+          }
+        }));
+      });
+
+      window.L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+      formMapRef.current = map;
+      formMarkerRef.current = marker;
+
+      // Invalidad tamaño con un leve retraso para renderizados móviles
+      setTimeout(() => {
+        if (formMapRef.current) {
+          formMapRef.current.invalidateSize();
+        }
+      }, 100);
     }
 
     return () => {
-      if (!document.getElementById('form-mini-map') && formMapRef.current) {
-        formMapRef.current.remove();
+      if (formMapRef.current) {
+        try {
+          formMapRef.current.remove();
+        } catch (e) {
+          console.error("Cleanup form map failed:", e);
+        }
         formMapRef.current = null;
         formMarkerRef.current = null;
       }
@@ -2368,6 +2375,12 @@ function App() {
     if (coords) {
       ticketData.lat = coords.lat;
       ticketData.lng = coords.lng;
+      if (coords.displayName) {
+        ticketData.address = getShortAddressString(coords.displayName);
+      }
+      if (coords.postcode && !ticketData.postcode) {
+        ticketData.postcode = coords.postcode;
+      }
     }
 
     if (editingTicketId) {
@@ -8356,7 +8369,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v71
+            🔄 v72
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>

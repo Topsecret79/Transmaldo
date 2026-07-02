@@ -1239,16 +1239,21 @@ export function normalizeSpanishAddressQuery(queryText) {
   if (!queryText) return '';
   let q = queryText.trim();
   
-  // Abreviaturas comunes en castellano y catalán
+  // Abreviaturas comunes en castellano, catalán y regional
+  q = q.replace(/\bcl\b\.?\s*/gi, 'Calle '); // cl. -> Calle
+  q = q.replace(/\bcl\/[o\s]?/gi, 'Calle '); // cl/ -> Calle
   q = q.replace(/\bc\/[o\s]?/gi, 'Calle '); // c/ -> Calle
   q = q.replace(/\bc\.\s+/gi, 'Calle ');  // c. -> Calle
-  q = q.replace(/\bav\b\.?/gi, 'Avenida'); // av -> Avenida
-  q = q.replace(/\bavda\.?/gi, 'Avenida'); // avda -> Avenida
-  q = q.replace(/\bpl\b\.?/gi, 'Plaza');   // pl -> Plaza
+  q = q.replace(/\bav\b\.?\s*/gi, 'Avenida '); // av. -> Avenida
+  q = q.replace(/\bavda\b\.?\s*/gi, 'Avenida '); // avda. -> Avenida
+  q = q.replace(/\bav\/[o\s]?/gi, 'Avenida '); // av/ -> Avenida
+  q = q.replace(/\bplz\b\.?\s*/gi, 'Plaza '); // plz. -> Plaza
+  q = q.replace(/\bpl\b\.?\s*/gi, 'Plaza ');   // pl. -> Plaza
   q = q.replace(/\bpº/gi, 'Paseo');       // pº -> Paseo
   q = q.replace(/\bp\.\º/gi, 'Paseo');    // p.º -> Paseo
-  q = q.replace(/\bctra\.?/gi, 'Carretera'); // ctra -> Carretera
-  q = q.replace(/\brbla\.?/gi, 'Rambla');   // rbla -> Rambla
+  q = q.replace(/\bctra\b\.?\s*/gi, 'Carretera '); // ctra. -> Carretera
+  q = q.replace(/\brbla\b\.?\s*/gi, 'Rambla ');   // rbla. -> Rambla
+  q = q.replace(/\bptge\b\.?\s*/gi, 'Passatge '); // ptge. -> Passatge
   q = q.replace(/\bpol\b\.?\s*(ind\b\.?)?/gi, 'Polígono Industrial '); // pol. ind. -> Polígono Industrial
   
   // Limpiar espacios dobles
