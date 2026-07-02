@@ -3737,7 +3737,8 @@ function App() {
     const isClosed = getShiftStatus(activeCheckFurgo, ticketDate) === 'closed' && !isAdminOrSuper;
 
     return (
-      <form onSubmit={handleFormSubmit} className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <form onSubmit={handleFormSubmit} className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {activeRouteContext && !editingTicketId && (
           <div style={{
             background: 'rgba(99, 102, 241, 0.08)',
@@ -4809,7 +4810,122 @@ function App() {
           </div>
         )}
       </form>
-    );
+      
+      {!editingTicketId && activeRouteContext && (() => {
+        const activeRouteTickets = tickets.filter(t => t && t.date === activeRouteContext.date && t.furgoId === activeRouteContext.furgoId);
+        const sortedActiveRouteTickets = sortTicketsByRouteOrder(activeRouteTickets);
+        
+        if (sortedActiveRouteTickets.length === 0) return null;
+        
+        return (
+          <div className="glass-panel" style={{ textAlign: 'left', padding: '20px', marginTop: '10px' }}>
+            <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📋 Paradas registradas en esta ruta ({sortedActiveRouteTickets.length})
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {sortedActiveRouteTickets.map((t, index) => {
+                const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
+                
+                return (
+                  <div 
+                    key={t.id} 
+                    style={{ 
+                      padding: '12px 15px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between', 
+                      gap: '12px',
+                      background: 'rgba(255, 255, 255, 0.01)',
+                      border: '1px solid var(--panel-border)',
+                      borderRadius: '12px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
+                      <span style={{ 
+                        background: 'var(--primary)', 
+                        color: '#fff', 
+                        fontWeight: '800', 
+                        fontSize: '0.8rem', 
+                        width: '24px', 
+                        height: '24px', 
+                        borderRadius: '50%', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        flexShrink: 0
+                      }}>
+                        #{index + 1}
+                      </span>
+                      
+                      {(!isClosed || isAdminOrSuper) && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveTicketOrder(t.id, 'up')}
+                            className="btn btn-secondary btn-small"
+                            style={{ padding: 0, fontSize: '0.55rem', margin: 0, visibility: index === 0 ? 'hidden' : 'visible', minWidth: '18px', height: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--panel-border)', color: '#fff' }}
+                            title="Subir parada"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveTicketOrder(t.id, 'down')}
+                            className="btn btn-secondary btn-small"
+                            style={{ padding: 0, fontSize: '0.55rem', margin: 0, visibility: index === sortedActiveRouteTickets.length - 1 ? 'hidden' : 'visible', minWidth: '18px', height: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '3px', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--panel-border)', color: '#fff' }}
+                            title="Bajar parada"
+                          >
+                            ▼
+                          </button>
+                        </div>
+                      )}
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, marginLeft: '4px' }}>
+                        <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {t.customerName}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {t.lat && t.lng ? '🟢 ' : '🔴 '}
+                          {getShortAddressString(t.address)}{t.postcode ? ` (CP ${t.postcode})` : ''}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      <button 
+                        type="button" 
+                        onClick={() => startEditing(t)} 
+                        className="btn btn-secondary btn-small" 
+                        style={{ margin: 0, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.4)', height: '28px', width: '28px' }}
+                        title="Editar parada"
+                      >
+                        <Edit size={12} color="#fbbf24" />
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          if (window.confirm('¿Estás seguro de que deseas eliminar permanentemente esta parada?')) {
+                            handleDeleteTicket(t.id);
+                            loadData();
+                          }
+                        }} 
+                        className="btn btn-danger btn-small" 
+                        style={{ margin: 0, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', height: '28px', width: '28px' }}
+                        title="Eliminar parada"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
   };
 
   // --- RENDERIZADO DEL PORTAL DEL CHOFER (REPARTIDOR) ---
@@ -8369,7 +8485,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v72
+            🔄 v73
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
