@@ -5227,6 +5227,7 @@ function App() {
                                   </span>
                                   <div className="driver-card-index" style={{ margin: 0, padding: '2px 8px', fontSize: '0.85rem', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>#{stopIndex}</div>
                                   <div style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }} title={`${getShortAddressString(t.address)}${t.postcode ? ` - CP ${t.postcode}` : ''}`}>
+                                    {t.lat && t.lng ? '🟢 ' : '🔴 '}
                                     {getShortAddressString(t.address)}{t.postcode ? ` - CP ${t.postcode}` : ''}
                                   </div>
                                 </div>
@@ -5413,8 +5414,13 @@ function App() {
                               gap: '10px',
                               marginTop: '10px'
                             }}>
-                              <div style={{ fontSize: '0.85rem', lineHeight: '1.3' }}>
+                              <div style={{ fontSize: '0.85rem', lineHeight: '1.3', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                 <strong>{getShortAddressString(t.address)}{t.postcode ? ` - CP ${t.postcode}` : ''}</strong>
+                                {t.lat && t.lng ? (
+                                  <span style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: '700' }}>🟢 Dirección verificada en el mapa</span>
+                                ) : (
+                                  <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: '700' }}>🔴 Dirección sin ubicar en el mapa</span>
+                                )}
                               </div>
                               <a 
                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
