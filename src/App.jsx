@@ -6962,6 +6962,7 @@ function App() {
           allRows.push(['Cliente', 'Servicio', 'Marca/Detalle', 'Cantidad', 'Precio Unitario', 'Total']);
 
           let furgoTotal = 0;
+          let furgoTotalQty = 0;
           fTickets.forEach(ticket => {
             const taskCount = (ticket.tasks || []).length;
             (ticket.tasks || []).forEach((task, ti) => {
@@ -6974,6 +6975,7 @@ function App() {
               const unitP = calcTaskUnitPrice(task);
               const totalP = calcTaskPrice(task);
               furgoTotal += totalP;
+              furgoTotalQty += task.quantity || 0;
               allRows.push([
                 ti === 0 ? ticket.customerName : '',
                 name,
@@ -6993,12 +6995,12 @@ function App() {
           })() : 0;
           const kmsTotal = recordedKms * kmPrice;
 
-          allRows.push(['', '', '', '', 'Subtotal entregas:', furgoTotal.toFixed(2) + ' €']);
+          allRows.push(['', '', 'Subtotal entregas:', furgoTotalQty, '', furgoTotal.toFixed(2) + ' €']);
           if (recordedKms > 0) {
-            allRows.push(['', '', '', '', `Kilometraje (${recordedKms}km × ${kmPrice.toFixed(2)}€):`, kmsTotal.toFixed(2) + ' €']);
-            allRows.push(['', '', '', '', 'TOTAL FURGONETA:', (furgoTotal + kmsTotal).toFixed(2) + ' €']);
+            allRows.push(['', '', `Kilometraje (${recordedKms}km × ${kmPrice.toFixed(2)}€):`, '', '', kmsTotal.toFixed(2) + ' €']);
+            allRows.push(['', '', 'TOTAL FURGONETA:', furgoTotalQty, '', (furgoTotal + kmsTotal).toFixed(2) + ' €']);
           } else {
-            allRows.push(['', '', '', '', 'TOTAL FURGONETA:', furgoTotal.toFixed(2) + ' €']);
+            allRows.push(['', '', 'TOTAL FURGONETA:', furgoTotalQty, '', furgoTotal.toFixed(2) + ' €']);
           }
           allRows.push([]);
         });
@@ -7062,8 +7064,12 @@ function App() {
               const routeName = existingShift?.routeName || (fTickets.length > 0 ? fTickets[0].routeName : '');
               
               let furgoDeliveryTotal = 0;
+              let furgoTotalQty = 0;
               fTickets.forEach(t => {
-                (t.tasks || []).forEach(task => { furgoDeliveryTotal += calcTaskPrice(task); });
+                (t.tasks || []).forEach(task => {
+                  furgoDeliveryTotal += calcTaskPrice(task);
+                  furgoTotalQty += task.quantity || 0;
+                });
               });
 
               const recordedKms = (() => {
@@ -7151,17 +7157,23 @@ function App() {
                       </tbody>
                       <tfoot>
                         <tr style={{ background: 'rgba(99,102,241,0.06)', borderTop: '2px solid rgba(99,102,241,0.2)' }}>
-                          <td colSpan={5} style={{ padding: '10px 16px', fontWeight: '600', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Subtotal Servicios de Entrega</td>
+                          <td colSpan={3} style={{ padding: '10px 16px', fontWeight: '600', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Subtotal Servicios de Entrega</td>
+                          <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: '700', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{furgoTotalQty}</td>
+                          <td style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--text-muted)' }}>—</td>
                           <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{furgoDeliveryTotal.toFixed(2)} €</td>
                         </tr>
                         {recordedKms > 0 && (
                           <tr style={{ background: 'rgba(99,102,241,0.04)' }}>
-                            <td colSpan={5} style={{ padding: '8px 16px', fontWeight: '600', color: 'var(--text-muted)', fontSize: '0.85rem' }}>🛣️ Kilometraje ({recordedKms} km × {kmPrice.toFixed(2)} €/km)</td>
+                            <td colSpan={3} style={{ padding: '8px 16px', fontWeight: '600', color: 'var(--text-muted)', fontSize: '0.85rem' }}>🛣️ Kilometraje ({recordedKms} km × {kmPrice.toFixed(2)} €/km)</td>
+                            <td style={{ padding: '8px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>—</td>
+                            <td style={{ padding: '8px 16px', textAlign: 'right', color: 'var(--text-muted)' }}>—</td>
                             <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{kmsTotal.toFixed(2)} €</td>
                           </tr>
                         )}
                         <tr style={{ background: 'rgba(99,102,241,0.12)', borderTop: '1px solid rgba(99,102,241,0.3)' }}>
-                          <td colSpan={5} style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--primary)', fontSize: '0.95rem' }}>🏆 TOTAL FURGONETA</td>
+                          <td colSpan={3} style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--primary)', fontSize: '0.95rem' }}>🏆 TOTAL FURGONETA</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '800', color: 'var(--primary)', fontSize: '0.9rem', fontVariantNumeric: 'tabular-nums' }}>{furgoTotalQty}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--primary)' }}>—</td>
                           <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', fontSize: '1.05rem', fontVariantNumeric: 'tabular-nums' }}>{furgoGrandTotal.toFixed(2)} €</td>
                         </tr>
                       </tfoot>
@@ -7182,7 +7194,8 @@ function App() {
                     <tr style={{ borderBottom: '1px solid var(--panel-border)' }}>
                       <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Furgoneta</th>
                       <th style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Entregas</th>
-                      <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Servicios</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Cant. Serv.</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Imp. Servicios</th>
                       <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Kms</th>
                       <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Total</th>
                     </tr>
@@ -7193,13 +7206,20 @@ function App() {
                       const furgoLabel = furgoUser?.label || furgoId;
                       const fTickets = reportTickets.filter(t => t.furgoId === furgoId);
                       let fTotal = 0;
-                      fTickets.forEach(t => { (t.tasks || []).forEach(task => { fTotal += calcTaskPrice(task); }); });
+                      let fQty = 0;
+                      fTickets.forEach(t => { 
+                        (t.tasks || []).forEach(task => { 
+                          fTotal += calcTaskPrice(task); 
+                          fQty += task.quantity || 0;
+                        }); 
+                      });
                       const fKms = (() => { try { return parseFloat(localStorage.getItem(`delivery_route_kms_${furgoId}_${reportDate}`) || '0') || 0; } catch { return 0; } })();
                       const fKmsTotal = fKms * kmPrice;
                       return (
                         <tr key={furgoId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '9px 12px', fontWeight: '600', color: 'var(--text-main)' }}>🚚 {furgoLabel}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{fTickets.length}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', color: 'var(--text-main)', fontWeight: '600' }}>{fQty}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{fTotal.toFixed(2)} €</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{fKms > 0 ? `${fKms} km` : '—'}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{(fTotal + fKmsTotal).toFixed(2)} €</td>
@@ -7209,7 +7229,34 @@ function App() {
                   </tbody>
                   <tfoot>
                     <tr style={{ background: 'rgba(99,102,241,0.15)', borderTop: '2px solid rgba(99,102,241,0.3)' }}>
-                      <td colSpan={4} style={{ padding: '12px', fontWeight: '800', color: 'var(--primary)', fontSize: '1rem' }}>💰 TOTAL GLOBAL DEL DÍA</td>
+                      <td style={{ padding: '12px', fontWeight: '800', color: 'var(--primary)', fontSize: '1rem' }}>💰 TOTAL GLOBAL</td>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: '800', color: 'var(--primary)' }}>
+                        {reportTickets.length}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: '800', color: 'var(--primary)' }}>
+                        {(() => {
+                          let tq = 0;
+                          reportTickets.forEach(t => { (t.tasks || []).forEach(task => { tq += task.quantity || 0; }); });
+                          return tq;
+                        })()}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>
+                        {(() => {
+                          let ts = 0;
+                          reportTickets.forEach(t => { (t.tasks || []).forEach(task => { ts += calcTaskPrice(task); }); });
+                          return ts.toFixed(2) + ' €';
+                        })()}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {(() => {
+                          let tk = 0;
+                          furgoIds.forEach(fId => {
+                            const fKms = (() => { try { return parseFloat(localStorage.getItem(`delivery_route_kms_${fId}_${reportDate}`) || '0') || 0; } catch { return 0; } })();
+                            tk += fKms;
+                          });
+                          return tk > 0 ? `${tk} km` : '—';
+                        })()}
+                      </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', fontSize: '1.1rem', fontVariantNumeric: 'tabular-nums' }}>
                         {(() => {
                           let gt = 0;
@@ -9040,7 +9087,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v79
+            🔄 v80
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
