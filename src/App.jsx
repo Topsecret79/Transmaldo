@@ -36,10 +36,11 @@ const getShortAddressString = (addressStr) => {
     return cleaned;
   }).filter(p => p.length > 0);
 
-  // Filter out parts that are exactly countries or regions
+  // Filter out parts that are exactly countries or regions, or contain "provincia de"
   const cleanParts = parts.filter(p => {
     const lp = p.toLowerCase();
     if (regions.includes(lp)) return false;
+    if (lp.includes('provincia de') || lp.includes('província de') || lp.includes('province of')) return false;
     return true;
   });
 
@@ -8485,7 +8486,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v73
+            🔄 v74
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
