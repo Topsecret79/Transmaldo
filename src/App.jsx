@@ -427,6 +427,7 @@ function App() {
   }); 
   const [ticketFilterFurgo, setTicketFilterFurgo] = useState('all');
   const [ticketFilterDate, setTicketFilterDate] = useState('');
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
   const [ticketFilterPostcode, setTicketFilterPostcode] = useState('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -6900,6 +6901,338 @@ function App() {
     );
   };
 
+  // --- RENDERIZADO DEL INFORME DIARIO ---
+  const renderDailyReport = () => {
+    const prevDay = () => {
+      const d = new Date(reportDate + 'T12:00:00');
+      d.setDate(d.getDate() - 1);
+      setReportDate(d.toISOString().split('T')[0]);
+    };
+    const nextDay = () => {
+      const d = new Date(reportDate + 'T12:00:00');
+      d.setDate(d.getDate() + 1);
+      setReportDate(d.toISOString().split('T')[0]);
+    };
+
+    const calcTaskPrice = (task) => {
+      if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
+        return (task.unitPrice || task.price || 0) * task.quantity;
+      }
+      const tariff = tariffs.find(t => t.id === task.tariffId);
+      if (!tariff) return 0;
+      if (tariff.type === 'fixed') return tariff.value * task.quantity;
+      if (tariff.type === 'modules') return tariff.value * modulePrice * task.quantity;
+      return 0;
+    };
+
+    const calcTaskUnitPrice = (task) => {
+      if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
+        return task.unitPrice || task.price || 0;
+      }
+      const tariff = tariffs.find(t => t.id === task.tariffId);
+      if (!tariff) return 0;
+      if (tariff.type === 'fixed') return tariff.value;
+      if (tariff.type === 'modules') return tariff.value * modulePrice;
+      return 0;
+    };
+
+    const reportTickets = visibleTickets.filter(t =>
+      t.date === reportDate && t.status !== 'failed'
+    );
+
+    const furgoIds = [...new Set(reportTickets.map(t => t.furgoId))];
+
+    const exportToExcel = async () => {
+      try {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.utils.book_new();
+        const allRows = [
+          [`INFORME DIARIO: ${reportDate}`],
+          []
+        ];
+
+        furgoIds.forEach(furgoId => {
+          const furgoUser = users.find(u => u.id === furgoId);
+          const furgoLabel = furgoUser?.label || furgoId;
+          const fTickets = reportTickets.filter(t => t.furgoId === furgoId);
+          const existingShift = shifts.find(s => s.furgoId === furgoId && s.date === reportDate);
+          const routeName = existingShift?.routeName || (fTickets.length > 0 ? fTickets[0].routeName : '');
+          
+          allRows.push([`FURGONETA: ${furgoLabel}${routeName ? ` | Ruta: ${routeName}` : ''}`]);
+          allRows.push(['Cliente', 'Servicio', 'Marca/Detalle', 'Cantidad', 'Precio Unitario', 'Total']);
+
+          let furgoTotal = 0;
+          fTickets.forEach(ticket => {
+            const taskCount = (ticket.tasks || []).length;
+            (ticket.tasks || []).forEach((task, ti) => {
+              const tariff = tariffs.find(t => t.id === task.tariffId);
+              const name = task.name || (tariff ? tariff.name : task.tariffId);
+              const isTv = tariff && tariff.block === 'Televisores' && task.tariffId !== 'TV_VIEJA_URB' && task.tariffId !== 'TV_VIEJA_NO_URB';
+              const brand = isTv && task.brand && task.brand !== 'Genérica' ? task.brand : '';
+              const inches = isTv && task.inches ? `${task.inches}"` : '';
+              const detail = [brand, inches].filter(Boolean).join(' ');
+              const unitP = calcTaskUnitPrice(task);
+              const totalP = calcTaskPrice(task);
+              furgoTotal += totalP;
+              allRows.push([
+                ti === 0 ? ticket.customerName : '',
+                name,
+                detail,
+                task.quantity,
+                unitP.toFixed(2) + ' €',
+                totalP.toFixed(2) + ' €'
+              ]);
+            });
+            if (taskCount === 0) {
+              allRows.push([ticket.customerName, '(sin servicios)', '', '', '', '']);
+            }
+          });
+
+          const recordedKms = existingShift ? (() => {
+            try { return parseFloat(JSON.parse(localStorage.getItem(`delivery_route_kms_${furgoId}_${reportDate}`) || '0')) || 0; } catch { return 0; }
+          })() : 0;
+          const kmsTotal = recordedKms * kmPrice;
+
+          allRows.push(['', '', '', '', 'Subtotal entregas:', furgoTotal.toFixed(2) + ' €']);
+          if (recordedKms > 0) {
+            allRows.push(['', '', '', '', `Kilometraje (${recordedKms}km × ${kmPrice.toFixed(2)}€):`, kmsTotal.toFixed(2) + ' €']);
+            allRows.push(['', '', '', '', 'TOTAL FURGONETA:', (furgoTotal + kmsTotal).toFixed(2) + ' €']);
+          } else {
+            allRows.push(['', '', '', '', 'TOTAL FURGONETA:', furgoTotal.toFixed(2) + ' €']);
+          }
+          allRows.push([]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(allRows);
+        ws['!cols'] = [{ wch: 28 }, { wch: 32 }, { wch: 18 }, { wch: 8 }, { wch: 20 }, { wch: 14 }];
+        XLSX.utils.book_append_sheet(wb, ws, `Informe ${reportDate}`);
+        XLSX.writeFile(wb, `informe_diario_${reportDate}.xlsx`);
+      } catch (e) {
+        console.error('Error exportando Excel:', e);
+        triggerAlert('Error al exportar el informe', 'error');
+      }
+    };
+
+    const grandTotal = reportTickets.reduce((sum, t) =>
+      sum + (t.tasks || []).reduce((s, task) => s + calcTaskPrice(task), 0), 0
+    );
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Cabecera */}
+        <div className="glass-panel" style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.5rem' }}>📊</span>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-main)' }}>Informe Diario de Servicios</h2>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Solo se muestran entregas completadas (no fallidas)</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <button onClick={prevDay} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px 10px' }}>◀</button>
+            <input
+              type="date"
+              className="form-input"
+              value={reportDate}
+              onChange={e => setReportDate(e.target.value)}
+              style={{ padding: '6px 12px', fontSize: '0.95rem', width: 'auto', fontWeight: '600' }}
+            />
+            <button onClick={nextDay} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px 10px' }}>▶</button>
+            {reportTickets.length > 0 && (
+              <button onClick={exportToExcel} className="btn btn-primary btn-small" style={{ width: 'auto', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
+                📥 Exportar Excel
+              </button>
+            )}
+          </div>
+        </div>
+
+        {reportTickets.length === 0 ? (
+          <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📋</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: '600' }}>No hay entregas completadas para el {reportDate}</div>
+            <div style={{ fontSize: '0.85rem', marginTop: '6px' }}>Selecciona otra fecha o verifica que los repartos estén registrados</div>
+          </div>
+        ) : (
+          <>
+            {furgoIds.map(furgoId => {
+              const furgoUser = users.find(u => u.id === furgoId);
+              const furgoLabel = furgoUser?.label || furgoId;
+              const fTickets = reportTickets.filter(t => t.furgoId === furgoId);
+              const existingShift = shifts.find(s => s.furgoId === furgoId && s.date === reportDate);
+              const routeName = existingShift?.routeName || (fTickets.length > 0 ? fTickets[0].routeName : '');
+              
+              let furgoDeliveryTotal = 0;
+              fTickets.forEach(t => {
+                (t.tasks || []).forEach(task => { furgoDeliveryTotal += calcTaskPrice(task); });
+              });
+
+              const recordedKms = (() => {
+                try { return parseFloat(localStorage.getItem(`delivery_route_kms_${furgoId}_${reportDate}`) || '0') || 0; } catch { return 0; }
+              })();
+              const kmsTotal = recordedKms * kmPrice;
+              const furgoGrandTotal = furgoDeliveryTotal + kmsTotal;
+
+              return (
+                <div key={furgoId} className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
+                  {/* Cabecera de furgoneta */}
+                  <div style={{ padding: '14px 20px', background: 'rgba(99,102,241,0.1)', borderBottom: '1px solid var(--panel-border)', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '1.3rem' }}>🚚</span>
+                      <div>
+                        <div style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>{furgoLabel}</div>
+                        {routeName && <div style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: '600' }}>📍 {routeName}</div>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>✅ {fTickets.length} entregas</span>
+                      <span style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--primary)' }}>💰 {furgoGrandTotal.toFixed(2)} €</span>
+                    </div>
+                  </div>
+
+                  {/* Tabla de servicios */}
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--panel-border)' }}>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cliente</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Servicio</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Detalle</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cant.</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>P. Unit.</th>
+                          <th style={{ padding: '10px 16px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fTickets.map((ticket, tIdx) => {
+                          const tasks = ticket.tasks || [];
+                          if (tasks.length === 0) return (
+                            <tr key={ticket.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                              <td style={{ padding: '10px 16px', fontWeight: '600', color: 'var(--text-main)' }}>{ticket.customerName}</td>
+                              <td colSpan={5} style={{ padding: '10px 16px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin servicios registrados</td>
+                            </tr>
+                          );
+                          return tasks.map((task, sIdx) => {
+                            const tariff = tariffs.find(t => t.id === task.tariffId);
+                            const name = task.name || (tariff ? tariff.name : task.tariffId);
+                            const isTv = tariff && tariff.block === 'Televisores' && task.tariffId !== 'TV_VIEJA_URB' && task.tariffId !== 'TV_VIEJA_NO_URB';
+                            const brand = isTv && task.brand && task.brand !== 'Genérica' ? task.brand : null;
+                            const inches = isTv && task.inches ? `${task.inches}"` : null;
+                            const detail = [brand, inches].filter(Boolean).join(' ');
+                            const unitP = calcTaskUnitPrice(task);
+                            const totalP = calcTaskPrice(task);
+                            const isFirstRow = sIdx === 0;
+                            const isLastTask = sIdx === tasks.length - 1;
+                            const isLastTicket = tIdx === fTickets.length - 1;
+                            const rowBorder = (isLastTask && !isLastTicket) ? '2px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.03)';
+                            return (
+                              <tr key={`${ticket.id}-${sIdx}`} style={{ borderBottom: rowBorder, background: isFirstRow && tIdx % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
+                                <td style={{ padding: '9px 16px', verticalAlign: 'top', fontWeight: isFirstRow ? '600' : '400', color: isFirstRow ? 'var(--text-main)' : 'transparent', fontSize: isFirstRow ? '0.86rem' : '0.85rem', whiteSpace: 'nowrap' }}>
+                                  {isFirstRow ? ticket.customerName : ''}
+                                </td>
+                                <td style={{ padding: '9px 16px', color: 'var(--text-main)' }}>{name}</td>
+                                <td style={{ padding: '9px 16px' }}>
+                                  {detail && (
+                                    <span style={{ fontSize: '0.75rem', padding: '2px 7px', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '5px', fontWeight: '600' }}>
+                                      📺 {detail}
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '9px 16px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600' }}>{task.quantity}</td>
+                                <td style={{ padding: '9px 16px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                                  {unitP > 0 ? `${unitP.toFixed(2)} €` : '—'}
+                                </td>
+                                <td style={{ padding: '9px 16px', textAlign: 'right', color: 'var(--primary)', fontWeight: '700', fontVariantNumeric: 'tabular-nums' }}>
+                                  {totalP > 0 ? `${totalP.toFixed(2)} €` : '—'}
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ background: 'rgba(99,102,241,0.06)', borderTop: '2px solid rgba(99,102,241,0.2)' }}>
+                          <td colSpan={5} style={{ padding: '10px 16px', fontWeight: '600', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Subtotal Servicios de Entrega</td>
+                          <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{furgoDeliveryTotal.toFixed(2)} €</td>
+                        </tr>
+                        {recordedKms > 0 && (
+                          <tr style={{ background: 'rgba(99,102,241,0.04)' }}>
+                            <td colSpan={5} style={{ padding: '8px 16px', fontWeight: '600', color: 'var(--text-muted)', fontSize: '0.85rem' }}>🛣️ Kilometraje ({recordedKms} km × {kmPrice.toFixed(2)} €/km)</td>
+                            <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{kmsTotal.toFixed(2)} €</td>
+                          </tr>
+                        )}
+                        <tr style={{ background: 'rgba(99,102,241,0.12)', borderTop: '1px solid rgba(99,102,241,0.3)' }}>
+                          <td colSpan={5} style={{ padding: '12px 16px', fontWeight: '700', color: 'var(--primary)', fontSize: '0.95rem' }}>🏆 TOTAL FURGONETA</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', fontSize: '1.05rem', fontVariantNumeric: 'tabular-nums' }}>{furgoGrandTotal.toFixed(2)} €</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Resumen global (solo si hay más de una furgoneta) */}
+            {furgoIds.length > 1 && (
+              <div className="glass-panel" style={{ padding: '20px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.25)' }}>
+                <h3 style={{ margin: '0 0 14px 0', fontSize: '1.05rem', fontWeight: '700', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📈 Resumen Global del Día — {reportDate}
+                </h3>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--panel-border)' }}>
+                      <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Furgoneta</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Entregas</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Servicios</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Kms</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {furgoIds.map(furgoId => {
+                      const furgoUser = users.find(u => u.id === furgoId);
+                      const furgoLabel = furgoUser?.label || furgoId;
+                      const fTickets = reportTickets.filter(t => t.furgoId === furgoId);
+                      let fTotal = 0;
+                      fTickets.forEach(t => { (t.tasks || []).forEach(task => { fTotal += calcTaskPrice(task); }); });
+                      const fKms = (() => { try { return parseFloat(localStorage.getItem(`delivery_route_kms_${furgoId}_${reportDate}`) || '0') || 0; } catch { return 0; } })();
+                      const fKmsTotal = fKms * kmPrice;
+                      return (
+                        <tr key={furgoId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '9px 12px', fontWeight: '600', color: 'var(--text-main)' }}>🚚 {furgoLabel}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{fTickets.length}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{fTotal.toFixed(2)} €</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{fKms > 0 ? `${fKms} km` : '—'}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{(fTotal + fKmsTotal).toFixed(2)} €</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'rgba(99,102,241,0.15)', borderTop: '2px solid rgba(99,102,241,0.3)' }}>
+                      <td colSpan={4} style={{ padding: '12px', fontWeight: '800', color: 'var(--primary)', fontSize: '1rem' }}>💰 TOTAL GLOBAL DEL DÍA</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', fontSize: '1.1rem', fontVariantNumeric: 'tabular-nums' }}>
+                        {(() => {
+                          let gt = 0;
+                          furgoIds.forEach(fId => {
+                            const fT = reportTickets.filter(t => t.furgoId === fId);
+                            fT.forEach(t => { (t.tasks || []).forEach(task => { gt += calcTaskPrice(task); }); });
+                            const fKms = (() => { try { return parseFloat(localStorage.getItem(`delivery_route_kms_${fId}_${reportDate}`) || '0') || 0; } catch { return 0; } })();
+                            gt += fKms * kmPrice;
+                          });
+                          return gt.toFixed(2) + ' €';
+                        })()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   // --- RENDERIZADO DEL PORTAL DE ADMINISTRADOR ---
   const renderAdminPortal = () => {
     const filteredAdminTickets = visibleTickets.filter(t => {
@@ -6982,6 +7315,7 @@ function App() {
       <div>
         <div className="tab-container">
           <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('dashboard'); }}>Dashboard</button>
+          <button className={`tab-btn ${activeTab === 'daily_report' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('daily_report'); }}>📊 Informe del Día</button>
           <button className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>Repartos del Periodo ({filteredAdminTickets.length})</button>
           <button className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('map'); }}>🗺️ Mapa de Control</button>
           {hasSearchPermission && (
@@ -6993,6 +7327,8 @@ function App() {
           <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>Ajustar Precios</button>
           <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}>Furgonetas y Seguridad</button>
         </div>
+
+        {activeTab === 'daily_report' && renderDailyReport()}
 
         {activeTab === 'dashboard' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -8704,7 +9040,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v78
+            🔄 v79
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
