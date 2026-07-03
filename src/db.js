@@ -713,9 +713,10 @@ export function addTicket(ticketData) {
   let totalCalculado = 0;
   const detailedTasks = ticketData.tasks.map(task => {
     const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_');
-    const price = isCustom 
+    const basePrice = isCustom 
       ? (task.price || task.unitPrice || 0) 
       : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+    const price = task.noCharge ? 0 : basePrice;
     const subtotal = price * task.quantity;
     totalCalculado += subtotal;
     const tariff = tariffs.find(t => t.id === task.tariffId);
@@ -734,7 +735,8 @@ export function addTicket(ticketData) {
       unitPrice: price,
       subtotal: subtotal,
       brand: task.brand || null,
-      inches: task.inches || null
+      inches: task.inches || null,
+      noCharge: !!task.noCharge
     };
   });
 
@@ -810,9 +812,10 @@ export function updateTicket(updatedTicket) {
   let totalCalculado = 0;
   const detailedTasks = updatedTicket.tasks.map(task => {
     const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_');
-    const price = isCustom 
+    const basePrice = isCustom 
       ? (task.price || task.unitPrice || 0) 
       : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+    const price = task.noCharge ? 0 : basePrice;
     const subtotal = price * task.quantity;
     totalCalculado += subtotal;
     const tariff = tariffs.find(t => t.id === task.tariffId);
@@ -831,7 +834,8 @@ export function updateTicket(updatedTicket) {
       unitPrice: price,
       subtotal: subtotal,
       brand: task.brand || null,
-      inches: task.inches || null
+      inches: task.inches || null,
+      noCharge: !!task.noCharge
     };
   });
 

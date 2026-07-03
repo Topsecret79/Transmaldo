@@ -2407,6 +2407,25 @@ function App() {
     // Agrupar todas las tareas y calcular tarifas locales
     const tasksArray = [];
 
+    const existingTicket = editingTicketId ? tickets.find(t => t.id === editingTicketId) : null;
+    const matchedTaskIds = [];
+    const getExistingNoCharge = (tariffId, details = {}) => {
+      if (!existingTicket || !existingTicket.tasks) return false;
+      const idx = existingTicket.tasks.findIndex((t, i) => {
+        if (matchedTaskIds.includes(i)) return false;
+        const matchesTariff = t.tariffId === tariffId;
+        const matchesInches = !details.inches || t.inches === details.inches;
+        const matchesBrand = !details.brand || t.brand === details.brand;
+        const matchesDesc = !details.desc || (t.name && t.name.includes(`(${details.desc})`));
+        return matchesTariff && matchesInches && matchesBrand && matchesDesc;
+      });
+      if (idx !== -1) {
+        matchedTaskIds.push(idx);
+        return !!existingTicket.tasks[idx].noCharge;
+      }
+      return false;
+    };
+
     // Validar que si la acción es "solo_pm" o "solo_cuelgue", se hayan seleccionado los servicios correspondientes
     let hasValidationError = false;
     formTvs.forEach(tv => {
@@ -2432,7 +2451,8 @@ function App() {
           tariffId: mainTariffId,
           quantity: 1,
           brand: tv.brand || 'Genérica',
-          inches: tv.inches || 43
+          inches: tv.inches || 43,
+          noCharge: getExistingNoCharge(mainTariffId, { inches: tv.inches, brand: tv.brand })
         });
       }
 
@@ -2443,7 +2463,8 @@ function App() {
           tariffId: pmId,
           quantity: 1,
           brand: tv.brand || 'Genérica',
-          inches: tv.inches || 43
+          inches: tv.inches || 43,
+          noCharge: getExistingNoCharge(pmId, { inches: tv.inches, brand: tv.brand })
         });
       }
 
@@ -2454,7 +2475,8 @@ function App() {
           tariffId: cuelgueId,
           quantity: 1,
           brand: tv.brand || 'Genérica',
-          inches: tv.inches || 43
+          inches: tv.inches || 43,
+          noCharge: getExistingNoCharge(cuelgueId, { inches: tv.inches, brand: tv.brand })
         });
       }
 
@@ -2463,7 +2485,8 @@ function App() {
         const recId = tv.recogidaViejaType === 'urbantz' ? 'TV_VIEJA_URB' : 'TV_VIEJA_NO_URB';
         tasksArray.push({
           tariffId: recId,
-          quantity: 1
+          quantity: 1,
+          noCharge: getExistingNoCharge(recId)
         });
       }
     });
@@ -2480,13 +2503,15 @@ function App() {
             tasksArray.push({
               tariffId,
               quantity: 1,
-              name: `${originalTariff?.name || 'Paquetería'} (${desc})`
+              name: `${originalTariff?.name || 'Paquetería'} (${desc})`,
+              noCharge: getExistingNoCharge(tariffId, { desc })
             });
           }
         } else {
           tasksArray.push({
             tariffId,
-            quantity
+            quantity,
+            noCharge: getExistingNoCharge(tariffId)
           });
         }
       }
@@ -2498,7 +2523,8 @@ function App() {
         tariffId: extra.id,
         name: extra.name,
         price: extra.price,
-        quantity: 1
+        quantity: 1,
+        noCharge: getExistingNoCharge(extra.id)
       });
     });
 
@@ -2506,12 +2532,14 @@ function App() {
     if (urgenteType === '100') {
       tasksArray.push({
         tariffId: 'URGENTE_100',
-        quantity: 1
+        quantity: 1,
+        noCharge: getExistingNoCharge('URGENTE_100')
       });
     } else if (urgenteType === '120') {
       tasksArray.push({
         tariffId: 'URGENTE_120',
-        quantity: 1
+        quantity: 1,
+        noCharge: getExistingNoCharge('URGENTE_120')
       });
     }
 
@@ -3366,6 +3394,29 @@ function App() {
       updateTicketStatus(id, status, failureReason);
       loadData();
       triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+    }
+  };
+
+  const toggleTaskCharge = async (ticketId, taskIndex) => {
+    try {
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (!ticket) return;
+      const updatedTasks = (ticket.tasks || []).map((t, idx) => {
+        if (idx === taskIndex) {
+          return { ...t, noCharge: !t.noCharge };
+        }
+        return t;
+      });
+      const updatedTicket = {
+        ...ticket,
+        tasks: updatedTasks
+      };
+      await updateTicket(updatedTicket);
+      triggerAlert('Estado de cobro del servicio actualizado', 'success');
+      loadData();
+    } catch (e) {
+      console.error("Error toggling task charge:", e);
+      triggerAlert('Error al actualizar el cobro del servicio', 'error');
     }
   };
 
@@ -6915,6 +6966,7 @@ function App() {
     };
 
     const calcTaskPrice = (task) => {
+      if (task.noCharge) return 0;
       if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
         return (task.unitPrice || task.price || 0) * task.quantity;
       }
@@ -6926,6 +6978,7 @@ function App() {
     };
 
     const calcTaskUnitPrice = (task) => {
+      if (task.noCharge) return 0;
       if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
         return task.unitPrice || task.price || 0;
       }
@@ -7135,7 +7188,31 @@ function App() {
                                 <td style={{ padding: '9px 16px', verticalAlign: 'top', fontWeight: isFirstRow ? '600' : '400', color: isFirstRow ? 'var(--text-main)' : 'transparent', fontSize: isFirstRow ? '0.86rem' : '0.85rem', whiteSpace: 'nowrap' }}>
                                   {isFirstRow ? ticket.customerName : ''}
                                 </td>
-                                <td style={{ padding: '9px 16px', color: 'var(--text-main)' }}>{name}</td>
+                                <td style={{ padding: '9px 16px', color: 'var(--text-main)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                    <span>{name}</span>
+                                    <span 
+                                      onClick={() => toggleTaskCharge(ticket.id, sIdx)} 
+                                      style={{ 
+                                        cursor: 'pointer', 
+                                        fontSize: '0.7rem', 
+                                        padding: '1px 6px', 
+                                        borderRadius: '4px',
+                                        userSelect: 'none',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        fontWeight: '600',
+                                        background: task.noCharge ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)',
+                                        color: task.noCharge ? '#f87171' : '#34d399',
+                                        border: task.noCharge ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(16, 185, 129, 0.25)',
+                                        transition: 'all 0.15s ease'
+                                      }}
+                                      title={task.noCharge ? "Hacer cobrable" : "Quitar coste (Gratuito)"}
+                                    >
+                                      {task.noCharge ? '❌ Sin Coste' : '💶 Cobrar'}
+                                    </span>
+                                  </div>
+                                </td>
                                 <td style={{ padding: '9px 16px' }}>
                                   {detail && (
                                     <span style={{ fontSize: '0.75rem', padding: '2px 7px', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '5px', fontWeight: '600' }}>
@@ -9087,7 +9164,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v80
+            🔄 v81
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
