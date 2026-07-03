@@ -6953,7 +6953,7 @@ function App() {
     );
   };
 
-  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v80.1) ---
+  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v82.1) ---
   const renderDailyReport = () => {
     const prevDay = () => {
       const d = new Date(reportDate + 'T12:00:00');
