@@ -219,7 +219,28 @@ export async function syncFromCloud() {
         value: parseFloat(t.value) || 0,
         createdBy: t.created_by || null
       }));
+
+      // Migrar soportes a tarifa fija (5.23 € / equivalente a TV pequeña)
+      let needsSave = false;
+      
+      const sparItem = localTariffs.find(t => t.id === 'SPAR');
+      if (sparItem && (sparItem.type !== 'fixed' || sparItem.value !== 5.23)) {
+        sparItem.type = 'fixed';
+        sparItem.value = 5.23;
+        needsSave = true;
+      }
+      
+      const ssueItem = localTariffs.find(t => t.id === 'SSUE');
+      if (ssueItem && (ssueItem.type !== 'fixed' || ssueItem.value !== 5.23)) {
+        ssueItem.type = 'fixed';
+        ssueItem.value = 5.23;
+        needsSave = true;
+      }
+
       localStorage.setItem('delivery_tariffs', JSON.stringify(localTariffs));
+      if (needsSave) {
+        saveTariffs(localTariffs);
+      }
     }
 
     // Pull Tickets
@@ -444,8 +465,8 @@ const DEFAULT_TARIFFS = [
   { id: 'PM_BSND', name: 'Puesta en Marcha Barra de Sonido', block: 'Otros', type: 'modules', value: 3 },
   { id: 'CUELGUE_BSND', name: 'Cuelgue Barra de Sonido', block: 'Otros', type: 'modules', value: 8 },
   { id: 'MFRA', name: 'Marco Frame', block: 'Otros', type: 'modules', value: 3 },
-  { id: 'SPAR', name: 'Soporte de Pared', block: 'Otros', type: 'modules', value: 3 },
-  { id: 'SSUE', name: 'Soporte de Suelo', block: 'Otros', type: 'modules', value: 3 },
+  { id: 'SPAR', name: 'Soporte de Pared', block: 'Otros', type: 'fixed', value: 5.23 },
+  { id: 'SSUE', name: 'Soporte de Suelo', block: 'Otros', type: 'fixed', value: 5.23 },
   { id: 'ALTA', name: 'Altavoces', block: 'Otros', type: 'modules', value: 3 },
   { id: 'TDIC', name: 'Toca discos', block: 'Otros', type: 'modules', value: 3 },
   { id: 'PROY', name: 'Proyector', block: 'Otros', type: 'fixed', value: 5.23 },
@@ -532,6 +553,20 @@ export function initDB() {
       if (proyItem && (proyItem.type !== 'fixed' || proyItem.value !== 5.23)) {
         proyItem.type = 'fixed';
         proyItem.value = 5.23;
+      }
+      
+      // Migrate SPAR to fixed 5.23 (equivalent to small TV)
+      const sparItem = current.find(t => t.id === 'SPAR');
+      if (sparItem && (sparItem.type !== 'fixed' || sparItem.value !== 5.23)) {
+        sparItem.type = 'fixed';
+        sparItem.value = 5.23;
+      }
+
+      // Migrate SSUE to fixed 5.23 (equivalent to small TV)
+      const ssueItem = current.find(t => t.id === 'SSUE');
+      if (ssueItem && (ssueItem.type !== 'fixed' || ssueItem.value !== 5.23)) {
+        ssueItem.type = 'fixed';
+        ssueItem.value = 5.23;
       }
       
       // Migrate VTEC tariff (Visita Técnica 5 modules)
