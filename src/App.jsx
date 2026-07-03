@@ -184,6 +184,7 @@ import {
   addTicket, 
   updateTicket, 
   deleteTicket, 
+  calculateTaskPrice, 
   resetMonthlyTickets,
   updateTicketStatus,
   getTVRange,
@@ -3108,9 +3109,9 @@ function App() {
     const updatedTickets = allTickets.map(ticket => {
       let totalCalculado = 0;
       const tasks = ticket.tasks.map(task => {
-        const tariff = activeTariffs.find(t => t.id === task.tariffId);
-        if (!tariff) return task;
-        const price = tariff.type === 'fixed' ? tariff.value : tariff.value * activeModulePrice;
+        if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) return task;
+        const basePrice = calculateTaskPrice(task.tariffId, activeTariffs, activeModulePrice);
+        const price = task.noCharge ? 0 : basePrice;
         return {
           ...task,
           unitPrice: price,
@@ -3448,9 +3449,9 @@ function App() {
 
     let totalCalculado = 0;
     const finalTasks = updatedTasks.map(task => {
-      const tariff = tariffs.find(t => t.id === task.tariffId);
-      if (!tariff) return task;
-      const price = tariff.type === 'fixed' ? tariff.value : tariff.value * modulePrice;
+      if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) return task;
+      const basePrice = calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+      const price = task.noCharge ? 0 : basePrice;
       return {
         ...task,
         unitPrice: price,
@@ -6970,11 +6971,7 @@ function App() {
       if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
         return (task.unitPrice || task.price || 0) * task.quantity;
       }
-      const tariff = tariffs.find(t => t.id === task.tariffId);
-      if (!tariff) return 0;
-      if (tariff.type === 'fixed') return tariff.value * task.quantity;
-      if (tariff.type === 'modules') return tariff.value * modulePrice * task.quantity;
-      return 0;
+      return calculateTaskPrice(task.tariffId, tariffs, modulePrice) * task.quantity;
     };
 
     const calcTaskUnitPrice = (task) => {
@@ -6982,11 +6979,7 @@ function App() {
       if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
         return task.unitPrice || task.price || 0;
       }
-      const tariff = tariffs.find(t => t.id === task.tariffId);
-      if (!tariff) return 0;
-      if (tariff.type === 'fixed') return tariff.value;
-      if (tariff.type === 'modules') return tariff.value * modulePrice;
-      return 0;
+      return calculateTaskPrice(task.tariffId, tariffs, modulePrice);
     };
 
     const reportTickets = visibleTickets.filter(t =>
@@ -9164,7 +9157,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v81
+            🔄 v82
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
