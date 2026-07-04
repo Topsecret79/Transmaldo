@@ -2943,25 +2943,22 @@ function App() {
         startCoords = { lat: 41.3879, lng: 2.16992 };
       }
 
-      const pendingWithCoords = [];
-      for (const t of pendingTickets) {
-        let lat = t.lat ? parseFloat(t.lat) : null;
-        let lng = t.lng ? parseFloat(t.lng) : null;
-        if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) {
-          const res = await geocodeAddress(t.address);
-          if (res && res.lat && res.lng) {
-            lat = parseFloat(res.lat);
-            lng = parseFloat(res.lng);
-            t.lat = lat;
-            t.lng = lng;
-            updateTicket(t);
+      // Separar paradas pendientes entre "saltadas" (su orden original era menor al de la completada) y "normales"
+      let skippedPending = [];
+      let normalPending = [];
+
+      if (lastCompleted && lastCompleted.routeOrder !== undefined && lastCompleted.routeOrder !== null && lastCompleted.routeOrder !== '') {
+        const lastOrder = Number(lastCompleted.routeOrder);
+        pendingTickets.forEach(t => {
+          const tOrder = t.routeOrder !== undefined && t.routeOrder !== null && t.routeOrder !== '' ? Number(t.routeOrder) : Infinity;
+          if (tOrder < lastOrder) {
+            skippedPending.push(t);
+          } else {
+            normalPending.push(t);
           }
-        }
-        if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
-          pendingWithCoords.push({ ...t, lat, lng });
-        } else {
-          pendingWithCoords.push({ ...t, lat: startCoords.lat, lng: startCoords.lng });
-        }
+        });
+      } else {
+        normalPending = [...pendingTickets];
       }
 
       const getDistance = (c1, c2) => {
@@ -2976,45 +2973,80 @@ function App() {
         return R * c;
       };
 
-      const parsedPending = pendingWithCoords.map(t => {
-        const parsed = parseTicketNotes(t.notes);
-        return { ...t, timeSlot: parsed.timeSlot, estimatedDuration: parsed.estimatedDuration };
-      });
-      const morningTickets = parsedPending.filter(t => t.timeSlot === 'morning');
-      const anyTickets = parsedPending.filter(t => t.timeSlot === 'any' || !t.timeSlot);
-      const afternoonTickets = parsedPending.filter(t => t.timeSlot === 'afternoon');
-
-      const optimizedPending = [];
-      let currentPos = startCoords;
-
-      const optimizeGroup = (group) => {
-        const unvisited = [...group];
-        while (unvisited.length > 0) {
-          let nearestIdx = -1;
-          let minDistance = Infinity;
-          for (let i = 0; i < unvisited.length; i++) {
-            const dist = getDistance(currentPos, unvisited[i]);
-            if (dist < minDistance) {
-              minDistance = dist;
-              nearestIdx = i;
+      const geocodeAndFormat = async (ticketsList) => {
+        const listWithCoords = [];
+        for (const t of ticketsList) {
+          let lat = t.lat ? parseFloat(t.lat) : null;
+          let lng = t.lng ? parseFloat(t.lng) : null;
+          if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) {
+            const res = await geocodeAddress(t.address);
+            if (res && res.lat && res.lng) {
+              lat = parseFloat(res.lat);
+              lng = parseFloat(res.lng);
+              t.lat = lat;
+              t.lng = lng;
+              updateTicket(t);
             }
           }
-          if (nearestIdx !== -1) {
-            const nextTicket = unvisited.splice(nearestIdx, 1)[0];
-            optimizedPending.push(nextTicket);
-            currentPos = { lat: nextTicket.lat, lng: nextTicket.lng };
+          if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+            listWithCoords.push({ ...t, lat, lng });
           } else {
-            break;
+            listWithCoords.push({ ...t, lat: startCoords.lat, lng: startCoords.lng });
           }
         }
+        return listWithCoords;
       };
 
-      optimizeGroup(morningTickets);
-      optimizeGroup(anyTickets);
-      optimizeGroup(afternoonTickets);
+      const normalWithCoords = await geocodeAndFormat(normalPending);
+      const skippedWithCoords = await geocodeAndFormat(skippedPending);
 
-      const finalSequence = [...completedTickets, ...optimizedPending];
-      
+      const optimizeList = (listWithCoords, startingPos) => {
+        const parsedList = listWithCoords.map(t => {
+          const parsed = parseTicketNotes(t.notes);
+          return { ...t, timeSlot: parsed.timeSlot, estimatedDuration: parsed.estimatedDuration };
+        });
+
+        const morningTickets = parsedList.filter(t => t.timeSlot === 'morning');
+        const anyTickets = parsedList.filter(t => t.timeSlot === 'any' || !t.timeSlot);
+        const afternoonTickets = parsedList.filter(t => t.timeSlot === 'afternoon');
+
+        const optimizedResult = [];
+        let currentPos = startingPos;
+
+        const optimizeGroup = (group) => {
+          const unvisited = [...group];
+          while (unvisited.length > 0) {
+            let nearestIdx = -1;
+            let minDistance = Infinity;
+            for (let i = 0; i < unvisited.length; i++) {
+              const dist = getDistance(currentPos, unvisited[i]);
+              if (dist < minDistance) {
+                minDistance = dist;
+                nearestIdx = i;
+              }
+            }
+            if (nearestIdx !== -1) {
+              const nextTicket = unvisited.splice(nearestIdx, 1)[0];
+              optimizedResult.push(nextTicket);
+              currentPos = { lat: nextTicket.lat, lng: nextTicket.lng };
+            } else {
+              break;
+            }
+          }
+        };
+
+        optimizeGroup(morningTickets);
+        optimizeGroup(anyTickets);
+        optimizeGroup(afternoonTickets);
+
+        return { optimizedResult, lastPos: currentPos };
+      };
+
+      const { optimizedResult: optimizedNormal, lastPos: postNormalPos } = optimizeList(normalWithCoords, startCoords);
+      const { optimizedResult: optimizedSkipped } = optimizeList(skippedWithCoords, postNormalPos);
+
+      const finalSequence = [...completedTickets, ...optimizedNormal, ...optimizedSkipped];
+
       finalSequence.forEach((ticket, index) => {
         ticket.routeOrder = index + 1;
         updateTicket(ticket);
@@ -9798,7 +9830,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v97
+            🔄 v98
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
