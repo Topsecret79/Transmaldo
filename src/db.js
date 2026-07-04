@@ -1601,6 +1601,7 @@ export function parseTicketNotes(notesText) {
   let timeSlot = 'any';
   let estimatedDuration = 10; // 10 minutos por defecto
   let cleanNotes = notesText || '';
+  let driverObservations = '';
 
   const slotMatch = cleanNotes.match(/^\[Horario:\s*([^\]]+)\]/);
   if (slotMatch) {
@@ -1615,14 +1616,25 @@ export function parseTicketNotes(notesText) {
     cleanNotes = cleanNotes.replace(/^\[Duracion:\s*\d+\s*min\]\s*/, '');
   }
 
-  return { timeSlot, estimatedDuration, cleanNotes };
+  // Parse driver observations: check if there's an [Observacion: ...] block
+  const obsMatch = cleanNotes.match(/\[Observacion:\s*([^\]]+)\]/);
+  if (obsMatch) {
+    driverObservations = obsMatch[1].trim();
+    cleanNotes = cleanNotes.replace(/\[Observacion:\s*[^\]]+\]\s*/g, '');
+  }
+
+  return { timeSlot, estimatedDuration, cleanNotes: cleanNotes.trim(), driverObservations };
 }
 
 // Codificar franja horaria y duración como prefijo en las notas
-export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText) {
+export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '') {
   const slotStr = timeSlot === 'morning' ? 'Mañana' : timeSlot === 'afternoon' ? 'Tarde' : 'Cualquiera';
   const prefix = `[Horario: ${slotStr}] [Duracion: ${estimatedDuration || 10} min] `;
-  return (prefix + (cleanNotesText || '').trim()).trim();
+  let finalNotes = (prefix + (cleanNotesText || '').trim()).trim();
+  if (driverObservations && driverObservations.trim()) {
+    finalNotes += ` [Observacion: ${driverObservations.trim()}]`;
+  }
+  return finalNotes;
 }
 
 // Obtener hora de inicio de una ruta

@@ -672,6 +672,12 @@ function App() {
   const [shiftSummaryDate, setShiftSummaryDate] = useState('');
   const [shiftSummaryFurgoId, setShiftSummaryFurgoId] = useState('');
 
+  // Modal de observaciones para entrega/fallo
+  const [obsModalTicketId, setObsModalTicketId] = useState(null);
+  const [obsModalStatus, setObsModalStatus] = useState('');
+  const [obsModalObservations, setObsModalObservations] = useState('');
+  const [obsModalFailReason, setObsModalFailReason] = useState('');
+
   // Estados de Ruta y Carga Dinámica de Usuarios
   const [routeName, setRouteName] = useState('');
   const [newUsername, setNewUsername] = useState('');
@@ -1635,36 +1641,22 @@ function App() {
 
   useEffect(() => {
     if (isDurationManuallyEdited) return;
-    let duration = 10; // Base: 10 mins
+    
+    let duration = 10; // Entrega estándar: 10 min
 
-    if (formTvs.length > 0) {
-      duration = 15; // Primera TV: 15 mins
-      duration += (formTvs.length - 1) * 10; // Adicionales: 10 mins c/u
+    const hasCuelgue = serviceType === 'cuelgue' || formTvs.some(tv => tv.cuelgue) || tempTvAction === 'solo_cuelgue';
+    const hasPM = serviceType === 'puesta_marcha' || formTvs.some(tv => tv.pmType === 'basic' || tv.pmType === 'complex') || tempTvAction === 'solo_pm';
 
-      formTvs.forEach(tv => {
-        if (tv.pmType === 'basic') duration += 15;
-        else if (tv.pmType === 'complex') duration += 30;
-
-        if (tv.cuelgue) duration += 30;
-        if (tv.recogidaViejaType && tv.recogidaViejaType !== 'none') duration += 5;
-      });
-    }
-
-    // Otros elementos (paquetes o accesorios)
-    let totalOthers = 0;
-    Object.values(otherQuantities).forEach(qty => {
-      totalOthers += (qty || 0);
-    });
-    if (totalOthers > 0 && formTvs.length === 0) {
-      // Si solo es paquetería
-      duration = 10 + (totalOthers - 1) * 5;
-    } else if (totalOthers > 0) {
-      // Si acompaña a la TV
-      duration += totalOthers * 3;
+    if (hasCuelgue) {
+      duration = 90; // Cuelgue: 90 min
+    } else if (hasPM) {
+      duration = 30; // Puesta en marcha: 30 min
+    } else {
+      duration = 10;
     }
 
     setEstimatedDuration(duration);
-  }, [formTvs, otherQuantities]);
+  }, [formTvs, serviceType, tempTvAction, otherQuantities, isDurationManuallyEdited]);
 
   useEffect(() => {
     if (activeRouteContext && activeRouteContext.date && currentUser?.role !== 'repartidor') {
@@ -3468,34 +3460,62 @@ function App() {
   };
 
   const handleUpdateTicketStatus = (id, status) => {
-    let failureReason = '';
-    if (status === 'failed') {
-      const reason = window.prompt("Introduce el motivo del fallo (ej. Cliente ausente, Dirección incorrecta, Rechazado):");
-      if (reason === null) return; // User cancelled
-      failureReason = reason.trim() || 'No especificado';
+    if (status === 'success' || status === 'failed') {
+      const ticket = tickets.find(t => t.id === id);
+      const parsed = ticket ? parseTicketNotes(ticket.notes) : { cleanNotes: '', timeSlot: 'any', estimatedDuration: 10, driverObservations: '' };
+      setObsModalTicketId(id);
+      setObsModalStatus(status);
+      setObsModalObservations(parsed.driverObservations || '');
+      setObsModalFailReason(status === 'failed' ? 'Ausente' : '');
+      return;
     }
+
+    // Direct update for other statuses (pending, transit)
+    executeTicketStatusUpdate(id, status, '', '');
+  };
+
+  const executeTicketStatusUpdate = (id, status, failureReason, observations) => {
+    // Update local ticket notes before database sync
+    const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+    const index = localTickets.findIndex(t => t.id === id);
+    if (index !== -1) {
+      const parsed = parseTicketNotes(localTickets[index].notes);
+      localTickets[index].notes = encodeTicketNotes(parsed.timeSlot, parsed.estimatedDuration, parsed.cleanNotes, observations);
+      localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
+    }
+
+    const performUpdate = (latitude = null, longitude = null) => {
+      updateTicketStatus(id, status, failureReason, latitude, longitude);
+      loadData();
+      triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+    };
 
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          updateTicketStatus(id, status, failureReason, latitude, longitude);
-          loadData();
-          triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'} (GPS registrado)`);
+          performUpdate(latitude, longitude);
         },
         (error) => {
           console.warn("GPS Location capture failed:", error);
-          updateTicketStatus(id, status, failureReason);
-          loadData();
-          triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+          performUpdate();
         },
         { enableHighAccuracy: true, timeout: 5000 }
       );
     } else {
-      updateTicketStatus(id, status, failureReason);
-      loadData();
-      triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+      performUpdate();
     }
+  };
+
+  const submitStatusWithObservations = () => {
+    if (!obsModalTicketId) return;
+    const id = obsModalTicketId;
+    const status = obsModalStatus;
+    const observations = obsModalObservations;
+    const failureReason = status === 'failed' ? obsModalFailReason : '';
+
+    executeTicketStatusUpdate(id, status, failureReason, observations);
+    setObsModalTicketId(null);
   };
 
   const toggleTaskCharge = async (ticketId, taskIndex) => {
@@ -4662,21 +4682,6 @@ function App() {
                     <option value="afternoon">🌙 Tarde (16:00 - 20:00)</option>
                   </select>
                 </div>
-
-                <div className="input-group">
-                  <span className="input-label">⏱️ Tiempo Estimado en Parada (minutos)</span>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    min="1" 
-                    value={estimatedDuration} 
-                    onChange={(e) => { 
-                      setEstimatedDuration(parseInt(e.target.value, 10) || 0); 
-                      setIsDurationManuallyEdited(true); 
-                    }} 
-                    disabled={isClosed} 
-                  />
-                </div>
               </div>
             </div>
 
@@ -4904,6 +4909,56 @@ function App() {
                   })}
                 </div>
               )}
+
+              {/* Tiempo Estimado en Parada (minutos) */}
+              <div className="input-group" style={{ marginTop: '20px', borderTop: '1px dashed var(--panel-border)', paddingTop: '15px' }}>
+                <span className="input-label" style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  ⏱️ Tiempo Estimado en Parada
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      if (isClosed) return;
+                      setEstimatedDuration(prev => Math.max(1, prev - 5));
+                      setIsDurationManuallyEdited(true);
+                    }}
+                    style={{ width: '38px', height: '38px', padding: 0, fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}
+                    disabled={isClosed}
+                  >
+                    -
+                  </button>
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    min="1" 
+                    value={estimatedDuration} 
+                    onChange={(e) => { 
+                      setEstimatedDuration(parseInt(e.target.value, 10) || 0); 
+                      setIsDurationManuallyEdited(true); 
+                    }} 
+                    style={{ flex: 1, textAlign: 'center', fontSize: '1.1rem', fontWeight: 'bold', height: '38px', margin: 0 }}
+                    disabled={isClosed} 
+                  />
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={() => {
+                      if (isClosed) return;
+                      setEstimatedDuration(prev => prev + 5);
+                      setIsDurationManuallyEdited(true);
+                    }}
+                    style={{ width: '38px', height: '38px', padding: 0, fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}
+                    disabled={isClosed}
+                  >
+                    +
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '5px 0 0 0' }}>
+                  Ajusta el tiempo de parada estimado. Se sugiere automáticamente (10 min entrega, 30 min puesta en marcha, 90 min cuelgue), pero puedes cambiarlo libremente.
+                </p>
+              </div>
             </div>
 
             {/* SECCIÓN URGENTE */}
@@ -5633,7 +5688,7 @@ function App() {
                   <div style={{ marginBottom: '20px', background: 'rgba(255,255,255,0.02)', padding: '12px 15px', borderRadius: '10px', border: '1px solid var(--panel-border)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-main)', flexWrap: 'wrap', gap: '6px' }}>
                       <span>Avance de Ruta: {completed}/{total} Paradas ({pct}%)</span>
-                      <span style={{ color: 'var(--success)' }}>🟢 {successCount} Éxito | 🔴 {failedCount} Fallos</span>
+                      <span style={{ color: 'var(--success)' }}>🟢 {successCount} Entregados | 🔴 {failedCount} Fallos</span>
                     </div>
                     <div className="progress-bar-container">
                       <div className="progress-bar-fill" style={{ width: `${pct}%` }}></div>
@@ -5794,7 +5849,7 @@ function App() {
                         
                         let statusBadge = <span className="badge badge-warning" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: cardColor, color: '#000' }}>🟡 Pendiente</span>;
                         if (isSuccess) {
-                          statusBadge = <span className="badge badge-success" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#10b981', color: '#fff' }}>🟢 Éxito</span>;
+                          statusBadge = <span className="badge badge-success" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#10b981', color: '#fff' }}>🟢 Entregado</span>;
                         } else if (isFailed) {
                           statusBadge = <span className="badge badge-danger" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#ef4444', color: '#fff' }}>🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>;
                         } else {
@@ -6127,20 +6182,40 @@ function App() {
                                   </a>
                                 </div>
                               )}
-                              {t.notes && (
-                                <div style={{ 
-                                  fontStyle: 'italic', 
-                                  color: 'var(--text-muted)', 
-                                  padding: '6px 10px', 
-                                  background: 'rgba(255,255,255,0.02)', 
-                                  borderRadius: '6px', 
-                                  border: '1px solid var(--panel-border)',
-                                  marginTop: '4px',
-                                  fontSize: '0.8rem'
-                                }}>
-                                  📝 {t.notes}
-                                </div>
-                              )}
+                              {(() => {
+                                const parsed = parseTicketNotes(t.notes);
+                                return (
+                                  <>
+                                    {parsed.cleanNotes && (
+                                      <div style={{ 
+                                        fontStyle: 'italic', 
+                                        color: 'var(--text-muted)', 
+                                        padding: '6px 10px', 
+                                        background: 'rgba(255,255,255,0.02)', 
+                                        borderRadius: '6px', 
+                                        border: '1px solid var(--panel-border)',
+                                        marginTop: '4px',
+                                        fontSize: '0.8rem'
+                                      }}>
+                                        📝 {parsed.cleanNotes}
+                                      </div>
+                                    )}
+                                    {parsed.driverObservations && (
+                                      <div style={{ 
+                                        color: '#34d399', 
+                                        padding: '6px 10px', 
+                                        background: 'rgba(16, 185, 129, 0.08)', 
+                                        borderRadius: '6px', 
+                                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                                        marginTop: '4px',
+                                        fontSize: '0.8rem'
+                                      }}>
+                                        💬 <strong>Mis Observaciones:</strong> {parsed.driverObservations}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
 
                             {/* Dirección con Botón de Navegación Gps */}
@@ -6315,7 +6390,7 @@ function App() {
                                         gap: '4px'
                                       }}
                                     >
-                                      🟢 Éxito
+                                      🟢 Entregado
                                     </button>
                                     <button
                                       type="button"
@@ -7215,7 +7290,7 @@ function App() {
                     
                     let statusBadge = <span className="badge badge-secondary">Planificado</span>;
                     if (ticket.status === 'success') {
-                      statusBadge = <span className="badge badge-success" style={{ background: '#10b981', color: '#fff' }}>🟢 Éxito</span>;
+                      statusBadge = <span className="badge badge-success" style={{ background: '#10b981', color: '#fff' }}>🟢 Entregado</span>;
                     } else if (ticket.status === 'failed') {
                       statusBadge = <span className="badge badge-danger" style={{ background: '#ef4444', color: '#fff' }}>🔴 Fallido</span>;
                     } else if (ticket.status === 'transit') {
@@ -7263,19 +7338,52 @@ function App() {
                               );
                             })}
                           </ul>
-                          {ticket.notes && (
-                            <div style={{ 
-                              fontSize: '0.78rem', 
-                              color: 'var(--text-muted)', 
-                              background: 'rgba(255,255,255,0.02)',
-                              border: '1px solid var(--panel-border)',
-                              borderRadius: '4px',
-                              padding: '4px 8px',
-                              marginTop: '6px'
-                            }}>
-                              📝 {ticket.notes}
-                            </div>
-                          )}
+                          {(() => {
+                            const parsed = parseTicketNotes(ticket.notes);
+                            return (
+                              <>
+                                {parsed.cleanNotes && (
+                                  <div style={{ 
+                                    fontSize: '0.78rem', 
+                                    color: 'var(--text-muted)', 
+                                    background: 'rgba(255,255,255,0.02)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    marginTop: '6px'
+                                  }}>
+                                    📝 {parsed.cleanNotes}
+                                  </div>
+                                )}
+                                {parsed.driverObservations && (
+                                  <div style={{ 
+                                    fontSize: '0.78rem', 
+                                    color: '#34d399', 
+                                    background: 'rgba(16, 185, 129, 0.08)',
+                                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    marginTop: '6px'
+                                  }}>
+                                    💬 <strong>Observaciones Chofer:</strong> {parsed.driverObservations}
+                                  </div>
+                                )}
+                                {ticket.failureReason && (
+                                  <div style={{ 
+                                    fontSize: '0.78rem', 
+                                    color: '#f87171', 
+                                    background: 'rgba(239, 68, 68, 0.08)',
+                                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    marginTop: '6px'
+                                  }}>
+                                    ⚠️ <strong>Motivo de Fallo:</strong> {ticket.failureReason}
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           {statusBadge}
@@ -8286,6 +8394,40 @@ function App() {
                                 >
                                   {cleanNotesText || '-'}
                                 </span>
+                                {parsed.driverObservations && (
+                                  <div style={{ 
+                                    background: 'rgba(16, 185, 129, 0.08)', 
+                                    border: '1px solid rgba(16, 185, 129, 0.25)', 
+                                    borderRadius: '6px', 
+                                    padding: '4px 8px', 
+                                    fontSize: '0.78rem', 
+                                    color: '#34d399',
+                                    marginTop: '4px',
+                                    fontStyle: 'normal',
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-word',
+                                    maxWidth: '220px'
+                                  }}>
+                                    <strong>💬 Obs:</strong> {parsed.driverObservations}
+                                  </div>
+                                )}
+                                {t.failureReason && (
+                                  <div style={{ 
+                                    background: 'rgba(239, 68, 68, 0.08)', 
+                                    border: '1px solid rgba(239, 68, 68, 0.25)', 
+                                    borderRadius: '6px', 
+                                    padding: '4px 8px', 
+                                    fontSize: '0.78rem', 
+                                    color: '#f87171',
+                                    marginTop: '4px',
+                                    fontStyle: 'normal',
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-word',
+                                    maxWidth: '220px'
+                                  }}>
+                                    <strong>⚠️ Fallo:</strong> {t.failureReason}
+                                  </div>
+                                )}
                               </div>
                             );
                           })()}
@@ -8319,7 +8461,7 @@ function App() {
                             
                             if (isSuccess) {
                               badgeClass = 'badge-success';
-                              badgeText = '🟢 Éxito';
+                              badgeText = '🟢 Entregado';
                             } else if (isFailed) {
                               badgeClass = 'badge-danger';
                               badgeText = `🔴 Fallido ${t.failureReason ? `(${t.failureReason})` : ''}`;
@@ -8539,7 +8681,7 @@ function App() {
             <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
                 <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
-                <span>Éxito</span>
+                <span>Entregado</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
                 <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
@@ -9506,7 +9648,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v92
+            🔄 v96
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
@@ -9799,6 +9941,73 @@ function App() {
                   </>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {obsModalTicketId && (
+        <div className="modal-overlay" style={{ zIndex: 1200 }}>
+          <div className="modal-content glass-panel" style={{ maxWidth: '400px', padding: '25px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: obsModalStatus === 'success' ? '#10b981' : '#f87171' }}>
+                {obsModalStatus === 'success' ? '🟢 Registrar Entregado' : '🔴 Registrar Fallido'}
+              </h3>
+              <button onClick={() => { setObsModalTicketId(null); }} className="btn btn-secondary btn-small" style={{ padding: '4px', width: 'auto' }}><X size={16} /></button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {obsModalStatus === 'failed' && (
+                <div className="input-group">
+                  <span className="input-label" style={{ fontWeight: '700' }}>Motivo del Fallo:</span>
+                  <select 
+                    className="form-input" 
+                    value={obsModalFailReason} 
+                    onChange={(e) => setObsModalFailReason(e.target.value)}
+                    style={{ background: '#1e1e2e', color: '#fff', border: '1px solid var(--panel-border)', width: '100%', padding: '10px', borderRadius: '8px' }}
+                  >
+                    <option value="Ausente">Ausente / No está en casa</option>
+                    <option value="Rechazado">Rechazado por el cliente</option>
+                    <option value="No responde">No responde al teléfono</option>
+                    <option value="Dirección Incorrecta">Dirección Incorrecta / Incompleta</option>
+                    <option value="Otro motivo">Otro motivo</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="input-group">
+                <span className="input-label" style={{ fontWeight: '700' }}>Comentarios / Observaciones de la entrega:</span>
+                <textarea 
+                  className="form-input" 
+                  placeholder="Escribe un comentario u observación sobre la entrega (opcional)..." 
+                  value={obsModalObservations} 
+                  onChange={(e) => setObsModalObservations(e.target.value)}
+                  style={{ minHeight: '80px', background: '#1e1e2e', color: '#fff', border: '1px solid var(--panel-border)', width: '100%', padding: '10px', borderRadius: '8px', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    submitStatusWithObservations();
+                  }}
+                  className="btn btn-primary"
+                  style={{ flex: 1, margin: 0, padding: '12px' }}
+                >
+                  Guardar
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setObsModalTicketId(null);
+                  }}
+                  className="btn btn-secondary"
+                  style={{ flex: 0.5, margin: 0, padding: '12px' }}
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>
