@@ -3627,8 +3627,13 @@ function App() {
     }
   };
 
-  const handleUpdateTicketStatus = (id, status) => {
+  const handleUpdateTicketStatus = (id, status, failureReason) => {
     if (status === 'success' || status === 'failed') {
+      // If failureReason already provided (e.g. from quickFail grid), skip the obsModal
+      if (status === 'failed' && failureReason) {
+        executeTicketStatusUpdate(id, status, failureReason, '', 'none');
+        return;
+      }
       const ticket = tickets.find(t => t.id === id);
       const parsed = ticket ? parseTicketNotes(ticket.notes) : { cleanNotes: '', timeSlot: 'any', estimatedDuration: 10, driverObservations: '', failedChargeType: 'none' };
       setObsModalTicketId(id);
@@ -9904,7 +9909,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v101
+            🔄 v102
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
