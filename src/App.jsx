@@ -134,7 +134,7 @@ const fetchRoadRoute = async (points) => {
   if (!points || points.length < 2) return null;
   try {
     const coordsString = points.map(p => `${p.lng},${p.lat}`).join(';');
-    const url = `https://router.project-osm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
     const response = await fetch(url);
     if (!response.ok) return null;
     const data = await response.json();
@@ -7136,7 +7136,7 @@ function App() {
     );
   };
 
-  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v86) ---
+  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v87) ---
   const renderDailyReport = () => {
     const prevDay = () => {
       const d = new Date(reportDate + 'T12:00:00');
@@ -9340,7 +9340,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v86
+            🔄 v87
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
