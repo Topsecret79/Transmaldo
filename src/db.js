@@ -1602,6 +1602,7 @@ export function parseTicketNotes(notesText) {
   let estimatedDuration = 10; // 10 minutos por defecto
   let cleanNotes = notesText || '';
   let driverObservations = '';
+  let failedChargeType = 'none';
 
   const slotMatch = cleanNotes.match(/^\[Horario:\s*([^\]]+)\]/);
   if (slotMatch) {
@@ -1623,16 +1624,26 @@ export function parseTicketNotes(notesText) {
     cleanNotes = cleanNotes.replace(/\[Observacion:\s*[^\]]+\]\s*/g, '');
   }
 
-  return { timeSlot, estimatedDuration, cleanNotes: cleanNotes.trim(), driverObservations };
+  // Parse failed charge: check if there's a [CobroFallo: ...] block
+  const chargeMatch = cleanNotes.match(/\[CobroFallo:\s*([^\]]+)\]/);
+  if (chargeMatch) {
+    failedChargeType = chargeMatch[1].trim();
+    cleanNotes = cleanNotes.replace(/\[CobroFallo:\s*[^\]]+\]\s*/g, '');
+  }
+
+  return { timeSlot, estimatedDuration, cleanNotes: cleanNotes.trim(), driverObservations, failedChargeType };
 }
 
 // Codificar franja horaria y duración como prefijo en las notas
-export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '') {
+export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none') {
   const slotStr = timeSlot === 'morning' ? 'Mañana' : timeSlot === 'afternoon' ? 'Tarde' : 'Cualquiera';
   const prefix = `[Horario: ${slotStr}] [Duracion: ${estimatedDuration || 10} min] `;
   let finalNotes = (prefix + (cleanNotesText || '').trim()).trim();
   if (driverObservations && driverObservations.trim()) {
     finalNotes += ` [Observacion: ${driverObservations.trim()}]`;
+  }
+  if (failedChargeType && failedChargeType !== 'none') {
+    finalNotes += ` [CobroFallo: ${failedChargeType}]`;
   }
   return finalNotes;
 }

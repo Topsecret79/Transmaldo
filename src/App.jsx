@@ -677,6 +677,7 @@ function App() {
   const [obsModalStatus, setObsModalStatus] = useState('');
   const [obsModalObservations, setObsModalObservations] = useState('');
   const [obsModalFailReason, setObsModalFailReason] = useState('');
+  const [obsModalFailedChargeType, setObsModalFailedChargeType] = useState('none');
 
   // Estados de Ruta y Carga Dinámica de Usuarios
   const [routeName, setRouteName] = useState('');
@@ -3629,11 +3630,12 @@ function App() {
   const handleUpdateTicketStatus = (id, status) => {
     if (status === 'success' || status === 'failed') {
       const ticket = tickets.find(t => t.id === id);
-      const parsed = ticket ? parseTicketNotes(ticket.notes) : { cleanNotes: '', timeSlot: 'any', estimatedDuration: 10, driverObservations: '' };
+      const parsed = ticket ? parseTicketNotes(ticket.notes) : { cleanNotes: '', timeSlot: 'any', estimatedDuration: 10, driverObservations: '', failedChargeType: 'none' };
       setObsModalTicketId(id);
       setObsModalStatus(status);
       setObsModalObservations(parsed.driverObservations || '');
       setObsModalFailReason(status === 'failed' ? 'Ausente' : '');
+      setObsModalFailedChargeType(status === 'failed' ? (parsed.failedChargeType || 'none') : 'none');
       return;
     }
 
@@ -3641,13 +3643,13 @@ function App() {
     executeTicketStatusUpdate(id, status, '', '');
   };
 
-  const executeTicketStatusUpdate = (id, status, failureReason, observations) => {
+  const executeTicketStatusUpdate = (id, status, failureReason, observations, failedChargeType = 'none') => {
     // Update local ticket notes before database sync
     const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
     const index = localTickets.findIndex(t => t.id === id);
     if (index !== -1) {
       const parsed = parseTicketNotes(localTickets[index].notes);
-      localTickets[index].notes = encodeTicketNotes(parsed.timeSlot, parsed.estimatedDuration, parsed.cleanNotes, observations);
+      localTickets[index].notes = encodeTicketNotes(parsed.timeSlot, parsed.estimatedDuration, parsed.cleanNotes, observations, failedChargeType);
       localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
     }
 
@@ -3695,8 +3697,9 @@ function App() {
     const status = obsModalStatus;
     const observations = obsModalObservations;
     const failureReason = status === 'failed' ? obsModalFailReason : '';
+    const failedChargeType = status === 'failed' ? obsModalFailedChargeType : 'none';
 
-    executeTicketStatusUpdate(id, status, failureReason, observations);
+    executeTicketStatusUpdate(id, status, failureReason, observations, failedChargeType);
     setObsModalTicketId(null);
   };
 
@@ -7592,7 +7595,7 @@ function App() {
     );
   };
 
-  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v90) ---
+  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v99) ---
   const renderDailyReport = () => {
     const prevDay = () => {
       const d = new Date(reportDate + 'T12:00:00');
@@ -7621,9 +7624,69 @@ function App() {
       return calculateTaskPrice(task.tariffId, tariffs, modulePrice);
     };
 
-    const reportTickets = visibleTickets.filter(t =>
-      t.date === reportDate && t.status !== 'failed'
-    );
+    const getBillableTasks = (ticket) => {
+      if (ticket.status === 'success') {
+        return (ticket.tasks || []).map(task => {
+          const tariff = tariffs.find(tar => tar.id === task.tariffId);
+          const name = task.name || (tariff ? tariff.name : task.tariffId);
+          return {
+            name,
+            quantity: task.quantity || 0,
+            unitPrice: calcTaskUnitPrice(task),
+            totalPrice: calcTaskPrice(task),
+            detail: (() => {
+              const isTv = tariff && tariff.block === 'Televisores' && task.tariffId !== 'TV_VIEJA_URB' && task.tariffId !== 'TV_VIEJA_NO_URB';
+              const brand = isTv && task.brand && task.brand !== 'Genérica' ? task.brand : '';
+              const inches = isTv && task.inches ? `${task.inches}"` : '';
+              return [brand, inches].filter(Boolean).join(' ');
+            })(),
+            noCharge: task.noCharge
+          };
+        });
+      } else if (ticket.status === 'failed') {
+        const parsed = parseTicketNotes(ticket.notes);
+        const chargeType = parsed.failedChargeType || 'none';
+        if (chargeType === 'none') return [];
+
+        let tariffId = '';
+        let label = '';
+        if (chargeType === 'pv') {
+          tariffId = 'ENTREGA_PV';
+          label = 'Intento Fallido (PV)';
+        } else if (chargeType === 'gv') {
+          tariffId = 'ENTREGA_GV';
+          label = 'Intento Fallido (GV)';
+        } else if (chargeType === 'tv_small') {
+          tariffId = 'TV_ENT_49';
+          label = 'Intento Fallido (TV <= 49")';
+        } else if (chargeType === 'tv_large') {
+          tariffId = 'TV_ENT_74';
+          label = 'Intento Fallido (TV 50" a 74")';
+        }
+
+        const tariff = tariffs.find(t => t.id === tariffId);
+        const unitPrice = tariff ? tariff.value : 0;
+        return [{
+          name: label,
+          quantity: 1,
+          unitPrice,
+          totalPrice: unitPrice,
+          detail: ticket.failureReason ? `Fallo: ${ticket.failureReason}` : 'Fallo',
+          noCharge: false
+        }];
+      }
+      return [];
+    };
+
+    const reportTickets = visibleTickets.filter(t => {
+      if (t.date !== reportDate) return false;
+      if (t.status === 'success') return true;
+      if (t.status === 'failed') {
+        const parsed = parseTicketNotes(t.notes);
+        return parsed.failedChargeType && parsed.failedChargeType !== 'none';
+      }
+      return false;
+    });
 
     const furgoIds = [...new Set(reportTickets.map(t => t.furgoId))];
 
@@ -7649,22 +7712,17 @@ function App() {
           let furgoTotal = 0;
           let furgoTotalQty = 0;
           fTickets.forEach(ticket => {
-            const taskCount = (ticket.tasks || []).length;
-            (ticket.tasks || []).forEach((task, ti) => {
-              const tariff = tariffs.find(t => t.id === task.tariffId);
-              const name = task.name || (tariff ? tariff.name : task.tariffId);
-              const isTv = tariff && tariff.block === 'Televisores' && task.tariffId !== 'TV_VIEJA_URB' && task.tariffId !== 'TV_VIEJA_NO_URB';
-              const brand = isTv && task.brand && task.brand !== 'Genérica' ? task.brand : '';
-              const inches = isTv && task.inches ? `${task.inches}"` : '';
-              const detail = [brand, inches].filter(Boolean).join(' ');
-              const unitP = calcTaskUnitPrice(task);
-              const totalP = calcTaskPrice(task);
+            const billableTasks = getBillableTasks(ticket);
+            const taskCount = billableTasks.length;
+            billableTasks.forEach((task, ti) => {
+              const unitP = task.unitPrice;
+              const totalP = task.totalPrice;
               furgoTotal += totalP;
               furgoTotalQty += task.quantity || 0;
               allRows.push([
                 ti === 0 ? ticket.customerName : '',
-                name,
-                detail,
+                task.name,
+                task.detail || '',
                 task.quantity,
                 unitP.toFixed(2) + ' €',
                 totalP.toFixed(2) + ' €'
@@ -7675,9 +7733,7 @@ function App() {
             }
           });
 
-          const recordedKms = existingShift ? (() => {
-            try { return parseFloat(JSON.parse(localStorage.getItem(`delivery_route_kms_${furgoId}_${reportDate}`) || '0')) || 0; } catch { return 0; }
-          })() : 0;
+          const recordedKms = existingShift ? getRouteKms(furgoId, reportDate) : 0;
           const kmsTotal = recordedKms * kmPrice;
 
           allRows.push(['', '', 'Subtotal entregas:', furgoTotalQty, '', furgoTotal.toFixed(2) + ' €']);
@@ -7700,9 +7756,10 @@ function App() {
       }
     };
 
-    const grandTotal = reportTickets.reduce((sum, t) =>
-      sum + (t.tasks || []).reduce((s, task) => s + calcTaskPrice(task), 0), 0
-    );
+    const grandTotal = reportTickets.reduce((sum, t) => {
+      const billable = getBillableTasks(t);
+      return sum + billable.reduce((s, task) => s + task.totalPrice, 0);
+    }, 0);
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -7751,15 +7808,14 @@ function App() {
               let furgoDeliveryTotal = 0;
               let furgoTotalQty = 0;
               fTickets.forEach(t => {
-                (t.tasks || []).forEach(task => {
-                  furgoDeliveryTotal += calcTaskPrice(task);
+                const billable = getBillableTasks(t);
+                billable.forEach(task => {
+                  furgoDeliveryTotal += task.totalPrice;
                   furgoTotalQty += task.quantity || 0;
                 });
               });
 
-              const recordedKms = (() => {
-                try { return parseFloat(localStorage.getItem(`delivery_route_kms_${furgoId}_${reportDate}`) || '0') || 0; } catch { return 0; }
-              })();
+              const recordedKms = getRouteKms(furgoId, reportDate);
               const kmsTotal = recordedKms * kmPrice;
               const furgoGrandTotal = furgoDeliveryTotal + kmsTotal;
 
@@ -7795,7 +7851,7 @@ function App() {
                       </thead>
                       <tbody>
                         {fTickets.map((ticket, tIdx) => {
-                          const tasks = ticket.tasks || [];
+                          const tasks = getBillableTasks(ticket);
                           if (tasks.length === 0) return (
                             <tr key={ticket.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                               <td style={{ padding: '10px 16px', fontWeight: '600', color: 'var(--text-main)' }}>{ticket.customerName}</td>
@@ -7803,14 +7859,10 @@ function App() {
                             </tr>
                           );
                           return tasks.map((task, sIdx) => {
-                            const tariff = tariffs.find(t => t.id === task.tariffId);
-                            const name = task.name || (tariff ? tariff.name : task.tariffId);
-                            const isTv = tariff && tariff.block === 'Televisores' && task.tariffId !== 'TV_VIEJA_URB' && task.tariffId !== 'TV_VIEJA_NO_URB';
-                            const brand = isTv && task.brand && task.brand !== 'Genérica' ? task.brand : null;
-                            const inches = isTv && task.inches ? `${task.inches}"` : null;
-                            const detail = [brand, inches].filter(Boolean).join(' ');
-                            const unitP = calcTaskUnitPrice(task);
-                            const totalP = calcTaskPrice(task);
+                            const name = task.name;
+                            const detail = task.detail;
+                            const unitP = task.unitPrice;
+                            const totalP = task.totalPrice;
                             const isFirstRow = sIdx === 0;
                             const isLastTask = sIdx === tasks.length - 1;
                             const isLastTicket = tIdx === fTickets.length - 1;
@@ -7823,32 +7875,34 @@ function App() {
                                 <td style={{ padding: '9px 16px', color: 'var(--text-main)' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                     <span>{name}</span>
-                                    <span 
-                                      onClick={() => toggleTaskCharge(ticket.id, sIdx)} 
-                                      style={{ 
-                                        cursor: 'pointer', 
-                                        fontSize: '0.7rem', 
-                                        padding: '1px 6px', 
-                                        borderRadius: '4px',
-                                        userSelect: 'none',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        fontWeight: '600',
-                                        background: task.noCharge ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)',
-                                        color: task.noCharge ? '#f87171' : '#34d399',
-                                        border: task.noCharge ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(16, 185, 129, 0.25)',
-                                        transition: 'all 0.15s ease'
-                                      }}
-                                      title={task.noCharge ? "Hacer cobrable" : "Quitar coste (Gratuito)"}
-                                    >
-                                      {task.noCharge ? '❌ Sin Coste' : '💶 Cobrar'}
-                                    </span>
+                                    {ticket.status === 'success' && (
+                                      <span 
+                                        onClick={() => toggleTaskCharge(ticket.id, sIdx)} 
+                                        style={{ 
+                                          cursor: 'pointer', 
+                                          fontSize: '0.7rem', 
+                                          padding: '1px 6px', 
+                                          borderRadius: '4px',
+                                          userSelect: 'none',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          fontWeight: '600',
+                                          background: task.noCharge ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)',
+                                          color: task.noCharge ? '#f87171' : '#34d399',
+                                          border: task.noCharge ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(16, 185, 129, 0.25)',
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                        title={task.noCharge ? "Hacer cobrable" : "Quitar coste (Gratuito)"}
+                                      >
+                                        {task.noCharge ? '❌ Sin Coste' : '💶 Cobrar'}
+                                      </span>
+                                    )}
                                   </div>
                                 </td>
                                 <td style={{ padding: '9px 16px' }}>
                                   {detail && (
                                     <span style={{ fontSize: '0.75rem', padding: '2px 7px', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '5px', fontWeight: '600' }}>
-                                      📺 {detail}
+                                      {ticket.status === 'success' ? '📺 ' : ''}{detail}
                                     </span>
                                   )}
                                 </td>
@@ -7917,12 +7971,13 @@ function App() {
                       let fTotal = 0;
                       let fQty = 0;
                       fTickets.forEach(t => { 
-                        (t.tasks || []).forEach(task => { 
-                          fTotal += calcTaskPrice(task); 
+                        const billable = getBillableTasks(t);
+                        billable.forEach(task => { 
+                          fTotal += task.totalPrice; 
                           fQty += task.quantity || 0;
                         }); 
                       });
-                      const fKms = (() => { try { return parseFloat(localStorage.getItem(`delivery_route_kms_${furgoId}_${reportDate}`) || '0') || 0; } catch { return 0; } })();
+                      const fKms = getRouteKms(furgoId, reportDate);
                       const fKmsTotal = fKms * kmPrice;
                       return (
                         <tr key={furgoId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -7945,14 +8000,20 @@ function App() {
                       <td style={{ padding: '12px', textAlign: 'center', fontWeight: '800', color: 'var(--primary)' }}>
                         {(() => {
                           let tq = 0;
-                          reportTickets.forEach(t => { (t.tasks || []).forEach(task => { tq += task.quantity || 0; }); });
+                          reportTickets.forEach(t => { 
+                            const billable = getBillableTasks(t);
+                            billable.forEach(task => { tq += task.quantity || 0; }); 
+                          });
                           return tq;
                         })()}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>
                         {(() => {
                           let ts = 0;
-                          reportTickets.forEach(t => { (t.tasks || []).forEach(task => { ts += calcTaskPrice(task); }); });
+                          reportTickets.forEach(t => { 
+                            const billable = getBillableTasks(t);
+                            billable.forEach(task => { ts += task.totalPrice; }); 
+                          });
                           return ts.toFixed(2) + ' €';
                         })()}
                       </td>
@@ -7960,7 +8021,7 @@ function App() {
                         {(() => {
                           let tk = 0;
                           furgoIds.forEach(fId => {
-                            const fKms = (() => { try { return parseFloat(localStorage.getItem(`delivery_route_kms_${fId}_${reportDate}`) || '0') || 0; } catch { return 0; } })();
+                            const fKms = getRouteKms(fId, reportDate);
                             tk += fKms;
                           });
                           return tk > 0 ? `${tk} km` : '—';
@@ -7971,8 +8032,11 @@ function App() {
                           let gt = 0;
                           furgoIds.forEach(fId => {
                             const fT = reportTickets.filter(t => t.furgoId === fId);
-                            fT.forEach(t => { (t.tasks || []).forEach(task => { gt += calcTaskPrice(task); }); });
-                            const fKms = (() => { try { return parseFloat(localStorage.getItem(`delivery_route_kms_${fId}_${reportDate}`) || '0') || 0; } catch { return 0; } })();
+                            fT.forEach(t => { 
+                              const billable = getBillableTasks(t);
+                              billable.forEach(task => { gt += task.totalPrice; }); 
+                            });
+                            const fKms = getRouteKms(fId, reportDate);
                             gt += fKms * kmPrice;
                           });
                           return gt.toFixed(2) + ' €';
@@ -9830,7 +9894,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v98
+            🔄 v99
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
@@ -10140,21 +10204,52 @@ function App() {
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               {obsModalStatus === 'failed' && (
-                <div className="input-group">
-                  <span className="input-label" style={{ fontWeight: '700' }}>Motivo del Fallo:</span>
-                  <select 
-                    className="form-input" 
-                    value={obsModalFailReason} 
-                    onChange={(e) => setObsModalFailReason(e.target.value)}
-                    style={{ background: '#1e1e2e', color: '#fff', border: '1px solid var(--panel-border)', width: '100%', padding: '10px', borderRadius: '8px' }}
-                  >
-                    <option value="Ausente">Ausente / No está en casa</option>
-                    <option value="Rechazado">Rechazado por el cliente</option>
-                    <option value="No responde">No responde al teléfono</option>
-                    <option value="Dirección Incorrecta">Dirección Incorrecta / Incompleta</option>
-                    <option value="Otro motivo">Otro motivo</option>
-                  </select>
-                </div>
+                <>
+                  <div className="input-group">
+                    <span className="input-label" style={{ fontWeight: '700' }}>Motivo del Fallo:</span>
+                    <select 
+                      className="form-input" 
+                      value={obsModalFailReason} 
+                      onChange={(e) => setObsModalFailReason(e.target.value)}
+                      style={{ background: '#1e1e2e', color: '#fff', border: '1px solid var(--panel-border)', width: '100%', padding: '10px', borderRadius: '8px' }}
+                    >
+                      <option value="Ausente">Ausente / No está en casa</option>
+                      <option value="Rechazado">Rechazado por el cliente</option>
+                      <option value="No responde">No responde al teléfono</option>
+                      <option value="Dirección Incorrecta">Dirección Incorrecta / Incompleta</option>
+                      <option value="Otro motivo">Otro motivo</option>
+                    </select>
+                  </div>
+
+                  {(() => {
+                    const pvTariff = tariffs.find(t => t.id === 'ENTREGA_PV');
+                    const gvTariff = tariffs.find(t => t.id === 'ENTREGA_GV');
+                    const tvSmallTariff = tariffs.find(t => t.id === 'TV_ENT_49');
+                    const tvLargeTariff = tariffs.find(t => t.id === 'TV_ENT_74');
+                    const pvVal = pvTariff ? pvTariff.value : 3.81;
+                    const gvVal = gvTariff ? gvTariff.value : 8.71;
+                    const tvSmallVal = tvSmallTariff ? tvSmallTariff.value : 5.23;
+                    const tvLargeVal = tvLargeTariff ? tvLargeTariff.value : 12.42;
+
+                    return (
+                      <div className="input-group">
+                        <span className="input-label" style={{ fontWeight: '700' }}>¿Cobrar intento fallido?:</span>
+                        <select 
+                          className="form-input" 
+                          value={obsModalFailedChargeType} 
+                          onChange={(e) => setObsModalFailedChargeType(e.target.value)}
+                          style={{ background: '#1e1e2e', color: '#fff', border: '1px solid var(--panel-border)', width: '100%', padding: '10px', borderRadius: '8px' }}
+                        >
+                          <option value="none">No cobrar (0.00 €)</option>
+                          <option value="pv">Cobrar PV ({pvVal.toFixed(2)} €)</option>
+                          <option value="gv">Cobrar GV ({gvVal.toFixed(2)} €)</option>
+                          <option value="tv_small">Cobrar TV &lt;= 49" ({tvSmallVal.toFixed(2)} €)</option>
+                          <option value="tv_large">Cobrar TV 50" a 74" ({tvLargeVal.toFixed(2)} €)</option>
+                        </select>
+                      </div>
+                    );
+                  })()}
+                </>
               )}
 
               <div className="input-group">
