@@ -101,6 +101,7 @@ const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr) => {
 
   let lastPos = startCoords || { lat: 41.3879, lng: 2.16992 };
   let currentTime = hhmmToMinutes(startTimeStr);
+  let cumulativeDist = 0;
 
   dateTickets.forEach((ticket, idx) => {
     const parsed = parseTicketNotes(ticket.notes);
@@ -108,6 +109,7 @@ const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr) => {
     let ticketLng = ticket.lng ? parseFloat(ticket.lng) : lastPos.lng;
     
     const dist = getDistanceSimple(lastPos, { lat: ticketLat, lng: ticketLng });
+    cumulativeDist += dist;
     const travelMins = Math.round((dist / 35) * 60); // 35 km/h
     
     const arrivalTime = currentTime + travelMins;
@@ -118,6 +120,7 @@ const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr) => {
       departure: minutesToHHMM(departureTime),
       duration: parsed.estimatedDuration,
       distance: dist.toFixed(1),
+      cumulativeDistance: cumulativeDist.toFixed(1),
       travelMins,
       timeSlot: parsed.timeSlot === 'morning' ? 'Mañana' : parsed.timeSlot === 'afternoon' ? 'Tarde' : 'Indiferente'
     };
@@ -5159,6 +5162,8 @@ function App() {
       {!editingTicketId && activeRouteContext && (() => {
         const activeRouteTickets = tickets.filter(t => t && t.date === activeRouteContext.date && t.furgoId === activeRouteContext.furgoId);
         const sortedActiveRouteTickets = sortTicketsByRouteOrder(activeRouteTickets);
+        const activeRouteStartTime = getRouteStartTime(activeRouteContext.furgoId, activeRouteContext.date);
+        const activeTimelineSchedules = calculateTimelineSchedules(sortedActiveRouteTickets, routeStartCoords, activeRouteStartTime);
         
         if (sortedActiveRouteTickets.length === 0) return null;
         
@@ -5234,6 +5239,19 @@ function App() {
                           {t.lat && t.lng ? '🟢 ' : '🔴 '}
                           {getShortAddressString(t.address)}{t.postcode ? ` (CP ${t.postcode})` : ''}
                         </span>
+                        {activeTimelineSchedules[t.id] && (
+                          <div style={{ 
+                            display: 'flex', 
+                            flexWrap: 'wrap',
+                            gap: '8px', 
+                            fontSize: '0.74rem', 
+                            color: 'var(--text-muted)',
+                            marginTop: '2px'
+                          }}>
+                            <span>🏁 <strong>Fin:</strong> <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{activeTimelineSchedules[t.id].departure}</span></span>
+                            <span>📈 <strong>Km acum:</strong> <span style={{ color: '#10b981', fontWeight: 'bold' }}>{activeTimelineSchedules[t.id].cumulativeDistance} km</span></span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
@@ -6080,6 +6098,21 @@ function App() {
                                 ) : (
                                   <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: '700' }}>🔴 Dirección sin ubicar en el mapa</span>
                                 )}
+                                {timelineSchedules[t.id] && (
+                                  <div style={{ 
+                                    display: 'flex', 
+                                    flexWrap: 'wrap', 
+                                    gap: '10px', 
+                                    fontSize: '0.76rem', 
+                                    color: 'var(--text-muted)', 
+                                    marginTop: '4px',
+                                    paddingTop: '4px',
+                                    borderTop: '1px solid rgba(255, 255, 255, 0.05)'
+                                  }}>
+                                    <span>🏁 <strong>Fin parada:</strong> <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{timelineSchedules[t.id].departure}</span></span>
+                                    <span>📈 <strong>Km acumulados:</strong> <span style={{ color: '#10b981', fontWeight: 'bold' }}>{timelineSchedules[t.id].cumulativeDistance} km</span></span>
+                                  </div>
+                                )}
                               </div>
                               <a 
                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
@@ -6793,7 +6826,22 @@ function App() {
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
                     <span style={{ flexShrink: 0 }}>📍</span>
-                    <span>{getShortAddressString(t.address)} {t.postcode && `(CP ${t.postcode})`}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span>{getShortAddressString(t.address)} {t.postcode && `(CP ${t.postcode})`}</span>
+                      {activeFurgo !== 'all' && timelineSchedules[t.id] && (
+                        <div style={{ 
+                          display: 'flex', 
+                          flexWrap: 'wrap',
+                          gap: '8px', 
+                          fontSize: '0.74rem', 
+                          color: 'var(--text-muted)',
+                          marginTop: '3px'
+                        }}>
+                          <span>🏁 <strong>Fin:</strong> <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{timelineSchedules[t.id].departure}</span></span>
+                          <span>📈 <strong>Km acum:</strong> <span style={{ color: '#10b981', fontWeight: 'bold' }}>{timelineSchedules[t.id].cumulativeDistance} km</span></span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {t.phone && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -9374,7 +9422,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v90
+            🔄 v91
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
