@@ -352,6 +352,67 @@ function getStreetSpellingSuggestions(addressText) {
   return uniqueStreets.slice(0, 3);
 }
 
+// Convierte números dictados en letras a dígitos numéricos y unifica el símbolo de número
+function processVoiceAddress(text) {
+  if (!text) return '';
+  
+  let result = text;
+  
+  // Diccionario de decenas para construir combinaciones "decena y unidad" (ej. "treinta y cinco" -> 35)
+  const tens = {
+    'treinta': 30,
+    'cuarenta': 40,
+    'cincuenta': 50,
+    'sesenta': 60,
+    'setenta': 70,
+    'ochenta': 80,
+    'noventa': 90
+  };
+  
+  const units = {
+    'uno': 1, 'una': 1, 'dos': 2, 'tres': 3, 'cuatro': 4,
+    'cinco': 5, 'seis': 6, 'siete': 7, 'ocho': 8, 'nueve': 9
+  };
+  
+  // Reemplazar patrones de "decena y unidad" (ej. "treinta y cinco" -> 35)
+  for (const [tenWord, tenVal] of Object.entries(tens)) {
+    for (const [unitWord, unitVal] of Object.entries(units)) {
+      const pattern = new RegExp(`\\b${tenWord}\\s+y\\s+${unitWord}\\b`, 'gi');
+      result = result.replace(pattern, String(tenVal + unitVal));
+    }
+    // Reemplazar decena sola (ej. "treinta" -> 30)
+    const tenPattern = new RegExp(`\\b${tenWord}\\b`, 'gi');
+    result = result.replace(tenPattern, String(tenVal));
+  }
+  
+  // Reemplazar números individuales (0-29) y centenas
+  const singleNumbers = {
+    'cero': '0',
+    'once': '11', 'doce': '12', 'trece': '13', 'catorce': '14', 'quince': '15',
+    'dieciséis': '16', 'dieciseis': '16', 'diecisiete': '17', 'dieciocho': '18', 'diecinueve': '19',
+    'veinte': '20',
+    'veintiuno': '21', 'veintiuna': '21', 'veintidós': '22', 'veintidos': '22',
+    'veintitrés': '23', 'veintitres': '23', 'veinticuatro': '24', 'veinticinco': '25',
+    'veintiséis': '26', 'veintiseis': '26', 'veintisiete': '27', 'veintiocho': '28', 'veintinueve': '29',
+    'cien': '100', 'ciento': '100',
+    'uno': '1', 'una': '1', 'dos': '2', 'tres': '3', 'cuatro': '4',
+    'cinco': '5', 'seis': '6', 'siete': '7', 'ocho': '8', 'nueve': '9', 'diez': '10'
+  };
+  
+  for (const [word, digit] of Object.entries(singleNumbers)) {
+    const pattern = new RegExp(`\\b${word}\\b`, 'gi');
+    result = result.replace(pattern, digit);
+  }
+  
+  // Normalizar variaciones de "número" seguidas de dígitos a "Nº X"
+  result = result.replace(/\b(n[úu]mero|n\.?[ººªa]|nº|Nº)\s+(\d+)\b/gi, 'Nº $2');
+  
+  // Caso de número pegado al dígito (ej. "número5" -> "Nº 5")
+  result = result.replace(/\b(n[úu]mero|n\.?[ººªa]|nº|Nº)(\d+)\b/gi, 'Nº $2');
+  
+  return result;
+}
+
 function App() {
   const formatCustomerName = (name) => {
     if (!name) return '';
@@ -2048,15 +2109,16 @@ function App() {
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       if (transcript && transcript.trim()) {
-        setAddress(transcript);
+        const cleanedAddress = processVoiceAddress(transcript);
+        setAddress(cleanedAddress);
         setAddressVerification({ status: 'idle', message: '' });
         
         // Verificar errores de ortografía en el texto dictado
-        const corrections = getStreetSpellingSuggestions(transcript);
+        const corrections = getStreetSpellingSuggestions(cleanedAddress);
         setSpellingSuggestions(corrections);
         
         // Buscar sugerencias de mapas para el texto dictado
-        fetchAddressSuggestions(transcript);
+        fetchAddressSuggestions(cleanedAddress);
         triggerAlert('🎙️ Dirección capturada con éxito');
       }
     };
@@ -2153,7 +2215,7 @@ function App() {
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       if (transcript && transcript.trim()) {
-        setRouteStartAddr(transcript);
+        setRouteStartAddr(processVoiceAddress(transcript));
         triggerAlert('🎙️ Dirección de salida capturada con éxito');
       }
     };
@@ -2201,7 +2263,7 @@ function App() {
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       if (transcript && transcript.trim()) {
-        setRouteEndAddr(transcript);
+        setRouteEndAddr(processVoiceAddress(transcript));
         triggerAlert('🎙️ Dirección de llegada capturada con éxito');
       }
     };
@@ -7074,7 +7136,7 @@ function App() {
     );
   };
 
-  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v85) ---
+  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v86) ---
   const renderDailyReport = () => {
     const prevDay = () => {
       const d = new Date(reportDate + 'T12:00:00');
@@ -9278,7 +9340,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v85
+            🔄 v86
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
