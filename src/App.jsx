@@ -7170,7 +7170,7 @@ function App() {
     );
   };
 
-  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v88) ---
+  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v89) ---
   const renderDailyReport = () => {
     const prevDay = () => {
       const d = new Date(reportDate + 'T12:00:00');
@@ -9374,7 +9374,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v88
+            🔄 v89
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
