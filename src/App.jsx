@@ -6499,10 +6499,59 @@ function App() {
                   className="btn btn-secondary btn-small map-floating-action-btn"
                   style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
                 >
-              📞 Llamar
-            </a>
-          )}
-        </div>
+                  📞 Llamar
+                </a>
+              )}
+            </div>
+
+            {(() => {
+              const isClosed = getShiftStatus(ticketToShow.furgoId, ticketToShow.date) === 'closed';
+              const canChangeStatus = activeTab === 'map' ? (isAdminOrSuper || !isClosed) : (!isClosed);
+              if (!canChangeStatus) return null;
+
+              return (
+                <div className="map-floating-actions-container" style={{ marginTop: '8px' }}>
+                  {(!ticketToShow.status || ticketToShow.status === 'pending' || ticketToShow.status === 'transit') ? (
+                    <>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateTicketStatus(ticketToShow.id, 'success');
+                        }}
+                        className="btn btn-success btn-small map-floating-action-btn"
+                        style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', background: '#10b981', borderColor: '#10b981', color: '#fff', fontWeight: 'bold' }}
+                      >
+                        🟢 Entregado
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setQuickFailTicketId(ticketToShow.id);
+                        }}
+                        className="btn btn-danger btn-small map-floating-action-btn"
+                        style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', background: '#ef4444', borderColor: '#ef4444', color: '#fff', fontWeight: 'bold' }}
+                      >
+                        🔴 Fallido
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpdateTicketStatus(ticketToShow.id, 'pending');
+                      }}
+                      className="btn btn-secondary btn-small map-floating-action-btn"
+                      style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem' }}
+                    >
+                      🔄 Reabrir / Pendiente
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
       </>
     )}
   </div>
@@ -6775,6 +6824,52 @@ function App() {
                         ) : null;
                       })()}
                     </div>
+
+                    {(() => {
+                      const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
+                      const canChangeStatus = isAdminMap || (!isClosed || isAdminOrSuper);
+                      if (!canChangeStatus) return null;
+
+                      return (
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                          {(!t.status || t.status === 'pending' || t.status === 'transit') ? (
+                            <>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateTicketStatus(t.id, 'success');
+                                }}
+                                className="btn btn-success btn-small"
+                                style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto', background: '#10b981', borderColor: '#10b981', color: '#fff', fontWeight: 'bold' }}
+                              >
+                                🟢 Entregado
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setQuickFailTicketId(t.id);
+                                }}
+                                className="btn btn-danger btn-small"
+                                style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto', background: '#ef4444', borderColor: '#ef4444', color: '#fff', fontWeight: 'bold' }}
+                              >
+                                🔴 Fallido
+                              </button>
+                            </>
+                          ) : (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateTicketStatus(t.id, 'pending');
+                              }}
+                              className="btn btn-secondary btn-small"
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto' }}
+                            >
+                              🔄 Reabrir / Pendiente
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -6953,7 +7048,7 @@ function App() {
     );
   };
 
-  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v83) ---
+  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v84) ---
   const renderDailyReport = () => {
     const prevDay = () => {
       const d = new Date(reportDate + 'T12:00:00');
@@ -9157,7 +9252,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v83
+            🔄 v84
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
