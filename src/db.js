@@ -1390,7 +1390,7 @@ export async function geocodeAddress(addressText) {
     }
   }
 
-  // 3. Fallback: Free Nominatim (OSM)
+  // 3. Fallback: Free Nominatim (OSM) / CartoCiudad (Spain)
   try {
     const countryCode = localStorage.getItem('search_country_code') || 'es';
     const cityBias = localStorage.getItem('search_city_bias') || 'Barcelona';
@@ -1404,11 +1404,38 @@ export async function geocodeAddress(addressText) {
 
     const shouldAppendCity = strictCity && cityBias && !hasComma && !hasPostalCode && !hasCommonCity && !searchQuery.toLowerCase().includes(cityBias.toLowerCase());
 
+    let searchQueryWithCity = searchQuery;
     if (shouldAppendCity) {
-      searchQuery += `, ${cityBias}`;
+      searchQueryWithCity += `, ${cityBias}`;
     }
 
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQuery)}`;
+    // Try CartoCiudad first for Spain as it is extremely accurate and has portal-level data
+    if (countryCode === 'es') {
+      try {
+        let cartoQuery = searchQuery;
+        if (!hasComma && !hasPostalCode && cityBias && !searchQuery.toLowerCase().includes(cityBias.toLowerCase())) {
+          cartoQuery += `, ${cityBias}`;
+        }
+        const cartoUrl = `https://www.cartociudad.es/geocoder/api/geocoder/candidates?q=${encodeURIComponent(cartoQuery)}&limit=1`;
+        const cartoRes = await fetch(cartoUrl);
+        if (cartoRes.ok) {
+          const cartoData = await cartoRes.json();
+          if (cartoData && cartoData.length > 0) {
+            const first = cartoData[0];
+            return {
+              lat: first.lat,
+              lng: first.lng,
+              displayName: `${first.address}, ${first.province}, España`,
+              postcode: first.postalCode || ''
+            };
+          }
+        }
+      } catch (err) {
+        console.error("CartoCiudad geocoding failed, falling back to Nominatim:", err);
+      }
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQueryWithCity)}`;
     const response = await fetch(url, {
       headers: {
         'Accept': 'application/json',

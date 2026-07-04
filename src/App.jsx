@@ -1975,7 +1975,7 @@ function App() {
         }
       }
 
-      // 3. Fallback: Free Nominatim (OSM)
+      // 3. Fallback: Free Nominatim (OSM) / CartoCiudad (Spain)
       const countryCode = searchCountryCode || 'es';
       const cityBias = searchCityBias || 'Barcelona';
       const strictCity = searchStrictCity;
@@ -1988,11 +1988,45 @@ function App() {
 
       const shouldAppendCity = strictCity && cityBias && !hasComma && !hasPostalCode && !hasCommonCity && !searchQuery.toLowerCase().includes(cityBias.toLowerCase());
 
+      let searchQueryWithCity = searchQuery;
       if (shouldAppendCity) {
-        searchQuery += `, ${cityBias}`;
+        searchQueryWithCity += `, ${cityBias}`;
       }
 
-      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQuery)}`;
+      // Try CartoCiudad first for Spain as it is extremely accurate and has portal-level data
+      if (countryCode === 'es') {
+        try {
+          let cartoQuery = searchQuery;
+          if (!hasComma && !hasPostalCode && cityBias && !searchQuery.toLowerCase().includes(cityBias.toLowerCase())) {
+            cartoQuery += `, ${cityBias}`;
+          }
+          const cartoUrl = `https://www.cartociudad.es/geocoder/api/geocoder/candidates?q=${encodeURIComponent(cartoQuery)}&limit=5`;
+          const cartoRes = await fetch(cartoUrl);
+          if (cartoRes.ok) {
+            const cartoData = await cartoRes.json();
+            if (cartoData && cartoData.length > 0) {
+              const formatted = cartoData.map(item => ({
+                lat: item.lat.toString(),
+                lon: item.lng.toString(),
+                display_name: `${item.address}, ${item.province}, España`,
+                address: {
+                  road: item.address,
+                  postcode: item.postalCode || '',
+                  city: item.muni || '',
+                  state: item.comunidadAutonoma || ''
+                }
+              }));
+              setSuggestions(formatted);
+              setIsSearchingSuggestions(false);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("CartoCiudad suggestions failed, falling back to Nominatim:", err);
+        }
+      }
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQueryWithCity)}`;
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
@@ -7136,7 +7170,7 @@ function App() {
     );
   };
 
-  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v87) ---
+  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v88) ---
   const renderDailyReport = () => {
     const prevDay = () => {
       const d = new Date(reportDate + 'T12:00:00');
@@ -9340,7 +9374,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v87
+            🔄 v88
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
