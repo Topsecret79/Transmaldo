@@ -5172,6 +5172,30 @@ function App() {
             <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               📋 Paradas registradas en esta ruta ({sortedActiveRouteTickets.length})
             </h3>
+
+            {(() => {
+              const lastTicket = sortedActiveRouteTickets[sortedActiveRouteTickets.length - 1];
+              const finalSchedule = lastTicket ? activeTimelineSchedules[lastTicket.id] : null;
+              if (!finalSchedule) return null;
+
+              return (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(16, 185, 129, 0.05))',
+                  border: '1px solid rgba(99, 102, 241, 0.15)',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '15px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted)'
+                }}>
+                  <span>🕒 Fin estimado: <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{finalSchedule.departure}</strong></span>
+                  <span>🛣️ Distancia total: <strong style={{ color: '#10b981', fontSize: '0.88rem' }}>{finalSchedule.cumulativeDistance} km</strong></span>
+                </div>
+              );
+            })()}
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {sortedActiveRouteTickets.map((t, index) => {
@@ -5613,6 +5637,46 @@ function App() {
                     </div>
                     <div className="progress-bar-container">
                       <div className="progress-bar-fill" style={{ width: `${pct}%` }}></div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Resumen Estimado de Ruta (Fin y Kilometraje) */}
+              {(() => {
+                if (dateTickets.length === 0) return null;
+                const lastTicket = dateTickets[dateTickets.length - 1];
+                const finalSchedule = lastTicket ? timelineSchedules[lastTicket.id] : null;
+                if (!finalSchedule) return null;
+
+                return (
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(16, 185, 129, 0.08))',
+                    border: '1px solid rgba(99, 102, 241, 0.2)',
+                    borderRadius: '12px',
+                    padding: '15px 20px',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '15px'
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>
+                        🏁 Hora Estimada Fin de Ruta
+                      </span>
+                      <span style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        🕒 <span style={{ color: '#818cf8' }}>{finalSchedule.departure}</span>
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>
+                        📈 Kilómetros Totales Estimados
+                      </span>
+                      <span style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        🚚 <span style={{ color: '#10b981' }}>{finalSchedule.cumulativeDistance} km</span>
+                      </span>
                     </div>
                   </div>
                 );
@@ -6716,6 +6780,9 @@ function App() {
     const startTime = getRouteStartTime(activeFurgo, targetDate);
     const timelineSchedules = calculateTimelineSchedules(sortedDayTickets, routeStartCoords, startTime);
 
+    const lastTicket = sortedDayTickets[sortedDayTickets.length - 1];
+    const finalSchedule = lastTicket ? timelineSchedules[lastTicket.id] : null;
+
     let totalDistance = 0;
     let totalTransit = 0;
     if (activeFurgo !== 'all') {
@@ -6735,6 +6802,23 @@ function App() {
             </span>
           )}
         </h3>
+
+        {activeFurgo !== 'all' && finalSchedule && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(16, 185, 129, 0.05))',
+            border: '1px solid rgba(99, 102, 241, 0.15)',
+            borderRadius: '8px',
+            padding: '10px 14px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.8rem',
+            color: 'var(--text-muted)'
+          }}>
+            <span>🕒 Fin estimado: <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{finalSchedule.departure}</strong></span>
+            <span>🛣️ Distancia total: <strong style={{ color: '#10b981', fontSize: '0.88rem' }}>{finalSchedule.cumulativeDistance} km</strong></span>
+          </div>
+        )}
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {sortedDayTickets.map((t, index) => {
@@ -9422,7 +9506,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v91
+            🔄 v92
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
