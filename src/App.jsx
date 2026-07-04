@@ -9808,7 +9808,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v103
+            🔄 v104
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
@@ -10280,6 +10280,17 @@ function App() {
             </div>
 
             <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  handleUpdateTicketStatus(quickFailTicketId, 'failed');
+                  setQuickFailTicketId(null);
+                }}
+                className="btn btn-secondary btn-small"
+                style={{ width: '100%', marginBottom: '10px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)', color: '#fff' }}
+              >
+                ⚙️ Configurar Cobro / Observaciones
+              </button>
               <button
                 type="button"
                 onClick={() => {
