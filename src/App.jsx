@@ -9894,7 +9894,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v99
+            🔄 v100
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
@@ -10019,7 +10019,7 @@ function App() {
                     )}
                     
                     {/* Sección de Kilometraje en el Resumen */}
-                    {existingShift ? (
+                    {existingShift && existingShift.status === 'closed' ? (
                       (() => {
                         const recordedKms = getRouteKms(targetFurgoId, targetDate);
                         if (recordedKms <= 0) return null;
@@ -10068,7 +10068,7 @@ function App() {
                       const billableTickets = dayTickets.filter(t => !isShiftClosed || (t.status === 'success' || !t.status));
                       const totalDeliveryEarnings = billableTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
                       
-                      const recordedKms = existingShift ? getRouteKms(targetFurgoId, targetDate) : (parseFloat(shiftKmsInput) || 0);
+                      const recordedKms = isShiftClosed ? getRouteKms(targetFurgoId, targetDate) : (parseFloat(shiftKmsInput) || 0);
                       const totalMileageEarnings = recordedKms * kmPrice;
                       const grandTotalEarnings = totalDeliveryEarnings + totalMileageEarnings;
                       
@@ -10152,13 +10152,13 @@ function App() {
                       </div>
                     )}
                     
-                    {existingShift && (
+                    {existingShift && existingShift.status === 'closed' && (
                       <div style={{ marginTop: '15px', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px' }}>
                         🔒 Cierre realizado el: {new Date(existingShift.closedAt).toLocaleString()}
                       </div>
                     )}
 
-                    {!existingShift && !isAdminOrSuper && (
+                    {(!existingShift || existingShift.status !== 'closed') && !isAdminOrSuper && (
                       <div style={{ marginTop: '20px' }}>
                         <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginBottom: '12px', lineHeight: '1.4', background: 'rgba(239, 68, 68, 0.05)', padding: '10px', borderRadius: '6px', border: '1px dashed var(--danger)' }}>
                           ⚠️ <strong>¡Atención!</strong> Al finalizar el turno se bloqueará el registro de entregas para esta fecha. No podrás editar ni añadir más repartos de este día.
