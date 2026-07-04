@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation as CapGeolocation } from '@capacitor/geolocation';
+import Fuse from 'fuse.js';
 
 // Asegurar Leaflet en el objeto global para compatibilidad
 if (typeof window !== 'undefined') {
@@ -6924,13 +6925,38 @@ function App() {
           // A los repartidores con permiso solo les dejamos buscar sus propios tickets, a los administradores todos
           const searchTickets = isAdminOrSuper ? tickets : tickets.filter(t => t.furgoId === currentUser.id);
 
-          const matches = searchTickets.filter(t => {
-            const nameMatch = t.customerName && t.customerName.toLowerCase().includes(query);
-            const addressMatch = t.address && t.address.toLowerCase().includes(query);
-            const phoneMatch = t.phone && t.phone.toLowerCase().includes(query);
-            const notesMatch = t.notes && t.notes.toLowerCase().includes(query);
-            return nameMatch || addressMatch || phoneMatch || notesMatch;
+          // Preparar tickets con información expandida para la búsqueda
+          const processedTickets = searchTickets.map(t => {
+            const driver = users.find(u => u.id === t.furgoId);
+            const driverLabel = driver ? driver.label : t.furgoId;
+            const taskNames = (t.tasks || []).map(task => {
+              const tariff = tariffs.find(tar => tar.id === task.tariffId);
+              return task.name || (tariff ? tariff.name : task.tariffId);
+            }).join(' ');
+            
+            return {
+              ...t,
+              driverLabel,
+              taskNames
+            };
           });
+
+          // Inicializar Fuse.js para búsqueda difusa (fuzzy search) inteligente
+          const fuse = new Fuse(processedTickets, {
+            keys: [
+              { name: 'customerName', weight: 0.4 },
+              { name: 'address', weight: 0.25 },
+              { name: 'phone', weight: 0.15 },
+              { name: 'notes', weight: 0.1 },
+              { name: 'driverLabel', weight: 0.05 },
+              { name: 'taskNames', weight: 0.05 }
+            ],
+            threshold: 0.35, // 0.35 permite errores tipográficos leves pero mantiene alta precisión
+            ignoreLocation: true,
+          });
+
+          const searchResults = fuse.search(query);
+          const matches = searchResults.map(res => res.item);
 
           if (matches.length === 0) {
             return (
@@ -7048,7 +7074,7 @@ function App() {
     );
   };
 
-  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v84) ---
+  // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v85) ---
   const renderDailyReport = () => {
     const prevDay = () => {
       const d = new Date(reportDate + 'T12:00:00');
@@ -9252,7 +9278,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v84
+            🔄 v85
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
