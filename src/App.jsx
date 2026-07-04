@@ -8755,7 +8755,17 @@ function App() {
 
             {/* Control de Cierre de Turnos Diarios */}
             <div style={{ marginTop: '30px', borderTop: '1px solid var(--panel-border)', paddingTop: '20px', textAlign: 'left' }}>
-              <h3>Turnos Diarios Cerrados (Repartidores)</h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '10px' }}>
+                <h3 style={{ margin: 0 }}>Turnos Diarios Cerrados (Repartidores)</h3>
+                <button
+                  onClick={() => { loadData(); triggerAlert('Lista de turnos actualizada'); }}
+                  className="btn btn-secondary btn-small"
+                  style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px' }}
+                  title="Sincronizar con la base de datos"
+                >
+                  🔄 Actualizar
+                </button>
+              </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
                 Aquí se muestran los cierres de turno realizados por los choferes. Si un chofer se equivocó o necesita registrar algo más, puedes "Reabrir Turno".
               </p>
@@ -9894,7 +9904,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v100
+            🔄 v101
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>

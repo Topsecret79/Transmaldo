@@ -283,6 +283,8 @@ export async function syncFromCloud() {
         status: s.status,
         openedAt: s.opened_at,
         closedAt: s.closed_at,
+        routeName: s.route_name || '',
+        summary: s.summary || null,
         createdBy: s.created_by || 'admin'
       }));
       localStorage.setItem('delivery_shifts', JSON.stringify(localShifts));
@@ -1058,7 +1060,10 @@ export function saveShifts(shifts) {
           closed_at: s.closedAt || null,
           created_by: s.createdBy || 'admin'
         }));
-        await supabase.from('delivery_shifts').upsert(formatted);
+        const { error } = await supabase.from('delivery_shifts').upsert(formatted);
+        if (error) {
+          console.error("Error saving shifts to Supabase:", error);
+        }
       } catch (e) {
         console.error("Error saving shifts to Supabase:", e);
       }
