@@ -2891,6 +2891,141 @@ function App() {
     }
   };
 
+  const autoOptimizeRemainingRoute = async (targetFurgoId, targetDate, lastCompletedTicketId) => {
+    try {
+      const allTickets = getTickets();
+      const dayTickets = allTickets.filter(t => t && t.furgoId === targetFurgoId && t.date === targetDate);
+      if (dayTickets.length <= 1) return;
+
+      const completedTickets = dayTickets.filter(t => t.status === 'success' || t.status === 'failed');
+      const pendingTickets = dayTickets.filter(t => t.status !== 'success' && t.status !== 'failed');
+
+      if (pendingTickets.length === 0) return;
+
+      completedTickets.sort((a, b) => {
+        const aOrder = a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
+        const bOrder = b.routeOrder !== undefined && b.routeOrder !== null && b.routeOrder !== '' ? Number(b.routeOrder) : Infinity;
+        return aOrder - bOrder;
+      });
+
+      let startCoords = null;
+      const lastCompleted = dayTickets.find(t => t.id === lastCompletedTicketId);
+      if (lastCompleted) {
+        const cLat = lastCompleted.completedLat || lastCompleted.lat;
+        const cLng = lastCompleted.completedLng || lastCompleted.lng;
+        if (cLat && cLng) {
+          startCoords = { lat: parseFloat(cLat), lng: parseFloat(cLng) };
+        }
+      }
+
+      if (!startCoords && completedTickets.length > 0) {
+        const lastInCompleted = completedTickets[completedTickets.length - 1];
+        if (lastInCompleted) {
+          const cLat = lastInCompleted.completedLat || lastInCompleted.lat;
+          const cLng = lastInCompleted.completedLng || lastInCompleted.lng;
+          if (cLat && cLng) {
+            startCoords = { lat: parseFloat(cLat), lng: parseFloat(cLng) };
+          }
+        }
+      }
+
+      if (!startCoords) {
+        const startAddr = getRouteStartAddr(targetFurgoId) || '';
+        if (startAddr.trim()) {
+          const geocoded = await geocodeAddress(startAddr);
+          if (geocoded && geocoded.lat && geocoded.lng) {
+            startCoords = { lat: parseFloat(geocoded.lat), lng: parseFloat(geocoded.lng) };
+          }
+        }
+      }
+
+      if (!startCoords) {
+        startCoords = { lat: 41.3879, lng: 2.16992 };
+      }
+
+      const pendingWithCoords = [];
+      for (const t of pendingTickets) {
+        let lat = t.lat ? parseFloat(t.lat) : null;
+        let lng = t.lng ? parseFloat(t.lng) : null;
+        if (lat === null || lng === null || isNaN(lat) || isNaN(lng)) {
+          const res = await geocodeAddress(t.address);
+          if (res && res.lat && res.lng) {
+            lat = parseFloat(res.lat);
+            lng = parseFloat(res.lng);
+            t.lat = lat;
+            t.lng = lng;
+            updateTicket(t);
+          }
+        }
+        if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+          pendingWithCoords.push({ ...t, lat, lng });
+        } else {
+          pendingWithCoords.push({ ...t, lat: startCoords.lat, lng: startCoords.lng });
+        }
+      }
+
+      const getDistance = (c1, c2) => {
+        const R = 6371;
+        const dLat = (c2.lat - c1.lat) * Math.PI / 180;
+        const dLng = (c2.lng - c1.lng) * Math.PI / 180;
+        const a = 
+          Math.sin(dLat/2) * Math.sin(dLat/2) +
+          Math.cos(c1.lat * Math.PI / 180) * Math.cos(c2.lat * Math.PI / 180) * 
+          Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+      };
+
+      const parsedPending = pendingWithCoords.map(t => {
+        const parsed = parseTicketNotes(t.notes);
+        return { ...t, timeSlot: parsed.timeSlot, estimatedDuration: parsed.estimatedDuration };
+      });
+      const morningTickets = parsedPending.filter(t => t.timeSlot === 'morning');
+      const anyTickets = parsedPending.filter(t => t.timeSlot === 'any' || !t.timeSlot);
+      const afternoonTickets = parsedPending.filter(t => t.timeSlot === 'afternoon');
+
+      const optimizedPending = [];
+      let currentPos = startCoords;
+
+      const optimizeGroup = (group) => {
+        const unvisited = [...group];
+        while (unvisited.length > 0) {
+          let nearestIdx = -1;
+          let minDistance = Infinity;
+          for (let i = 0; i < unvisited.length; i++) {
+            const dist = getDistance(currentPos, unvisited[i]);
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestIdx = i;
+            }
+          }
+          if (nearestIdx !== -1) {
+            const nextTicket = unvisited.splice(nearestIdx, 1)[0];
+            optimizedPending.push(nextTicket);
+            currentPos = { lat: nextTicket.lat, lng: nextTicket.lng };
+          } else {
+            break;
+          }
+        }
+      };
+
+      optimizeGroup(morningTickets);
+      optimizeGroup(anyTickets);
+      optimizeGroup(afternoonTickets);
+
+      const finalSequence = [...completedTickets, ...optimizedPending];
+      
+      finalSequence.forEach((ticket, index) => {
+        ticket.routeOrder = index + 1;
+        updateTicket(ticket);
+      });
+
+      loadData();
+    } catch (err) {
+      console.error("Error in auto-optimizing remaining route:", err);
+    }
+  };
+
   const handleSaveMapSettings = () => {
     localStorage.setItem('search_country_code', searchCountryCode);
     localStorage.setItem('search_city_bias', searchCityBias);
@@ -3484,10 +3619,25 @@ function App() {
       localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
     }
 
-    const performUpdate = (latitude = null, longitude = null) => {
-      updateTicketStatus(id, status, failureReason, latitude, longitude);
-      loadData();
-      triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Éxito' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+    const performUpdate = async (latitude = null, longitude = null) => {
+      const currentTickets = getTickets();
+      const ticketObj = currentTickets.find(t => t.id === id);
+      const furgoId = ticketObj ? ticketObj.furgoId : null;
+      const date = ticketObj ? ticketObj.date : null;
+
+      await updateTicketStatus(id, status, failureReason, latitude, longitude);
+      
+      if (status === 'success' || status === 'failed') {
+        if (furgoId && date) {
+          await autoOptimizeRemainingRoute(furgoId, date, id);
+        } else {
+          loadData();
+        }
+      } else {
+        loadData();
+      }
+      
+      triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Entregado' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
     };
 
     if ('geolocation' in navigator) {
@@ -9648,7 +9798,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v96
+            🔄 v97
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
