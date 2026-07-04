@@ -6675,108 +6675,7 @@ function App() {
 
         {activeTab === 'search' && renderSearchSection()}
 
-        {/* Modal de Presintonías de Motivo de Fallo Rápido */}
-        {quickFailTicketId !== null && (
-          <div style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0, 0, 0, 0.8)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-            padding: '20px'
-          }}>
-            <div className="glass-panel" style={{
-              width: '100%',
-              maxWidth: '360px',
-              padding: '25px',
-              textAlign: 'center',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
-              border: '1px solid var(--panel-border)'
-            }}>
-              <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', color: 'var(--danger)' }}>
-                🔴 Registrar Motivo de Fallo
-              </h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                Selecciona una de las opciones rápidas para liquidar la parada:
-              </p>
 
-              <div className="quick-fail-grid">
-                <button 
-                  type="button" 
-                  className="quick-fail-btn"
-                  onClick={() => {
-                    handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Ausente');
-                    setQuickFailTicketId(null);
-                  }}
-                >
-                  <span style={{ fontSize: '1.5rem' }}>👤</span>
-                  Ausente
-                </button>
-                <button 
-                  type="button" 
-                  className="quick-fail-btn"
-                  onClick={() => {
-                    handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Rechazado');
-                    setQuickFailTicketId(null);
-                  }}
-                >
-                  <span style={{ fontSize: '1.5rem' }}>❌</span>
-                  Rechazado
-                </button>
-                <button 
-                  type="button" 
-                  className="quick-fail-btn"
-                  onClick={() => {
-                    handleUpdateTicketStatus(quickFailTicketId, 'failed', 'No responde');
-                    setQuickFailTicketId(null);
-                  }}
-                >
-                  <span style={{ fontSize: '1.5rem' }}>📞</span>
-                  No responde
-                </button>
-                <button 
-                  type="button" 
-                  className="quick-fail-btn"
-                  onClick={() => {
-                    handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Dirección Incorrecta');
-                    setQuickFailTicketId(null);
-                  }}
-                >
-                  <span style={{ fontSize: '1.5rem' }}>📍</span>
-                  Dir. Incorrecta
-                </button>
-              </div>
-
-              <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const customReason = window.prompt('Escribe el motivo del fallo:');
-                    if (customReason !== null) {
-                      handleUpdateTicketStatus(quickFailTicketId, 'failed', customReason || 'Otro motivo');
-                      setQuickFailTicketId(null);
-                    }
-                  }}
-                  className="btn btn-secondary btn-small"
-                  style={{ width: '100%', marginBottom: '10px' }}
-                >
-                  ✏️ Otro Motivo (Escribir)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQuickFailTicketId(null)}
-                  className="btn btn-link btn-small"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -9909,7 +9808,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v102
+            🔄 v103
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
@@ -10300,6 +10199,109 @@ function App() {
                   Cancelar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Presintonías de Motivo de Fallo Rápido */}
+      {quickFailTicketId !== null && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          padding: '20px'
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '360px',
+            padding: '25px',
+            textAlign: 'center',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+            border: '1px solid var(--panel-border)'
+          }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', color: 'var(--danger)' }}>
+              🔴 Registrar Motivo de Fallo
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+              Selecciona una de las opciones rápidas para liquidar la parada:
+            </p>
+
+            <div className="quick-fail-grid">
+              <button 
+                type="button" 
+                className="quick-fail-btn"
+                onClick={() => {
+                  handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Ausente');
+                  setQuickFailTicketId(null);
+                }}
+              >
+                <span style={{ fontSize: '1.5rem' }}>👤</span>
+                Ausente
+              </button>
+              <button 
+                type="button" 
+                className="quick-fail-btn"
+                onClick={() => {
+                  handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Rechazado');
+                  setQuickFailTicketId(null);
+                }}
+              >
+                <span style={{ fontSize: '1.5rem' }}>❌</span>
+                Rechazado
+              </button>
+              <button 
+                type="button" 
+                className="quick-fail-btn"
+                onClick={() => {
+                  handleUpdateTicketStatus(quickFailTicketId, 'failed', 'No responde');
+                  setQuickFailTicketId(null);
+                }}
+              >
+                <span style={{ fontSize: '1.5rem' }}>📞</span>
+                No responde
+              </button>
+              <button 
+                type="button" 
+                className="quick-fail-btn"
+                onClick={() => {
+                  handleUpdateTicketStatus(quickFailTicketId, 'failed', 'Dirección Incorrecta');
+                  setQuickFailTicketId(null);
+                }}
+              >
+                <span style={{ fontSize: '1.5rem' }}>📍</span>
+                Dir. Incorrecta
+              </button>
+            </div>
+
+            <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const customReason = window.prompt('Escribe el motivo del fallo:');
+                  if (customReason !== null) {
+                    handleUpdateTicketStatus(quickFailTicketId, 'failed', customReason || 'Otro motivo');
+                    setQuickFailTicketId(null);
+                  }
+                }}
+                className="btn btn-secondary btn-small"
+                style={{ width: '100%', marginBottom: '10px' }}
+              >
+                ✏️ Otro Motivo (Escribir)
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickFailTicketId(null)}
+                className="btn btn-link btn-small"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>
