@@ -4466,12 +4466,18 @@ function App() {
       return renderCreateRouteForm();
     }
 
-    const itemsPaqueteria = tariffs.filter(t => t.block === 'Paquetería');
-    const itemsGamaBlanca = tariffs.filter(t => t.block === 'Gama Blanca');
-    const itemsMuebles = tariffs.filter(t => t.block === 'Muebles');
+    const getNormalizedBlock = (b) => {
+      if (!b) return '';
+      return b.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    };
+
+    const itemsPaqueteria = tariffs.filter(t => getNormalizedBlock(t.block) === 'paqueteria');
+    const itemsGamaBlanca = tariffs.filter(t => getNormalizedBlock(t.block) === 'gama blanca');
+    const itemsMuebles = tariffs.filter(t => getNormalizedBlock(t.block) === 'muebles');
     const itemsOtros = tariffs.filter(t => {
       const isTvInstallation = t.id.startsWith('PM_BAS_') || t.id.startsWith('PM_COMP_') || t.id.startsWith('CUELGUE_');
-      return t.block === 'Otros' || (t.block === 'Instalaciones' && !isTvInstallation);
+      const bNorm = getNormalizedBlock(t.block);
+      return bNorm === 'otros' || (bNorm === 'instalaciones' && !isTvInstallation);
     });
 
     const activeCheckFurgo = editingTicketId ? editingFurgoId : currentUser.id;
@@ -5096,13 +5102,13 @@ function App() {
               {/* SECCIÓN A: TELEVISORES */}
               <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                 <div 
-                  onClick={() => !isClosed && toggleSection('tv')} 
+                  onClick={() => toggleSection('tv')} 
                   style={{ 
                     display: 'flex', 
                     justifyContent: 'space-between', 
                     alignItems: 'center', 
                     padding: '18px 20px', 
-                    cursor: isClosed ? 'default' : 'pointer',
+                    cursor: 'pointer',
                     userSelect: 'none',
                     background: expandedSections.tv ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
                     borderTopLeftRadius: '11px',
@@ -5435,13 +5441,13 @@ function App() {
               {/* SECCIÓN B: PAQUETERÍA */}
               <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                 <div 
-                  onClick={() => !isClosed && toggleSection('paqueteria')} 
+                  onClick={() => toggleSection('paqueteria')} 
                   style={{ 
                     display: 'flex', 
                     justifyContent: 'space-between', 
                     alignItems: 'center', 
                     padding: '18px 20px', 
-                    cursor: isClosed ? 'default' : 'pointer',
+                    cursor: 'pointer',
                     userSelect: 'none',
                     background: expandedSections.paqueteria ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
                     borderTopLeftRadius: '11px',
@@ -5505,13 +5511,13 @@ function App() {
               {itemsGamaBlanca.length > 0 && (
                 <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                   <div 
-                    onClick={() => !isClosed && toggleSection('gamablanca')} 
+                    onClick={() => toggleSection('gamablanca')} 
                     style={{ 
                       display: 'flex', 
                       justifyContent: 'space-between', 
                       alignItems: 'center', 
                       padding: '18px 20px', 
-                      cursor: isClosed ? 'default' : 'pointer',
+                      cursor: 'pointer',
                       userSelect: 'none',
                       background: expandedSections.gamablanca ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
                       borderTopLeftRadius: '11px',
@@ -5561,13 +5567,13 @@ function App() {
               {itemsMuebles.length > 0 && (
                 <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                   <div 
-                    onClick={() => !isClosed && toggleSection('muebles')} 
+                    onClick={() => toggleSection('muebles')} 
                     style={{ 
                       display: 'flex', 
                       justifyContent: 'space-between', 
                       alignItems: 'center', 
                       padding: '18px 20px', 
-                      cursor: isClosed ? 'default' : 'pointer',
+                      cursor: 'pointer',
                       userSelect: 'none',
                       background: expandedSections.muebles ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
                       borderTopLeftRadius: '11px',
@@ -5616,13 +5622,13 @@ function App() {
               {/* SECCIÓN E: OTROS ELEMENTOS / ACCESORIOS */}
               <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                 <div 
-                  onClick={() => !isClosed && toggleSection('otros')} 
+                  onClick={() => toggleSection('otros')} 
                   style={{ 
                     display: 'flex', 
                     justifyContent: 'space-between', 
                     alignItems: 'center', 
                     padding: '18px 20px', 
-                    cursor: isClosed ? 'default' : 'pointer',
+                    cursor: 'pointer',
                     userSelect: 'none',
                     background: expandedSections.otros ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
                     borderTopLeftRadius: '11px',
@@ -5677,13 +5683,13 @@ function App() {
               {/* SECCIÓN F: CONCEPTOS ADICIONALES (EXTRAS PERSONALIZADOS) */}
               <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                 <div 
-                  onClick={() => !isClosed && toggleSection('extras')} 
+                  onClick={() => toggleSection('extras')} 
                   style={{ 
                     display: 'flex', 
                     justifyContent: 'space-between', 
                     alignItems: 'center', 
                     padding: '18px 20px', 
-                    cursor: isClosed ? 'default' : 'pointer',
+                    cursor: 'pointer',
                     userSelect: 'none',
                     background: expandedSections.extras ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
                     borderTopLeftRadius: '11px',
