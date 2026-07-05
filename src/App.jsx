@@ -804,6 +804,12 @@ function App() {
     otros: false,
     extras: false
   });
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
   const [isTrackingActive, setIsTrackingActive] = useState(true);
   const [gpsStatus, setGpsStatus] = useState('inactive'); // 'active' | 'error' | 'inactive'
   const watchIdRef = useRef(null);
