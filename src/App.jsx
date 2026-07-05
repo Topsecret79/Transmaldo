@@ -796,6 +796,14 @@ function App() {
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('repartidor');
   const [newAdminPricingOption, setNewAdminPricingOption] = useState('copy_default');
+  const [expandedSections, setExpandedSections] = useState({
+    tv: true,
+    paqueteria: false,
+    gamablanca: false,
+    muebles: false,
+    otros: false,
+    extras: false
+  });
   const [isTrackingActive, setIsTrackingActive] = useState(true);
   const [gpsStatus, setGpsStatus] = useState('inactive'); // 'active' | 'error' | 'inactive'
   const watchIdRef = useRef(null);
@@ -5066,536 +5074,786 @@ function App() {
         )}
 
         {/* PASO 2: ARTÍCULOS Y SERVICIOS */}
-        {formStep === 2 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px', animation: 'fadeIn 0.3s ease' }}>
-            {/* SECCIÓN A: TELEVISORES */}
-            <div className="block-section" style={{ textAlign: 'left' }}>
-              <div className="block-title">📺 Selección de Televisores</div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                Selecciona la medida de la TV y la acción del servicio, luego haz clic en "Añadir".
-              </p>
+        {formStep === 2 && (() => {
+          const paqueteriaCount = itemsPaqueteria.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
+          const gamaBlancaCount = itemsGamaBlanca.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
+          const mueblesCount = itemsMuebles.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
+          
+          const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
+          const otrosCount = itemsOtros
+            .filter(item => !['URGENTE_100', 'URGENTE_120'].includes(item.id))
+            .reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
 
-              {/* Selector de Pulgadas de la TV */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
-                <div 
-                  className="tv-size-card active"
-                  onClick={() => {
-                    if (isClosed) return;
-                    const val = window.prompt('Introduce las pulgadas de la TV:', tempTvInches || '55');
-                    if (val !== null) setTempTvInches(val);
-                  }}
-                  style={{ 
-                    width: '100%', 
-                    maxWidth: '300px', 
-                    padding: '20px', 
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    background: 'rgba(99, 102, 241, 0.08)',
-                    border: '2px solid var(--primary)',
-                    borderRadius: '12px',
-                    boxShadow: '0 0 15px rgba(99, 102, 241, 0.15)',
-                    margin: '0 auto'
-                  }}
-                >
-                  <span style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📺</span>
-                  <span style={{ fontWeight: '800', fontSize: '1.4rem', color: '#fff' }}>
-                    {tempTvInches ? `${tempTvInches}"` : 'Toca para definir'}
-                  </span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>
-                    Pulgadas de la TV (Toca para cambiar)
-                  </span>
-                </div>
-              </div>
-
-              {/* Selector de Marca de la TV */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '15px' }}>
-                <span className="input-label" style={{ margin: 0 }}>Marca de la TV:</span>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select
-                    className="form-input"
-                    value={['Samsung', 'LG', 'Sony', 'Philips', 'Xiaomi', 'Hisense', 'TCL'].includes(tempTvBrand) ? tempTvBrand : 'Otra'}
-                    onChange={(e) => {
-                      if (e.target.value === 'Otra') {
-                        const customBrand = window.prompt('Introduce la marca de la TV:', tempTvBrand === 'Otra' ? '' : tempTvBrand);
-                        if (customBrand !== null) {
-                          setTempTvBrand(customBrand || 'Genérica');
-                        }
-                      } else {
-                        setTempTvBrand(e.target.value);
-                      }
-                    }}
-                    style={{ flex: 1 }}
-                  >
-                    <option value="Samsung">Samsung</option>
-                    <option value="LG">LG</option>
-                    <option value="Sony">Sony</option>
-                    <option value="Philips">Philips</option>
-                    <option value="Xiaomi">Xiaomi</option>
-                    <option value="Hisense">Hisense</option>
-                    <option value="TCL">TCL</option>
-                    <option value="Otra">Otra (escribir...)</option>
-                  </select>
-                  {!['Samsung', 'LG', 'Sony', 'Philips', 'Xiaomi', 'Hisense', 'TCL'].includes(tempTvBrand) && (
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={tempTvBrand}
-                      onChange={(e) => setTempTvBrand(e.target.value)}
-                      placeholder="Escribe la marca..."
-                      style={{ flex: 1 }}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Selector Segmentado de Acción */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '15px' }}>
-                <span className="input-label" style={{ margin: 0 }}>Acción a realizar:</span>
-                <div className="action-pills">
-                  <button 
-                    type="button" 
-                    className={`action-pill-opt ${tempTvAction === 'entrega' ? 'active' : ''}`}
-                    onClick={() => !isClosed && setTempTvAction('entrega')}
-                  >
-                    Entrega
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`action-pill-opt ${tempTvAction === 'recogida' ? 'active' : ''}`}
-                    onClick={() => !isClosed && setTempTvAction('recogida')}
-                  >
-                    Recogida
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`action-pill-opt ${tempTvAction === 'combinado' ? 'active' : ''}`}
-                    onClick={() => !isClosed && setTempTvAction('combinado')}
-                  >
-                    Entrega+Rec.
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`action-pill-opt ${tempTvAction === 'solo_pm' ? 'active' : ''}`}
-                    onClick={() => !isClosed && setTempTvAction('solo_pm')}
-                  >
-                    Solo PM
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`action-pill-opt ${tempTvAction === 'solo_cuelgue' ? 'active' : ''}`}
-                    onClick={() => !isClosed && setTempTvAction('solo_cuelgue')}
-                  >
-                    Solo Cuelgue
-                  </button>
-                </div>
-              </div>
-
-              <button 
-                type="button" 
-                onClick={() => {
-                  if (!tempTvInches) {
-                    triggerAlert('Por favor, selecciona el tamaño o pulgadas de la TV', 'error');
-                    return;
-                  }
-                  addTvToForm();
-                }} 
-                className="btn btn-primary" 
-                style={{ width: '100%', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                disabled={isClosed}
-              >
-                <Plus size={16} /> Añadir Televisión a la Carga
-              </button>
-
-              {/* Listado de TVs Añadidas */}
-              {formTvs.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
-                  {formTvs.map((tv) => {
-                    const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : tv.action === 'solo_cuelgue' ? 'Solo Cuelgue' : 'Entrega + Recogida';
-                    return (
-                      <div key={tv.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '10px', padding: '15px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed var(--panel-border)', paddingBottom: '8px', marginBottom: '12px' }}>
-                          <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--primary)' }}>
-                            📺 TV {tv.brand || 'Genérica'} {tv.inches}" ({actionText})
-                          </span>
-                          <button type="button" onClick={() => removeTvFromForm(tv.id)} className="btn btn-danger btn-small" style={{ display: 'flex', padding: '4px 8px', gap: '4px', width: 'auto', margin: 0 }} disabled={isClosed}>
-                            <Trash2 size={12} /> Quitar
-                          </button>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
-                          <div className="input-group" style={{ marginBottom: 0 }}>
-                            <span className="input-label">Puesta en Marcha (PM)</span>
-                            <select className="form-input" value={tv.pmType} onChange={(e) => updateTvInForm(tv.id, 'pmType', e.target.value)} disabled={isClosed}>
-                              <option value="none">No requiere</option>
-                              <option value="basic">Puesta en Marcha Básica (3 Mód.)</option>
-                              <option value="complex">Puesta en Marcha Compleja (5 Mód.)</option>
-                            </select>
-                          </div>
-
-                          <div className="input-group" style={{ marginBottom: 0 }}>
-                            <span className="input-label">Retirada TV Vieja</span>
-                            <select className="form-input" value={tv.recogidaViejaType} onChange={(e) => updateTvInForm(tv.id, 'recogidaViejaType', e.target.value)} disabled={isClosed}>
-                              <option value="none">No requiere retirada</option>
-                              <option value="urbantz">Retirada Vieja Urbantz</option>
-                              <option value="no_urbantz">Retirada Vieja NO Urbantz</option>
-                            </select>
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '18px' }}>
-                            <input 
-                              type="checkbox" 
-                              id={`cuelgue_${tv.id}`} 
-                              checked={tv.cuelgue} 
-                              onChange={(e) => updateTvInForm(tv.id, 'cuelgue', e.target.checked)}
-                              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                              disabled={isClosed}
-                            />
-                            <label htmlFor={`cuelgue_${tv.id}`} style={{ fontWeight: '600', cursor: 'pointer', fontSize: '0.85rem' }}>
-                              Cuelgue en Pared (8/10 Mód.)
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Tiempo Estimado en Parada (minutos) */}
-              <div className="input-group" style={{ marginTop: '20px', borderTop: '1px dashed var(--panel-border)', paddingTop: '15px' }}>
-                <span className="input-label" style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  ⏱️ Tiempo Estimado en Parada
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    onClick={() => {
-                      if (isClosed) return;
-                      setEstimatedDuration(prev => Math.max(1, prev - 5));
-                      setIsDurationManuallyEdited(true);
-                    }}
-                    style={{ width: '38px', height: '38px', padding: 0, fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}
-                    disabled={isClosed}
-                  >
-                    -
-                  </button>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    min="1" 
-                    value={estimatedDuration} 
-                    onChange={(e) => { 
-                      setEstimatedDuration(parseInt(e.target.value, 10) || 0); 
-                      setIsDurationManuallyEdited(true); 
-                    }} 
-                    style={{ flex: 1, textAlign: 'center', fontSize: '1.1rem', fontWeight: 'bold', height: '38px', margin: 0 }}
-                    disabled={isClosed} 
-                  />
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    onClick={() => {
-                      if (isClosed) return;
-                      setEstimatedDuration(prev => prev + 5);
-                      setIsDurationManuallyEdited(true);
-                    }}
-                    style={{ width: '38px', height: '38px', padding: 0, fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}
-                    disabled={isClosed}
-                  >
-                    +
-                  </button>
-                </div>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '5px 0 0 0' }}>
-                  Ajusta el tiempo de parada estimado. Se sugiere automáticamente (10 min entrega, 30 min puesta en marcha, 90 min cuelgue), pero puedes cambiarlo libremente.
-                </p>
-              </div>
-            </div>
-
-            {/* SECCIÓN URGENTE */}
-            <div className="block-section" style={{ textAlign: 'left', border: '1px solid rgba(239, 68, 68, 0.25)', background: 'rgba(239, 68, 68, 0.03)' }}>
-              <div className="block-title" style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>⚡ Servicio Urgente Especial</div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                Si este reparto es un servicio urgente especial que sale en cualquier momento, selecciona la tarifa correspondiente para que se compute en las ganancias:
-              </p>
-              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  className={`action-pill-opt ${urgenteType === 'none' ? 'active' : ''}`}
-                  onClick={() => !isClosed && setUrgenteType('none')}
-                  style={{ flex: 1, height: '40px', minWidth: '120px', borderRadius: '8px', cursor: isClosed ? 'not-allowed' : 'pointer' }}
-                >
-                  No es Urgente
-                </button>
-                <button
-                  type="button"
-                  className={`action-pill-opt ${urgenteType === '100' ? 'active' : ''}`}
-                  onClick={() => !isClosed && setUrgenteType('100')}
-                  style={{ 
-                    flex: 1, 
-                    height: '40px', 
-                    minWidth: '120px', 
-                    borderRadius: '8px', 
-                    cursor: isClosed ? 'not-allowed' : 'pointer',
-                    borderColor: urgenteType === '100' ? '#ef4444' : '', 
-                    color: urgenteType === '100' ? '#fff' : '', 
-                    background: urgenteType === '100' ? 'rgba(239, 68, 68, 0.2)' : '' 
-                  }}
-                >
-                  Urgente 100€
-                </button>
-                <button
-                  type="button"
-                  className={`action-pill-opt ${urgenteType === '120' ? 'active' : ''}`}
-                  onClick={() => !isClosed && setUrgenteType('120')}
-                  style={{ 
-                    flex: 1, 
-                    height: '40px', 
-                    minWidth: '120px', 
-                    borderRadius: '8px', 
-                    cursor: isClosed ? 'not-allowed' : 'pointer',
-                    borderColor: urgenteType === '120' ? '#ef4444' : '', 
-                    color: urgenteType === '120' ? '#fff' : '', 
-                    background: urgenteType === '120' ? 'rgba(239, 68, 68, 0.2)' : '' 
-                  }}
-                >
-                  Urgente 120€
-                </button>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', textAlign: 'left' }}>
-              <div className="block-section">
-                <div className="block-title">📦 Bloque Paquetería (Unidades)</div>
-                {itemsPaqueteria.map(t => {
-                  const qty = otherQuantities[t.id] || 0;
-                  const descs = otherDescriptions[t.id] || [];
-                  return (
-                    <div key={t.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '10px 0' }}>
-                      <div className="task-item-row" style={{ borderBottom: 'none', padding: 0 }}>
-                        <span className="task-item-label">{t.name}</span>
-                        <div className="qty-counter">
-                          <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
-                          <span className="qty-val">{qty}</span>
-                          <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
-                        </div>
-                      </div>
-                      {qty > 0 && descs.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '10px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          {descs.map((d, i) => (
-                            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              📦 Item {i + 1}: <strong style={{ color: '#fff' }}>{d}</strong>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {itemsGamaBlanca.length > 0 && (
-                <div className="block-section">
-                  <div className="block-title">🔌 Gama Blanca</div>
-                  {itemsGamaBlanca.map(t => (
-                    <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                      <span className="task-item-label">{t.name}</span>
-                      <div className="qty-counter">
-                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
-                        <span className="qty-val">{otherQuantities[t.id] || 0}</span>
-                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {itemsMuebles.length > 0 && (
-                <div className="block-section">
-                  <div className="block-title">🪑 Muebles</div>
-                  {itemsMuebles.map(t => (
-                    <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                      <span className="task-item-label">{t.name}</span>
-                      <div className="qty-counter">
-                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
-                        <span className="qty-val">{otherQuantities[t.id] || 0}</span>
-                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="block-section">
-                <div className="block-title">🔧 Otros Elementos / Accesorios</div>
-                {(() => {
-                  const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
-                  const soundbarItems = soundbarIds.map(id => itemsOtros.find(item => item.id === id)).filter(Boolean);
-                  const otherItems = itemsOtros.filter(item => !soundbarIds.includes(item.id) && item.id !== 'URGENTE_100' && item.id !== 'URGENTE_120');
-                  const sortedOtros = [...soundbarItems, ...otherItems];
-                  
-                  return sortedOtros.map(t => (
-                    <div key={t.id} className="task-item-row" style={{ borderBottom: t.id === 'CUELGUE_BSND' ? '2px dashed var(--panel-border)' : '1px solid rgba(255,255,255,0.05)', paddingBottom: t.id === 'CUELGUE_BSND' ? '12px' : '8px', marginBottom: t.id === 'CUELGUE_BSND' ? '12px' : '0px' }}>
-                      <span className="task-item-label" style={{ fontWeight: soundbarIds.includes(t.id) ? '600' : 'normal' }}>{t.name}</span>
-                      <div className="qty-counter">
-                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
-                        <span className="qty-val">{otherQuantities[t.id] || 0}</span>
-                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
-
-            {/* SECCIÓN C: CONCEPTOS ADICIONALES (EXTRAS PERSONALIZADOS) */}
-            <div className="block-section" style={{ textAlign: 'left' }}>
-              <div className="block-title">➕ Conceptos Adicionales (Extras Especiales)</div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                Registra servicios extras no contemplados en la tarifa estándar (ej. subida por escalera, ayudante adicional, etc.)
-              </p>
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease' }}>
               
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px' }}>
-                <div style={{ flex: 2, minWidth: '200px' }}>
-                  <span className="input-label" style={{ margin: '0 0 4px 0' }}>Descripción del Servicio Extra</span>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Ej: Subida por escaleras (10 pisos)"
-                    value={customExtraName}
-                    onChange={(e) => setCustomExtraName(e.target.value)}
-                    disabled={isClosed}
+              {/* SECCIÓN A: TELEVISORES */}
+              <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                <div 
+                  onClick={() => !isClosed && toggleSection('tv')} 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '18px 20px', 
+                    cursor: isClosed ? 'default' : 'pointer',
+                    userSelect: 'none',
+                    background: expandedSections.tv ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
+                    borderTopLeftRadius: '11px',
+                    borderTopRightRadius: '11px',
+                    borderBottomLeftRadius: expandedSections.tv ? '0px' : '11px',
+                    borderBottomRightRadius: expandedSections.tv ? '0px' : '11px',
+                    transition: 'background 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.25rem' }}>📺</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Televisores y Servicios</span>
+                    {formTvs.length > 0 && (
+                      <span className="badge badge-primary" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--primary)', color: '#fff' }}>
+                        {formTvs.length} {formTvs.length === 1 ? 'TV' : 'TVs'}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown 
+                    size={18} 
+                    style={{ 
+                      transform: expandedSections.tv ? 'rotate(180deg)' : 'rotate(0deg)', 
+                      transition: 'transform 0.25s ease', 
+                      color: 'var(--text-muted)' 
+                    }} 
                   />
                 </div>
-                <div style={{ flex: 1, minWidth: '100px' }}>
-                  <span className="input-label" style={{ margin: '0 0 4px 0' }}>Precio (€)</span>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    placeholder="Ej: 20"
-                    value={customExtraPrice}
-                    onChange={(e) => setCustomExtraPrice(e.target.value)}
-                    disabled={isClosed}
-                  />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                  <button 
-                    type="button" 
-                    className="btn btn-primary"
-                    onClick={() => {
-                      if (!customExtraName.trim()) {
-                        triggerAlert('Escribe una descripción para el concepto adicional', 'error');
-                        return;
-                      }
-                      if (!customExtraPrice || parseFloat(customExtraPrice) < 0) {
-                        triggerAlert('Introduce un precio válido', 'error');
-                        return;
-                      }
-                      addCustomExtra();
-                    }}
-                    style={{ height: '42px', margin: 0, padding: '0 20px', width: 'auto' }}
-                    disabled={isClosed}
-                  >
-                    Añadir Extra
-                  </button>
-                </div>
-              </div>
 
-              {/* Listado de Extras Añadidos */}
-              {customExtras.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {customExtras.map(extra => (
-                    <div key={extra.id} className="task-item-row" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '10px 15px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-                      <span style={{ fontWeight: '600' }}>✨ {extra.name}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                        <span style={{ fontWeight: '700', color: 'var(--success)' }}>{extra.price.toFixed(2)} €</span>
+                {expandedSections.tv && (
+                  <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+                      Selecciona la medida de la TV y la acción del servicio, luego haz clic en "Añadir".
+                    </p>
+
+                    {/* Selector de Pulgadas de la TV */}
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <div 
+                        className="tv-size-card active"
+                        onClick={() => {
+                          if (isClosed) return;
+                          const val = window.prompt('Introduce las pulgadas de la TV:', tempTvInches || '55');
+                          if (val !== null) setTempTvInches(val);
+                        }}
+                        style={{ 
+                          width: '100%', 
+                          maxWidth: '300px', 
+                          padding: '20px', 
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          background: 'rgba(99, 102, 241, 0.08)',
+                          border: '2px solid var(--primary)',
+                          borderRadius: '12px',
+                          boxShadow: '0 0 15px rgba(99, 102, 241, 0.15)',
+                          margin: '0 auto'
+                        }}
+                      >
+                        <span style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📺</span>
+                        <span style={{ fontWeight: '800', fontSize: '1.4rem', color: '#fff' }}>
+                          {tempTvInches ? `${tempTvInches}"` : 'Toca para definir'}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>
+                          Pulgadas de la TV (Toca para cambiar)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Selector de Marca de la TV */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span className="input-label" style={{ margin: 0 }}>Marca de la TV:</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <select
+                          className="form-input"
+                          value={['Samsung', 'LG', 'Sony', 'Philips', 'Xiaomi', 'Hisense', 'TCL'].includes(tempTvBrand) ? tempTvBrand : 'Otra'}
+                          onChange={(e) => {
+                            if (e.target.value === 'Otra') {
+                              const customBrand = window.prompt('Introduce la marca de la TV:', tempTvBrand === 'Otra' ? '' : tempTvBrand);
+                              if (customBrand !== null) {
+                                setTempTvBrand(customBrand || 'Genérica');
+                              }
+                            } else {
+                              setTempTvBrand(e.target.value);
+                            }
+                          }}
+                          style={{ flex: 1 }}
+                        >
+                          <option value="Samsung">Samsung</option>
+                          <option value="LG">LG</option>
+                          <option value="Sony">Sony</option>
+                          <option value="Philips">Philips</option>
+                          <option value="Xiaomi">Xiaomi</option>
+                          <option value="Hisense">Hisense</option>
+                          <option value="TCL">TCL</option>
+                          <option value="Otra">Otra (escribir...)</option>
+                        </select>
+                        {!['Samsung', 'LG', 'Sony', 'Philips', 'Xiaomi', 'Hisense', 'TCL'].includes(tempTvBrand) && (
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={tempTvBrand}
+                            onChange={(e) => setTempTvBrand(e.target.value)}
+                            placeholder="Escribe la marca..."
+                            style={{ flex: 1 }}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Selector Segmentado de Acción */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span className="input-label" style={{ margin: 0 }}>Acción a realizar:</span>
+                      <div className="action-pills">
                         <button 
                           type="button" 
-                          className="btn btn-danger btn-small"
-                          onClick={() => removeCustomExtra(extra.id)}
-                          style={{ width: 'auto', margin: 0, padding: '4px 8px' }}
-                          disabled={isClosed}
+                          className={`action-pill-opt ${tempTvAction === 'entrega' ? 'active' : ''}`}
+                          onClick={() => !isClosed && setTempTvAction('entrega')}
                         >
-                          <Trash2 size={12} />
+                          Entrega
+                        </button>
+                        <button 
+                          type="button" 
+                          className={`action-pill-opt ${tempTvAction === 'recogida' ? 'active' : ''}`}
+                          onClick={() => !isClosed && setTempTvAction('recogida')}
+                        >
+                          Recogida
+                        </button>
+                        <button 
+                          type="button" 
+                          className={`action-pill-opt ${tempTvAction === 'combinado' ? 'active' : ''}`}
+                          onClick={() => !isClosed && setTempTvAction('combinado')}
+                        >
+                          Entrega+Rec.
+                        </button>
+                        <button 
+                          type="button" 
+                          className={`action-pill-opt ${tempTvAction === 'solo_pm' ? 'active' : ''}`}
+                          onClick={() => !isClosed && setTempTvAction('solo_pm')}
+                        >
+                          Solo PM
+                        </button>
+                        <button 
+                          type="button" 
+                          className={`action-pill-opt ${tempTvAction === 'solo_cuelgue' ? 'active' : ''}`}
+                          onClick={() => !isClosed && setTempTvAction('solo_cuelgue')}
+                        >
+                          Solo Cuelgue
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
-            {/* COD Reembolso y Observaciones */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px', borderTop: '1px dashed var(--panel-border)', paddingTop: '15px' }}>
-              <label style={{ fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontWeight: '600' }}>
-                <input 
-                  type="checkbox" 
-                  checked={showCod} 
-                  onChange={(e) => {
-                    setShowCod(e.target.checked);
-                    if (!e.target.checked) setCodAmount('');
-                  }} 
-                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                />
-                💵 Este reparto tiene cobro contra reembolso (COD)
-              </label>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        if (!tempTvInches) {
+                          triggerAlert('Por favor, selecciona el tamaño o pulgadas de la TV', 'error');
+                          return;
+                        }
+                        addTvToForm();
+                      }} 
+                      className="btn btn-primary" 
+                      style={{ width: '100%', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      disabled={isClosed}
+                    >
+                      <Plus size={16} /> Añadir Televisión a la Carga
+                    </button>
 
-              {showCod && (
-                <div className="input-group" style={{ animation: 'fadeIn 0.2s ease' }}>
-                  <span className="input-label" style={{ fontSize: '0.8rem' }}>Importe a Cobrar / Reembolso (€)</span>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    min="0" 
-                    className="form-input" 
-                    placeholder="Ej. 150.00" 
-                    value={codAmount} 
-                    onChange={(e) => setCodAmount(e.target.value)} 
-                    disabled={isClosed} 
+                    {/* Listado de TVs Añadidas */}
+                    {formTvs.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '10px' }}>
+                        {formTvs.map((tv) => {
+                          const actionText = tv.action === 'entrega' ? 'Entrega' : tv.action === 'recogida' ? 'Recogida' : tv.action === 'solo_pm' ? 'Solo PM' : tv.action === 'solo_cuelgue' ? 'Solo Cuelgue' : 'Entrega + Recogida';
+                          return (
+                            <div key={tv.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', borderRadius: '10px', padding: '15px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed var(--panel-border)', paddingBottom: '8px', marginBottom: '12px' }}>
+                                <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--primary)' }}>
+                                  📺 TV {tv.brand || 'Genérica'} {tv.inches}" ({actionText})
+                                </span>
+                                <button type="button" onClick={() => removeTvFromForm(tv.id)} className="btn btn-danger btn-small" style={{ display: 'flex', padding: '4px 8px', gap: '4px', width: 'auto', margin: 0 }} disabled={isClosed}>
+                                  <Trash2 size={12} /> Quitar
+                                </button>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
+                                <div className="input-group" style={{ marginBottom: 0 }}>
+                                  <span className="input-label">Puesta en Marcha (PM)</span>
+                                  <select className="form-input" value={tv.pmType} onChange={(e) => updateTvInForm(tv.id, 'pmType', e.target.value)} disabled={isClosed}>
+                                    <option value="none">No requiere</option>
+                                    <option value="basic">Puesta en Marcha Básica (3 Mód.)</option>
+                                    <option value="complex">Puesta en Marcha Compleja (5 Mód.)</option>
+                                  </select>
+                                </div>
+
+                                <div className="input-group" style={{ marginBottom: 0 }}>
+                                  <span className="input-label">Retirada TV Vieja</span>
+                                  <select className="form-input" value={tv.recogidaViejaType} onChange={(e) => updateTvInForm(tv.id, 'recogidaViejaType', e.target.value)} disabled={isClosed}>
+                                    <option value="none">No requiere retirada</option>
+                                    <option value="urbantz">Retirada Vieja Urbantz</option>
+                                    <option value="no_urbantz">Retirada Vieja NO Urbantz</option>
+                                  </select>
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '18px' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    id={`cuelgue_${tv.id}`} 
+                                    checked={tv.cuelgue} 
+                                    onChange={(e) => updateTvInForm(tv.id, 'cuelgue', e.target.checked)}
+                                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                    disabled={isClosed}
+                                  />
+                                  <label htmlFor={`cuelgue_${tv.id}`} style={{ fontWeight: '600', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                    Cuelgue en Pared (8/10 Mód.)
+                                  </label>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Tiempo Estimado en Parada (minutos) */}
+                    <div className="input-group" style={{ borderTop: '1px dashed var(--panel-border)', paddingTop: '15px', marginBottom: 0 }}>
+                      <span className="input-label" style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        ⏱️ Tiempo Estimado en Parada
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <button 
+                          type="button" 
+                          className="btn btn-secondary" 
+                          onClick={() => {
+                            if (isClosed) return;
+                            setEstimatedDuration(prev => Math.max(1, prev - 5));
+                            setIsDurationManuallyEdited(true);
+                          }}
+                          style={{ width: '38px', height: '38px', padding: 0, fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}
+                          disabled={isClosed}
+                        >
+                          -
+                        </button>
+                        <input 
+                          type="number" 
+                          className="form-input" 
+                          min="1" 
+                          value={estimatedDuration} 
+                          onChange={(e) => { 
+                            setEstimatedDuration(parseInt(e.target.value, 10) || 0); 
+                            setIsDurationManuallyEdited(true); 
+                          }} 
+                          style={{ flex: 1, textAlign: 'center', fontSize: '1.1rem', fontWeight: 'bold', height: '38px', margin: 0 }}
+                          disabled={isClosed} 
+                        />
+                        <button 
+                          type="button" 
+                          className="btn btn-secondary" 
+                          onClick={() => {
+                            if (isClosed) return;
+                            setEstimatedDuration(prev => prev + 5);
+                            setIsDurationManuallyEdited(true);
+                          }}
+                          style={{ width: '38px', height: '38px', padding: 0, fontSize: '1.2rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: 0 }}
+                          disabled={isClosed}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '5px 0 0 0' }}>
+                        Ajusta el tiempo de parada estimado. Se sugiere automáticamente (10 min entrega, 30 min puesta en marcha, 90 min cuelgue), pero puedes cambiarlo libremente.
+                      </p>
+                    </div>
+
+                    {/* SECCIÓN URGENTE */}
+                    <div style={{ borderTop: '1px dashed var(--panel-border)', paddingTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>⚡ Servicio Urgente Especial</div>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                        Si este reparto es un servicio urgente especial que sale en cualquier momento, selecciona la tarifa correspondiente:
+                      </p>
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '5px' }}>
+                        <button
+                          type="button"
+                          className={`action-pill-opt ${urgenteType === 'none' ? 'active' : ''}`}
+                          onClick={() => !isClosed && setUrgenteType('none')}
+                          style={{ flex: 1, height: '38px', minWidth: '100px', borderRadius: '8px', cursor: isClosed ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}
+                        >
+                          No es Urgente
+                        </button>
+                        <button
+                          type="button"
+                          className={`action-pill-opt ${urgenteType === '100' ? 'active' : ''}`}
+                          onClick={() => !isClosed && setUrgenteType('100')}
+                          style={{ 
+                            flex: 1, 
+                            height: '38px', 
+                            minWidth: '100px', 
+                            borderRadius: '8px', 
+                            cursor: isClosed ? 'not-allowed' : 'pointer',
+                            fontSize: '0.85rem',
+                            borderColor: urgenteType === '100' ? '#ef4444' : '', 
+                            color: urgenteType === '100' ? '#fff' : '', 
+                            background: urgenteType === '100' ? 'rgba(239, 68, 68, 0.2)' : '' 
+                          }}
+                        >
+                          Urgente 100€
+                        </button>
+                        <button
+                          type="button"
+                          className={`action-pill-opt ${urgenteType === '120' ? 'active' : ''}`}
+                          onClick={() => !isClosed && setUrgenteType('120')}
+                          style={{ 
+                            flex: 1, 
+                            height: '38px', 
+                            minWidth: '100px', 
+                            borderRadius: '8px', 
+                            cursor: isClosed ? 'not-allowed' : 'pointer',
+                            fontSize: '0.85rem',
+                            borderColor: urgenteType === '120' ? '#ef4444' : '', 
+                            color: urgenteType === '120' ? '#fff' : '', 
+                            background: urgenteType === '120' ? 'rgba(239, 68, 68, 0.2)' : '' 
+                          }}
+                        >
+                          Urgente 120€
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECCIÓN B: PAQUETERÍA */}
+              <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                <div 
+                  onClick={() => !isClosed && toggleSection('paqueteria')} 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '18px 20px', 
+                    cursor: isClosed ? 'default' : 'pointer',
+                    userSelect: 'none',
+                    background: expandedSections.paqueteria ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
+                    borderTopLeftRadius: '11px',
+                    borderTopRightRadius: '11px',
+                    borderBottomLeftRadius: expandedSections.paqueteria ? '0px' : '11px',
+                    borderBottomRightRadius: expandedSections.paqueteria ? '0px' : '11px',
+                    transition: 'background 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.25rem' }}>📦</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Bloque Paquetería</span>
+                    {paqueteriaCount > 0 && (
+                      <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                        {paqueteriaCount} {paqueteriaCount === 1 ? 'unidad' : 'unidades'}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown 
+                    size={18} 
+                    style={{ 
+                      transform: expandedSections.paqueteria ? 'rotate(180deg)' : 'rotate(0deg)', 
+                      transition: 'transform 0.25s ease', 
+                      color: 'var(--text-muted)' 
+                    }} 
                   />
                 </div>
+
+                {expandedSections.paqueteria && (
+                  <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {itemsPaqueteria.map(t => {
+                      const qty = otherQuantities[t.id] || 0;
+                      const descs = otherDescriptions[t.id] || [];
+                      return (
+                        <div key={t.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '10px 0' }}>
+                          <div className="task-item-row" style={{ borderBottom: 'none', padding: 0 }}>
+                            <span className="task-item-label">{t.name}</span>
+                            <div className="qty-counter">
+                              <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                              <span className="qty-val">{qty}</span>
+                              <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                            </div>
+                          </div>
+                          {qty > 0 && descs.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '10px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                              {descs.map((d, i) => (
+                                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  📦 Item {i + 1}: <strong style={{ color: '#fff' }}>{d}</strong>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* SECCIÓN C: GAMA BLANCA */}
+              {itemsGamaBlanca.length > 0 && (
+                <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                  <div 
+                    onClick={() => !isClosed && toggleSection('gamablanca')} 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '18px 20px', 
+                      cursor: isClosed ? 'default' : 'pointer',
+                      userSelect: 'none',
+                      background: expandedSections.gamablanca ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
+                      borderTopLeftRadius: '11px',
+                      borderTopRightRadius: '11px',
+                      borderBottomLeftRadius: expandedSections.gamablanca ? '0px' : '11px',
+                      borderBottomRightRadius: expandedSections.gamablanca ? '0px' : '11px',
+                      transition: 'background 0.2s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '1.25rem' }}>🔌</span>
+                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Gama Blanca</span>
+                      {gamaBlancaCount > 0 && (
+                        <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                          {gamaBlancaCount} {gamaBlancaCount === 1 ? 'artículo' : 'artículos'}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown 
+                      size={18} 
+                      style={{ 
+                        transform: expandedSections.gamablanca ? 'rotate(180deg)' : 'rotate(0deg)', 
+                        transition: 'transform 0.25s ease', 
+                        color: 'var(--text-muted)' 
+                      }} 
+                    />
+                  </div>
+
+                  {expandedSections.gamablanca && (
+                    <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {itemsGamaBlanca.map(t => (
+                        <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                          <span className="task-item-label">{t.name}</span>
+                          <div className="qty-counter">
+                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                            <span className="qty-val">{otherQuantities[t.id] || 0}</span>
+                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
-            </div>
 
-            <div className="input-group" style={{ marginTop: '15px' }}>
-              <span className="input-label">Observaciones / Instrucciones del Reparto</span>
-              <textarea 
-                className="form-input" 
-                placeholder="Escribe aquí notas adicionales, indicaciones de timbre, portales, etc." 
-                value={notes} 
-                onChange={(e) => setNotes(e.target.value)} 
-                style={{ minHeight: '80px', resize: 'vertical', padding: '12px' }}
-                disabled={isClosed}
-              />
-            </div>
+              {/* SECCIÓN D: MUEBLES */}
+              {itemsMuebles.length > 0 && (
+                <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                  <div 
+                    onClick={() => !isClosed && toggleSection('muebles')} 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '18px 20px', 
+                      cursor: isClosed ? 'default' : 'pointer',
+                      userSelect: 'none',
+                      background: expandedSections.muebles ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
+                      borderTopLeftRadius: '11px',
+                      borderTopRightRadius: '11px',
+                      borderBottomLeftRadius: expandedSections.muebles ? '0px' : '11px',
+                      borderBottomRightRadius: expandedSections.muebles ? '0px' : '11px',
+                      transition: 'background 0.2s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '1.25rem' }}>🪑</span>
+                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Muebles</span>
+                      {mueblesCount > 0 && (
+                        <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                          {mueblesCount} {mueblesCount === 1 ? 'artículo' : 'artículos'}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown 
+                      size={18} 
+                      style={{ 
+                        transform: expandedSections.muebles ? 'rotate(180deg)' : 'rotate(0deg)', 
+                        transition: 'transform 0.25s ease', 
+                        color: 'var(--text-muted)' 
+                      }} 
+                    />
+                  </div>
 
-            <div className="wizard-footer">
-              <button 
-                type="button" 
-                onClick={() => setFormStep(1)} 
-                className="btn btn-secondary"
-                style={{ width: 'auto' }}
-              >
-                ← Atrás
-              </button>
-              <button 
-                type="submit" 
-                className="btn btn-primary"
-                style={{ 
-                  width: 'auto', 
-                  background: 'linear-gradient(135deg, var(--primary) 0%, #10b981 100%)',
-                  boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)',
-                  fontWeight: '800'
-                }}
-                disabled={isClosed}
-              >
-                💾 {editingTicketId ? 'Guardar Cambios' : 'Confirmar y Planificar Reparto'}
-              </button>
+                  {expandedSections.muebles && (
+                    <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {itemsMuebles.map(t => (
+                        <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                          <span className="task-item-label">{t.name}</span>
+                          <div className="qty-counter">
+                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                            <span className="qty-val">{otherQuantities[t.id] || 0}</span>
+                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SECCIÓN E: OTROS ELEMENTOS / ACCESORIOS */}
+              <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                <div 
+                  onClick={() => !isClosed && toggleSection('otros')} 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '18px 20px', 
+                    cursor: isClosed ? 'default' : 'pointer',
+                    userSelect: 'none',
+                    background: expandedSections.otros ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
+                    borderTopLeftRadius: '11px',
+                    borderTopRightRadius: '11px',
+                    borderBottomLeftRadius: expandedSections.otros ? '0px' : '11px',
+                    borderBottomRightRadius: expandedSections.otros ? '0px' : '11px',
+                    transition: 'background 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.25rem' }}>🔧</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Otros Elementos / Accesorios</span>
+                    {otrosCount > 0 && (
+                      <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                        {otrosCount} {otrosCount === 1 ? 'unidad' : 'unidades'}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown 
+                    size={18} 
+                    style={{ 
+                      transform: expandedSections.otros ? 'rotate(180deg)' : 'rotate(0deg)', 
+                      transition: 'transform 0.25s ease', 
+                      color: 'var(--text-muted)' 
+                    }} 
+                  />
+                </div>
+
+                {expandedSections.otros && (
+                  <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {(() => {
+                      const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
+                      const soundbarItems = soundbarIds.map(id => itemsOtros.find(item => item.id === id)).filter(Boolean);
+                      const otherItems = itemsOtros.filter(item => !soundbarIds.includes(item.id) && item.id !== 'URGENTE_100' && item.id !== 'URGENTE_120');
+                      const sortedOtros = [...soundbarItems, ...otherItems];
+                      
+                      return sortedOtros.map(t => (
+                        <div key={t.id} className="task-item-row" style={{ borderBottom: t.id === 'CUELGUE_BSND' ? '2px dashed var(--panel-border)' : '1px solid rgba(255,255,255,0.05)', paddingBottom: t.id === 'CUELGUE_BSND' ? '12px' : '8px', marginBottom: t.id === 'CUELGUE_BSND' ? '12px' : '0px' }}>
+                          <span className="task-item-label" style={{ fontWeight: soundbarIds.includes(t.id) ? '600' : 'normal' }}>{t.name}</span>
+                          <div className="qty-counter">
+                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                            <span className="qty-val">{otherQuantities[t.id] || 0}</span>
+                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              {/* SECCIÓN F: CONCEPTOS ADICIONALES (EXTRAS PERSONALIZADOS) */}
+              <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                <div 
+                  onClick={() => !isClosed && toggleSection('extras')} 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '18px 20px', 
+                    cursor: isClosed ? 'default' : 'pointer',
+                    userSelect: 'none',
+                    background: expandedSections.extras ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
+                    borderTopLeftRadius: '11px',
+                    borderTopRightRadius: '11px',
+                    borderBottomLeftRadius: expandedSections.extras ? '0px' : '11px',
+                    borderBottomRightRadius: expandedSections.extras ? '0px' : '11px',
+                    transition: 'background 0.2s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.25rem' }}>➕</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Conceptos Adicionales (Extras Especiales)</span>
+                    {customExtras.length > 0 && (
+                      <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                        {customExtras.length} {customExtras.length === 1 ? 'extra' : 'extras'}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown 
+                    size={18} 
+                    style={{ 
+                      transform: expandedSections.extras ? 'rotate(180deg)' : 'rotate(0deg)', 
+                      transition: 'transform 0.25s ease', 
+                      color: 'var(--text-muted)' 
+                    }} 
+                  />
+                </div>
+
+                {expandedSections.extras && (
+                  <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+                      Registra servicios extras no contemplados en la tarifa estándar (ej. subida por escalera, ayudante adicional, etc.)
+                    </p>
+                    
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 2, minWidth: '200px' }}>
+                        <span className="input-label" style={{ margin: '0 0 4px 0' }}>Descripción del Servicio Extra</span>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="Ej: Subida por escaleras (10 pisos)"
+                          value={customExtraName}
+                          onChange={(e) => setCustomExtraName(e.target.value)}
+                          disabled={isClosed}
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: '100px' }}>
+                        <span className="input-label" style={{ margin: '0 0 4px 0' }}>Precio (€)</span>
+                        <input 
+                          type="number" 
+                          className="form-input" 
+                          placeholder="Ej: 20"
+                          value={customExtraPrice}
+                          onChange={(e) => setCustomExtraPrice(e.target.value)}
+                          disabled={isClosed}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <button 
+                          type="button" 
+                          className="btn btn-primary"
+                          onClick={() => {
+                            if (!customExtraName.trim()) {
+                              triggerAlert('Escribe una descripción para el concepto adicional', 'error');
+                              return;
+                            }
+                            if (!customExtraPrice || parseFloat(customExtraPrice) < 0) {
+                              triggerAlert('Introduce un precio válido', 'error');
+                              return;
+                            }
+                            addCustomExtra();
+                          }}
+                          style={{ height: '42px', margin: 0, padding: '0 20px', width: 'auto' }}
+                          disabled={isClosed}
+                        >
+                          Añadir Extra
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Listado de Extras Añadidos */}
+                    {customExtras.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {customExtras.map(extra => (
+                          <div key={extra.id} className="task-item-row" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '10px 15px', borderRadius: '8px', border: '1px solid var(--panel-border)', margin: 0 }}>
+                            <span style={{ fontWeight: '600' }}>✨ {extra.name}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                              <span style={{ fontWeight: '700', color: 'var(--success)' }}>{extra.price.toFixed(2)} €</span>
+                              <button 
+                                type="button" 
+                                className="btn btn-danger btn-small"
+                                onClick={() => removeCustomExtra(extra.id)}
+                                style={{ width: 'auto', margin: 0, padding: '4px 8px' }}
+                                disabled={isClosed}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* COD Reembolso y Observaciones */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px', borderTop: '1px dashed var(--panel-border)', paddingTop: '15px' }}>
+                <label style={{ fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontWeight: '600' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={showCod} 
+                    onChange={(e) => {
+                      setShowCod(e.target.checked);
+                      if (!e.target.checked) setCodAmount('');
+                    }} 
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  💵 Este reparto tiene cobro contra reembolso (COD)
+                </label>
+
+                {showCod && (
+                  <div className="input-group" style={{ animation: 'fadeIn 0.2s ease' }}>
+                    <span className="input-label" style={{ fontSize: '0.8rem' }}>Importe a Cobrar / Reembolso (€)</span>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      min="0" 
+                      className="form-input" 
+                      placeholder="Ej. 150.00" 
+                      value={codAmount} 
+                      onChange={(e) => setCodAmount(e.target.value)} 
+                      disabled={isClosed} 
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="input-group" style={{ marginTop: '5px' }}>
+                <span className="input-label">Observaciones / Instrucciones del Reparto</span>
+                <textarea 
+                  className="form-input" 
+                  placeholder="Escribe aquí notas adicionales, indicaciones de timbre, portales, etc." 
+                  value={notes} 
+                  onChange={(e) => setNotes(e.target.value)} 
+                  style={{ minHeight: '80px', resize: 'vertical', padding: '12px' }}
+                  disabled={isClosed}
+                />
+              </div>
+
+              <div className="wizard-footer">
+                <button 
+                  type="button" 
+                  onClick={() => setFormStep(1)} 
+                  className="btn btn-secondary"
+                  style={{ width: 'auto' }}
+                >
+                  ← Atrás
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  style={{ 
+                    width: 'auto', 
+                    background: 'linear-gradient(135deg, var(--primary) 0%, #10b981 100%)',
+                    boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)',
+                    fontWeight: '800'
+                  }}
+                  disabled={isClosed}
+                >
+                  💾 {editingTicketId ? 'Guardar Cambios' : 'Confirmar y Planificar Reparto'}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </form>
       
       {!editingTicketId && activeRouteContext && (() => {
