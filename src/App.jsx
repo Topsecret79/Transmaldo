@@ -5572,9 +5572,30 @@ function App() {
         
         return (
           <div className="glass-panel" style={{ textAlign: 'left', padding: '20px', marginTop: '10px' }}>
-            <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📋 Paradas registradas en esta ruta ({sortedActiveRouteTickets.length})
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', marginBottom: '15px' }}>
+              <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                📋 Paradas registradas en esta ruta ({sortedActiveRouteTickets.length})
+              </h3>
+              <button
+                type="button"
+                className="btn btn-danger btn-small"
+                style={{ width: 'auto', padding: '4px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                onClick={() => {
+                  const isShiftClosed = getShiftStatus(activeRouteContext.furgoId, activeRouteContext.date) === 'closed';
+                  if (isShiftClosed && !isAdminOrSuper) {
+                    triggerAlert('El turno para esta ruta está cerrado. No puedes vaciarla.', 'error');
+                    return;
+                  }
+                  if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente TODAS las (${sortedActiveRouteTickets.length}) paradas de la ruta ${activeRouteContext.furgoId} para el día ${activeRouteContext.date}? Esta acción no se puede deshacer.`)) {
+                    sortedActiveRouteTickets.forEach(t => deleteTicket(t.id));
+                    loadData();
+                    triggerAlert('Todas las paradas de la ruta han sido eliminadas');
+                  }
+                }}
+              >
+                🗑️ Vaciar Ruta
+              </button>
+            </div>
 
             {(() => {
               const lastTicket = sortedActiveRouteTickets[sortedActiveRouteTickets.length - 1];
@@ -9934,7 +9955,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v108
+            🔄 v109
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
