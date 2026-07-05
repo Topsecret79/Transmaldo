@@ -497,6 +497,82 @@ function App() {
   );
   const [shifts, setShifts] = useState([]);
 
+  const calcTaskPrice = (task) => {
+    if (!task) return 0;
+    if (task.noCharge) return 0;
+    if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
+      return (task.unitPrice || task.price || 0) * task.quantity;
+    }
+    return calculateTaskPrice(task.tariffId, tariffs, modulePrice) * task.quantity;
+  };
+
+  const calcTaskUnitPrice = (task) => {
+    if (!task) return 0;
+    if (task.noCharge) return 0;
+    if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
+      return task.unitPrice || task.price || 0;
+    }
+    return calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+  };
+
+  const getBillableTasks = (ticket) => {
+    if (!ticket) return [];
+    if (ticket.status === 'success') {
+      return (ticket.tasks || []).map(task => {
+        const tariff = tariffs.find(tar => tar.id === task.tariffId);
+        const name = task.name || (tariff ? tariff.name : task.tariffId);
+        return {
+          name,
+          quantity: task.quantity || 0,
+          unitPrice: calcTaskUnitPrice(task),
+          totalPrice: calcTaskPrice(task),
+          detail: (() => {
+            const isTv = tariff && tariff.block === 'Televisores' && task.tariffId !== 'TV_VIEJA_URB' && task.tariffId !== 'TV_VIEJA_NO_URB';
+            const brand = isTv && task.brand && task.brand !== 'Genérica' ? task.brand : '';
+            const inches = isTv && task.inches ? `${task.inches}"` : '';
+            return [brand, inches].filter(Boolean).join(' ');
+          })(),
+          noCharge: task.noCharge
+        };
+      });
+    } else if (ticket.status === 'failed') {
+      const parsed = parseTicketNotes(ticket.notes);
+      const chargeType = parsed.failedChargeType || 'none';
+      if (chargeType === 'none') return [];
+
+      let tariffId = '';
+      let label = '';
+      if (chargeType === 'pv') {
+        tariffId = 'ENTREGA_PV';
+        label = 'Intento Fallido (PV)';
+      } else if (chargeType === 'gv') {
+        tariffId = 'ENTREGA_GV';
+        label = 'Intento Fallido (GV)';
+      } else if (chargeType === 'tv_small') {
+        tariffId = 'TV_ENT_49';
+        label = 'Intento Fallido (TV <= 49")';
+      } else if (chargeType === 'tv_large') {
+        tariffId = 'TV_ENT_74';
+        label = 'Intento Fallido (TV 50" a 74")';
+      }
+
+      if (!tariffId) return [];
+
+      const tariff = tariffs.find(t => t.id === tariffId);
+      const unitPrice = tariff ? tariff.value : 0;
+      return [{
+        name: label,
+        quantity: 1,
+        unitPrice,
+        totalPrice: unitPrice,
+        detail: ticket.failureReason ? `Fallo: ${ticket.failureReason}` : 'Fallo',
+        noCharge: false
+      }];
+    }
+    return [];
+  };
+
+
   // Función auxiliar para cargar borradores temporales
   const getDraftVal = (key, defaultVal) => {
     try {
@@ -7553,75 +7629,7 @@ function App() {
       setReportDate(d.toISOString().split('T')[0]);
     };
 
-    const calcTaskPrice = (task) => {
-      if (task.noCharge) return 0;
-      if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
-        return (task.unitPrice || task.price || 0) * task.quantity;
-      }
-      return calculateTaskPrice(task.tariffId, tariffs, modulePrice) * task.quantity;
-    };
 
-    const calcTaskUnitPrice = (task) => {
-      if (task.noCharge) return 0;
-      if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
-        return task.unitPrice || task.price || 0;
-      }
-      return calculateTaskPrice(task.tariffId, tariffs, modulePrice);
-    };
-
-    const getBillableTasks = (ticket) => {
-      if (ticket.status === 'success') {
-        return (ticket.tasks || []).map(task => {
-          const tariff = tariffs.find(tar => tar.id === task.tariffId);
-          const name = task.name || (tariff ? tariff.name : task.tariffId);
-          return {
-            name,
-            quantity: task.quantity || 0,
-            unitPrice: calcTaskUnitPrice(task),
-            totalPrice: calcTaskPrice(task),
-            detail: (() => {
-              const isTv = tariff && tariff.block === 'Televisores' && task.tariffId !== 'TV_VIEJA_URB' && task.tariffId !== 'TV_VIEJA_NO_URB';
-              const brand = isTv && task.brand && task.brand !== 'Genérica' ? task.brand : '';
-              const inches = isTv && task.inches ? `${task.inches}"` : '';
-              return [brand, inches].filter(Boolean).join(' ');
-            })(),
-            noCharge: task.noCharge
-          };
-        });
-      } else if (ticket.status === 'failed') {
-        const parsed = parseTicketNotes(ticket.notes);
-        const chargeType = parsed.failedChargeType || 'none';
-        if (chargeType === 'none') return [];
-
-        let tariffId = '';
-        let label = '';
-        if (chargeType === 'pv') {
-          tariffId = 'ENTREGA_PV';
-          label = 'Intento Fallido (PV)';
-        } else if (chargeType === 'gv') {
-          tariffId = 'ENTREGA_GV';
-          label = 'Intento Fallido (GV)';
-        } else if (chargeType === 'tv_small') {
-          tariffId = 'TV_ENT_49';
-          label = 'Intento Fallido (TV <= 49")';
-        } else if (chargeType === 'tv_large') {
-          tariffId = 'TV_ENT_74';
-          label = 'Intento Fallido (TV 50" a 74")';
-        }
-
-        const tariff = tariffs.find(t => t.id === tariffId);
-        const unitPrice = tariff ? tariff.value : 0;
-        return [{
-          name: label,
-          quantity: 1,
-          unitPrice,
-          totalPrice: unitPrice,
-          detail: ticket.failureReason ? `Fallo: ${ticket.failureReason}` : 'Fallo',
-          noCharge: false
-        }];
-      }
-      return [];
-    };
 
     const reportTickets = visibleTickets.filter(t => {
       if (t.date !== reportDate) return false;
@@ -7714,7 +7722,7 @@ function App() {
             <span style={{ fontSize: '1.5rem' }}>📊</span>
             <div>
               <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-main)' }}>Informe Diario de Servicios</h2>
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Solo se muestran entregas completadas (no fallidas)</span>
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Solo se muestran entregas completadas o intentos fallidos con cobro</span>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -8625,20 +8633,54 @@ function App() {
                         </td>
                         <td>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                            {t.tasks && t.tasks.map((task, idx) => {
-                              if (!task) return null;
-                              const tariff = tariffs.find(tar => tar.id === task.tariffId);
-                              const name = task.name || (tariff ? tariff.name : task.tariffId);
-                              return (
-                                <span key={idx} className="badge badge-secondary" style={{ border: '1px solid var(--panel-border)', fontSize: '0.7rem' }}>
-                                  {name} (x{task.quantity || 1})
-                                </span>
-                              );
-                            })}
+                            {(() => {
+                              const billable = getBillableTasks(t);
+                              if (t.status === 'success' || (t.status === 'failed' && billable.length > 0)) {
+                                return billable.map((task, idx) => (
+                                  <span key={idx} className="badge badge-secondary" style={{ border: '1px solid var(--panel-border)', fontSize: '0.7rem' }}>
+                                    {task.name} (x{task.quantity || 1})
+                                  </span>
+                                ));
+                              } else if (t.status === 'failed') {
+                                return (
+                                  <span className="badge badge-secondary" style={{ border: '1px solid var(--panel-border)', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                    🔴 Fallido (Sin Cobro)
+                                  </span>
+                                );
+                              } else {
+                                return (t.tasks || []).map((task, idx) => {
+                                  if (!task) return null;
+                                  const tariff = tariffs.find(tar => tar.id === task.tariffId);
+                                  const name = task.name || (tariff ? tariff.name : task.tariffId);
+                                  return (
+                                    <span key={idx} className="badge badge-secondary" style={{ border: '1px solid var(--panel-border)', fontSize: '0.7rem' }}>
+                                      {name} (x{task.quantity || 1})
+                                    </span>
+                                  );
+                                });
+                              }
+                            })()}
                           </div>
                         </td>
-                        <td style={{ fontWeight: '700', color: t.status === 'failed' ? 'var(--text-muted)' : 'var(--success)' }}>
-                          {t.status === 'failed' ? '0.00' : (t.totalPrice || 0).toFixed(2)} €
+                        <td style={{ 
+                          fontWeight: '700', 
+                          color: (() => {
+                            if (t.status === 'failed') {
+                              const billable = getBillableTasks(t);
+                              const failedTotal = billable.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+                              return failedTotal > 0 ? 'var(--success)' : 'var(--text-muted)';
+                            }
+                            return 'var(--success)';
+                          })()
+                        }}>
+                          {(() => {
+                            if (t.status === 'failed') {
+                              const billable = getBillableTasks(t);
+                              const failedTotal = billable.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+                              return failedTotal.toFixed(2);
+                            }
+                            return (t.totalPrice || 0).toFixed(2);
+                          })()} €
                         </td>
                         <td>
                           {(() => {
@@ -9849,7 +9891,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v105
+            🔄 v106
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
