@@ -5459,7 +5459,7 @@ function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>📦</span>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Bloque Paquetería</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Paquetería</span>
                     {paqueteriaCount > 0 && (
                       <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                         {paqueteriaCount} {paqueteriaCount === 1 ? 'unidad' : 'unidades'}
