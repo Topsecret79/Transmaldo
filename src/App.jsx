@@ -5120,7 +5120,7 @@ function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>📺</span>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Televisores y Servicios</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Televisores y Servicios</span>
                     {formTvs.length > 0 && (
                       <span className="badge badge-primary" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--primary)', color: '#fff' }}>
                         {formTvs.length} {formTvs.length === 1 ? 'TV' : 'TVs'}
@@ -5529,7 +5529,7 @@ function App() {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '1.25rem' }}>🔌</span>
-                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Gama Blanca</span>
+                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Gama Blanca</span>
                       {gamaBlancaCount > 0 && (
                         <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                           {gamaBlancaCount} {gamaBlancaCount === 1 ? 'artículo' : 'artículos'}
@@ -5585,7 +5585,7 @@ function App() {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '1.25rem' }}>🪑</span>
-                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Muebles</span>
+                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Muebles</span>
                       {mueblesCount > 0 && (
                         <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                           {mueblesCount} {mueblesCount === 1 ? 'artículo' : 'artículos'}
@@ -5640,7 +5640,7 @@ function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>🔧</span>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Otros Elementos / Accesorios</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Otros Elementos / Accesorios</span>
                     {otrosCount > 0 && (
                       <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                         {otrosCount} {otrosCount === 1 ? 'unidad' : 'unidades'}
@@ -5701,7 +5701,7 @@ function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>➕</span>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#fff' }}>Conceptos Adicionales (Extras Especiales)</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Conceptos Adicionales (Extras Especiales)</span>
                     {customExtras.length > 0 && (
                       <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                         {customExtras.length} {customExtras.length === 1 ? 'extra' : 'extras'}
