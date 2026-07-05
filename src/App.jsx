@@ -5118,7 +5118,7 @@ function App() {
                     transition: 'background 0.2s ease'
                   }}
                 >
-                  {/* Accordion header */}
+                  {/* Accordion header container */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>📺</span>
                     <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Televisores y Servicios</span>
