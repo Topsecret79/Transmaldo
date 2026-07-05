@@ -428,17 +428,42 @@ function App() {
   const [serviceType, setServiceType] = useState('entrega');
 
   const getTicketServiceType = (t) => {
-    if (!t || !t.notes) return 'entrega';
-    const notesLower = t.notes.toLowerCase();
-    if (notesLower.includes('[cuelgue]') || notesLower.includes('cuelgue') || notesLower.includes('colgar') || notesLower.includes('soporte')) {
-      return 'cuelgue';
+    if (!t) return 'entrega';
+
+    // 1. Prioridad: Etiquetas o palabras clave en las notas
+    if (t.notes) {
+      const notesLower = t.notes.toLowerCase();
+      if (notesLower.includes('[cuelgue]') || notesLower.includes('cuelgue') || notesLower.includes('colgar') || notesLower.includes('soporte')) {
+        return 'cuelgue';
+      }
+      if (notesLower.includes('[puesta_marcha]') || notesLower.includes('puesta en marcha') || notesLower.includes('puesta_en_marcha') || notesLower.includes('instalar') || notesLower.includes('instalacion')) {
+        return 'puesta_marcha';
+      }
+      if (notesLower.includes('[tarde]') || notesLower.includes('servicio de tarde') || notesLower.includes('por la tarde') || notesLower.includes('tarde')) {
+        return 'tarde';
+      }
     }
-    if (notesLower.includes('[puesta_marcha]') || notesLower.includes('puesta en marcha') || notesLower.includes('puesta_en_marcha') || notesLower.includes('instalar') || notesLower.includes('instalacion')) {
-      return 'puesta_marcha';
+
+    // 2. Si no hay marcas en las notas, deducir por las tareas asignadas
+    if (t.tasks && t.tasks.length > 0) {
+      const hasDelivery = t.tasks.some(task => 
+        task.tariffId.startsWith('TV_ENT_') || 
+        task.tariffId.startsWith('TV_COMB_') || 
+        task.tariffId.startsWith('ENTREGA_')
+      );
+      const hasCuelgue = t.tasks.some(task => 
+        task.tariffId.startsWith('CUELGUE_')
+      );
+      const hasPM = t.tasks.some(task => 
+        task.tariffId.startsWith('PM_')
+      );
+
+      if (!hasDelivery) {
+        if (hasCuelgue) return 'cuelgue';
+        if (hasPM) return 'puesta_marcha';
+      }
     }
-    if (notesLower.includes('[tarde]') || notesLower.includes('servicio de tarde') || notesLower.includes('por la tarde') || notesLower.includes('tarde')) {
-      return 'tarde';
-    }
+
     return 'entrega';
   };
 
@@ -2652,12 +2677,28 @@ function App() {
       ? currentUser.id
       : (targetUser ? targetUser.id : (editingTicketId ? editingFurgoId : currentUser.id));
 
+    let activeServiceType = serviceType;
+    if (activeServiceType === 'entrega' && formTvs.length > 0) {
+      const hasDeliveryTv = formTvs.some(tv => tv.action !== 'solo_pm' && tv.action !== 'solo_cuelgue');
+      const hasStandardDelivery = Object.values(otherQuantities).some(q => q > 0);
+      
+      if (!hasDeliveryTv && !hasStandardDelivery) {
+        const hasOnlyPm = formTvs.every(tv => tv.action === 'solo_pm');
+        const hasOnlyCuelgue = formTvs.every(tv => tv.action === 'solo_cuelgue');
+        if (hasOnlyPm) {
+          activeServiceType = 'puesta_marcha';
+        } else if (hasOnlyCuelgue) {
+          activeServiceType = 'cuelgue';
+        }
+      }
+    }
+
     let finalNotes = notes.trim();
-    if (serviceType === 'cuelgue') {
+    if (activeServiceType === 'cuelgue') {
       finalNotes = `[CUELGUE] ${finalNotes}`.trim();
-    } else if (serviceType === 'puesta_marcha') {
+    } else if (activeServiceType === 'puesta_marcha') {
       finalNotes = `[PUESTA_MARCHA] ${finalNotes}`.trim();
-    } else if (serviceType === 'tarde') {
+    } else if (activeServiceType === 'tarde') {
       finalNotes = `[TARDE] ${finalNotes}`.trim();
     }
     
@@ -9808,7 +9849,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v104
+            🔄 v105
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
