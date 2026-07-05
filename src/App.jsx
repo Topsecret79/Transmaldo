@@ -5315,7 +5315,22 @@ function App() {
                   className={`action-pill-opt ${urgenteType === '120' ? 'active' : ''}`}
                   onClick={() => !isClosed && setUrgenteType('120')}
                   style={{ 
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', textAlign: 'left' }}>
+                    flex: 1, 
+                    height: '40px', 
+                    minWidth: '120px', 
+                    borderRadius: '8px', 
+                    cursor: isClosed ? 'not-allowed' : 'pointer',
+                    borderColor: urgenteType === '120' ? '#ef4444' : '', 
+                    color: urgenteType === '120' ? '#fff' : '', 
+                    background: urgenteType === '120' ? 'rgba(239, 68, 68, 0.2)' : '' 
+                  }}
+                >
+                  Urgente 120€
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', textAlign: 'left' }}>
               <div className="block-section">
                 <div className="block-title">📦 Bloque Paquetería (Unidades)</div>
                 {itemsPaqueteria.map(t => {
@@ -9919,7 +9934,7 @@ function App() {
             style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
             title="Forzar actualización de versión"
           >
-            🔄 v107
+            🔄 v108
           </button>
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
