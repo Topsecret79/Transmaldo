@@ -201,6 +201,7 @@ import {
   getShift,
   saveShiftRoute,
   addUser,
+  initializeAdminTariffs,
   deleteUser,
   getAppName,
   saveAppName,
@@ -794,6 +795,7 @@ function App() {
   const [newLabel, setNewLabel] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('repartidor');
+  const [newAdminPricingOption, setNewAdminPricingOption] = useState('copy_default');
   const [isTrackingActive, setIsTrackingActive] = useState(true);
   const [gpsStatus, setGpsStatus] = useState('inactive'); // 'active' | 'error' | 'inactive'
   const watchIdRef = useRef(null);
@@ -1642,17 +1644,51 @@ function App() {
       let finalUsers = rawUsers;
       let finalShifts = rawShifts;
       
+      const processAndDeduplicateTariffs = (tariffsList, targetAdminId) => {
+        const adminSuffix = `_${targetAdminId}`;
+        const tariffMap = {};
+        
+        tariffsList.forEach(t => {
+          if (t && (t.createdBy === targetAdminId || t.id.endsWith(adminSuffix))) {
+            let baseId = t.id;
+            if (t.id.endsWith(adminSuffix)) {
+              baseId = t.id.slice(0, -adminSuffix.length);
+            }
+            tariffMap[baseId] = {
+              ...t,
+              id: baseId,
+              createdBy: targetAdminId
+            };
+          }
+        });
+        
+        tariffsList.forEach(t => {
+          if (t && !t.createdBy && !t.id.endsWith(adminSuffix)) {
+            if (!tariffMap[t.id]) {
+              tariffMap[t.id] = t;
+            }
+          }
+        });
+        
+        return Object.values(tariffMap);
+      };
+
       if (u && u.role) {
         if (u.role === 'admin') {
           const myUserIds = rawUsers.filter(usr => usr && (usr.createdBy === u.id || usr.id === u.id)).map(usr => usr.id);
           finalTickets = rawTickets.filter(t => t && (t.createdBy === u.id || myUserIds.includes(t.furgoId)));
           finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.id || usr.id === u.id));
-          finalTariffs = rawTariffs.filter(t => t && (t.createdBy === u.id || !t.createdBy));
+          const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === u.id || !t.createdBy));
+          finalTariffs = processAndDeduplicateTariffs(activeTariffsRaw, u.id);
           finalShifts = rawShifts.filter(s => s && (s.createdBy === u.id || myUserIds.includes(s.furgoId)));
         } else if (u.role === 'repartidor') {
           finalTickets = rawTickets.filter(t => t && t.furgoId === u.id);
           finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.createdBy || usr.id === u.id || usr.id === u.createdBy));
           finalShifts = rawShifts.filter(s => s && s.furgoId === u.id);
+          
+          const adminId = u.createdBy || 'admin';
+          const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === adminId || !t.createdBy));
+          finalTariffs = processAndDeduplicateTariffs(activeTariffsRaw, adminId);
         }
       }
       
@@ -9589,11 +9625,15 @@ function App() {
                   const roleToUse = currentUser.role === 'superadmin' ? newRole : 'repartidor';
                   const res = addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id);
                   if (res.success) {
+                    if (roleToUse === 'admin') {
+                      initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
+                    }
                     triggerAlert(`Usuario "${newLabel}" creado correctamente`);
                     setNewUsername('');
                     setNewLabel('');
                     setNewPassword('');
                     setNewRole('repartidor');
+                    setNewAdminPricingOption('copy_default');
                     loadData();
                   } else {
                     triggerAlert(res.error, 'error');
@@ -9623,6 +9663,21 @@ function App() {
                       >
                         <option value="repartidor">Repartidor (Furgoneta)</option>
                         <option value="admin">Administrador</option>
+                      </select>
+                    </div>
+                  )}
+                  {currentUser.role === 'superadmin' && newRole === 'admin' && (
+                    <div className="input-group">
+                      <span className="input-label">Configuración Inicial de Tarifas</span>
+                      <select 
+                        className="form-input" 
+                        value={newAdminPricingOption} 
+                        onChange={(e) => setNewAdminPricingOption(e.target.value)}
+                        required
+                        style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
+                      >
+                        <option value="copy_default">Copiar precios de tarifas por defecto</option>
+                        <option value="zero">Iniciar precios a 0,00 €</option>
                       </select>
                     </div>
                   )}
@@ -10235,16 +10290,14 @@ function App() {
                       </div>
                     )}
 
-                    {isAdminOrSuper && (
-                      <button 
-                        type="button" 
-                        onClick={() => setShowShiftModal(false)} 
-                        className="btn btn-secondary"
-                        style={{ width: '100%', marginTop: '15px' }}
-                      >
-                        Cerrar Resumen
-                      </button>
-                    )}
+                    <button 
+                      type="button" 
+                      onClick={() => setShowShiftModal(false)} 
+                      className="btn btn-secondary"
+                      style={{ width: '100%', marginTop: '15px' }}
+                    >
+                      Cerrar Resumen
+                    </button>
                   </>
                 );
               })()}

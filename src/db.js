@@ -659,15 +659,112 @@ export function saveModulePrice(price, userId) {
 
 export function getTariffs() {
   initDB();
-  return JSON.parse(localStorage.getItem('delivery_tariffs'));
+  const rawTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+  
+  let targetAdminId = 'admin';
+  let isSuperAdmin = false;
+  try {
+    const savedUser = localStorage.getItem('delivery_session');
+    if (savedUser) {
+      const u = JSON.parse(savedUser);
+      if (u) {
+        if (u.role === 'admin') {
+          targetAdminId = u.id;
+        } else if (u.role === 'repartidor') {
+          targetAdminId = u.createdBy || 'admin';
+        } else if (u.role === 'superadmin') {
+          isSuperAdmin = true;
+        }
+      }
+    }
+  } catch (e) {}
+  
+  if (isSuperAdmin) {
+    return rawTariffs;
+  }
+  
+  const adminSuffix = `_${targetAdminId}`;
+  const tariffMap = {};
+  
+  rawTariffs.forEach(t => {
+    if (t && (t.createdBy === targetAdminId || (t.id && t.id.endsWith(adminSuffix)))) {
+      let baseId = t.id;
+      if (t.id.endsWith(adminSuffix)) {
+        baseId = t.id.slice(0, -adminSuffix.length);
+      }
+      tariffMap[baseId] = {
+        ...t,
+        id: baseId,
+        createdBy: targetAdminId
+      };
+    }
+  });
+  
+  rawTariffs.forEach(t => {
+    if (t && !t.createdBy && !(t.id && t.id.endsWith(adminSuffix))) {
+      if (!tariffMap[t.id]) {
+        tariffMap[t.id] = t;
+      }
+    }
+  });
+  
+  return Object.values(tariffMap);
 }
 
 export function saveTariffs(tariffs) {
-  localStorage.setItem('delivery_tariffs', JSON.stringify(tariffs));
+  let activeAdminId = null;
+  let isSuperAdmin = false;
+  try {
+    const savedUser = localStorage.getItem('delivery_session');
+    if (savedUser) {
+      const u = JSON.parse(savedUser);
+      if (u) {
+        if (u.role === 'admin') {
+          activeAdminId = u.id;
+        } else if (u.role === 'superadmin') {
+          isSuperAdmin = true;
+        }
+      }
+    }
+  } catch (e) {}
+
+  const formatted = tariffs.map(t => {
+    let dbId = t.id;
+    let createdBy = t.createdBy || null;
+    if (activeAdminId && !isSuperAdmin) {
+      createdBy = activeAdminId;
+    }
+    
+    // If it's a standard tariff owned by an admin, append the suffix
+    if (createdBy && !t.id.startsWith('CUSTOM_') && !t.id.endsWith(`_${createdBy}`)) {
+      dbId = `${t.id}_${createdBy}`;
+    }
+    
+    return {
+      id: dbId,
+      name: t.name,
+      block: t.block,
+      type: t.type,
+      value: parseFloat(t.value) || 0,
+      createdBy: createdBy
+    };
+  });
+
+  const existingRaw = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+  const mergedMap = {};
+  existingRaw.forEach(t => {
+    if (t && t.id) mergedMap[t.id] = t;
+  });
+  formatted.forEach(t => {
+    if (t && t.id) mergedMap[t.id] = t;
+  });
+  const mergedList = Object.values(mergedMap);
+
+  localStorage.setItem('delivery_tariffs', JSON.stringify(mergedList));
   if (supabase) {
     (async () => {
       try {
-        const formatted = tariffs.map(t => ({
+        const dbFormatted = formatted.map(t => ({
           id: t.id,
           name: t.name,
           block: t.block,
@@ -675,7 +772,7 @@ export function saveTariffs(tariffs) {
           value: t.value,
           created_by: t.createdBy || null
         }));
-        await supabase.from('delivery_tariffs').upsert(formatted);
+        await supabase.from('delivery_tariffs').upsert(dbFormatted);
       } catch (e) {
         console.error("Error saving tariffs to Supabase:", e);
       }
@@ -1164,6 +1261,40 @@ export function addUser(username, label, password, role = 'repartidor', createdB
   users.push(newUser);
   saveUsers(users);
   return { success: true, user: newUser };
+}
+
+// Inicializar tarifas de un administrador (copiar por defecto o a 0)
+export function initializeAdminTariffs(newAdminId, option, creatorTariffs) {
+  const currentTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+  
+  // Lista base: usar las del creador si existen, o sino las DEFAULT_TARIFFS
+  const baseTariffs = creatorTariffs && creatorTariffs.length > 0 ? creatorTariffs : DEFAULT_TARIFFS;
+  
+  const newTariffsToInsert = baseTariffs.map(t => {
+    let baseId = t.id;
+    // Eliminar sufijo del creador si existe
+    if (t.createdBy && t.id.endsWith(`_${t.createdBy}`)) {
+      baseId = t.id.slice(0, -`_${t.createdBy}`.length);
+    }
+    
+    let dbId = baseId;
+    if (!t.id.startsWith('CUSTOM_')) {
+      dbId = `${baseId}_${newAdminId}`;
+    } else {
+      dbId = 'CUSTOM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+    }
+    
+    return {
+      ...t,
+      id: dbId,
+      value: option === 'copy_default' ? t.value : 0,
+      createdBy: newAdminId
+    };
+  });
+  
+  const updatedTariffs = [...currentTariffs, ...newTariffsToInsert];
+  saveTariffs(updatedTariffs);
+  return newTariffsToInsert;
 }
 
 // Eliminar un usuario
