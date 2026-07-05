@@ -9102,7 +9102,7 @@ function App() {
             
             <div className="settings-grid">
               <div>
-                {['Paquetería', 'Televisores', 'Instalaciones', 'Otros'].map(block => {
+                {['Paquetería', 'Televisores', 'Instalaciones', 'Otros', 'Gama Blanca', 'Muebles'].map(block => {
                   const blockTariffs = tariffs.filter(t => t.block === block);
                   if (blockTariffs.length === 0) return null;
                   return (
@@ -9164,6 +9164,8 @@ function App() {
                         <option value="Paquetería">Paquetería</option>
                         <option value="Televisores">Televisores</option>
                         <option value="Instalaciones">Instalaciones</option>
+                        <option value="Gama Blanca">Gama Blanca</option>
+                        <option value="Muebles">Muebles</option>
                       </select>
                     </div>
                     <div className="input-group" style={{ marginBottom: 0 }}>
