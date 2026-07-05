@@ -763,7 +763,8 @@ export function addTicket(ticketData) {
 
   let totalCalculado = 0;
   const detailedTasks = ticketData.tasks.map(task => {
-    const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_');
+    const catalogTariff = tariffs.find(t => t.id === task.tariffId);
+    const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_') && !catalogTariff;
     const basePrice = isCustom 
       ? (task.price || task.unitPrice || 0) 
       : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
@@ -862,7 +863,8 @@ export function updateTicket(updatedTicket) {
 
   let totalCalculado = 0;
   const detailedTasks = updatedTicket.tasks.map(task => {
-    const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_');
+    const catalogTariff = tariffs.find(t => t.id === task.tariffId);
+    const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_') && !catalogTariff;
     const basePrice = isCustom 
       ? (task.price || task.unitPrice || 0) 
       : calculateTaskPrice(task.tariffId, tariffs, modulePrice);

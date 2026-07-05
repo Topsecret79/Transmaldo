@@ -500,6 +500,10 @@ function App() {
   const calcTaskPrice = (task) => {
     if (!task) return 0;
     if (task.noCharge) return 0;
+    const catalogTariff = tariffs.find(tar => tar.id === task.tariffId);
+    if (catalogTariff) {
+      return calculateTaskPrice(task.tariffId, tariffs, modulePrice) * task.quantity;
+    }
     if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
       return (task.unitPrice || task.price || 0) * task.quantity;
     }
@@ -509,6 +513,10 @@ function App() {
   const calcTaskUnitPrice = (task) => {
     if (!task) return 0;
     if (task.noCharge) return 0;
+    const catalogTariff = tariffs.find(tar => tar.id === task.tariffId);
+    if (catalogTariff) {
+      return calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+    }
     if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
       return task.unitPrice || task.price || 0;
     }
@@ -4409,6 +4417,8 @@ function App() {
     }
 
     const itemsPaqueteria = tariffs.filter(t => t.block === 'Paquetería');
+    const itemsGamaBlanca = tariffs.filter(t => t.block === 'Gama Blanca');
+    const itemsMuebles = tariffs.filter(t => t.block === 'Muebles');
     const itemsOtros = tariffs.filter(t => {
       const isTvInstallation = t.id.startsWith('PM_BAS_') || t.id.startsWith('PM_COMP_') || t.id.startsWith('CUELGUE_');
       return t.block === 'Otros' || (t.block === 'Instalaciones' && !isTvInstallation);
@@ -5305,23 +5315,7 @@ function App() {
                   className={`action-pill-opt ${urgenteType === '120' ? 'active' : ''}`}
                   onClick={() => !isClosed && setUrgenteType('120')}
                   style={{ 
-                    flex: 1, 
-                    height: '40px', 
-                    minWidth: '120px', 
-                    borderRadius: '8px', 
-                    cursor: isClosed ? 'not-allowed' : 'pointer',
-                    borderColor: urgenteType === '120' ? '#ef4444' : '', 
-                    color: urgenteType === '120' ? '#fff' : '', 
-                    background: urgenteType === '120' ? 'rgba(239, 68, 68, 0.2)' : '' 
-                  }}
-                >
-                  Urgente 120€
-                </button>
-              </div>
-            </div>
-
-            {/* SECCIÓN B: PAQUETERÍA Y OTROS */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', textAlign: 'left' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', textAlign: 'left' }}>
               <div className="block-section">
                 <div className="block-title">📦 Bloque Paquetería (Unidades)</div>
                 {itemsPaqueteria.map(t => {
@@ -5350,6 +5344,38 @@ function App() {
                   );
                 })}
               </div>
+
+              {itemsGamaBlanca.length > 0 && (
+                <div className="block-section">
+                  <div className="block-title">🔌 Gama Blanca</div>
+                  {itemsGamaBlanca.map(t => (
+                    <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                      <span className="task-item-label">{t.name}</span>
+                      <div className="qty-counter">
+                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                        <span className="qty-val">{otherQuantities[t.id] || 0}</span>
+                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {itemsMuebles.length > 0 && (
+                <div className="block-section">
+                  <div className="block-title">🪑 Muebles</div>
+                  {itemsMuebles.map(t => (
+                    <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                      <span className="task-item-label">{t.name}</span>
+                      <div className="qty-counter">
+                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                        <span className="qty-val">{otherQuantities[t.id] || 0}</span>
+                        <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="block-section">
                 <div className="block-title">🔧 Otros Elementos / Accesorios</div>
