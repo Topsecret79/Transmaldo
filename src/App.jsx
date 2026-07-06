@@ -497,6 +497,10 @@ function App() {
     loggedInUserObj.canSearch
   );
   const [shifts, setShifts] = useState([]);
+  const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
+  const [navModalOpen, setNavModalOpen] = useState(false);
+  const [navTarget, setNavTarget] = useState({ address: '', latitude: null, longitude: null, ticketId: null });
+  const [navRememberChoice, setNavRememberChoice] = useState(false);
 
   const calcTaskPrice = (task) => {
     if (!task) return 0;
@@ -3956,16 +3960,53 @@ function App() {
     loadData();
   };
 
+  const openInGoogleMaps = (address, latitude, longitude) => {
+    let url = '';
+    if (latitude && longitude) {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+    } else {
+      url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+    }
+    window.open(url, '_blank');
+  };
+
+  const openInWaze = (address, latitude, longitude) => {
+    let url = '';
+    if (latitude && longitude) {
+      url = `https://waze.com/ul?ll=${latitude},${longitude}&navigate=yes`;
+    } else {
+      url = `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`;
+    }
+    window.open(url, '_blank');
+  };
+
+  const handleNavigate = (address, latitude = null, longitude = null, ticketId = null) => {
+    if (ticketId) {
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (ticket && (!ticket.status || ticket.status === 'pending')) {
+        updateTicketStatus(ticketId, 'transit', '');
+        loadData();
+        triggerAlert('Iniciando viaje de reparto. ¡Buen viaje!', 'success');
+      }
+    }
+
+    const targetNavigator = localStorage.getItem('delivery_default_navigator') || 'ask';
+
+    if (targetNavigator === 'google') {
+      openInGoogleMaps(address, latitude, longitude);
+    } else if (targetNavigator === 'waze') {
+      openInWaze(address, latitude, longitude);
+    } else {
+      setNavTarget({ address, latitude, longitude, ticketId });
+      setNavModalOpen(true);
+    }
+  };
+
   const handleStartTransit = (id) => {
     const ticket = tickets.find(t => t.id === id);
     if (!ticket) return;
 
-    updateTicketStatus(id, 'transit', '');
-    loadData();
-    triggerAlert('Iniciando viaje de reparto. ¡Buen viaje!', 'success');
-
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ticket.address)}`;
-    window.open(url, '_blank');
+    handleNavigate(ticket.address, ticket.latitude, ticket.longitude, ticket.id);
   };
 
   const handleNavigateFullRoute = () => {
@@ -6140,6 +6181,24 @@ function App() {
                     style={{ width: '110px', padding: '8px 12px' }}
                   />
                 </div>
+
+                <div className="input-group" style={{ marginBottom: 0, flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+                  <span className="input-label" style={{ margin: 0, fontWeight: '700' }}>🗺️ Navegador:</span>
+                  <select 
+                    className="form-input" 
+                    value={defaultNavigator} 
+                    onChange={(e) => {
+                      setDefaultNavigator(e.target.value);
+                      localStorage.setItem('delivery_default_navigator', e.target.value);
+                      triggerAlert(`Navegador: ${e.target.value === 'ask' ? 'Preguntar siempre' : e.target.value === 'google' ? 'Google Maps' : 'Waze'}`);
+                    }}
+                    style={{ width: '150px', padding: '8px 12px', cursor: 'pointer' }}
+                  >
+                    <option value="ask">Preguntar siempre</option>
+                    <option value="google">Google Maps</option>
+                    <option value="waze">Waze</option>
+                  </select>
+                </div>
                 
                 {(() => {
                   const isClosed = getShiftStatus(currentUser.id, targetDate) === 'closed';
@@ -6645,17 +6704,18 @@ function App() {
                                       <Edit size={14} color="#fbbf24" />
                                     </button>
                                   )}
-                                  <a 
-                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleNavigate(t.address, t.latitude, t.longitude, t.id);
+                                    }}
                                     className="btn btn-secondary btn-small"
                                     style={{ display: 'inline-flex', padding: '8px', margin: 0, width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)', alignItems: 'center', justifyContent: 'center' }}
                                     title="Iniciar GPS"
-                                    onClick={e => e.stopPropagation()}
                                   >
                                     <MapPin size={14} color="var(--primary)" />
-                                  </a>
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -6929,16 +6989,18 @@ function App() {
                                   </div>
                                 )}
                               </div>
-                              <a 
-                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleNavigate(t.address, t.latitude, t.longitude, t.id);
+                                }}
                                 className="btn btn-secondary btn-small"
                                 style={{ display: 'inline-flex', padding: '10px', margin: 0, width: 'auto', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)' }}
                                 title="Iniciar GPS"
                               >
                                 <MapPin size={16} color="var(--primary)" />
-                              </a>
+                              </button>
                             </div>
 
                             {/* Cobro Contra Reembolso */}
@@ -7328,15 +7390,17 @@ function App() {
 
             {/* Botones de acción rápida */}
             <div className="map-floating-actions-container">
-              <a 
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ticketToShow.address || '')}`} 
-                target="_blank" 
-                rel="noopener noreferrer"
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNavigate(ticketToShow.address, ticketToShow.latitude, ticketToShow.longitude, ticketToShow.id);
+                }}
                 className="btn btn-primary btn-small map-floating-action-btn"
                 style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
               >
                 <Navigation size={14} style={{ marginRight: '2px' }} /> Navegar
-              </a>
+              </button>
               {ticketToShow.phone && (
                 <a 
                   href={`tel:${ticketToShow.phone}`}
@@ -7676,16 +7740,17 @@ function App() {
                     )}
                     
                     <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                      <a 
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address || '')}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNavigate(t.address, t.latitude, t.longitude, t.id);
+                        }}
                         className="btn btn-primary btn-small"
                         style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, height: 'auto' }}
-                        onClick={e => e.stopPropagation()}
                       >
                         🧭 Navegar
-                      </a>
+                      </button>
                       
                       {(() => {
                         const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
@@ -10785,6 +10850,144 @@ function App() {
                 Cancelar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Selección de Navegador GPS */}
+      {navModalOpen && navTarget && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2100,
+          padding: '20px'
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '380px',
+            padding: '25px',
+            textAlign: 'center',
+            boxShadow: '0 15px 50px rgba(0,0,0,0.6)',
+            border: '1px solid var(--panel-border)',
+            borderRadius: '16px',
+            background: 'rgba(21, 23, 30, 0.9)'
+          }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '1.25rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              🗺️ Elegir Navegador GPS
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '22px' }}>
+              ¿Con qué aplicación deseas navegar a la parada?
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+              <button 
+                type="button"
+                className="btn"
+                onClick={() => {
+                  if (navRememberChoice) {
+                    setDefaultNavigator('google');
+                    localStorage.setItem('delivery_default_navigator', 'google');
+                  }
+                  openInGoogleMaps(navTarget.address, navTarget.latitude, navTarget.longitude);
+                  setNavModalOpen(false);
+                  setNavTarget(null);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '12px',
+                  padding: '14px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #4285F4, #34A853)',
+                  color: '#fff',
+                  border: 'none',
+                  fontSize: '0.95rem',
+                  fontWeight: '700',
+                  boxShadow: '0 4px 15px rgba(66, 133, 244, 0.3)',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s, box-shadow 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <span style={{ fontSize: '1.4rem' }}>🌐</span> Google Maps
+              </button>
+
+              <button 
+                type="button"
+                className="btn"
+                onClick={() => {
+                  if (navRememberChoice) {
+                    setDefaultNavigator('waze');
+                    localStorage.setItem('delivery_default_navigator', 'waze');
+                  }
+                  openInWaze(navTarget.address, navTarget.latitude, navTarget.longitude);
+                  setNavModalOpen(false);
+                  setNavTarget(null);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '12px',
+                  padding: '14px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #33ccff, #0099ff)',
+                  color: '#fff',
+                  border: 'none',
+                  fontSize: '0.95rem',
+                  fontWeight: '700',
+                  boxShadow: '0 4px 15px rgba(51, 204, 255, 0.3)',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s, box-shadow 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <span style={{ fontSize: '1.4rem' }}>🚙</span> Waze
+              </button>
+            </div>
+
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: '8px', 
+              marginBottom: '22px', 
+              padding: '8px',
+              background: 'rgba(255,255,255,0.02)',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.05)'
+            }}>
+              <input 
+                type="checkbox" 
+                id="nav_remember_choice" 
+                checked={navRememberChoice} 
+                onChange={(e) => setNavRememberChoice(e.target.checked)} 
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <label htmlFor="nav_remember_choice" style={{ fontSize: '0.85rem', color: '#c7d2fe', cursor: 'pointer', userSelect: 'none', fontWeight: '500' }}>
+                Recordar mi elección siempre
+              </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setNavModalOpen(false);
+                setNavTarget(null);
+              }}
+              className="btn btn-secondary"
+              style={{ width: '100%', padding: '10px', fontSize: '0.85rem', margin: 0, borderRadius: '8px' }}
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       )}
