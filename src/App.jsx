@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation as CapGeolocation } from '@capacitor/geolocation';
 import Fuse from 'fuse.js';
+import changelogData from './changelog.json';
 
 // Asegurar Leaflet en el objeto global para compatibilidad
 if (typeof window !== 'undefined') {
@@ -814,6 +815,7 @@ function App() {
       [section]: !prev[section]
     }));
   };
+  const [changelogSearch, setChangelogSearch] = useState('');
   const [isTrackingActive, setIsTrackingActive] = useState(true);
   const [gpsStatus, setGpsStatus] = useState('inactive'); // 'active' | 'error' | 'inactive'
   const watchIdRef = useRef(null);
@@ -6112,6 +6114,9 @@ function App() {
               🔍 Buscador General
             </button>
           )}
+          <button className={`tab-btn ${activeTab === 'changelog' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('changelog'); }}>
+            🚀 Actualizaciones
+          </button>
         </div>
 
 
@@ -7222,8 +7227,7 @@ function App() {
         )}
 
         {activeTab === 'search' && renderSearchSection()}
-
-
+        {activeTab === 'changelog' && renderChangelog()}
       </div>
     );
   };
@@ -8046,6 +8050,123 @@ function App() {
             </div>
           );
         })()}
+      </div>
+    );
+  };
+
+  const renderChangelog = () => {
+    const query = changelogSearch.trim().toLowerCase();
+    const filteredChangelog = changelogData.filter(item => {
+      if (!query) return true;
+      return (
+        item.version.toLowerCase().includes(query) ||
+        item.title.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query) ||
+        item.changes.some(change => change.toLowerCase().includes(query))
+      );
+    });
+
+    return (
+      <div className="glass-panel" style={{ textAlign: 'left' }}>
+        <h2>🚀 Novedades y Actualizaciones</h2>
+        <p style={{ marginBottom: '20px', color: 'var(--text-muted)' }}>
+          Mantente al día con las últimas mejoras, correcciones de errores y nuevas funcionalidades introducidas en la plataforma.
+        </p>
+
+        {/* Input de Búsqueda */}
+        <div style={{ marginBottom: '25px', position: 'relative' }}>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Buscar actualizaciones por versión, título, componente o descripción..."
+            value={changelogSearch}
+            onChange={(e) => setChangelogSearch(e.target.value)}
+            style={{
+              paddingLeft: '40px',
+              height: '45px',
+              fontSize: '1rem',
+              borderRadius: '10px'
+            }}
+          />
+          <span style={{ position: 'absolute', left: '15px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+            🔍
+          </span>
+        </div>
+
+        {/* Lista de Versiones */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {filteredChangelog.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <p style={{ margin: 0, fontSize: '0.95rem' }}>No se encontraron actualizaciones que coincidan con la búsqueda.</p>
+            </div>
+          ) : (
+            filteredChangelog.map((item) => {
+              // Estilo del badge según la categoría
+              let categoryBg = 'rgba(79, 70, 229, 0.1)';
+              let categoryColor = 'var(--primary)';
+              let categoryBorder = '1px solid rgba(79, 70, 229, 0.2)';
+              
+              if (item.category.includes('Fix')) {
+                categoryBg = 'rgba(239, 68, 68, 0.1)';
+                categoryColor = 'var(--danger)';
+                categoryBorder = '1px solid rgba(239, 68, 68, 0.2)';
+              } else if (item.category.includes('UI') || item.category.includes('Doc')) {
+                categoryBg = 'rgba(16, 185, 129, 0.1)';
+                categoryColor = 'var(--success)';
+                categoryBorder = '1px solid rgba(16, 185, 129, 0.2)';
+              } else if (item.category.includes('GPS') || item.category.includes('Usabilidad')) {
+                categoryBg = 'rgba(245, 158, 11, 0.1)';
+                categoryColor = '#f59e0b';
+                categoryBorder = '1px solid rgba(245, 158, 11, 0.2)';
+              }
+
+              return (
+                <div 
+                  key={item.id} 
+                  style={{ 
+                    border: '1px solid var(--panel-border)', 
+                    borderRadius: '12px', 
+                    padding: '20px',
+                    background: 'rgba(255, 255, 255, 0.01)',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--text-main)' }}>v{item.version}</span>
+                        <span style={{ 
+                          fontSize: '0.75rem', 
+                          padding: '2px 8px', 
+                          borderRadius: '6px', 
+                          fontWeight: '600',
+                          background: categoryBg,
+                          color: categoryColor,
+                          border: categoryBorder
+                        }}>
+                          {item.category}
+                        </span>
+                      </div>
+                      <h3 style={{ margin: '6px 0 0 0', fontSize: '1.05rem', fontWeight: '700', color: '#fff' }}>{item.title}</h3>
+                    </div>
+                    <div style={{ textAlign: 'right', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      <div>📅 {item.date}</div>
+                      <div style={{ marginTop: '2px' }}>👤 {item.developer}</div>
+                    </div>
+                  </div>
+                  
+                  <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                    {item.changes.map((change, idx) => (
+                      <li key={idx} style={{ marginBottom: '6px' }}>
+                        {change}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     );
   };

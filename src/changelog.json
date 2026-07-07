@@ -1,0 +1,57 @@
+[
+  {
+    "id": "v1.0.0",
+    "date": "2026-07-06",
+    "version": "1.0.0",
+    "title": "Optimización de tarifas y cierre de jornadas",
+    "category": "Core / DB",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Implementación de la deduplicación automática de tarifas de administradores en localStorage y Supabase.",
+      "Protección de precios globales para evitar sobrescrituras accidentales de administradores estándar.",
+      "Habilitación del botón 'Cerrar Resumen' en el portal del chofer/repartidor para mejorar la navegación rápida."
+    ]
+  },
+  {
+    "id": "v1.1.0",
+    "date": "2026-07-06",
+    "version": "1.1.0",
+    "title": "Rediseño de selección de paradas y manuales PDF",
+    "category": "UI / Docs",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Agrupación de servicios en el Paso 2 en 6 bloques acordeones interactivos y legibles.",
+      "Indicadores numéricos en tiempo real en cada cabecera con el recuento de artículos seleccionados.",
+      "Corrección del bloqueo de lectura de acordeones cuando la jornada del chofer está cerrada.",
+      "Normalización ortográfica para clasificar tarifas ignorando mayúsculas y acentos.",
+      "Generación offline de los manuales de Administrador y Repartidor en formato PDF."
+    ]
+  },
+  {
+    "id": "v1.2.0",
+    "date": "2026-07-06",
+    "version": "1.2.0",
+    "title": "Selector inteligente de Navegador GPS",
+    "category": "Usabilidad / GPS",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Creación de modal interactivo con estética premium para elegir entre Google Maps y Waze al iniciar viaje.",
+      "Persistencia de la elección preferida de navegador en el almacenamiento local.",
+      "Sección de ajustes en el portal del usuario para cambiar de navegador predeterminado (Preguntar, Google Maps, Waze)."
+    ]
+  },
+  {
+    "id": "v1.3.0",
+    "date": "2026-07-07",
+    "version": "1.3.0",
+    "title": "Visualización de Turnos y Corrección de Tarifas de Catálogo",
+    "category": "Core / Fixes",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Habilitación de la visualización del turno cerrado de hoy en la lista histórica de jornadas.",
+      "Corrección del cálculo de precios para tarifas del catálogo personalizado asignadas a paradas.",
+      "Normalización del indicador 'isCustom' en base de datos para priorizar coincidencias con el catálogo.",
+      "Eliminación de bloques de código duplicados en la sección de formulario de tickets."
+    ]
+  }
+]
