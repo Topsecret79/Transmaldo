@@ -53,5 +53,18 @@
       "Normalización del indicador 'isCustom' en base de datos para priorizar coincidencias con el catálogo.",
       "Eliminación de bloques de código duplicados en la sección de formulario de tickets."
     ]
+  },
+  {
+    "id": "v1.3.1",
+    "date": "2026-07-07",
+    "version": "1.3.1",
+    "title": "Corrección de Reasignación Automática de Rutas de Apoyo",
+    "category": "Core / Fixes",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Extracción y sanitización robusta de la etiqueta '[Ruta Original]' en las notas del ticket.",
+      "Solución al fallo de reasignación de ruta al guardar observaciones del chofer.",
+      "Deduplicación automática de metadatos de tickets durante la actualización de estado."
+    ]
   }
 ]
