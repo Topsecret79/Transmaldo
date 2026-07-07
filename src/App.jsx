@@ -231,8 +231,11 @@ import {
   getRouteKms,
   saveRouteKms,
   getRouteStartTime,
-  saveRouteStartTime
+  saveRouteStartTime,
+  getAllowDriverSupportTransfer,
+  saveAllowDriverSupportTransfer
 } from './db';
+
 
 initDB();
 
@@ -498,7 +501,9 @@ function App() {
     loggedInUserObj.canSearch
   );
   const [shifts, setShifts] = useState([]);
+  const [allowDriverSupportTransfer, setAllowDriverSupportTransfer] = useState(getAllowDriverSupportTransfer());
   const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
+
   const [navModalOpen, setNavModalOpen] = useState(false);
   const [navTarget, setNavTarget] = useState({ address: '', latitude: null, longitude: null, ticketId: null });
   const [navRememberChoice, setNavRememberChoice] = useState(false);
@@ -1793,6 +1798,7 @@ function App() {
     setRouteEndAddr(getRouteEndAddr(u?.id));
     setGoogleKeyInput(getGoogleMapsKey());
     setMapboxTokenInput(getMapboxToken());
+    setAllowDriverSupportTransfer(getAllowDriverSupportTransfer());
   };
 
   const loadDataRef = useRef(loadData);
@@ -3495,6 +3501,7 @@ function App() {
     setActiveTab(isAdminOrSuper ? 'tickets' : 'history');
   };
 
+
   const handleUpdateTariffValue = (id, newValue) => {
     const valueNum = parseFloat(newValue) || 0;
     const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
@@ -3805,6 +3812,52 @@ function App() {
       if (editingTicketId === id) {
         cancelEditing();
       }
+    }
+  };
+
+  const handleSendSupport = async (ticketId, targetFurgoId) => {
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
+    const targetUser = users.find(u => u.id === targetFurgoId);
+    if (!targetUser) return;
+
+    const currentOwnerLabel = ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId;
+
+    if (!window.confirm(`¿Estás seguro de que deseas enviar esta parada a ${targetUser.label} en modo de auxilio/apoyo?`)) {
+      return;
+    }
+
+    try {
+      const parsed = parseTicketNotes(ticket.notes);
+      const originalRoute = parsed.originalRouteLabel || currentOwnerLabel;
+      
+      const updatedNotes = encodeTicketNotes(
+        parsed.timeSlot,
+        parsed.estimatedDuration,
+        parsed.cleanNotes,
+        parsed.driverObservations,
+        parsed.failedChargeType,
+        originalRoute
+      );
+
+      const targetDayTickets = tickets.filter(t => t.date === ticket.date && t.furgoId === targetUser.id);
+
+      const updatedTicket = {
+        ...ticket,
+        furgoId: targetUser.id,
+        furgoLabel: targetUser.label,
+        routeName: `Ruta ${targetUser.label} (${ticket.date})`,
+        notes: updatedNotes,
+        routeOrder: targetDayTickets.length + 1
+      };
+
+      await updateTicket(updatedTicket);
+      triggerAlert(`Parada transferida de apoyo a ${targetUser.label} con éxito`);
+      loadData();
+    } catch (err) {
+      console.error("Error transferring ticket support:", err);
+      triggerAlert("Error al realizar la transferencia de apoyo", "error");
     }
   };
 
@@ -7220,6 +7273,27 @@ function App() {
                                     </button>
                                   </div>
                                 )}
+
+                                {(!t.status || t.status === 'pending' || t.status === 'transit') && (allowDriverSupportTransfer || isAdminOrSuper) && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', width: '100%' }}>
+                                    <select
+                                      className="form-input"
+                                      value=""
+                                      onChange={(e) => {
+                                        const targetId = e.target.value;
+                                        if (targetId) {
+                                          handleSendSupport(t.id, targetId);
+                                        }
+                                      }}
+                                      style={{ padding: '6px 10px', fontSize: '0.8rem', height: '34px', cursor: 'pointer', width: '100%', border: '1px solid var(--primary)', background: 'rgba(79, 70, 229, 0.05)', color: '#fff' }}
+                                    >
+                                      <option value="" style={{ background: 'var(--panel-bg)', color: '#fff' }}>🤝 Auxilio/Apoyo: [Seleccionar chofer...]</option>
+                                      {users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).map(u => (
+                                        <option key={u.id} value={u.id} style={{ background: 'var(--panel-bg)', color: '#fff' }}>{u.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -9045,11 +9119,31 @@ function App() {
                           {t.routeName && <div style={{ fontSize: '0.75rem', color: 'var(--primary)', marginTop: '2.5px' }}>📍 {t.routeName}</div>}
                         </td>
                         <td>
-                          {(() => {
-                            const uIdx = users.findIndex(u => u.id === t.furgoId);
-                            const badgeClass = uIdx % 3 === 0 ? 'badge-primary' : uIdx % 3 === 1 ? 'badge-warning' : 'badge-success';
-                            return <span className={`badge ${badgeClass}`}>{t.furgoLabel || t.furgoId || ''}</span>;
-                          })()}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {(() => {
+                              const uIdx = users.findIndex(u => u.id === t.furgoId);
+                              const badgeClass = uIdx % 3 === 0 ? 'badge-primary' : uIdx % 3 === 1 ? 'badge-warning' : 'badge-success';
+                              return <span className={`badge ${badgeClass}`} style={{ width: 'fit-content' }}>{t.furgoLabel || t.furgoId || ''}</span>;
+                            })()}
+                            {(!t.status || t.status === 'pending' || t.status === 'transit') && (
+                              <select
+                                className="form-input"
+                                value=""
+                                onChange={(e) => {
+                                  const targetId = e.target.value;
+                                  if (targetId) {
+                                    handleSendSupport(t.id, targetId);
+                                  }
+                                }}
+                                style={{ padding: '2px 4px', fontSize: '0.75rem', height: '26px', cursor: 'pointer', marginTop: '2px', width: 'auto', minWidth: '100px' }}
+                              >
+                                <option value="">🤝 Auxilio/Apoyo: [Seleccionar chofer...]</option>
+                                {users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).map(u => (
+                                  <option key={u.id} value={u.id}>{u.label}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         </td>
                         <td style={{ fontWeight: '600' }}>
                           <div>{t.customerName || ''}</div>
@@ -9879,6 +9973,31 @@ function App() {
                     ❄️ Ártico
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Control de Transferencias de Apoyo */}
+            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
+              <div className="block-title">🤝 Auxilio / Apoyo entre Choferes</div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Activa o desactiva la posibilidad de que los propios choferes se transfieran paradas de apoyo directamente desde sus paneles.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input 
+                  type="checkbox" 
+                  id="allow_driver_support_transfer" 
+                  checked={allowDriverSupportTransfer} 
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setAllowDriverSupportTransfer(val);
+                    saveAllowDriverSupportTransfer(val);
+                    triggerAlert(val ? 'Permiso de transferencia de apoyo activado' : 'Permiso de transferencia de apoyo desactivado');
+                  }} 
+                  style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                />
+                <label htmlFor="allow_driver_support_transfer" style={{ fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer', userSelect: 'none' }}>
+                  Permitir a los repartidores transferir clientes de apoyo entre ellos
+                </label>
               </div>
             </div>
             

@@ -365,6 +365,12 @@ export async function syncFromCloud() {
         localStorage.setItem('delivery_mapbox_access_token', mapboxTokenSetting.value);
       }
 
+      // Allow Driver Support Transfer
+      const transferSetting = settings.find(s => s.key === 'allow_driver_support_transfer');
+      if (transferSetting) {
+        localStorage.setItem('delivery_allow_driver_support_transfer', transferSetting.value);
+      }
+
       // Km Price
       if (userId) {
         const kmPriceKey = `km_price_${userId}`;
@@ -1090,6 +1096,7 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
           tickets[index].notes = `${notesStr} (Auxilio realizado por ${helperLabel})`.trim();
           tickets[index].furgoId = targetUser.id;
           tickets[index].furgoLabel = targetUser.label;
+          tickets[index].routeName = `Ruta ${targetUser.label} (${tickets[index].date})`;
         }
       }
     }
@@ -1103,7 +1110,8 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
         completed_lng: completedLng,
         notes: tickets[index].notes,
         furgo_id: tickets[index].furgoId,
-        furgo_label: tickets[index].furgoLabel || null
+        furgo_label: tickets[index].furgoLabel || null,
+        route_name: tickets[index].routeName || null
       }).eq('id', ticketId).then(({ error }) => {
         if (error) console.error("Error updating ticket status in Supabase:", error);
       });
@@ -1829,6 +1837,25 @@ export function saveRouteStartTime(furgoId, date, time) {
     }
   }
 }
+
+// Obtener si los repartidores pueden hacer transferencias de apoyo
+export function getAllowDriverSupportTransfer() {
+  return localStorage.getItem('delivery_allow_driver_support_transfer') === 'true';
+}
+
+// Guardar si los repartidores pueden hacer transferencias de apoyo
+export function saveAllowDriverSupportTransfer(value) {
+  localStorage.setItem('delivery_allow_driver_support_transfer', value ? 'true' : 'false');
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: 'allow_driver_support_transfer',
+      value: value ? 'true' : 'false'
+    }).then(({ error }) => {
+      if (error) console.error("Error saving allow_driver_support_transfer to Supabase:", error);
+    });
+  }
+}
+
 
 
 
