@@ -1741,18 +1741,28 @@ export function parseTicketNotes(notesText) {
   let cleanNotes = notesText || '';
   let driverObservations = '';
   let failedChargeType = 'none';
+  let originalRouteLabel = '';
 
-  const slotMatch = cleanNotes.match(/^\[Horario:\s*([^\]]+)\]/);
+  // 1. Extraer [Ruta Original: ...] si existe en cualquier parte del texto
+  const routeMatch = cleanNotes.match(/\[Ruta Original:\s*([^\]]+)\]/);
+  if (routeMatch) {
+    originalRouteLabel = routeMatch[1].trim();
+    cleanNotes = cleanNotes.replace(/\[Ruta Original:\s*[^\]]+\]\s*/g, '');
+  }
+
+  // 2. Extraer [Horario: ...]
+  const slotMatch = cleanNotes.match(/\[Horario:\s*([^\]]+)\]/);
   if (slotMatch) {
     const rawSlot = slotMatch[1].trim().toLowerCase();
     timeSlot = rawSlot === 'mañana' ? 'morning' : rawSlot === 'tarde' ? 'afternoon' : 'any';
-    cleanNotes = cleanNotes.replace(/^\[Horario:\s*[^\]]+\]\s*/, '');
+    cleanNotes = cleanNotes.replace(/\[Horario:\s*[^\]]+\]\s*/g, '');
   }
 
-  const durationMatch = cleanNotes.match(/^\[Duracion:\s*(\d+)\s*min\]/);
+  // 3. Extraer [Duracion: ...]
+  const durationMatch = cleanNotes.match(/\[Duracion:\s*(\d+)\s*min\]/);
   if (durationMatch) {
     estimatedDuration = parseInt(durationMatch[1], 10);
-    cleanNotes = cleanNotes.replace(/^\[Duracion:\s*\d+\s*min\]\s*/, '');
+    cleanNotes = cleanNotes.replace(/\[Duracion:\s*\d+\s*min\]\s*/g, '');
   }
 
   // Parse driver observations: check if there's an [Observacion: ...] block
@@ -1769,11 +1779,18 @@ export function parseTicketNotes(notesText) {
     cleanNotes = cleanNotes.replace(/\[CobroFallo:\s*[^\]]+\]\s*/g, '');
   }
 
-  return { timeSlot, estimatedDuration, cleanNotes: cleanNotes.trim(), driverObservations, failedChargeType };
+  return { 
+    timeSlot, 
+    estimatedDuration, 
+    cleanNotes: cleanNotes.trim(), 
+    driverObservations, 
+    failedChargeType,
+    originalRouteLabel
+  };
 }
 
 // Codificar franja horaria y duración como prefijo en las notas
-export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none') {
+export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none', originalRouteLabel = '') {
   const slotStr = timeSlot === 'morning' ? 'Mañana' : timeSlot === 'afternoon' ? 'Tarde' : 'Cualquiera';
   const prefix = `[Horario: ${slotStr}] [Duracion: ${estimatedDuration || 10} min] `;
   let finalNotes = (prefix + (cleanNotesText || '').trim()).trim();
@@ -1782,6 +1799,9 @@ export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, d
   }
   if (failedChargeType && failedChargeType !== 'none') {
     finalNotes += ` [CobroFallo: ${failedChargeType}]`;
+  }
+  if (originalRouteLabel && originalRouteLabel.trim()) {
+    finalNotes = `[Ruta Original: ${originalRouteLabel.trim()}] ${finalNotes}`;
   }
   return finalNotes;
 }

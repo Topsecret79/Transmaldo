@@ -3835,7 +3835,14 @@ function App() {
     const index = localTickets.findIndex(t => t.id === id);
     if (index !== -1) {
       const parsed = parseTicketNotes(localTickets[index].notes);
-      localTickets[index].notes = encodeTicketNotes(parsed.timeSlot, parsed.estimatedDuration, parsed.cleanNotes, observations, failedChargeType);
+      localTickets[index].notes = encodeTicketNotes(
+        parsed.timeSlot, 
+        parsed.estimatedDuration, 
+        parsed.cleanNotes, 
+        observations, 
+        failedChargeType,
+        parsed.originalRouteLabel
+      );
       localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
     }
 
