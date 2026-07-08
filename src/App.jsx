@@ -10876,6 +10876,8 @@ function App() {
             margin-bottom: 10px !important;
           }
           .map-split-right {
+            flex-grow: 1 !important;
+            overflow-y: auto !important;
             padding-left: 10px !important;
             padding-right: 10px !important;
             border-top: 1px solid var(--panel-border) !important;
@@ -10906,16 +10908,20 @@ function App() {
             box-shadow: none !important;
           }
           .map-split-container {
+            display: flex !important;
+            flex-direction: column !important;
             margin-top: 0 !important;
             margin-bottom: 0 !important;
             padding: 0 !important;
-            height: auto !important;
+            height: calc(100vh - 130px) !important;
             border: none !important;
             border-radius: 0 !important;
+            overflow: hidden !important;
           }
           .map-split-left {
-            height: 50vh !important;
-            min-height: 380px !important;
+            height: 40vh !important;
+            min-height: 250px !important;
+            flex-shrink: 0 !important;
           }
           /* Adjust leaflet control positions on mobile to look neat */
           .leaflet-left .leaflet-control {
