@@ -66,5 +66,21 @@
       "Solución al fallo de reasignación de ruta al guardar observaciones del chofer.",
       "Deduplicación automática de metadatos de tickets durante la actualización de estado."
     ]
+  },
+  {
+    "id": "v1.4.0",
+    "date": "2026-07-09",
+    "version": "1.4.0",
+    "title": "Optimización 2-Opt con Retorno y Split View 50/50 del Mapa",
+    "category": "UI / Core / Optimization",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Rediseño del visor del mapa en escritorio dividiendo la pantalla en 50/50 exacto y sin bordes internos.",
+      "Restricción de la visualización del changelog ('Actualizaciones') solo para administradores.",
+      "Implementación del algoritmo de optimización 2-opt secuencial por franjas horarias respetando el Punto de Llegada.",
+      "Bloqueo de la auto-optimización si el chofer realiza reordenamientos manuales de paradas.",
+      "Cálculo del trayecto de retorno al Punto de Llegada e inclusión en la estimación de fin de jornada y kilometraje diario.",
+      "Diseño e integración de la parada final '🏁 Retorno al Punto de Llegada' en los listados de paradas y mapa."
+    ]
   }
 ]

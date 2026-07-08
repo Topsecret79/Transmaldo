@@ -85,7 +85,7 @@ const getDistanceSimple = (c1, c2) => {
 };
 
 // Calcular cronogramas de paradas acumulativos
-const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr) => {
+const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr, endCoords) => {
   const timelineSchedules = {};
   if (!dateTickets || dateTickets.length === 0) return timelineSchedules;
 
@@ -129,6 +129,20 @@ const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr) => {
     lastPos = { lat: ticketLat, lng: ticketLng };
     currentTime = departureTime;
   });
+
+  const resolvedEndCoords = endCoords || startCoords || { lat: 41.3879, lng: 2.16992 };
+  const returnDist = getDistanceSimple(lastPos, resolvedEndCoords);
+  const returnTravelMins = Math.round((returnDist / 35) * 60);
+  
+  const finalEndTime = currentTime + returnTravelMins;
+  const finalTotalDist = cumulativeDist + returnDist;
+
+  timelineSchedules.__totals = {
+    endTime: minutesToHHMM(finalEndTime),
+    totalDistance: finalTotalDist.toFixed(1),
+    returnDistance: returnDist.toFixed(1),
+    returnTravelMins
+  };
 
   return timelineSchedules;
 };
@@ -233,7 +247,9 @@ import {
   getRouteStartTime,
   saveRouteStartTime,
   getAllowDriverSupportTransfer,
-  saveAllowDriverSupportTransfer
+  saveAllowDriverSupportTransfer,
+  getRouteManualStatus,
+  saveRouteManualStatus
 } from './db';
 
 
@@ -876,6 +892,14 @@ function App() {
     if (activeTab) {
       localStorage.setItem('delivery_active_tab', activeTab);
     }
+    if (activeTab === 'map' || activeTab === 'driver_map') {
+      document.body.classList.add('map-active');
+    } else {
+      document.body.classList.remove('map-active');
+    }
+    return () => {
+      document.body.classList.remove('map-active');
+    };
   }, [activeTab]);
 
   useEffect(() => {
@@ -1122,7 +1146,11 @@ function App() {
           setCurrentUser(parsed);
           const savedTab = localStorage.getItem('delivery_active_tab');
           if (savedTab) {
-            setActiveTab(savedTab);
+            if (parsed.role === 'repartidor' && savedTab === 'changelog') {
+              setActiveTab('new_ticket');
+            } else {
+              setActiveTab(savedTab);
+            }
           } else {
             setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
           }
@@ -2544,6 +2572,7 @@ function App() {
     try {
       if (dbTicketA) await updateTicket(dbTicketA);
       if (dbTicketB) await updateTicket(dbTicketB);
+      saveRouteManualStatus(ticketA.furgoId, ticketA.date, true);
     } catch (e) {
       console.error("Error saving manual route order:", e);
     }
@@ -2593,6 +2622,7 @@ function App() {
           await updateTicket(t);
         }
       }
+      saveRouteManualStatus(ticketToMove.furgoId, ticketToMove.date, true);
       triggerAlert(`📍 Parada reordenada con éxito a la posición ${targetPos}`);
     } catch (err) {
       console.error("Error saving manual route reorder:", err);
@@ -3033,10 +3063,12 @@ function App() {
       const anyTickets = parsedTickets.filter(t => t.timeSlot === 'any' || !t.timeSlot);
       const afternoonTickets = parsedTickets.filter(t => t.timeSlot === 'afternoon');
 
-      const route = [];
+      const morningNN = [];
+      const anyNN = [];
+      const afternoonNN = [];
       let currentPos = startCoords;
 
-      const optimizeGroup = (group) => {
+      const getInitialNN = (group, nnList) => {
         const unvisited = [...group];
         while (unvisited.length > 0) {
           let nearestIdx = -1;
@@ -3052,7 +3084,7 @@ function App() {
 
           if (nearestIdx !== -1) {
             const nextTicket = unvisited.splice(nearestIdx, 1)[0];
-            route.push(nextTicket);
+            nnList.push(nextTicket);
             currentPos = { lat: nextTicket.lat, lng: nextTicket.lng };
           } else {
             break;
@@ -3060,14 +3092,94 @@ function App() {
         }
       };
 
-      optimizeGroup(morningTickets);
-      optimizeGroup(anyTickets);
-      optimizeGroup(afternoonTickets);
+      getInitialNN(morningTickets, morningNN);
+      getInitialNN(anyTickets, anyNN);
+      getInitialNN(afternoonTickets, afternoonNN);
+
+      const optimize2Opt = (stopsList, start, end) => {
+        if (stopsList.length <= 1) return stopsList;
+        let bestRoute = [...stopsList];
+        let improved = true;
+        
+        const getPathDistance = (r) => {
+          let dist = 0;
+          let curr = start;
+          for (let i = 0; i < r.length; i++) {
+            dist += getDistance(curr, r[i]);
+            curr = r[i];
+          }
+          dist += getDistance(curr, end);
+          return dist;
+        };
+
+        let bestDist = getPathDistance(bestRoute);
+        let iterations = 0;
+        const maxIterations = 1000;
+
+        while (improved && iterations < maxIterations) {
+          improved = false;
+          iterations++;
+          for (let i = 0; i < bestRoute.length - 1; i++) {
+            for (let j = i + 1; j < bestRoute.length; j++) {
+              const newRoute = [...bestRoute];
+              let left = i;
+              let right = j;
+              while (left < right) {
+                const temp = newRoute[left];
+                newRoute[left] = newRoute[right];
+                newRoute[right] = temp;
+                left++;
+                right--;
+              }
+              
+              const newDist = getPathDistance(newRoute);
+              if (newDist < bestDist - 0.0001) {
+                bestRoute = newRoute;
+                bestDist = newDist;
+                improved = true;
+                break;
+              }
+            }
+            if (improved) break;
+          }
+        }
+        return bestRoute;
+      };
+
+      const getSegmentEndCoords = (nextSegment1, nextSegment2, fallbackEnd) => {
+        if (nextSegment1 && nextSegment1.length > 0) {
+          return { lat: nextSegment1[0].lat, lng: nextSegment1[0].lng };
+        }
+        if (nextSegment2 && nextSegment2.length > 0) {
+          return { lat: nextSegment2[0].lat, lng: nextSegment2[0].lng };
+        }
+        return fallbackEnd;
+      };
+
+      const morningEnd = getSegmentEndCoords(anyNN, afternoonNN, endCoords);
+      const optimizedMorning = optimize2Opt(morningNN, startCoords, morningEnd);
+
+      const anyStart = optimizedMorning.length > 0 
+        ? { lat: optimizedMorning[optimizedMorning.length - 1].lat, lng: optimizedMorning[optimizedMorning.length - 1].lng }
+        : startCoords;
+      const anyEnd = getSegmentEndCoords(afternoonNN, null, endCoords);
+      const optimizedAny = optimize2Opt(anyNN, anyStart, anyEnd);
+
+      const afternoonStart = optimizedAny.length > 0
+        ? { lat: optimizedAny[optimizedAny.length - 1].lat, lng: optimizedAny[optimizedAny.length - 1].lng }
+        : (optimizedMorning.length > 0 
+            ? { lat: optimizedMorning[optimizedMorning.length - 1].lat, lng: optimizedMorning[optimizedMorning.length - 1].lng }
+            : startCoords);
+      const optimizedAfternoon = optimize2Opt(afternoonNN, afternoonStart, endCoords);
+
+      const route = [...optimizedMorning, ...optimizedAny, ...optimizedAfternoon];
 
       route.forEach((ticket, index) => {
         ticket.routeOrder = index + 1;
         updateTicket(ticket);
       });
+
+      saveRouteManualStatus(targetFurgo, targetDate, false);
 
       triggerAlert(`¡Ruta optimizada con éxito! ${route.length} paradas ordenadas de forma eficiente.`, 'success');
       loadData();
@@ -3081,6 +3193,12 @@ function App() {
 
   const autoOptimizeRemainingRoute = async (targetFurgoId, targetDate, lastCompletedTicketId) => {
     try {
+      const isManual = getRouteManualStatus(targetFurgoId, targetDate);
+      if (isManual) {
+        loadData();
+        return;
+      }
+
       const allTickets = getTickets();
       const dayTickets = allTickets.filter(t => t && t.furgoId === targetFurgoId && t.date === targetDate);
       if (dayTickets.length <= 1) return;
@@ -3129,6 +3247,18 @@ function App() {
 
       if (!startCoords) {
         startCoords = { lat: 41.3879, lng: 2.16992 };
+      }
+
+      let endCoords = null;
+      const endAddr = getRouteEndAddr(targetFurgoId) || '';
+      if (endAddr.trim()) {
+        const geocoded = await geocodeAddress(endAddr);
+        if (geocoded && geocoded.lat && geocoded.lng) {
+          endCoords = { lat: parseFloat(geocoded.lat), lng: parseFloat(geocoded.lng) };
+        }
+      }
+      if (!endCoords) {
+        endCoords = startCoords;
       }
 
       // Separar paradas pendientes entre "saltadas" (su orden original era menor al de la completada) y "normales"
@@ -3188,7 +3318,7 @@ function App() {
       const normalWithCoords = await geocodeAndFormat(normalPending);
       const skippedWithCoords = await geocodeAndFormat(skippedPending);
 
-      const optimizeList = (listWithCoords, startingPos) => {
+      const optimizeList = (listWithCoords, startingPos, endingPos) => {
         const parsedList = listWithCoords.map(t => {
           const parsed = parseTicketNotes(t.notes);
           return { ...t, timeSlot: parsed.timeSlot, estimatedDuration: parsed.estimatedDuration };
@@ -3198,14 +3328,17 @@ function App() {
         const anyTickets = parsedList.filter(t => t.timeSlot === 'any' || !t.timeSlot);
         const afternoonTickets = parsedList.filter(t => t.timeSlot === 'afternoon');
 
-        const optimizedResult = [];
+        const morningNN = [];
+        const anyNN = [];
+        const afternoonNN = [];
         let currentPos = startingPos;
 
-        const optimizeGroup = (group) => {
+        const getInitialNN = (group, nnList) => {
           const unvisited = [...group];
           while (unvisited.length > 0) {
             let nearestIdx = -1;
             let minDistance = Infinity;
+
             for (let i = 0; i < unvisited.length; i++) {
               const dist = getDistance(currentPos, unvisited[i]);
               if (dist < minDistance) {
@@ -3213,9 +3346,10 @@ function App() {
                 nearestIdx = i;
               }
             }
+
             if (nearestIdx !== -1) {
               const nextTicket = unvisited.splice(nearestIdx, 1)[0];
-              optimizedResult.push(nextTicket);
+              nnList.push(nextTicket);
               currentPos = { lat: nextTicket.lat, lng: nextTicket.lng };
             } else {
               break;
@@ -3223,15 +3357,96 @@ function App() {
           }
         };
 
-        optimizeGroup(morningTickets);
-        optimizeGroup(anyTickets);
-        optimizeGroup(afternoonTickets);
+        getInitialNN(morningTickets, morningNN);
+        getInitialNN(anyTickets, anyNN);
+        getInitialNN(afternoonTickets, afternoonNN);
 
-        return { optimizedResult, lastPos: currentPos };
+        const optimize2Opt = (stopsList, start, end) => {
+          if (stopsList.length <= 1) return stopsList;
+          let bestRoute = [...stopsList];
+          let improved = true;
+          
+          const getPathDistance = (r) => {
+            let dist = 0;
+            let curr = start;
+            for (let i = 0; i < r.length; i++) {
+              dist += getDistance(curr, r[i]);
+              curr = r[i];
+            }
+            dist += getDistance(curr, end);
+            return dist;
+          };
+
+          let bestDist = getPathDistance(bestRoute);
+          let iterations = 0;
+          const maxIterations = 1000;
+
+          while (improved && iterations < maxIterations) {
+            improved = false;
+            iterations++;
+            for (let i = 0; i < bestRoute.length - 1; i++) {
+              for (let j = i + 1; j < bestRoute.length; j++) {
+                const newRoute = [...bestRoute];
+                let left = i;
+                let right = j;
+                while (left < right) {
+                  const temp = newRoute[left];
+                  newRoute[left] = newRoute[right];
+                  newRoute[right] = temp;
+                  left++;
+                  right--;
+                }
+                
+                const newDist = getPathDistance(newRoute);
+                if (newDist < bestDist - 0.0001) {
+                  bestRoute = newRoute;
+                  bestDist = newDist;
+                  improved = true;
+                  break;
+                }
+              }
+              if (improved) break;
+            }
+          }
+          return bestRoute;
+        };
+
+        const getSegmentEndCoords = (nextSegment1, nextSegment2, fallbackEnd) => {
+          if (nextSegment1 && nextSegment1.length > 0) {
+            return { lat: nextSegment1[0].lat, lng: nextSegment1[0].lng };
+          }
+          if (nextSegment2 && nextSegment2.length > 0) {
+            return { lat: nextSegment2[0].lat, lng: nextSegment2[0].lng };
+          }
+          return fallbackEnd;
+        };
+
+        const morningEnd = getSegmentEndCoords(anyNN, afternoonNN, endingPos);
+        const optimizedMorning = optimize2Opt(morningNN, startingPos, morningEnd);
+
+        const anyStart = optimizedMorning.length > 0 
+          ? { lat: optimizedMorning[optimizedMorning.length - 1].lat, lng: optimizedMorning[optimizedMorning.length - 1].lng }
+          : startingPos;
+        const anyEnd = getSegmentEndCoords(afternoonNN, null, endingPos);
+        const optimizedAny = optimize2Opt(anyNN, anyStart, anyEnd);
+
+        const afternoonStart = optimizedAny.length > 0
+          ? { lat: optimizedAny[optimizedAny.length - 1].lat, lng: optimizedAny[optimizedAny.length - 1].lng }
+          : (optimizedMorning.length > 0 
+              ? { lat: optimizedMorning[optimizedMorning.length - 1].lat, lng: optimizedMorning[optimizedMorning.length - 1].lng }
+              : startingPos);
+        const optimizedAfternoon = optimize2Opt(afternoonNN, afternoonStart, endingPos);
+
+        const optimizedResult = [...optimizedMorning, ...optimizedAny, ...optimizedAfternoon];
+        const lastPos = optimizedResult.length > 0 
+          ? { lat: optimizedResult[optimizedResult.length - 1].lat, lng: optimizedResult[optimizedResult.length - 1].lng }
+          : startingPos;
+
+        return { optimizedResult, lastPos };
       };
 
-      const { optimizedResult: optimizedNormal, lastPos: postNormalPos } = optimizeList(normalWithCoords, startCoords);
-      const { optimizedResult: optimizedSkipped } = optimizeList(skippedWithCoords, postNormalPos);
+      const { optimizedResult: optimizedNormal, lastPos: postNormalPos } = optimizeList(normalWithCoords, startCoords, endCoords);
+      const { optimizedResult: optimizedSkipped } = optimizeList(skippedWithCoords, postNormalPos, endCoords);
 
       const finalSequence = [...completedTickets, ...optimizedNormal, ...optimizedSkipped];
 
@@ -5976,7 +6191,7 @@ function App() {
         const activeRouteTickets = tickets.filter(t => t && t.date === activeRouteContext.date && t.furgoId === activeRouteContext.furgoId);
         const sortedActiveRouteTickets = sortTicketsByRouteOrder(activeRouteTickets);
         const activeRouteStartTime = getRouteStartTime(activeRouteContext.furgoId, activeRouteContext.date);
-        const activeTimelineSchedules = calculateTimelineSchedules(sortedActiveRouteTickets, routeStartCoords, activeRouteStartTime);
+        const activeTimelineSchedules = calculateTimelineSchedules(sortedActiveRouteTickets, routeStartCoords, activeRouteStartTime, routeEndCoords);
         
         if (sortedActiveRouteTickets.length === 0) return null;
         
@@ -6025,8 +6240,8 @@ function App() {
                   fontSize: '0.8rem',
                   color: 'var(--text-muted)'
                 }}>
-                  <span>🕒 Fin estimado: <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{finalSchedule.departure}</strong></span>
-                  <span>🛣️ Distancia total: <strong style={{ color: '#10b981', fontSize: '0.88rem' }}>{finalSchedule.cumulativeDistance} km</strong></span>
+                  <span>🕒 Fin estimado: <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{activeTimelineSchedules.__totals?.endTime || finalSchedule.departure}</strong></span>
+                  <span>🛣️ Distancia total: <strong style={{ color: '#10b981', fontSize: '0.88rem' }}>{activeTimelineSchedules.__totals?.totalDistance || finalSchedule.cumulativeDistance} km</strong></span>
                 </div>
               );
             })()}
@@ -6141,6 +6356,62 @@ function App() {
                   </div>
                 );
               })}
+
+              {sortedActiveRouteTickets.length > 0 && activeTimelineSchedules.__totals && (() => {
+                const totals = activeTimelineSchedules.__totals;
+                const endAddrText = routeEndAddr || 'Punto de Llegada';
+                return (
+                  <div 
+                    style={{ 
+                      padding: '12px 15px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between', 
+                      gap: '12px',
+                      background: 'rgba(99, 102, 241, 0.03)',
+                      border: '1px dashed var(--panel-border)',
+                      borderRadius: '12px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: '8px' }}>
+                      <span style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '50%',
+                        background: 'rgba(99, 102, 241, 0.2)',
+                        color: '#818cf8',
+                        fontWeight: '800',
+                        fontSize: '0.85rem'
+                      }}>
+                        🏁
+                      </span>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, marginLeft: '4px' }}>
+                        <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          Retorno al Punto de Llegada
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          🏁 {getShortAddressString(endAddrText)}
+                        </span>
+                        <div style={{ 
+                          display: 'flex', 
+                          flexWrap: 'wrap',
+                          gap: '8px', 
+                          fontSize: '0.74rem', 
+                          color: 'var(--text-muted)',
+                          marginTop: '2px'
+                        }}>
+                          <span>🏁 <strong>Llegada (Fin):</strong> <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{totals.endTime}</span></span>
+                          <span>📈 <strong>Km totales:</strong> <span style={{ color: '#10b981', fontWeight: 'bold' }}>{totals.totalDistance} km</span></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         );
@@ -6155,7 +6426,7 @@ function App() {
     const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
     const dateTickets = sortTicketsByRouteOrder(userTickets.filter(t => t.date === targetDate));
 
-    const timelineSchedules = calculateTimelineSchedules(dateTickets, routeStartCoords, routeStartTime);
+    const timelineSchedules = calculateTimelineSchedules(dateTickets, routeStartCoords, routeStartTime, routeEndCoords);
 
     return (
       <div>
@@ -6174,9 +6445,6 @@ function App() {
               🔍 Buscador General
             </button>
           )}
-          <button className={`tab-btn ${activeTab === 'changelog' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('changelog'); }}>
-            🚀 Actualizaciones
-          </button>
         </div>
 
 
@@ -6184,23 +6452,15 @@ function App() {
         {activeTab === 'new_ticket' && renderTicketForm()}
 
         {activeTab === 'driver_map' && (
-          <div className="glass-panel" style={{ textAlign: 'left', padding: '20px' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', color: 'var(--primary)' }}>
+          <div className="glass-panel map-tab-panel">
+            <h3 className="map-tab-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', color: 'var(--primary)' }}>
               🗺️ Mapa de Mi Ruta ({targetDate})
             </h3>
             <div className="map-split-container">
               <div className="map-split-left" style={{ position: 'relative' }}>
                 <div 
                   id="driver-map" 
-                  style={{ 
-                    height: '100%', 
-                    width: '100%', 
-                    borderRadius: 'var(--border-radius-lg)', 
-                    border: '1px solid var(--panel-border)',
-                    background: '#1e1e1e',
-                    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
-                    zIndex: 1
-                  }}
+                  className="map-element"
                 ></div>
                 {renderMapFloatingPanel()}
               </div>
@@ -6519,18 +6779,18 @@ function App() {
                   }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>
-                        🏁 Hora Estimada Fin de Ruta
+                        🏁 Hora Estimada Fin de Ruta (con retorno)
                       </span>
                       <span style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        🕒 <span style={{ color: '#818cf8' }}>{finalSchedule.departure}</span>
+                        🕒 <span style={{ color: '#818cf8' }}>{timelineSchedules.__totals?.endTime || finalSchedule.departure}</span>
                       </span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700' }}>
-                        📈 Kilómetros Totales Estimados
+                        📈 Kilómetros Totales Estimados (con retorno)
                       </span>
                       <span style={{ fontSize: '1.4rem', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        🚚 <span style={{ color: '#10b981' }}>{finalSchedule.cumulativeDistance} km</span>
+                        🚚 <span style={{ color: '#10b981' }}>{timelineSchedules.__totals?.totalDistance || finalSchedule.cumulativeDistance} km</span>
                       </span>
                     </div>
                   </div>
@@ -7308,7 +7568,6 @@ function App() {
         )}
 
         {activeTab === 'search' && renderSearchSection()}
-        {activeTab === 'changelog' && renderChangelog()}
       </div>
     );
   };
@@ -7577,7 +7836,7 @@ function App() {
 
     const activeFurgo = isAdminMap ? mapFilterFurgo : currentUser?.id;
     const startTime = getRouteStartTime(activeFurgo, targetDate);
-    const timelineSchedules = calculateTimelineSchedules(sortedDayTickets, routeStartCoords, startTime);
+    const timelineSchedules = calculateTimelineSchedules(sortedDayTickets, routeStartCoords, startTime, routeEndCoords);
 
     const lastTicket = sortedDayTickets[sortedDayTickets.length - 1];
     const finalSchedule = lastTicket ? timelineSchedules[lastTicket.id] : null;
@@ -7585,10 +7844,21 @@ function App() {
     let totalDistance = 0;
     let totalTransit = 0;
     if (activeFurgo !== 'all') {
-      Object.values(timelineSchedules).forEach(s => {
-        totalDistance += parseFloat(s.distance) || 0;
-        totalTransit += s.travelMins || 0;
-      });
+      if (timelineSchedules.__totals) {
+        totalDistance = parseFloat(timelineSchedules.__totals.totalDistance) || 0;
+        let sumTransit = 0;
+        Object.keys(timelineSchedules).forEach(key => {
+          if (key !== '__totals') {
+            sumTransit += timelineSchedules[key].travelMins || 0;
+          }
+        });
+        totalTransit = sumTransit + (timelineSchedules.__totals.returnTravelMins || 0);
+      } else {
+        Object.values(timelineSchedules).forEach(s => {
+          totalDistance += parseFloat(s.distance) || 0;
+          totalTransit += s.travelMins || 0;
+        });
+      }
     }
 
     return (
@@ -7614,8 +7884,8 @@ function App() {
             fontSize: '0.8rem',
             color: 'var(--text-muted)'
           }}>
-            <span>🕒 Fin estimado: <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{finalSchedule.departure}</strong></span>
-            <span>🛣️ Distancia total: <strong style={{ color: '#10b981', fontSize: '0.88rem' }}>{finalSchedule.cumulativeDistance} km</strong></span>
+            <span>🕒 Fin estimado: <strong style={{ color: '#fff', fontSize: '0.88rem' }}>{timelineSchedules.__totals?.endTime || finalSchedule.departure}</strong></span>
+            <span>🛣️ Distancia total: <strong style={{ color: '#10b981', fontSize: '0.88rem' }}>{timelineSchedules.__totals?.totalDistance || finalSchedule.cumulativeDistance} km</strong></span>
           </div>
         )}
         
@@ -7904,6 +8174,93 @@ function App() {
               </div>
             );
           })}
+          
+          {activeFurgo !== 'all' && sortedDayTickets.length > 0 && timelineSchedules.__totals && (() => {
+            const totals = timelineSchedules.__totals;
+            const endAddrText = isAdminMap ? (getRouteEndAddr(activeFurgo) || 'Punto de Llegada') : (routeEndAddr || 'Punto de Llegada');
+            return (
+              <div 
+                className="glass-panel"
+                style={{
+                  padding: '15px',
+                  border: '1px dashed var(--panel-border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  background: 'rgba(99, 102, 241, 0.03)',
+                  textAlign: 'left',
+                  borderRadius: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '26px',
+                      height: '26px',
+                      borderRadius: '50%',
+                      background: 'rgba(99, 102, 241, 0.2)',
+                      color: '#818cf8',
+                      fontWeight: '800',
+                      fontSize: '0.85rem'
+                    }}>
+                      🏁
+                    </span>
+                    <strong style={{ fontSize: '0.95rem', color: '#fff' }}>Retorno al Punto de Llegada</strong>
+                  </div>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    color: 'var(--success)',
+                    fontWeight: '800'
+                  }}>
+                    Final
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <span style={{ flexShrink: 0 }}>📍</span>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span>{getShortAddressString(endAddrText)}</span>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexWrap: 'wrap',
+                        gap: '8px', 
+                        fontSize: '0.74rem', 
+                        color: 'var(--text-muted)',
+                        marginTop: '3px'
+                      }}>
+                        <span>🛣️ <strong>Retorno:</strong> <span style={{ color: '#818cf8', fontWeight: 'bold' }}>+{totals.returnDistance} km</span></span>
+                        <span>📈 <strong>Km totales:</strong> <span style={{ color: '#10b981', fontWeight: 'bold' }}>{totals.totalDistance} km</span></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  border: '1px solid rgba(99, 102, 241, 0.15)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  fontSize: '0.8rem',
+                  color: 'var(--text-main)',
+                  marginTop: '4px',
+                  alignItems: 'center'
+                }}>
+                  <span>🕒 <strong>Llegada estimada (Fin de Ruta):</strong> <strong style={{ color: '#fff' }}>{totals.endTime}</strong></span>
+                  <span>🚗 <strong>Tiempo de viaje de retorno:</strong> {totals.returnTravelMins} min</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -8735,6 +9092,7 @@ function App() {
           )}
           <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>Ajustar Precios</button>
           <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}>Furgonetas y Seguridad</button>
+          <button className={`tab-btn ${activeTab === 'changelog' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('changelog'); }}>🚀 Actualizaciones</button>
         </div>
 
         {activeTab === 'daily_report' && renderDailyReport()}
@@ -9493,13 +9851,13 @@ function App() {
         )}
 
         {activeTab === 'map' && (
-          <div className="glass-panel" style={{ textAlign: 'left' }}>
-            <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>🗺️ Mapa de Control de Rutas</h2>
-            <p style={{ marginBottom: '20px' }}>
+          <div className="glass-panel map-tab-panel">
+            <h2 className="map-tab-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>🗺️ Mapa de Control de Rutas</h2>
+            <p className="map-tab-subtitle" style={{ marginBottom: '20px' }}>
               Visualiza en tiempo real la ubicación de tus repartidores en vivo y el recorrido ordenado de sus paradas en el mapa.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+            <div className="map-filters-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <div className="input-group" style={{ marginBottom: 0 }}>
                 <span className="input-label">Filtrar por Fecha</span>
                 <input 
@@ -9534,6 +9892,29 @@ function App() {
               </div>
             </div>
 
+            <div className="map-legend-container" style={{ display: 'flex', gap: '15px', marginTop: '5px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
+                <span>Entregado</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
+                <span>Fallido</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#38bdf8' }}></span>
+                <span>En Camino</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#fbbf24' }}></span>
+                <span>Pendiente</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', marginLeft: '10px' }}>
+                <span style={{ display: 'inline-block', width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #a78bfa', background: 'rgba(139,92,246,0.2)', textAlign: 'center', lineHeight: '12px', fontSize: '10px' }}>🚚</span>
+                <span>Repartidor en Vivo (Últimas 6h)</span>
+              </div>
+            </div>
+
             {/* Custom dark map style definitions */}
             <style>{`
               .leaflet-popup-content-wrapper, .leaflet-popup-tip {
@@ -9560,43 +9941,13 @@ function App() {
               <div className="map-split-left" style={{ position: 'relative' }}>
                 <div 
                   id="admin-map" 
-                  style={{ 
-                    height: '100%', 
-                    borderRadius: '12px', 
-                    border: '1px solid var(--panel-border)', 
-                    background: '#1e1e1e',
-                    boxShadow: '0 4px 30px rgba(0, 0, 0, 0.25)',
-                    zIndex: 1
-                  }}
+                  className="map-element"
                 ></div>
                 {renderMapFloatingPanel()}
               </div>
               
               <div className="map-split-right">
                 {renderMapStopsList(true)}
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
-                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
-                <span>Entregado</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
-                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
-                <span>Fallido</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
-                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#38bdf8' }}></span>
-                <span>En Camino</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
-                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#fbbf24' }}></span>
-                <span>Pendiente</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', marginLeft: '10px' }}>
-                <span style={{ display: 'inline-block', width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #a78bfa', background: 'rgba(139,92,246,0.2)', textAlign: 'center', lineHeight: '12px', fontSize: '10px' }}>🚚</span>
-                <span>Repartidor en Vivo (Últimas 6h)</span>
               </div>
             </div>
 
@@ -10365,6 +10716,7 @@ function App() {
         )}
 
         {activeTab === 'search' && renderSearchSection()}
+        {activeTab === 'changelog' && renderChangelog()}
       </div>
     );
   };
@@ -10468,6 +10820,19 @@ function App() {
   return (
     <>
       <style>{`
+        .map-tab-panel {
+          text-align: left;
+          padding: 20px;
+        }
+
+        .map-element {
+          height: 100%;
+          width: 100%;
+          border: none;
+          background: #1e1e1e;
+          z-index: 1;
+        }
+
         .map-split-container {
           display: flex;
           flex-direction: column;
@@ -10492,24 +10857,99 @@ function App() {
           padding-top: 15px;
         }
 
+        @media (max-width: 991px) {
+          /* Remove root padding on mobile when map is active for edge-to-edge display */
+          body.map-active #root {
+            padding: 0 !important;
+          }
+          /* Re-apply side padding to header, tabs, filter controls, stops list, and legends so they don't touch screen edges */
+          body.map-active .app-header {
+            padding: 10px 10px 0 10px !important;
+          }
+          body.map-active .tab-container {
+            padding: 0 10px 10px 10px !important;
+            margin-bottom: 0 !important;
+            border-bottom: 1px solid var(--panel-border);
+          }
+          .map-filters-container {
+            padding: 10px 10px 0 10px !important;
+            margin-bottom: 10px !important;
+          }
+          .map-split-right {
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+            border-top: 1px solid var(--panel-border) !important;
+            padding-top: 15px !important;
+          }
+          .map-legend-container {
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+            margin-bottom: 10px !important;
+          }
+
+          .map-tab-panel {
+            padding: 0 !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+          }
+          .map-tab-title, .map-tab-subtitle {
+            display: none !important;
+          }
+          .map-element {
+            border-radius: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          .map-split-container {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            border: none !important;
+            border-radius: 0 !important;
+          }
+          .map-split-left {
+            height: 50vh !important;
+            min-height: 380px !important;
+          }
+          /* Adjust leaflet control positions on mobile to look neat */
+          .leaflet-left .leaflet-control {
+            margin-left: 10px !important;
+          }
+          .leaflet-top .leaflet-control {
+            margin-top: 10px !important;
+          }
+        }
+
         @media (min-width: 992px) {
           .map-split-container {
             flex-direction: row;
             height: 650px;
+            margin: 15px -20px -20px -20px;
+            border-top: 1px solid var(--panel-border);
+            border-bottom-left-radius: inherit;
+            border-bottom-right-radius: inherit;
+            overflow: hidden;
+            gap: 0;
           }
           
           .map-split-left {
-            width: 55%;
+            width: 50% !important;
             height: 100% !important;
           }
           
           .map-split-right {
-            width: 45%;
+            width: 50% !important;
             height: 100% !important;
             border-top: none;
-            padding-top: 0;
+            padding: 20px !important;
             border-left: 1px solid var(--panel-border);
-            padding-left: 15px;
+            overflow-y: auto;
           }
         }
       `}</style>

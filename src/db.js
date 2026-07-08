@@ -1856,7 +1856,23 @@ export function saveAllowDriverSupportTransfer(value) {
   }
 }
 
+// Guardar estado manual de la ruta
+export function saveRouteManualStatus(furgoId, date, isManual) {
+  if (furgoId && date) {
+    const key = `manual_route_${furgoId}_${date}`;
+    const value = isManual ? 'true' : 'false';
+    localStorage.setItem(`delivery_${key}`, value);
+    if (supabase) {
+      supabase.from('delivery_settings').upsert({ key: key, value: value }).then(({ error }) => {
+        if (error) console.error("Error saving manual route status to Supabase:", error);
+      });
+    }
+  }
+}
 
-
-
-
+// Obtener si la ruta está configurada en modo manual
+export function getRouteManualStatus(furgoId, date) {
+  if (!furgoId || !date) return false;
+  const key = `delivery_manual_route_${furgoId}_${date}`;
+  return localStorage.getItem(key) === 'true';
+}
