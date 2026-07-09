@@ -1106,8 +1106,8 @@ function App() {
   const visibleUsers = users.filter(u => {
     if (!currentUser) return false;
     if (currentUser.role === 'superadmin') return true;
-    // Admins only see the repartidores they created
-    return u.role === 'repartidor' && u.createdBy === currentUser.id;
+    // Admins see any users they created (repartidor or admin)
+    return u.createdBy === currentUser.id;
   });
 
   const visibleTickets = tickets.filter(t => {
@@ -10719,7 +10719,7 @@ function App() {
                     triggerAlert('Por favor rellena todos los campos', 'error');
                     return;
                   }
-                  const roleToUse = currentUser.role === 'superadmin' ? newRole : 'repartidor';
+                  const roleToUse = (currentUser.role === 'superadmin' || currentUser.role === 'admin') ? newRole : 'repartidor';
                   const res = addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id);
                   if (res.success) {
                     if (roleToUse === 'admin') {
@@ -10748,7 +10748,7 @@ function App() {
                     <span className="input-label">Contraseña / PIN</span>
                     <input type="text" className="form-input" placeholder="Ej. 4444" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
                   </div>
-                  {currentUser.role === 'superadmin' && (
+                  {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && (
                     <div className="input-group">
                       <span className="input-label">Rol del Usuario</span>
                       <select 
@@ -10763,7 +10763,7 @@ function App() {
                       </select>
                     </div>
                   )}
-                  {currentUser.role === 'superadmin' && newRole === 'admin' && (
+                  {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && newRole === 'admin' && (
                     <div className="input-group">
                       <span className="input-label">Configuración Inicial de Tarifas</span>
                       <select 
