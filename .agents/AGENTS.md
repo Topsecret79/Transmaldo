@@ -46,7 +46,10 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 
 ## 11. Cambio de Contraseña Obligatorio para Nuevos Usuarios
 * **Creación de Usuario**: Cuando el Super Administrador crea un nuevo usuario (sea administrador o repartidor), se establece la propiedad `mustChangePassword` como `true` por defecto.
-* **Flujo de Primer Inicio de Sesión**: Al iniciar sesión por primera vez con sus credenciales temporales, el sistema debe interceptar el acceso y redirigir obligatoriamente al usuario a una pantalla de "Cambio de Contraseña".
+* **Flujo del Primer Inicio de Sesión**: Al iniciar sesión por primera vez con sus credenciales temporales, el sistema debe interceptar el acceso y redirigir obligatoriamente al usuario a una pantalla de "Cambio de Contraseña".
 * **Establecimiento de Contraseña Privada**: El usuario debe introducir y confirmar su nueva contraseña privada. Una vez guardada con éxito, se actualiza en la base de datos, se desactiva el flag (`mustChangePassword: false`) y se inicia su sesión automáticamente. Esto asegura que solo el propio usuario conozca su contraseña de acceso.
 
-
+## 12. Filtro de Furgoneta/Repartidor en Corte de Facturación (Periodo)
+* **Filtrado General**: El dashboard del administrador y la herramienta de corte de facturación por rango de fechas (Corte de Periodo) deben permitir filtrar la información por una furgoneta/repartidor específica además de por fechas.
+* **Cálculo de Totales**: Al seleccionar una furgoneta del filtro de facturación, todos los resúmenes acumulados (Total del Periodo, Entregas con éxito, Puestas en Marcha, kilometraje y distancia acumulada) y los desgloses en las tablas de facturación y gráficos deben corresponder exclusivamente a la furgoneta seleccionada.
+* **Exportación de Datos**: La descarga del informe detallado a Excel (.xlsx) debe respetar obligatoriamente este filtro, exportando únicamente los repartos y el kilometraje acumulado de la furgoneta seleccionada cuando no esté en opción "Todas las furgonetas".

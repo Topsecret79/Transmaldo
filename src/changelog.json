@@ -83,7 +83,8 @@
       "Diseño e integración de la parada final '🏁 Retorno al Punto de Llegada' en los listados de paradas y mapa.",
       "Rediseño del selector de TV: eliminación de la tarjeta de icono y adición de chips de pulgadas rápidas (32\" a 85\") con campo numérico de búsqueda directa.",
       "Corrección del bug de reconstrucción de tareas en el formulario de edición: ahora se leen correctamente los campos 'inches' y 'brand' del ticket original para evitar que se reseteen a valores por defecto (ej. pasar de 65\" a 55\") al guardar o transferir rutas de apoyo.",
-      "Implementación del flujo de cambio de contraseña obligatorio: los nuevos usuarios creados por administradores son redirigidos forzosamente a establecer su contraseña privada en su primer inicio de sesión."
+      "Implementación del flujo de cambio de contraseña obligatorio: los nuevos usuarios creados por administradores son redirigidos forzosamente a establecer su contraseña privada en su primer inicio de sesión.",
+      "Implementación del filtro de furgoneta/chofer en el Corte de Facturación (Periodo): permite aislar las ganancias, entregas, kilometraje y exportación de Excel de un repartidor específico en lugar de hacerlo de manera general."
     ]
   }
 ]

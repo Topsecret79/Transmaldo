@@ -654,6 +654,7 @@ function App() {
 
   const [adminStartDate, setAdminStartDate] = useState(getFirstDayOfMonth());
   const [adminEndDate, setAdminEndDate] = useState(getTodayDate());
+  const [billingFilterFurgo, setBillingFilterFurgo] = useState('all');
 
   // Estado que controla si estamos editando
   const [editingTicketId, setEditingTicketId] = useState(null);
@@ -4431,6 +4432,7 @@ function App() {
     const filteredTickets = visibleTickets.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
+      if (billingFilterFurgo !== 'all' && t.furgoId !== billingFilterFurgo) return false;
       return true;
     });
 
@@ -4444,7 +4446,9 @@ function App() {
 
     // Resumen General (Solo suma ganancias de repartos con Éxito y kilometraje)
     const successTickets = filteredTickets.filter(t => t.status === 'success' || !t.status);
-    const furgos = activeRepartidores.map(u => u.id);
+    const furgos = billingFilterFurgo !== 'all'
+      ? activeRepartidores.filter(u => u.id === billingFilterFurgo).map(u => u.id)
+      : activeRepartidores.map(u => u.id);
 
     let totalKms = 0;
     let totalMileageEarnings = 0;
@@ -9125,11 +9129,14 @@ function App() {
     const filteredAdminTickets = visibleTickets.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
+      if (billingFilterFurgo !== 'all' && t.furgoId !== billingFilterFurgo) return false;
       return true;
     });
 
     const successTickets = filteredAdminTickets.filter(t => t.status === 'success' || !t.status);
-    const furgos = activeRepartidores.map(u => u.id);
+    const furgos = billingFilterFurgo !== 'all' 
+      ? activeRepartidores.filter(u => u.id === billingFilterFurgo).map(u => u.id)
+      : activeRepartidores.map(u => u.id);
 
     const furgoData = furgos.reduce((acc, fid) => {
       const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid);
@@ -9247,7 +9254,21 @@ function App() {
                     onChange={(e) => setAdminEndDate(e.target.value)} 
                   />
                 </div>
-                {(adminStartDate || adminEndDate) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Furgoneta:</span>
+                  <select 
+                    className="form-input" 
+                    style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto', minWidth: '150px', height: '36px' }}
+                    value={billingFilterFurgo} 
+                    onChange={(e) => setBillingFilterFurgo(e.target.value)}
+                  >
+                    <option value="all">Todas las furgonetas</option>
+                    {activeRepartidores.map(u => (
+                      <option key={u.id} value={u.id}>{u.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {(adminStartDate || adminEndDate || billingFilterFurgo !== 'all') && (
                   <button 
                     type="button" 
                     className="btn btn-secondary btn-small" 
@@ -9255,6 +9276,7 @@ function App() {
                     onClick={() => {
                       setAdminStartDate('');
                       setAdminEndDate('');
+                      setBillingFilterFurgo('all');
                     }}
                   >
                     Mostrar Todo
@@ -9352,10 +9374,16 @@ function App() {
                 <p>
                   Descarga el informe completo a un Excel detallado con los repartos del periodo seleccionado 
                   {adminStartDate || adminEndDate ? (
-                    <strong> (del {adminStartDate || 'inicio'} al {adminEndDate || 'hoy'})</strong>
+                    <strong> (del {adminStartDate || 'inicio'} al {adminEndDate || 'hoy'}</strong>
                   ) : (
-                    ' (todo el historial)'
-                  )}.
+                    <strong> (todo el historial</strong>
+                  )}
+                  {billingFilterFurgo !== 'all' ? (
+                    <span> - Furgoneta: <strong>{users.find(u => u.id === billingFilterFurgo)?.label || billingFilterFurgo}</strong>)</span>
+                  ) : (
+                    <span>)</span>
+                  )}
+                  .
                 </p>
                 <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                   <button onClick={handleExportExcel} className="btn btn-success" style={{ width: 'auto', flex: 1, minWidth: '200px' }}>
