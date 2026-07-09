@@ -635,7 +635,31 @@ export function saveUsers(users) {
           created_by: u.createdBy || 'admin',
           must_change_password: u.mustChangePassword || false
         }));
-        await supabase.from('delivery_users').upsert(formatted);
+        
+        const { error } = await supabase.from('delivery_users').upsert(formatted);
+        
+        if (error) {
+          console.error("Supabase upsert failed:", error);
+          // Retentar sin la columna 'must_change_password' si no existe en la BD remota
+          if (error.code === '42703' || (error.message && error.message.includes('must_change_password'))) {
+            console.warn("Retrying upsert without 'must_change_password' column...");
+            const fallbackFormatted = users.map(u => ({
+              id: u.id,
+              username: u.username,
+              password: u.password,
+              label: u.label,
+              role: u.role,
+              can_search: u.canSearch || false,
+              created_by: u.createdBy || 'admin'
+            }));
+            const { error: fallbackError } = await supabase.from('delivery_users').upsert(fallbackFormatted);
+            if (fallbackError) {
+              console.error("Fallback upsert also failed:", fallbackError);
+            } else {
+              console.log("Fallback upsert succeeded!");
+            }
+          }
+        }
       } catch (e) {
         console.error("Error saving users to Supabase:", e);
       }
