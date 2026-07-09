@@ -39,3 +39,8 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **Cálculo de Llegada**: La hora estimada de llegada de cada parada se calcula secuencialmente sumando el tiempo de tránsito desde la parada anterior (estimado a 35 km/h) y el tiempo de servicio/duración configurado para cada cliente.
 * **Inclusión del Retorno**: La ruta de reparto no finaliza al atender al último cliente; se debe sumar el tramo final desde la última parada hasta el **Punto de Llegada (Retorno/Fin)**.
 * **Métricas Totales**: La hora de fin de jornada y la distancia total del día mostradas al conductor y administrador deben incluir obligatoriamente este trayecto de retorno para reflejar fielmente la jornada real y el combustible/distancia consumidos.
+
+## 10. Fecha de Trabajo por Defecto al Cargar o Actualizar
+* **Comportamiento General**: Al abrir, actualizar o recargar la aplicación, todos los filtros y vistas de fechas (incluyendo el portal del repartidor y el del administrador) se deben inicializar por defecto con la fecha del día en curso (hoy).
+* **Búsqueda Manual**: Se prohíbe dejar las vistas de fecha vacías o cargar por defecto todo el histórico acumulado. Si el usuario o administrador desea consultar otra jornada de trabajo anterior o futura, deberá hacerlo seleccionando manualmente la fecha mediante los filtros de búsqueda correspondientes.
+

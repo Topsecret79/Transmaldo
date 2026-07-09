@@ -628,7 +628,7 @@ function App() {
     return localStorage.getItem('delivery_active_tab') || '';
   }); 
   const [ticketFilterFurgo, setTicketFilterFurgo] = useState('all');
-  const [ticketFilterDate, setTicketFilterDate] = useState('');
+  const [ticketFilterDate, setTicketFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
   const [ticketFilterPostcode, setTicketFilterPostcode] = useState('');
@@ -805,7 +805,7 @@ function App() {
 
   // Cierre de turno
   const [showShiftModal, setShowShiftModal] = useState(false);
-  const [shiftSummaryDate, setShiftSummaryDate] = useState('');
+  const [shiftSummaryDate, setShiftSummaryDate] = useState(new Date().toISOString().split('T')[0]);
   const [shiftSummaryFurgoId, setShiftSummaryFurgoId] = useState('');
 
   // Modal de observaciones para entrega/fallo
