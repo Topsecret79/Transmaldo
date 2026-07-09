@@ -3544,8 +3544,12 @@ function App() {
       if (mTask.tariffId.includes('74')) range = '74';
       if (mTask.tariffId.includes('115')) range = '115';
 
-      const inchMatch = mTask.name.match(/TV (\d+)"/);
-      const inches = inchMatch ? parseInt(inchMatch[1]) : (range === '49' ? 43 : range === '74' ? 55 : 75);
+      const inches = mTask.inches 
+        ? parseInt(mTask.inches) 
+        : (mTask.name.match(/(\d+)"/) 
+            ? parseInt(mTask.name.match(/(\d+)"/)[1]) 
+            : (range === '49' ? 43 : range === '74' ? 55 : 75));
+      const brand = mTask.brand || 'Genérica';
 
       let pmType = 'none';
       if (pmIndex < pmTasks.length) {
@@ -3562,12 +3566,13 @@ function App() {
       let recogidaViejaType = 'none';
       if (viejaIndex < viejaTasks.length) {
         const viejaMatch = viejaTasks[viejaIndex++];
-        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viajaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
       }
 
       tempTvs.push({
         id: 'tv_' + idx + Date.now().toString(),
         inches,
+        brand,
         action: isComb ? 'combinado' : (mTask.name.includes('Recogida') && !mTask.name.includes('Entrega') ? 'recogida' : 'entrega'),
         pmType,
         cuelgue,
@@ -3580,7 +3585,12 @@ function App() {
       let range = '49';
       if (pmMatch.tariffId.includes('74')) range = '74';
       if (pmMatch.tariffId.includes('115')) range = '115';
-      const inches = range === '49' ? 43 : range === '74' ? 55 : 75;
+      const inches = pmMatch.inches 
+        ? parseInt(pmMatch.inches) 
+        : (pmMatch.name.match(/(\d+)"/) 
+            ? parseInt(pmMatch.name.match(/(\d+)"/)[1]) 
+            : (range === '49' ? 43 : range === '74' ? 55 : 75));
+      const brand = pmMatch.brand || 'Genérica';
 
       const pmType = pmMatch.tariffId.includes('BAS') ? 'basic' : 'complex';
 
@@ -3593,12 +3603,13 @@ function App() {
       let recogidaViejaType = 'none';
       if (viejaIndex < viejaTasks.length) {
         const viejaMatch = viejaTasks[viejaIndex++];
-        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viajaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
       }
 
       tempTvs.push({
         id: 'tv_pm_' + pmIndex + Date.now().toString(),
         inches,
+        brand,
         action: 'solo_pm',
         pmType,
         cuelgue,
@@ -3611,17 +3622,23 @@ function App() {
       let range = '49';
       if (cuelgueMatch.tariffId.includes('74')) range = '74';
       if (cuelgueMatch.tariffId.includes('115')) range = '115';
-      const inches = range === '49' ? 43 : range === '74' ? 55 : 75;
+      const inches = cuelgueMatch.inches 
+        ? parseInt(cuelgueMatch.inches) 
+        : (cuelgueMatch.name.match(/(\d+)"/) 
+            ? parseInt(cuelgueMatch.name.match(/(\d+)"/)[1]) 
+            : (range === '49' ? 43 : range === '74' ? 55 : 75));
+      const brand = cuelgueMatch.brand || 'Genérica';
 
       let recogidaViejaType = 'none';
       if (viejaIndex < viejaTasks.length) {
         const viejaMatch = viejaTasks[viejaIndex++];
-        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viajaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
       }
 
       tempTvs.push({
         id: 'tv_cuelgue_' + cuelgueIndex + Date.now().toString(),
         inches,
+        brand,
         action: 'solo_cuelgue',
         pmType: 'none',
         cuelgue: true,

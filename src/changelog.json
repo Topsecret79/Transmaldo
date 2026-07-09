@@ -81,7 +81,8 @@
       "Bloqueo de la auto-optimización si el chofer realiza reordenamientos manuales de paradas.",
       "Cálculo del trayecto de retorno al Punto de Llegada e inclusión en la estimación de fin de jornada y kilometraje diario.",
       "Diseño e integración de la parada final '🏁 Retorno al Punto de Llegada' en los listados de paradas y mapa.",
-      "Rediseño del selector de TV: eliminación de la tarjeta de icono y adición de chips de pulgadas rápidas (32\" a 85\") con campo numérico de búsqueda directa."
+      "Rediseño del selector de TV: eliminación de la tarjeta de icono y adición de chips de pulgadas rápidas (32\" a 85\") con campo numérico de búsqueda directa.",
+      "Corrección del bug de reconstrucción de tareas en el formulario de edición: ahora se leen correctamente los campos 'inches' y 'brand' del ticket original para evitar que se reseteen a valores por defecto (ej. pasar de 65\" a 55\") al guardar o transferir rutas de apoyo."
     ]
   }
 ]
