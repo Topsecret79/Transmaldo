@@ -44,3 +44,9 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **Comportamiento General**: Al abrir, actualizar o recargar la aplicación, todos los filtros y vistas de fechas (incluyendo el portal del repartidor y el del administrador) se deben inicializar por defecto con la fecha del día en curso (hoy).
 * **Búsqueda Manual**: Se prohíbe dejar las vistas de fecha vacías o cargar por defecto todo el histórico acumulado. Si el usuario o administrador desea consultar otra jornada de trabajo anterior o futura, deberá hacerlo seleccionando manualmente la fecha mediante los filtros de búsqueda correspondientes.
 
+## 11. Cambio de Contraseña Obligatorio para Nuevos Usuarios
+* **Creación de Usuario**: Cuando el Super Administrador crea un nuevo usuario (sea administrador o repartidor), se establece la propiedad `mustChangePassword` como `true` por defecto.
+* **Flujo de Primer Inicio de Sesión**: Al iniciar sesión por primera vez con sus credenciales temporales, el sistema debe interceptar el acceso y redirigir obligatoriamente al usuario a una pantalla de "Cambio de Contraseña".
+* **Establecimiento de Contraseña Privada**: El usuario debe introducir y confirmar su nueva contraseña privada. Una vez guardada con éxito, se actualiza en la base de datos, se desactiva el flag (`mustChangePassword: false`) y se inicia su sesión automáticamente. Esto asegura que solo el propio usuario conozca su contraseña de acceso.
+
+

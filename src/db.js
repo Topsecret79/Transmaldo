@@ -203,7 +203,8 @@ export async function syncFromCloud() {
         label: u.label,
         role: u.role,
         canSearch: u.can_search || false,
-        createdBy: u.created_by || 'admin'
+        createdBy: u.created_by || 'admin',
+        mustChangePassword: !!u.must_change_password
       }));
       localStorage.setItem('delivery_users', JSON.stringify(localUsers));
     }
@@ -631,7 +632,8 @@ export function saveUsers(users) {
           label: u.label,
           role: u.role,
           can_search: u.canSearch || false,
-          created_by: u.createdBy || 'admin'
+          created_by: u.createdBy || 'admin',
+          must_change_password: u.mustChangePassword || false
         }));
         await supabase.from('delivery_users').upsert(formatted);
       } catch (e) {
@@ -1264,7 +1266,8 @@ export function addUser(username, label, password, role = 'repartidor', createdB
     label: label.trim(),
     password: password.trim(),
     role,
-    createdBy
+    createdBy,
+    mustChangePassword: true
   };
   users.push(newUser);
   saveUsers(users);

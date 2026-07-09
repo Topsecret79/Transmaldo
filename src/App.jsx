@@ -175,6 +175,7 @@ import {
   ChevronDown,
   LogOut, 
   Lock, 
+  Key,
   User, 
   FileSpreadsheet, 
   Edit, 
@@ -504,6 +505,9 @@ function App() {
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [forceChangePasswordUser, setForceChangePasswordUser] = useState(null);
+  const [newPasswordVal, setNewPasswordVal] = useState('');
+  const [confirmPasswordVal, setConfirmPasswordVal] = useState('');
 
   const [tickets, setTickets] = useState([]);
   const [tariffs, setTariffs] = useState([]);
@@ -1990,7 +1994,8 @@ function App() {
               label: u.label,
               role: u.role,
               canSearch: u.can_search || false,
-              createdBy: u.created_by || 'admin'
+              createdBy: u.created_by || 'admin',
+              mustChangePassword: !!u.must_change_password
             };
             // Guardarlo localmente en la lista de usuarios para futuras cargas offline
             const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
@@ -2003,6 +2008,12 @@ function App() {
     }
 
     if (foundUser) {
+      if (foundUser.mustChangePassword) {
+        setForceChangePasswordUser(foundUser);
+        setUsernameInput('');
+        setPasswordInput('');
+        return;
+      }
       setCurrentUser(foundUser);
       localStorage.setItem('delivery_session', JSON.stringify(foundUser));
       setActiveTab((foundUser.role === 'admin' || foundUser.role === 'superadmin') ? 'dashboard' : 'new_ticket');
@@ -2013,6 +2024,44 @@ function App() {
       triggerAlert(`¡Bienvenido, ${foundUser.label}!`);
     } else {
       setLoginError('Usuario o contraseña incorrectos');
+    }
+  };
+
+  const handleForceChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!newPasswordVal.trim()) {
+      triggerAlert('La contraseña no puede estar vacía', 'error');
+      return;
+    }
+    if (newPasswordVal.trim() !== confirmPasswordVal.trim()) {
+      triggerAlert('Las contraseñas no coinciden', 'error');
+      return;
+    }
+    
+    const dbUsers = getUsers() || [];
+    const updatedUsers = dbUsers.map(u => {
+      if (u.id === forceChangePasswordUser.id) {
+        return {
+          ...u,
+          password: newPasswordVal.trim(),
+          mustChangePassword: false
+        };
+      }
+      return u;
+    });
+
+    const updatedUserObj = updatedUsers.find(u => u.id === forceChangePasswordUser.id);
+    if (updatedUserObj) {
+      saveUsers(updatedUsers);
+      setCurrentUser(updatedUserObj);
+      localStorage.setItem('delivery_session', JSON.stringify(updatedUserObj));
+      setActiveTab((updatedUserObj.role === 'admin' || updatedUserObj.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+      triggerAlert('Contraseña cambiada con éxito. Sesión iniciada.');
+      setForceChangePasswordUser(null);
+      setNewPasswordVal('');
+      setConfirmPasswordVal('');
+      await reinitSupabase();
+      loadData();
     }
   };
 
@@ -10798,76 +10847,133 @@ function App() {
           minHeight: '80vh',
           padding: '20px'
         }}>
-          <form onSubmit={handleLogin} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-              <TrendingUp size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
-              <h1 className="login-title" style={{ fontWeight: '800', letterSpacing: '-0.03em', margin: 0 }}>{appName}</h1>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>Inicia sesión para gestionar tus repartos y ganancias</p>
-            </div>
-
-            {loginError && (
-              <div style={{ color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Info size={16} /> {loginError}
+          {forceChangePasswordUser ? (
+            <form onSubmit={handleForceChangePasswordSubmit} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <Key size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
+                <h1 className="login-title" style={{ fontWeight: '800', letterSpacing: '-0.03em', margin: 0 }}>Cambiar Contraseña</h1>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>
+                  Es tu primer inicio de sesión. Por motivos de seguridad, debes establecer una contraseña privada.
+                </p>
               </div>
-            )}
 
-            <div className="input-group">
-              <span className="input-label">Usuario</span>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="" 
-                value={usernameInput} 
-                onChange={(e) => setUsernameInput(e.target.value)} 
-                required 
-                autoComplete="off"
-              />
-            </div>
-
-            <div className="input-group" style={{ position: 'relative' }}>
-              <span className="input-label">Contraseña</span>
-              <div style={{ position: 'relative', width: '100%' }}>
+              <div className="input-group">
+                <span className="input-label">Nueva Contraseña</span>
                 <input 
-                  type={showPassword ? "text" : "password"} 
+                  type="password" 
+                  className="form-input" 
+                  placeholder="Mínimo 4 caracteres" 
+                  value={newPasswordVal} 
+                  onChange={(e) => setNewPasswordVal(e.target.value)} 
+                  required 
+                  minLength={4}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">Confirmar Contraseña</span>
+                <input 
+                  type="password" 
+                  className="form-input" 
+                  placeholder="Repite la contraseña" 
+                  value={confirmPasswordVal} 
+                  onChange={(e) => setConfirmPasswordVal(e.target.value)} 
+                  required 
+                  minLength={4}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }}>
+                💾 Guardar Contraseña y Acceder
+              </button>
+
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setForceChangePasswordUser(null);
+                  setNewPasswordVal('');
+                  setConfirmPasswordVal('');
+                }}
+                style={{ marginTop: '8px', background: 'transparent', border: 'none', color: 'var(--text-muted)' }}
+              >
+                Cancelar
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleLogin} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <TrendingUp size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
+                <h1 className="login-title" style={{ fontWeight: '800', letterSpacing: '-0.03em', margin: 0 }}>{appName}</h1>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>Inicia sesión para gestionar tus repartos y ganancias</p>
+              </div>
+
+              {loginError && (
+                <div style={{ color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Info size={16} /> {loginError}
+                </div>
+              )}
+
+              <div className="input-group">
+                <span className="input-label">Usuario</span>
+                <input 
+                  type="text" 
                   className="form-input" 
                   placeholder="" 
-                  value={passwordInput} 
-                  onChange={(e) => setPasswordInput(e.target.value)} 
+                  value={usernameInput} 
+                  onChange={(e) => setUsernameInput(e.target.value)} 
                   required 
-                  autoComplete="new-password"
-                  style={{ paddingRight: '45px' }}
+                  autoComplete="off"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--text-muted)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '4px'
-                  }}
-                >
-                  {showPassword ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="22"></line></svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                  )}
-                </button>
               </div>
-            </div>
 
-            <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }}>
-              <Lock size={16} /> Iniciar Sesión
-            </button>
-          </form>
+              <div className="input-group" style={{ position: 'relative' }}>
+                <span className="input-label">Contraseña</span>
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    className="form-input" 
+                    placeholder="" 
+                    value={passwordInput} 
+                    onChange={(e) => setPasswordInput(e.target.value)} 
+                    required 
+                    autoComplete="new-password"
+                    style={{ paddingRight: '45px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '12px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'var(--text-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '4px'
+                    }}
+                  >
+                    {showPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="22"></line></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }}>
+                <Lock size={16} /> Iniciar Sesión
+              </button>
+            </form>
+          )}
         </div>
       </>
     );
