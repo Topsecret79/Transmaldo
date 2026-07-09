@@ -671,7 +671,7 @@ function App() {
   const mapSelectTimerRef = useRef(null);
   const formMapRef = useRef(null);
   const formMarkerRef = useRef(null);
-  const [ticketDate, setTicketDate] = useState(() => getDraftVal('ticketDate', new Date().toISOString().split('T')[0]));
+  const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState(() => getDraftVal('notes', ''));
   const [timeSlot, setTimeSlot] = useState(() => getDraftVal('timeSlot', 'any'));
   const [estimatedDuration, setEstimatedDuration] = useState(() => getDraftVal('estimatedDuration', 10));
@@ -697,7 +697,20 @@ function App() {
     }
   });
   const [currentRouteId, setCurrentRouteId] = useState(() => {
-    return localStorage.getItem('delivery_current_route_id') || null;
+    const savedId = localStorage.getItem('delivery_current_route_id');
+    if (!savedId) return null;
+    try {
+      const savedRoutesStr = localStorage.getItem('delivery_active_routes');
+      const parsedRoutes = savedRoutesStr ? JSON.parse(savedRoutesStr) : [];
+      const foundRoute = parsedRoutes.find(r => r.id === savedId);
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (foundRoute && foundRoute.date === todayStr) {
+        return savedId;
+      }
+    } catch (e) {
+      console.error("Error verifying currentRouteId date:", e);
+    }
+    return null;
   });
   const activeRouteContext = activeRoutes.find(r => r.id === currentRouteId);
 
