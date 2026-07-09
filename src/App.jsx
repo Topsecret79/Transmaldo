@@ -514,6 +514,8 @@ function App() {
   const [modulePrice, setModulePrice] = useState(3.81);
   const [kmPrice, setKmPrice] = useState(0.43);
   const [shiftKmsInput, setShiftKmsInput] = useState('');
+  const [shiftFilterDate, setShiftFilterDate] = useState('');
+  const [shiftFilterFurgo, setShiftFilterFurgo] = useState('all');
   const [users, setUsers] = useState([]);
   const loggedInUserObj = users.find(u => u.id === currentUser?.id) || currentUser;
   const hasSearchPermission = loggedInUserObj && (
@@ -1121,13 +1123,27 @@ function App() {
 
   const visibleShifts = shifts.filter(s => {
     if (!currentUser) return false;
-    if (currentUser.role === 'superadmin') return true;
-    if (currentUser.role === 'repartidor') {
-      return s.furgoId === currentUser.id;
+    
+    // Role filter
+    let matchRole = false;
+    if (currentUser.role === 'superadmin') {
+      matchRole = true;
+    } else if (currentUser.role === 'repartidor') {
+      matchRole = s.furgoId === currentUser.id;
+    } else {
+      // Admin
+      const allowedFurgoIds = activeRepartidores.map(r => r.id);
+      matchRole = allowedFurgoIds.includes(s.furgoId);
     }
-    // Admin role: see shifts of their own repartidores
-    const allowedFurgoIds = activeRepartidores.map(r => r.id);
-    return allowedFurgoIds.includes(s.furgoId);
+    if (!matchRole) return false;
+
+    // Search filters (for admin / superadmin)
+    if (currentUser.role !== 'repartidor') {
+      if (shiftFilterDate && s.date !== shiftFilterDate) return false;
+      if (shiftFilterFurgo !== 'all' && s.furgoId !== shiftFilterFurgo) return false;
+    }
+
+    return true;
   });
 
   // Nombre dinámico de la aplicación
@@ -9875,10 +9891,52 @@ function App() {
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
                 Aquí se muestran los cierres de turno realizados por los choferes. Si un chofer se equivocó o necesita registrar algo más, puedes "Reabrir Turno".
               </p>
+
+              {/* Filtros de Búsqueda de Turnos */}
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', flexWrap: 'wrap', alignItems: 'flex-end', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--panel-border)', width: '100%' }}>
+                <div className="input-group" style={{ marginBottom: 0, flex: 1, minWidth: '150px' }}>
+                  <span className="input-label" style={{ fontSize: '0.8rem' }}>📅 Filtrar por Fecha:</span>
+                  <input 
+                    type="date" 
+                    className="form-input" 
+                    value={shiftFilterDate} 
+                    onChange={(e) => setShiftFilterDate(e.target.value)} 
+                    style={{ height: '38px' }}
+                  />
+                </div>
+                <div className="input-group" style={{ marginBottom: 0, flex: 1, minWidth: '150px' }}>
+                  <span className="input-label" style={{ fontSize: '0.8rem' }}>🚚 Filtrar por Furgoneta/Chofer:</span>
+                  <select 
+                    className="form-input" 
+                    value={shiftFilterFurgo} 
+                    onChange={(e) => setShiftFilterFurgo(e.target.value)} 
+                    style={{ height: '38px' }}
+                  >
+                    <option value="all">Todas las furgonetas</option>
+                    {users.filter(u => u && u.role === 'repartidor').map(u => (
+                      <option key={u.id} value={u.id}>{u.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {(shiftFilterDate || shiftFilterFurgo !== 'all') && (
+                  <button 
+                    type="button" 
+                    onClick={() => { setShiftFilterDate(''); setShiftFilterFurgo('all'); }} 
+                    className="btn btn-secondary" 
+                    style={{ height: '38px', padding: '0 15px', width: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}
+                  >
+                    ✕ Limpiar
+                  </button>
+                )}
+              </div>
               
-              {visibleShifts.length === 0 ? (
+              {shifts.length === 0 ? (
                 <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
                   No se ha registrado ningún cierre de turno todavía.
+                </div>
+              ) : visibleShifts.length === 0 ? (
+                <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
+                  No se encontraron cierres de turno que coincidan con los filtros aplicados.
                 </div>
               ) : (
                 <div className="table-container">
