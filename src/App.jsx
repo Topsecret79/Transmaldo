@@ -636,6 +636,7 @@ function App() {
   const [ticketFilterFurgo, setTicketFilterFurgo] = useState('all');
   const [ticketFilterDate, setTicketFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reportFilterFurgo, setReportFilterFurgo] = useState('all');
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
   const [ticketFilterPostcode, setTicketFilterPostcode] = useState('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -8751,6 +8752,7 @@ function App() {
 
     const reportTickets = visibleTickets.filter(t => {
       if (t.date !== reportDate) return false;
+      if (reportFilterFurgo !== 'all' && t.furgoId !== reportFilterFurgo) return false;
       if (t.status === 'success') return true;
       if (t.status === 'failed') {
         const parsed = parseTicketNotes(t.notes);
@@ -8853,6 +8855,19 @@ function App() {
               style={{ padding: '6px 12px', fontSize: '0.95rem', width: 'auto', fontWeight: '600' }}
             />
             <button onClick={nextDay} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px 10px' }}>▶</button>
+            
+            <select
+              className="form-input"
+              value={reportFilterFurgo}
+              onChange={e => setReportFilterFurgo(e.target.value)}
+              style={{ padding: '6px 12px', fontSize: '0.95rem', width: 'auto', fontWeight: '600', minWidth: '150px', height: '35px' }}
+            >
+              <option value="all">Todas las furgonetas</option>
+              {activeRepartidores.map(u => (
+                <option key={u.id} value={u.id}>{u.label}</option>
+              ))}
+            </select>
+
             {reportTickets.length > 0 && (
               <button onClick={exportToExcel} className="btn btn-primary btn-small" style={{ width: 'auto', padding: '6px 14px', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
                 📥 Exportar Excel
@@ -8864,8 +8879,12 @@ function App() {
         {reportTickets.length === 0 ? (
           <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📋</div>
-            <div style={{ fontSize: '1.05rem', fontWeight: '600' }}>No hay entregas completadas para el {reportDate}</div>
-            <div style={{ fontSize: '0.85rem', marginTop: '6px' }}>Selecciona otra fecha o verifica que los repartos estén registrados</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: '600' }}>
+              {reportFilterFurgo !== 'all' 
+                ? `No hay entregas completadas para el ${reportDate} con la furgoneta "${users.find(u => u.id === reportFilterFurgo)?.label || reportFilterFurgo}"`
+                : `No hay entregas completadas para el ${reportDate}`}
+            </div>
+            <div style={{ fontSize: '0.85rem', marginTop: '6px' }}>Selecciona otra fecha, cambia de furgoneta o verifica que los repartos estén registrados</div>
           </div>
         ) : (
           <>
