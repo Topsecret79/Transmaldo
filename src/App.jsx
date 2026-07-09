@@ -5463,36 +5463,62 @@ function App() {
                     </p>
 
                     {/* Selector de Pulgadas de la TV */}
-                    <div style={{ display: 'flex', justifyContent: 'center' }}>
-                      <div 
-                        className="tv-size-card active"
-                        onClick={() => {
-                          if (isClosed) return;
-                          const val = window.prompt('Introduce las pulgadas de la TV:', tempTvInches || '55');
-                          if (val !== null) setTempTvInches(val);
-                        }}
-                        style={{ 
-                          width: '100%', 
-                          maxWidth: '300px', 
-                          padding: '20px', 
-                          cursor: 'pointer',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          background: 'rgba(99, 102, 241, 0.08)',
-                          border: '2px solid var(--primary)',
-                          borderRadius: '12px',
-                          boxShadow: '0 0 15px rgba(99, 102, 241, 0.15)',
-                          margin: '0 auto'
-                        }}
-                      >
-                        <span style={{ fontSize: '2.5rem', marginBottom: '8px' }}>📺</span>
-                        <span style={{ fontWeight: '800', fontSize: '1.4rem', color: '#fff' }}>
-                          {tempTvInches ? `${tempTvInches}"` : 'Toca para definir'}
-                        </span>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>
-                          Pulgadas de la TV (Toca para cambiar)
-                        </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <span className="input-label" style={{ margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>Medida / Pulgadas de la TV:</span>
+                        {tempTvInches && (
+                          <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                            Seleccionado: {tempTvInches}"
+                          </span>
+                        )}
+                      </span>
+
+                      {/* Botones de selección rápida (Chips) */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '5px' }}>
+                        {['32', '43', '50', '55', '65', '75', '85'].map((size) => {
+                          const isSelected = String(tempTvInches) === size;
+                          return (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => !isClosed && setTempTvInches(size)}
+                              style={{
+                                padding: '8px 16px',
+                                borderRadius: '20px',
+                                border: isSelected ? '1px solid var(--primary)' : '1px solid var(--panel-border)',
+                                background: isSelected ? 'var(--primary)' : 'rgba(255, 255, 255, 0.02)',
+                                color: isSelected ? '#fff' : 'var(--text-main)',
+                                fontSize: '0.85rem',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                boxShadow: isSelected ? '0 0 10px rgba(99, 102, 241, 0.25)' : 'none'
+                              }}
+                            >
+                              {size}"
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Buscador / Entrada manual de pulgadas */}
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <span style={{ position: 'absolute', left: '12px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>🔍</span>
+                          <input
+                            type="number"
+                            className="form-input"
+                            placeholder="Escribe otra medida de pulgadas... (ej: 24, 98)"
+                            value={tempTvInches || ''}
+                            onChange={(e) => {
+                              if (isClosed) return;
+                              setTempTvInches(e.target.value);
+                            }}
+                            style={{ paddingLeft: '32px', width: '100%' }}
+                            min="1"
+                            max="200"
+                          />
+                        </div>
                       </div>
                     </div>
 

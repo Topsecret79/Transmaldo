@@ -80,7 +80,8 @@
       "Implementación del algoritmo de optimización 2-opt secuencial por franjas horarias respetando el Punto de Llegada.",
       "Bloqueo de la auto-optimización si el chofer realiza reordenamientos manuales de paradas.",
       "Cálculo del trayecto de retorno al Punto de Llegada e inclusión en la estimación de fin de jornada y kilometraje diario.",
-      "Diseño e integración de la parada final '🏁 Retorno al Punto de Llegada' en los listados de paradas y mapa."
+      "Diseño e integración de la parada final '🏁 Retorno al Punto de Llegada' en los listados de paradas y mapa.",
+      "Rediseño del selector de TV: eliminación de la tarjeta de icono y adición de chips de pulgadas rápidas (32\" a 85\") con campo numérico de búsqueda directa."
     ]
   }
 ]
