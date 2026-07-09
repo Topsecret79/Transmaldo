@@ -1024,7 +1024,7 @@ tr:hover td {
 .driver-card-title {
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--text-main);
+  color: #000 !important;
   flex: 1;
   margin-left: 8px;
 }

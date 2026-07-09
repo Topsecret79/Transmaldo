@@ -6426,7 +6426,7 @@ function App() {
                       )}
                       
                       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, marginLeft: '4px' }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {t.customerName}
                         </span>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -8082,7 +8082,7 @@ function App() {
                     }}>
                       {index + 1}
                     </span>
-                    <strong style={{ fontSize: '0.95rem', color: '#fff' }}>{t.customerName || 'Cliente sin nombre'}</strong>
+                    <strong style={{ fontSize: '0.95rem', color: '#000' }}>{t.customerName || 'Cliente sin nombre'}</strong>
                   </div>
                   <span style={{
                     fontSize: '0.72rem',
@@ -8506,7 +8506,7 @@ function App() {
                           {ticket.date}
                         </td>
                         <td>
-                          <div style={{ fontWeight: '600' }}>{ticket.customerName}</div>
+                          <div style={{ fontWeight: '600', color: '#000' }}>{ticket.customerName}</div>
                           {ticket.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>📞 {ticket.phone}</div>}
                         </td>
                         <td>
@@ -8921,7 +8921,7 @@ function App() {
                           const tasks = getBillableTasks(ticket);
                           if (tasks.length === 0) return (
                             <tr key={ticket.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                              <td style={{ padding: '10px 16px', fontWeight: '600', color: 'var(--text-main)' }}>{ticket.customerName}</td>
+                              <td style={{ padding: '10px 16px', fontWeight: '600', color: '#000' }}>{ticket.customerName}</td>
                               <td colSpan={5} style={{ padding: '10px 16px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin servicios registrados</td>
                             </tr>
                           );
@@ -8936,7 +8936,7 @@ function App() {
                             const rowBorder = (isLastTask && !isLastTicket) ? '2px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.03)';
                             return (
                               <tr key={`${ticket.id}-${sIdx}`} style={{ borderBottom: rowBorder, background: isFirstRow && tIdx % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
-                                <td style={{ padding: '9px 16px', verticalAlign: 'top', fontWeight: isFirstRow ? '600' : '400', color: isFirstRow ? 'var(--text-main)' : 'transparent', fontSize: isFirstRow ? '0.86rem' : '0.85rem', whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '9px 16px', verticalAlign: 'top', fontWeight: isFirstRow ? '600' : '400', color: isFirstRow ? '#000' : 'transparent', fontSize: isFirstRow ? '0.86rem' : '0.85rem', whiteSpace: 'nowrap' }}>
                                   {isFirstRow ? ticket.customerName : ''}
                                 </td>
                                 <td style={{ padding: '9px 16px', color: 'var(--text-main)' }}>
@@ -9625,7 +9625,7 @@ function App() {
                           </div>
                         </td>
                         <td style={{ fontWeight: '600' }}>
-                          <div>{t.customerName || ''}</div>
+                          <div style={{ color: '#000' }}>{t.customerName || ''}</div>
                           {t.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>📞 {t.phone}</div>}
                           {t.codAmount > 0 && (
                             <div style={{
@@ -11472,7 +11472,7 @@ function App() {
                       <div style={{ maxHeight: '250px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '6px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {dayTickets.map((t, idx) => (
                           <div key={t.id} style={{ fontSize: '0.85rem', borderBottom: idx < dayTickets.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', paddingBottom: idx < dayTickets.length - 1 ? '8px' : '0' }}>
-                            <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>{idx + 1}. {t.customerName}</div>
+                            <div style={{ fontWeight: '600', color: '#000' }}>{idx + 1}. {t.customerName}</div>
                             <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', marginBottom: '6px' }}>
                               <MapPin size={11} /> {t.address}
                             </div>
