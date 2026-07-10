@@ -4982,8 +4982,33 @@ function App() {
                 type="button"
                 className="btn btn-secondary btn-small"
                 onClick={() => {
-                  if (window.confirm(`¿Seguro que quieres finalizar y cerrar la ruta "${activeRouteContext.name}"? Se quitará de la lista de rutas activas y se cerrará el turno de este chofer.`)) {
-                    // Generar resumen y cerrar turno
+                  if (window.confirm(`¿Seguro que quieres quitar la ruta "${activeRouteContext.name}" de tu lista activa? Esto solo limpia tu vista de planificador, pero NO cerrará el turno del chofer (podrá empezar hoy).`)) {
+                    const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
+                    setActiveRoutes(remaining);
+                    const nextRoute = remaining[remaining.length - 1];
+                    if (nextRoute) {
+                      setCurrentRouteId(nextRoute.id);
+                      setTicketDate(nextRoute.date);
+                      setTicketRoute(nextRoute.furgoId);
+                      setRouteName(nextRoute.name);
+                    } else {
+                      setCurrentRouteId(null);
+                      setTicketDate(new Date().toISOString().split('T')[0]);
+                      setTicketRoute('');
+                      setRouteName('');
+                    }
+                    triggerAlert('Ruta archivada de la lista activa');
+                  }
+                }}
+                style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(255, 255, 255, 0.05)', borderColor: 'var(--panel-border)' }}
+              >
+                📦 Archivar de la Vista
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => {
+                  if (window.confirm(`⚠️ ¡ATENCIÓN! Al Finalizar y Cerrar Turno, se bloqueará permanentemente el registro de entregas para esta furgoneta el día ${activeRouteContext.date}.\n\n¿Estás seguro de que deseas cerrar el turno de este chofer?`)) {
                     const summary = getShiftSummary(activeRouteContext.furgoId, activeRouteContext.date);
                     closeShift(activeRouteContext.furgoId, activeRouteContext.date, summary);
 
@@ -5001,12 +5026,12 @@ function App() {
                       setTicketRoute('');
                       setRouteName('');
                     }
-                    triggerAlert('Ruta finalizada, turno cerrado y resumen diario generado con éxito');
+                    triggerAlert('Turno cerrado y resumen generado con éxito');
                   }
                 }}
-                style={{ width: 'auto', margin: 0, padding: '6px 12px' }}
+                style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444' }}
               >
-                Finalizar esta Ruta
+                🏁 Finalizar y Cerrar Turno
               </button>
             </div>
           </div>

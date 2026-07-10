@@ -1271,6 +1271,11 @@ export function reopenShift(furgoId, date) {
   const shiftId = `${furgoId}_${date}`;
   const filtered = shifts.filter(s => s.id !== shiftId);
   saveShifts(filtered);
+  if (supabase) {
+    supabase.from('delivery_shifts').delete().eq('id', shiftId).then(({ error }) => {
+      if (error) console.error("Error deleting shift from Supabase:", error);
+    });
+  }
 }
 
 // Resetear turnos mensuales
