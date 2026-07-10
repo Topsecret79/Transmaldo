@@ -879,6 +879,16 @@ function App() {
   const [routeEndCoords, setRouteEndCoords] = useState(null);
 
   useEffect(() => {
+    if (currentUser) {
+      setRouteStartAddr(getRouteStartAddr(currentUser.id));
+      setRouteEndAddr(getRouteEndAddr(currentUser.id));
+    } else {
+      setRouteStartAddr(getRouteStartAddr());
+      setRouteEndAddr(getRouteEndAddr());
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
     let active = true;
     const updateStart = async () => {
       if (routeStartAddr && routeStartAddr.trim()) {
@@ -1069,6 +1079,11 @@ function App() {
           <li 
             key={index}
             onMouseDown={(e) => {
+              e.preventDefault();
+              setAddr(sug.display_name);
+              setTarget([]);
+            }}
+            onClick={(e) => {
               e.preventDefault();
               setAddr(sug.display_name);
               setTarget([]);
@@ -10656,7 +10671,7 @@ function App() {
               </p>
               
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
-                <div className="input-group" style={{ marginBottom: 0 }}>
+                <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="input-label">Ubicación de Salida / Punto de Partida</span>
                     {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
@@ -10679,10 +10694,14 @@ function App() {
                     className="form-input" 
                     placeholder="Ej: Calle Gran Via, Sabadell, Barcelona" 
                     value={routeStartAddr}
-                    onChange={(e) => setRouteStartAddr(e.target.value)}
+                    onChange={(e) => {
+                      setRouteStartAddr(e.target.value);
+                      handleFetchRouteSuggestions(e.target.value, 'start');
+                    }}
                   />
+                  {renderRouteSuggestions('start')}
                 </div>
-                <div className="input-group" style={{ marginBottom: 0 }}>
+                <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="input-label">Ubicación de Llegada / Fin de Ruta</span>
                     {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
@@ -10705,8 +10724,12 @@ function App() {
                     className="form-input" 
                     placeholder="Ej: Calle Gran Via, Sabadell, Barcelona" 
                     value={routeEndAddr}
-                    onChange={(e) => setRouteEndAddr(e.target.value)}
+                    onChange={(e) => {
+                      setRouteEndAddr(e.target.value);
+                      handleFetchRouteSuggestions(e.target.value, 'end');
+                    }}
                   />
+                  {renderRouteSuggestions('end')}
                 </div>
               </div>
               
