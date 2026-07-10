@@ -3648,7 +3648,7 @@ function App() {
       let recogidaViejaType = 'none';
       if (viejaIndex < viejaTasks.length) {
         const viejaMatch = viejaTasks[viejaIndex++];
-        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viajaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
       }
 
       tempTvs.push({
@@ -3685,7 +3685,7 @@ function App() {
       let recogidaViejaType = 'none';
       if (viejaIndex < viejaTasks.length) {
         const viejaMatch = viejaTasks[viejaIndex++];
-        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viajaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
       }
 
       tempTvs.push({
@@ -3714,7 +3714,7 @@ function App() {
       let recogidaViejaType = 'none';
       if (viejaIndex < viejaTasks.length) {
         const viejaMatch = viejaTasks[viejaIndex++];
-        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viajaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
+        recogidaViejaType = viejaMatch.tariffId.includes('URB') && !viejaMatch.tariffId.includes('NO_URB') ? 'urbantz' : 'no_urbantz';
       }
 
       tempTvs.push({
