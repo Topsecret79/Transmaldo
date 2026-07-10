@@ -696,6 +696,8 @@ function App() {
   const [formTvs, setFormTvs] = useState(() => getDraftVal('formTvs', []));
   const [selectedMapTicket, setSelectedMapTicket] = useState(null);
   const [isMapPanelExpanded, setIsMapPanelExpanded] = useState(true);
+  const [floatingPos, setFloatingPos] = useState({ x: 0, y: 0, isDragged: false });
+  const dragStartRef = useRef(null);
   const [activeRoutes, setActiveRoutes] = useState(() => {
     try {
       const saved = localStorage.getItem('delivery_active_routes');
@@ -7725,6 +7727,50 @@ function App() {
 
   // --- PANEL DE DETALLE FLOTANTE EN EL MAPA ---
   const renderMapFloatingPanel = () => {
+    const handleDragStart = (e) => {
+      if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input') || e.target.closest('a') || e.target.closest('.map-floating-close-btn') || e.target.closest('.map-floating-toggle-btn')) {
+        return;
+      }
+      
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+      
+      dragStartRef.current = {
+        startX: clientX,
+        startY: clientY,
+        offsetX: floatingPos.x,
+        offsetY: floatingPos.y
+      };
+
+      const handleDragMove = (moveEvent) => {
+        if (!dragStartRef.current) return;
+        const curX = moveEvent.clientX || (moveEvent.touches && moveEvent.touches[0].clientX);
+        const curY = moveEvent.clientY || (moveEvent.touches && moveEvent.touches[0].clientY);
+        
+        const deltaX = curX - dragStartRef.current.startX;
+        const deltaY = curY - dragStartRef.current.startY;
+        
+        setFloatingPos({
+          x: dragStartRef.current.offsetX + deltaX,
+          y: dragStartRef.current.offsetY + deltaY,
+          isDragged: true
+        });
+      };
+
+      const handleDragEnd = () => {
+        dragStartRef.current = null;
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+        document.removeEventListener('touchmove', handleDragMove);
+        document.removeEventListener('touchend', handleDragEnd);
+      };
+
+      document.addEventListener('mousemove', handleDragMove);
+      document.addEventListener('mouseup', handleDragEnd);
+      document.addEventListener('touchmove', handleDragMove, { passive: false });
+      document.addEventListener('touchend', handleDragEnd);
+    };
+
     // 1. Obtener el ticket a mostrar (el seleccionado o el siguiente pendiente)
     let ticketToShow = selectedMapTicket;
     
@@ -7770,8 +7816,23 @@ function App() {
                              })
                              .findIndex(tk => tk && tk.id === ticketToShow.id) + 1;
 
+    const isMobile = window.innerWidth < 768;
+    const transformStyle = floatingPos.isDragged 
+      ? (isMobile ? `translateX(-50%) translate(${floatingPos.x}px, ${floatingPos.y}px)` : `translate(${floatingPos.x}px, ${floatingPos.y}px)`)
+      : undefined;
+
     return (
-      <div className="map-floating-details">
+      <div 
+        className="map-floating-details"
+        onMouseDown={handleDragStart}
+        onTouchStart={handleDragStart}
+        style={{ 
+          cursor: dragStartRef.current ? 'grabbing' : 'grab',
+          transform: transformStyle,
+          userSelect: 'none',
+          touchAction: 'none'
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
           <div style={{ flex: 1 }}>
             <div className="map-floating-title-container">

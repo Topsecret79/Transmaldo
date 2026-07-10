@@ -53,3 +53,8 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **Filtrado General**: El dashboard del administrador y la herramienta de corte de facturación por rango de fechas (Corte de Periodo) deben permitir filtrar la información por una furgoneta/repartidor específica además de por fechas.
 * **Cálculo de Totales**: Al seleccionar una furgoneta del filtro de facturación, todos los resúmenes acumulados (Total del Periodo, Entregas con éxito, Puestas en Marcha, kilometraje y distancia acumulada) y los desgloses en las tablas de facturación y gráficos deben corresponder exclusivamente a la furgoneta seleccionada.
 * **Exportación de Datos**: La descarga del informe detallado a Excel (.xlsx) debe respetar obligatoriamente este filtro, exportando únicamente los repartos y el kilometraje acumulado de la furgoneta seleccionada cuando no esté en opción "Todas las furgonetas".
+
+## 13. Cuadro de Detalle Flotante Arrastrable (Draggable) en el Mapa
+* **Interactividad y Arrastre**: El cuadro de detalles de parada rápida (`.map-floating-details`) situado sobre el mapa debe ser arrastrable (soporte para mouse/touch dragging). El usuario puede arrastrarlo libremente a cualquier zona del mapa para evitar que obstruya su visualización.
+* **Preservación del Diseño**: El arrastre debe implementarse mediante propiedades CSS `transform` dinámicas, asegurando que se conserve el centrado de pantalla responsivo en móviles al cargar por primera vez y sin alterar la lógica interna de sus botones, enlaces, selectores y cambios de estado.
+
