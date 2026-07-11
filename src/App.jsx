@@ -113,8 +113,33 @@ const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr, endC
     cumulativeDist += dist;
     const travelMins = Math.round((dist / 35) * 60); // 35 km/h
     
-    const arrivalTime = currentTime + travelMins;
-    const departureTime = arrivalTime + parsed.estimatedDuration;
+    let arrivalTime;
+    let departureTime;
+
+    const isCompleted = ticket.status === 'success' || ticket.status === 'failed';
+    let hasValidCompletionTime = false;
+    let compLocalMins = 0;
+
+    if (isCompleted && parsed.completedAt) {
+      try {
+        const compDate = new Date(parsed.completedAt);
+        const compDateStr = parsed.completedAt.split('T')[0];
+        if (!isNaN(compDate.getTime()) && compDateStr === ticket.date) {
+          compLocalMins = compDate.getHours() * 60 + compDate.getMinutes();
+          hasValidCompletionTime = true;
+        }
+      } catch (err) {
+        console.error("Error parsing completedAt date:", err);
+      }
+    }
+
+    if (hasValidCompletionTime) {
+      departureTime = compLocalMins;
+      arrivalTime = Math.max(departureTime - parsed.estimatedDuration, currentTime);
+    } else {
+      arrivalTime = currentTime + travelMins;
+      departureTime = arrivalTime + parsed.estimatedDuration;
+    }
     
     timelineSchedules[ticket.id] = {
       arrival: minutesToHHMM(arrivalTime),

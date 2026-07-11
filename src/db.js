@@ -1102,7 +1102,37 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
     if (completedLat !== null && completedLng !== null) {
       tickets[index].completedLat = completedLat;
       tickets[index].completedLng = completedLng;
-      tickets[index].completedAt = new Date().toISOString();
+    }
+
+    if (status === 'success' || status === 'failed') {
+      const parsed = parseTicketNotes(tickets[index].notes);
+      if (!parsed.completedAt) {
+        const completedAt = new Date().toISOString();
+        tickets[index].completedAt = completedAt;
+        tickets[index].notes = encodeTicketNotes(
+          parsed.timeSlot,
+          parsed.estimatedDuration,
+          parsed.cleanNotes,
+          parsed.driverObservations,
+          parsed.failedChargeType,
+          parsed.originalRouteLabel,
+          completedAt
+        );
+      } else {
+        tickets[index].completedAt = parsed.completedAt;
+      }
+    } else {
+      delete tickets[index].completedAt;
+      const parsed = parseTicketNotes(tickets[index].notes);
+      tickets[index].notes = encodeTicketNotes(
+        parsed.timeSlot,
+        parsed.estimatedDuration,
+        parsed.cleanNotes,
+        parsed.driverObservations,
+        parsed.failedChargeType,
+        parsed.originalRouteLabel,
+        ''
+      );
     }
 
     // Auto-reassignment if finalized (success or failed) and has [Ruta Original: XXX] in notes
@@ -1782,6 +1812,7 @@ export function parseTicketNotes(notesText) {
   let driverObservations = '';
   let failedChargeType = 'none';
   let originalRouteLabel = '';
+  let completedAt = '';
 
   // 1. Extraer [Ruta Original: ...] si existe en cualquier parte del texto
   const routeMatch = cleanNotes.match(/\[Ruta Original:\s*([^\]]+)\]/);
@@ -1819,18 +1850,26 @@ export function parseTicketNotes(notesText) {
     cleanNotes = cleanNotes.replace(/\[CobroFallo:\s*[^\]]+\]\s*/g, '');
   }
 
+  // Parse completed at timestamp: check if there's a [CompletadoEn: ...] block
+  const completedMatch = cleanNotes.match(/\[CompletadoEn:\s*([^\]]+)\]/);
+  if (completedMatch) {
+    completedAt = completedMatch[1].trim();
+    cleanNotes = cleanNotes.replace(/\[CompletadoEn:\s*[^\]]+\]\s*/g, '');
+  }
+
   return { 
     timeSlot, 
     estimatedDuration, 
     cleanNotes: cleanNotes.trim(), 
     driverObservations, 
     failedChargeType,
-    originalRouteLabel
+    originalRouteLabel,
+    completedAt
   };
 }
 
 // Codificar franja horaria y duración como prefijo en las notas
-export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none', originalRouteLabel = '') {
+export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none', originalRouteLabel = '', completedAt = '') {
   const slotStr = timeSlot === 'morning' ? 'Mañana' : timeSlot === 'afternoon' ? 'Tarde' : 'Cualquiera';
   const prefix = `[Horario: ${slotStr}] [Duracion: ${estimatedDuration || 10} min] `;
   let finalNotes = (prefix + (cleanNotesText || '').trim()).trim();
@@ -1842,6 +1881,9 @@ export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, d
   }
   if (originalRouteLabel && originalRouteLabel.trim()) {
     finalNotes = `[Ruta Original: ${originalRouteLabel.trim()}] ${finalNotes}`;
+  }
+  if (completedAt && completedAt.trim()) {
+    finalNotes += ` [CompletadoEn: ${completedAt.trim()}]`;
   }
   return finalNotes;
 }
