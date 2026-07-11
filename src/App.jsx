@@ -10776,117 +10776,121 @@ function App() {
               </button>
             </div>
 
-            {/* API Keys de Proveedores de Mapas */}
-            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
-              <div className="block-title">🗺️ Motores de Geolocalización Premium (Google Maps / Mapbox)</div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                Si deseas una precisión perfecta en la geolocalización de toda España (incluyendo abreviaturas de calles y lenguas regionales), puedes ingresar tu token de Mapbox o clave de Google Maps. Si se dejan en blanco, la aplicación usará el geolocalizador gratuito OpenStreetMap de forma automática.
-              </p>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
-                <div className="input-group" style={{ marginBottom: 0 }}>
-                  <span className="input-label">Mapbox Access Token (Recomendado - 100k búsquedas gratis)</span>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="pk.eyJ1Ijoi..." 
-                    value={mapboxTokenInput}
-                    onChange={(e) => setMapboxTokenInput(e.target.value)}
-                  />
-                </div>
-                <div className="input-group" style={{ marginBottom: 0 }}>
-                  <span className="input-label">Google Maps API Key</span>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="AIzaSy..." 
-                    value={googleKeyInput}
-                    onChange={(e) => setGoogleKeyInput(e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                onClick={() => {
-                  saveGoogleMapsKey(googleKeyInput);
-                  saveMapboxToken(mapboxTokenInput);
-                  triggerAlert('Configuración de mapas guardada y sincronizada correctamente');
-                }}
-                style={{ width: 'auto', marginTop: '20px', height: '42px' }}
-              >
-                Guardar API Keys de Mapas
-              </button>
-            </div>
-
-            {/* Conexión a Supabase */}
-            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px' }}>
-              <div className="block-title">☁️ Conexión de Base de Datos Cloud (Supabase)</div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                Conecta tu aplicación a la nube para sincronizar tus furgonetas, rutas y paradas en tiempo real. 
-                Si está configurado, la aplicación sincronizará automáticamente; de lo contrario, funcionará de manera local offline.
-              </p>
-              
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                const urlInput = e.target.elements.supabase_url.value.trim();
-                const keyInput = e.target.elements.supabase_key.value.trim();
+            {/* API Keys de Proveedores de Mapas (Solo Super Administrador) */}
+            {currentUser?.role === 'superadmin' && (
+              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
+                <div className="block-title">🗺️ Motores de Geolocalización Premium (Google Maps / Mapbox)</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Si deseas una precisión perfecta en la geolocalización de toda España (incluyendo abreviaturas de calles y lenguas regionales), puedes ingresar tu token de Mapbox o clave de Google Maps. Si se dejan en blanco, la aplicación usará el geolocalizador gratuito OpenStreetMap de forma automática.
+                </p>
                 
-                localStorage.setItem('supabase_url', urlInput);
-                localStorage.setItem('supabase_key', keyInput);
-                
-                reinitSupabase();
-                loadData();
-                triggerAlert('Ajustes de base de datos guardados y sincronizados', 'success');
-              }} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
                   <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">Supabase URL</span>
+                    <span className="input-label">Mapbox Access Token (Recomendado - 100k búsquedas gratis)</span>
                     <input 
                       type="text" 
-                      name="supabase_url"
                       className="form-input" 
-                      placeholder="https://xxxxxx.supabase.co" 
-                      defaultValue={localStorage.getItem('supabase_url') === 'none' ? '' : (localStorage.getItem('supabase_url') || '')} 
+                      placeholder="pk.eyJ1Ijoi..." 
+                      value={mapboxTokenInput}
+                      onChange={(e) => setMapboxTokenInput(e.target.value)}
                     />
                   </div>
                   <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">Supabase Anon Key</span>
+                    <span className="input-label">Google Maps API Key</span>
                     <input 
-                      type="password" 
-                      name="supabase_key"
+                      type="text" 
                       className="form-input" 
-                      placeholder="Clave API pública anon" 
-                      defaultValue={localStorage.getItem('supabase_key') === 'none' ? '' : (localStorage.getItem('supabase_key') || '')} 
+                      placeholder="AIzaSy..." 
+                      value={googleKeyInput}
+                      onChange={(e) => setGoogleKeyInput(e.target.value)}
                     />
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button type="submit" className="btn btn-primary" style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}>
-                    Conectar y Sincronizar
-                  </button>
-                  {((localStorage.getItem('supabase_url') && localStorage.getItem('supabase_url') !== 'none') || (localStorage.getItem('supabase_key') && localStorage.getItem('supabase_key') !== 'none')) && (
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary" 
-                      onClick={() => {
-                        if (window.confirm('¿Seguro que quieres desconectarte de la nube y volver al modo 100% local?')) {
-                          localStorage.setItem('supabase_url', 'none');
-                          localStorage.setItem('supabase_key', 'none');
-                          reinitSupabase();
-                          loadData();
-                          triggerAlert('Desconectado de la nube. Modo local activado.', 'warning');
-                        }
-                      }}
-                      style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}
-                    >
-                      Desconectar / Usar Local
+                
+                <button 
+                  type="button" 
+                  className="btn btn-primary" 
+                  onClick={() => {
+                    saveGoogleMapsKey(googleKeyInput);
+                    saveMapboxToken(mapboxTokenInput);
+                    triggerAlert('Configuración de mapas guardada y sincronizada correctamente');
+                  }}
+                  style={{ width: 'auto', marginTop: '20px', height: '42px' }}
+                >
+                  Guardar API Keys de Mapas
+                </button>
+              </div>
+            )}
+
+            {/* Conexión a Supabase (Solo Super Administrador) */}
+            {currentUser?.role === 'superadmin' && (
+              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px' }}>
+                <div className="block-title">☁️ Conexión de Base de Datos Cloud (Supabase)</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Conecta tu aplicación a la nube para sincronizar tus furgonetas, rutas y paradas en tiempo real. 
+                  Si está configurado, la aplicación sincronizará automáticamente; de lo contrario, funcionará de manera local offline.
+                </p>
+                
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const urlInput = e.target.elements.supabase_url.value.trim();
+                  const keyInput = e.target.elements.supabase_key.value.trim();
+                  
+                  localStorage.setItem('supabase_url', urlInput);
+                  localStorage.setItem('supabase_key', keyInput);
+                  
+                  reinitSupabase();
+                  loadData();
+                  triggerAlert('Ajustes de base de datos guardados y sincronizados', 'success');
+                }} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Supabase URL</span>
+                      <input 
+                        type="text" 
+                        name="supabase_url"
+                        className="form-input" 
+                        placeholder="https://xxxxxx.supabase.co" 
+                        defaultValue={localStorage.getItem('supabase_url') === 'none' ? '' : (localStorage.getItem('supabase_url') || '')} 
+                      />
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Supabase Anon Key</span>
+                      <input 
+                        type="password" 
+                        name="supabase_key"
+                        className="form-input" 
+                        placeholder="Clave API pública anon" 
+                        defaultValue={localStorage.getItem('supabase_key') === 'none' ? '' : (localStorage.getItem('supabase_key') || '')} 
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button type="submit" className="btn btn-primary" style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}>
+                      Conectar y Sincronizar
                     </button>
-                  )}
-                </div>
-              </form>
-            </div>
+                    {((localStorage.getItem('supabase_url') && localStorage.getItem('supabase_url') !== 'none') || (localStorage.getItem('supabase_key') && localStorage.getItem('supabase_key') !== 'none')) && (
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary" 
+                        onClick={() => {
+                          if (window.confirm('¿Seguro que quieres desconectarte de la nube y volver al modo 100% local?')) {
+                            localStorage.setItem('supabase_url', 'none');
+                            localStorage.setItem('supabase_key', 'none');
+                            reinitSupabase();
+                            loadData();
+                            triggerAlert('Desconectado de la nube. Modo local activado.', 'warning');
+                          }
+                        }}
+                        style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}
+                      >
+                        Desconectar / Usar Local
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+            )}
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
               {/* Crear nuevo usuario */}
