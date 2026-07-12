@@ -1,10 +1,10 @@
 // sw.js - Service Worker optimizado (Network-First) para recibir actualizaciones al instante
-const CACHE_NAME = 'delivery-app-v91';
+const CACHE_NAME = 'delivery-app-v92';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './favicon.svg'
+  './apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (e) => {
