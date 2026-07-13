@@ -915,6 +915,20 @@ function App() {
   }, [currentUser]);
 
   useEffect(() => {
+    if (selectedDrilldownFurgoId) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.height = '100vh';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.height = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.height = '';
+    };
+  }, [selectedDrilldownFurgoId]);
+
+  useEffect(() => {
     let active = true;
     const updateStart = async () => {
       if (routeStartAddr && routeStartAddr.trim()) {
@@ -9488,7 +9502,7 @@ function App() {
                 No hay actividad registrada en este periodo.
               </div>
             ) : (
-              <div className="table-container" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <div className="table-container">
                 <table style={{ width: '100%' }}>
                   <thead>
                     <tr>
