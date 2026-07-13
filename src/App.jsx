@@ -3958,24 +3958,74 @@ function App() {
   };
 
   const recalculateAllTickets = (activeTariffs, activeModulePrice) => {
-    const allTickets = getTickets();
+    const allTickets = getTickets() || [];
+    const changedTickets = [];
     const updatedTickets = allTickets.map(ticket => {
       let totalCalculado = 0;
+      let hasChanged = false;
+      
       const tasks = ticket.tasks.map(task => {
         if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) return task;
         const basePrice = calculateTaskPrice(task.tariffId, activeTariffs, activeModulePrice);
         const price = task.noCharge ? 0 : basePrice;
+        
+        if (task.unitPrice !== price || task.subtotal !== (price * task.quantity)) {
+          hasChanged = true;
+        }
+        
         return {
           ...task,
           unitPrice: price,
           subtotal: price * task.quantity
         };
       });
+      
       totalCalculado = tasks.reduce((sum, t) => sum + t.subtotal, 0);
-      return { ...ticket, tasks, totalPrice: totalCalculado };
+      const updatedTicket = { ...ticket, tasks, totalPrice: totalCalculado };
+      
+      if (hasChanged || ticket.totalPrice !== totalCalculado) {
+        changedTickets.push(updatedTicket);
+      }
+      
+      return updatedTicket;
     });
-    saveTickets(updatedTickets);
+    
+    localStorage.setItem('delivery_tickets', JSON.stringify(updatedTickets));
     setTickets(updatedTickets);
+    
+    if (supabase && changedTickets.length > 0) {
+      (async () => {
+        try {
+          const formatted = changedTickets.map(t => ({
+            id: t.id,
+            date: t.date,
+            furgo_id: t.furgoId,
+            furgo_label: t.furgoLabel,
+            route_name: t.routeName,
+            customer_name: t.customerName,
+            phone: t.phone,
+            address: t.address,
+            postcode: t.postcode,
+            notes: t.notes,
+            cod_amount: t.codAmount,
+            tasks: t.tasks,
+            total_price: t.totalPrice,
+            status: t.status,
+            failure_reason: t.failureReason || '',
+            lat: t.lat,
+            lng: t.lng,
+            completed_lat: t.completedLat,
+            completed_lng: t.completedLng,
+            route_order: t.routeOrder,
+            created_at: t.createdAt,
+            created_by: t.createdBy || 'admin'
+          }));
+          await supabase.from('delivery_tickets').upsert(formatted);
+        } catch (e) {
+          console.error("Error saving updated tickets to Supabase:", e);
+        }
+      })();
+    }
   };
 
   const getShiftSummary = (furgoId, date) => {
