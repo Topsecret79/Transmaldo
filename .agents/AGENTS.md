@@ -77,4 +77,10 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **Visualización de Tarifas Base**: Al seleccionar "Tarifas Base", se deben ocultar todas las tarifas que tengan sufijos de administrador o estén creadas por otros administradores, mostrando una lista limpia con las tarifas estándar iniciales.
 * **Visualización de Tarifas Customizadas**: Al seleccionar un administrador específico, la vista debe actualizarse para mostrar únicamente las tarifas y precios de ese administrador (las cuales se inicializan en `0 €`), permitiendo editarlas de forma aislada.
 
+## 17. Edición y Eliminación Detallada de Tarifas en Catálogo
+* **Edición Detallada en Línea**: En lugar de solo editar el valor numérico, el sistema debe permitir editar el Nombre, Bloque/Categoría, Tipo (Fijo o Módulos) y Valor de cualquier tarifa mediante un modo de edición en línea (`editingTariffId` y `handleUpdateTariffDetails`).
+* **Permiso de Eliminación**: Se debe permitir eliminar tarifas usando la función `handleDeleteTariff`.
+  - **Administradores comunes**: Solo pueden eliminar tarifas personalizadas creadas manualmente (`t.id.startsWith('CUSTOM_')`).
+  - **Super Administrador**: Tiene control total y puede eliminar cualquier tarifa (incluyendo predefined y copias) de la categoría activa seleccionada.
+
 
