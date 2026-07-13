@@ -916,8 +916,9 @@ export function addTicket(ticketData) {
 
     let name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
     if (task.brand && task.inches) {
-      const isComb = task.tariffId.includes('COMB');
-      const typeStr = isComb ? 'Ent+Rec' : (task.tariffId.includes('ENT') ? 'Entrega' : '');
+      const isComb = task.tariffId.includes('COMB') || task.action === 'combinado';
+      const isRec = task.action === 'recogida';
+      const typeStr = isComb ? 'Ent+Rec' : (isRec ? 'Recogida' : (task.tariffId.includes('ENT') ? 'Entrega' : ''));
       name = `${task.brand} ${task.inches}" (${typeStr || name})`;
     }
 
@@ -929,6 +930,7 @@ export function addTicket(ticketData) {
       subtotal: subtotal,
       brand: task.brand || null,
       inches: task.inches || null,
+      action: task.action || null,
       noCharge: !!task.noCharge
     };
   });
@@ -1016,8 +1018,9 @@ export function updateTicket(updatedTicket) {
 
     let name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
     if (task.brand && task.inches) {
-      const isComb = task.tariffId.includes('COMB');
-      const typeStr = isComb ? 'Ent+Rec' : (task.tariffId.includes('ENT') ? 'Entrega' : '');
+      const isComb = task.tariffId.includes('COMB') || task.action === 'combinado';
+      const isRec = task.action === 'recogida';
+      const typeStr = isComb ? 'Ent+Rec' : (isRec ? 'Recogida' : (task.tariffId.includes('ENT') ? 'Entrega' : ''));
       name = `${task.brand} ${task.inches}" (${typeStr || name})`;
     }
 
@@ -1029,6 +1032,7 @@ export function updateTicket(updatedTicket) {
       subtotal: subtotal,
       brand: task.brand || null,
       inches: task.inches || null,
+      action: task.action || null,
       noCharge: !!task.noCharge
     };
   });

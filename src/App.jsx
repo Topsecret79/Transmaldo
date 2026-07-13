@@ -2910,6 +2910,7 @@ function App() {
           quantity: 1,
           brand: tv.brand || 'Genérica',
           inches: tv.inches || 43,
+          action: tv.action,
           noCharge: getExistingNoCharge(mainTariffId, { inches: tv.inches, brand: tv.brand })
         });
       }
@@ -3736,7 +3737,7 @@ function App() {
         id: 'tv_' + idx + Date.now().toString(),
         inches,
         brand,
-        action: isComb ? 'combinado' : (mTask.name.includes('Recogida') && !mTask.name.includes('Entrega') ? 'recogida' : 'entrega'),
+        action: mTask.action || (isComb ? 'combinado' : (mTask.name && mTask.name.includes('Recogida') && !mTask.name.includes('Entrega') ? 'recogida' : 'entrega')),
         pmType,
         cuelgue,
         recogidaViejaType
