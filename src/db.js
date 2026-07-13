@@ -712,7 +712,16 @@ export function getTariffs() {
   } catch (e) {}
   
   if (isSuperAdmin) {
-    return rawTariffs;
+    const tariffMap = {};
+    rawTariffs.forEach(t => {
+      if (!t) return;
+      const isPredefinedCopy = DEFAULT_TARIFFS.some(dt => t.id.startsWith(dt.id + '_'));
+      if (isPredefinedCopy) {
+        return;
+      }
+      tariffMap[t.id] = t;
+    });
+    return Object.values(tariffMap);
   }
   
   const adminSuffix = `_${targetAdminId}`;
