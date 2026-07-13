@@ -83,4 +83,12 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
   - **Administradores comunes**: Solo pueden eliminar tarifas personalizadas creadas manualmente (`t.id.startsWith('CUSTOM_')`).
   - **Super Administrador**: Tiene control total y puede eliminar cualquier tarifa (incluyendo predefined y copias) de la categoría activa seleccionada.
 
+## 18. Bloques de Tarifas Colapsables (Accordion)
+* **Organización Visual**: Para mejorar la navegación y evitar el desorden visual, cada bloque de tarifas (Paquetería, Televisores, Instalaciones, Gama Blanca, Muebles, Otros) debe presentarse como una sección colapsable (tipo acordeón).
+* **Interacción del Acordeón**:
+  - Al pulsar sobre la cabecera del bloque (`collapsible-block-header`), se expande o colapsa el contenido.
+  - La cabecera debe mostrar el nombre del bloque, un icono alusivo (ej: 📦, 📺, 🔧), la cantidad de artículos y un indicador visual (`▲` / `▼`).
+  - Por defecto, únicamente el bloque principal de "Paquetería" debe estar abierto al cargar.
+
+
 

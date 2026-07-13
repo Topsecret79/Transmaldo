@@ -872,6 +872,16 @@ function App() {
   const [editTariffType, setEditTariffType] = useState('fixed');
   const [editTariffValue, setEditTariffValue] = useState('');
 
+  // Bloques expandidos en el catálogo
+  const [expandedBlocks, setExpandedBlocks] = useState({
+    'Paquetería': true,
+    'Televisores': false,
+    'Instalaciones': false,
+    'Gama Blanca': false,
+    'Muebles': false,
+    'Otros': false
+  });
+
   // Modal de observaciones para entrega/fallo
   const [obsModalTicketId, setObsModalTicketId] = useState(null);
   const [obsModalStatus, setObsModalStatus] = useState('');
@@ -10904,138 +10914,177 @@ function App() {
                     return true;
                   });
                   if (blockTariffs.length === 0) return null;
+                  const isExpanded = !!expandedBlocks[block];
                   return (
-                    <div key={block} style={{ marginBottom: '20px' }}>
-                      <h3 style={{ color: 'var(--primary)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '5px', textTransform: 'uppercase', fontSize: '0.9rem' }}>Bloque {block}</h3>
-                      {blockTariffs.map(t => {
-                        const isEditing = editingTariffId === t.id;
-                        if (isEditing) {
-                          return (
-                            <div className="tariff-edit-card" key={t.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '15px', borderRadius: '8px', border: '1px solid var(--primary)', marginBottom: '10px' }}>
-                              <div className="input-group" style={{ marginBottom: 0 }}>
-                                <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre del Artículo:</span>
-                                <input 
-                                  type="text" 
-                                  className="form-input" 
-                                  value={editTariffName} 
-                                  onChange={(e) => setEditTariffName(e.target.value)} 
-                                  style={{ padding: '6px 10px', fontSize: '0.85rem' }} 
-                                />
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                <div className="input-group" style={{ marginBottom: 0 }}>
-                                  <span className="input-label" style={{ fontSize: '0.75rem' }}>Bloque / Categoría:</span>
-                                  <select 
-                                    className="form-input" 
-                                    value={editTariffBlock} 
-                                    onChange={(e) => setEditTariffBlock(e.target.value)} 
-                                    style={{ padding: '6px 10px', fontSize: '0.85rem' }}
-                                  >
-                                    <option value="Paquetería">Paquetería</option>
-                                    <option value="Televisores">Televisores</option>
-                                    <option value="Instalaciones">Instalaciones</option>
-                                    <option value="Gama Blanca">Gama Blanca</option>
-                                    <option value="Muebles">Muebles</option>
-                                    <option value="Otros">Otros</option>
-                                  </select>
+                    <div key={block} style={{ marginBottom: '15px', borderRadius: '10px', border: '1px solid var(--panel-border)', background: 'rgba(255,255,255,0.01)', overflow: 'hidden' }}>
+                      <div 
+                        onClick={() => setExpandedBlocks(prev => ({ ...prev, [block]: !prev[block] }))}
+                        style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center', 
+                          padding: '12px 18px', 
+                          background: isExpanded ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255,255,255,0.02)', 
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          transition: 'all 0.2s ease',
+                          borderBottom: isExpanded ? '1px solid var(--panel-border)' : 'none'
+                        }}
+                        className="collapsible-block-header"
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '1.1rem' }}>
+                            {block === 'Paquetería' ? '📦' : 
+                             block === 'Televisores' ? '📺' : 
+                             block === 'Instalaciones' ? '🔧' : 
+                             block === 'Gama Blanca' ? '🔌' : 
+                             block === 'Muebles' ? '🛋️' : '🏷️'}
+                          </span>
+                          <span style={{ fontWeight: '700', textTransform: 'uppercase', fontSize: '0.85rem', letterSpacing: '0.5px', color: isExpanded ? 'var(--primary)' : 'var(--text)' }}>
+                            {block}
+                          </span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: '500', padding: '1px 6px', borderRadius: '10px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}>
+                            {blockTariffs.length} {blockTariffs.length === 1 ? 'artículo' : 'artículos'}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.8rem', color: isExpanded ? 'var(--primary)' : 'var(--text-muted)', transition: 'transform 0.2s ease' }}>
+                          {isExpanded ? '▲' : '▼'}
+                        </span>
+                      </div>
+                      
+                      {isExpanded && (
+                        <div style={{ padding: '15px', display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(0,0,0,0.1)' }}>
+                          {blockTariffs.map(t => {
+                            const isEditing = editingTariffId === t.id;
+                            if (isEditing) {
+                              return (
+                                <div className="tariff-edit-card" key={t.id} style={{ flexDirection: 'column', alignItems: 'stretch', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '15px', borderRadius: '8px', border: '1px solid var(--primary)', marginBottom: '10px' }}>
+                                  <div className="input-group" style={{ marginBottom: 0 }}>
+                                    <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre del Artículo:</span>
+                                    <input 
+                                      type="text" 
+                                      className="form-input" 
+                                      value={editTariffName} 
+                                      onChange={(e) => setEditTariffName(e.target.value)} 
+                                      style={{ padding: '6px 10px', fontSize: '0.85rem' }} 
+                                    />
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                    <div className="input-group" style={{ marginBottom: 0 }}>
+                                      <span className="input-label" style={{ fontSize: '0.75rem' }}>Bloque / Categoría:</span>
+                                      <select 
+                                        className="form-input" 
+                                        value={editTariffBlock} 
+                                        onChange={(e) => setEditTariffBlock(e.target.value)} 
+                                        style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                                      >
+                                        <option value="Paquetería">Paquetería</option>
+                                        <option value="Televisores">Televisores</option>
+                                        <option value="Instalaciones">Instalaciones</option>
+                                        <option value="Gama Blanca">Gama Blanca</option>
+                                        <option value="Muebles">Muebles</option>
+                                        <option value="Otros">Otros</option>
+                                      </select>
+                                    </div>
+                                    <div className="input-group" style={{ marginBottom: 0 }}>
+                                      <span className="input-label" style={{ fontSize: '0.75rem' }}>Tipo:</span>
+                                      <select 
+                                        className="form-input" 
+                                        value={editTariffType} 
+                                        onChange={(e) => setEditTariffType(e.target.value)} 
+                                        style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                                      >
+                                        <option value="fixed">Precio Fijo (€)</option>
+                                        <option value="modules">Por Módulos</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div className="input-group" style={{ marginBottom: 0 }}>
+                                    <span className="input-label" style={{ fontSize: '0.75rem' }}>Valor:</span>
+                                    <input 
+                                      type="number" 
+                                      step="0.01" 
+                                      className="form-input" 
+                                      value={editTariffValue} 
+                                      onChange={(e) => setEditTariffValue(e.target.value)} 
+                                      style={{ padding: '6px 10px', fontSize: '0.85rem' }} 
+                                    />
+                                  </div>
+                                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '5px' }}>
+                                    <button 
+                                      type="button" 
+                                      className="btn btn-success btn-small" 
+                                      onClick={() => handleUpdateTariffDetails(t.id, { name: editTariffName, block: editTariffBlock, type: editTariffType, value: editTariffValue })} 
+                                      style={{ margin: 0, padding: '6px 12px', fontSize: '0.8rem', width: 'auto' }}
+                                    >
+                                      💾 Guardar
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      className="btn btn-secondary btn-small" 
+                                      onClick={() => setEditingTariffId(null)} 
+                                      style={{ margin: 0, padding: '6px 12px', fontSize: '0.8rem', width: 'auto' }}
+                                    >
+                                      ❌ Cancelar
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="input-group" style={{ marginBottom: 0 }}>
-                                  <span className="input-label" style={{ fontSize: '0.75rem' }}>Tipo:</span>
-                                  <select 
-                                    className="form-input" 
-                                    value={editTariffType} 
-                                    onChange={(e) => setEditTariffType(e.target.value)} 
-                                    style={{ padding: '6px 10px', fontSize: '0.85rem' }}
-                                  >
-                                    <option value="fixed">Precio Fijo (€)</option>
-                                    <option value="modules">Por Módulos</option>
-                                  </select>
+                              );
+                            }
+
+                            const canDelete = t.id.startsWith('CUSTOM_') || currentUser?.role === 'superadmin';
+
+                            return (
+                              <div className="tariff-edit-card" key={t.id}>
+                                <div>
+                                  <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                                    <span>{t.name}</span>
+                                    {currentUser?.role === 'superadmin' && (
+                                      <span style={{ fontSize: '0.72rem', fontWeight: '500', padding: '1px 6px', borderRadius: '4px', background: !t.createdBy || t.createdBy === 'admin' ? 'rgba(52, 211, 153, 0.15)' : 'rgba(168, 85, 247, 0.15)', color: !t.createdBy || t.createdBy === 'admin' ? '#34d399' : '#e9d5ff', border: !t.createdBy || t.createdBy === 'admin' ? '1px solid rgba(52, 211, 153, 0.25)' : '1px solid rgba(168, 85, 247, 0.25)' }}>
+                                        {!t.createdBy || t.createdBy === 'admin' ? 'Original / Base' : `Admin: ${users.find(u => u.id === t.createdBy)?.label || t.createdBy}`}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.type === 'fixed' ? 'Precio Fijo' : `Multiplicador Módulo: ${t.value} módulos`}</div>
                                 </div>
-                              </div>
-                              <div className="input-group" style={{ marginBottom: 0 }}>
-                                <span className="input-label" style={{ fontSize: '0.75rem' }}>Valor:</span>
-                                <input 
-                                  type="number" 
-                                  step="0.01" 
-                                  className="form-input" 
-                                  value={editTariffValue} 
-                                  onChange={(e) => setEditTariffValue(e.target.value)} 
-                                  style={{ padding: '6px 10px', fontSize: '0.85rem' }} 
-                                />
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '5px' }}>
-                                <button 
-                                  type="button" 
-                                  className="btn btn-success btn-small" 
-                                  onClick={() => handleUpdateTariffDetails(t.id, { name: editTariffName, block: editTariffBlock, type: editTariffType, value: editTariffValue })} 
-                                  style={{ margin: 0, padding: '6px 12px', fontSize: '0.8rem', width: 'auto' }}
-                                >
-                                  💾 Guardar
-                                </button>
-                                <button 
-                                  type="button" 
-                                  className="btn btn-secondary btn-small" 
-                                  onClick={() => setEditingTariffId(null)} 
-                                  style={{ margin: 0, padding: '6px 12px', fontSize: '0.8rem', width: 'auto' }}
-                                >
-                                  ❌ Cancelar
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        const canDelete = t.id.startsWith('CUSTOM_') || currentUser?.role === 'superadmin';
-
-                        return (
-                          <div className="tariff-edit-card" key={t.id}>
-                            <div>
-                              <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                                <span>{t.name}</span>
-                                {currentUser?.role === 'superadmin' && (
-                                  <span style={{ fontSize: '0.72rem', fontWeight: '500', padding: '1px 6px', borderRadius: '4px', background: !t.createdBy || t.createdBy === 'admin' ? 'rgba(52, 211, 153, 0.15)' : 'rgba(168, 85, 247, 0.15)', color: !t.createdBy || t.createdBy === 'admin' ? '#34d399' : '#e9d5ff', border: !t.createdBy || t.createdBy === 'admin' ? '1px solid rgba(52, 211, 153, 0.25)' : '1px solid rgba(168, 85, 247, 0.25)' }}>
-                                    {!t.createdBy || t.createdBy === 'admin' ? 'Original / Base' : `Admin: ${users.find(u => u.id === t.createdBy)?.label || t.createdBy}`}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)', marginRight: '5px' }}>
+                                    {t.value} {t.type === 'fixed' ? '€' : 'mód.'}
                                   </span>
-                                )}
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.type === 'fixed' ? 'Precio Fijo' : `Multiplicador Módulo: ${t.value} módulos`}</div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)', marginRight: '5px' }}>
-                                {t.value} {t.type === 'fixed' ? '€' : 'mód.'}
-                              </span>
-                              
-                              <button 
-                                type="button" 
-                                onClick={() => {
-                                  setEditingTariffId(t.id);
-                                  setEditTariffName(t.name || '');
-                                  setEditTariffBlock(t.block || 'Otros');
-                                  setEditTariffType(t.type || 'fixed');
-                                  setEditTariffValue(t.value !== undefined && t.value !== null ? t.value.toString() : '0');
-                                }}
-                                className="btn btn-secondary btn-small"
-                                style={{ padding: '6px 8px', margin: 0, display: 'inline-flex', alignItems: 'center', width: 'auto', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)' }}
-                                title="Editar artículo"
-                              >
-                                ✏️
-                              </button>
+                                  
+                                  <button 
+                                    type="button" 
+                                    onClick={() => {
+                                      setEditingTariffId(t.id);
+                                      setEditTariffName(t.name || '');
+                                      setEditTariffBlock(t.block || 'Otros');
+                                      setEditTariffType(t.type || 'fixed');
+                                      setEditTariffValue(t.value !== undefined && t.value !== null ? t.value.toString() : '0');
+                                    }}
+                                    className="btn btn-secondary btn-small"
+                                    style={{ padding: '6px 8px', margin: 0, display: 'inline-flex', alignItems: 'center', width: 'auto', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)' }}
+                                    title="Editar artículo"
+                                  >
+                                    ✏️
+                                  </button>
 
-                              {canDelete && (
-                                <button 
-                                  type="button" 
-                                  onClick={() => handleDeleteTariff(t.id, t.name)}
-                                  className="btn btn-danger btn-small"
-                                  style={{ padding: '6px 8px', margin: 0, display: 'inline-flex', alignItems: 'center', width: 'auto' }}
-                                  title="Eliminar tarifa"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                                  {canDelete && (
+                                    <button 
+                                      type="button" 
+                                      onClick={() => handleDeleteTariff(t.id, t.name)}
+                                      className="btn btn-danger btn-small"
+                                      style={{ padding: '6px 8px', margin: 0, display: 'inline-flex', alignItems: 'center', width: 'auto' }}
+                                      title="Eliminar tarifa"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
