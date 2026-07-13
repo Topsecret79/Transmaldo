@@ -1950,3 +1950,74 @@ export function getRouteManualStatus(furgoId, date) {
   const key = `delivery_manual_route_${furgoId}_${date}`;
   return localStorage.getItem(key) === 'true';
 }
+
+// Cambiar la fecha completa de una ruta (tickets y turnos)
+export async function moveRouteDate(furgoId, oldDate, newDate) {
+  const tickets = getTickets();
+  const shifts = getShifts();
+  
+  // 1. Filtrar e ir cambiando la fecha de los tickets
+  const ticketsToUpdate = tickets.filter(t => t.furgoId === furgoId && t.date === oldDate);
+  ticketsToUpdate.forEach(t => {
+    t.date = newDate;
+  });
+  saveTickets(tickets);
+
+  // 2. Filtrar e ir cambiando la fecha del turno (shift)
+  const shiftIndex = shifts.findIndex(s => s.furgoId === furgoId && s.date === oldDate);
+  let shiftToUpsert = null;
+  if (shiftIndex !== -1) {
+    shifts[shiftIndex].date = newDate;
+    shiftToUpsert = shifts[shiftIndex];
+    saveShifts(shifts);
+  }
+
+  // 3. Sincronizar remotamente si Supabase está activo
+  if (supabase) {
+    // Upsert tickets
+    if (ticketsToUpdate.length > 0) {
+      const ticketsFormatted = ticketsToUpdate.map(t => ({
+        id: t.id,
+        date: t.date,
+        furgo_id: t.furgoId,
+        furgo_label: t.furgoLabel,
+        route_name: t.routeName,
+        customer_name: t.customerName,
+        phone: t.phone,
+        address: t.address,
+        postcode: t.postcode,
+        notes: t.notes,
+        cod_amount: t.codAmount,
+        tasks: t.tasks,
+        total_price: t.totalPrice,
+        status: t.status,
+        failure_reason: t.failureReason || '',
+        lat: t.lat,
+        lng: t.lng,
+        completed_lat: t.completedLat,
+        completed_lng: t.completedLng,
+        route_order: t.routeOrder,
+        created_at: t.createdAt,
+        created_by: t.createdBy || 'admin'
+      }));
+      await supabase.from('delivery_tickets').upsert(ticketsFormatted);
+    }
+
+    // Upsert shift
+    if (shiftToUpsert) {
+      await supabase.from('delivery_shifts').upsert({
+        id: shiftToUpsert.id,
+        date: shiftToUpsert.date,
+        furgo_id: shiftToUpsert.furgoId,
+        status: shiftToUpsert.status,
+        kms: shiftToUpsert.kms,
+        start_kms: shiftToUpsert.startKms,
+        end_kms: shiftToUpsert.endKms,
+        observations: shiftToUpsert.observations || '',
+        route_name: shiftToUpsert.routeName || ''
+      });
+    }
+  }
+
+  return { ticketsCount: ticketsToUpdate.length, hasShift: !!shiftToUpsert };
+}

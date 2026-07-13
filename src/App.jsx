@@ -275,7 +275,8 @@ import {
   getAllowDriverSupportTransfer,
   saveAllowDriverSupportTransfer,
   getRouteManualStatus,
-  saveRouteManualStatus
+  saveRouteManualStatus,
+  moveRouteDate
 } from './db';
 
 
@@ -855,6 +856,11 @@ function App() {
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [shiftSummaryDate, setShiftSummaryDate] = useState(new Date().toISOString().split('T')[0]);
   const [shiftSummaryFurgoId, setShiftSummaryFurgoId] = useState('');
+
+  // Cambiar fecha de ruta
+  const [showMoveRouteModal, setShowMoveRouteModal] = useState(false);
+  const [newRouteDateInput, setNewRouteDateInput] = useState('');
+  const [isMovingRouteDate, setIsMovingRouteDate] = useState(false);
 
   // Modal de observaciones para entrega/fallo
   const [obsModalTicketId, setObsModalTicketId] = useState(null);
@@ -9858,6 +9864,17 @@ function App() {
                 >
                   📊 Ver Resumen en Directo ({ticketFilterDate})
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewRouteDateInput(ticketFilterDate);
+                    setShowMoveRouteModal(true);
+                  }}
+                  className="btn btn-secondary btn-small"
+                  style={{ width: 'auto', margin: 0, padding: '8px 16px', background: 'rgba(168, 85, 247, 0.12)', color: '#e9d5ff', border: '1px solid rgba(168, 85, 247, 0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  📅 Cambiar Fecha de esta Ruta
+                </button>
               </div>
             )}
 
@@ -11490,6 +11507,102 @@ function App() {
     );
   }
 
+  const handleMoveRouteDate = async () => {
+    if (!ticketFilterFurgo || ticketFilterFurgo === 'all' || !ticketFilterDate || !newRouteDateInput) {
+      triggerAlert('Por favor selecciona una furgoneta, la fecha origen y la nueva fecha de destino.', 'error');
+      return;
+    }
+    if (newRouteDateInput === ticketFilterDate) {
+      triggerAlert('La nueva fecha debe ser diferente de la fecha origen.', 'error');
+      return;
+    }
+
+    setIsMovingRouteDate(true);
+    try {
+      const result = await moveRouteDate(ticketFilterFurgo, ticketFilterDate, newRouteDateInput);
+      triggerAlert(`¡Ruta trasladada! Se cambiaron ${result.ticketsCount} repartos ${result.hasShift ? 'y el turno' : ''} al ${newRouteDateInput}.`);
+      
+      setTicketFilterDate(newRouteDateInput);
+      setShowMoveRouteModal(false);
+      loadData();
+    } catch (e) {
+      console.error(e);
+      triggerAlert('Hubo un error al trasladar la ruta.', 'error');
+    } finally {
+      setIsMovingRouteDate(false);
+    }
+  };
+
+  const renderMoveRouteModal = () => {
+    if (!showMoveRouteModal) return null;
+    const label = activeRepartidores.find(r => r.id === ticketFilterFurgo)?.label || ticketFilterFurgo;
+
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0, 0, 0, 0.75)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2100,
+        padding: '20px'
+      }}>
+        <div className="glass-panel" style={{
+          width: '100%',
+          maxWidth: '400px',
+          padding: '25px',
+          textAlign: 'left',
+          boxShadow: '0 15px 50px rgba(0,0,0,0.6)',
+          border: '1px solid var(--panel-border)',
+          borderRadius: '16px',
+          background: 'rgba(21, 23, 30, 0.95)'
+        }}>
+          <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            📅 Trasladar Fecha de Ruta
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: '1.4' }}>
+            Vas a cambiar la fecha de todos los repartos de <strong>{label}</strong> programados el día <strong>{ticketFilterDate}</strong> a una nueva fecha de destino.
+          </p>
+
+          <div className="input-group" style={{ marginBottom: '20px' }}>
+            <span className="input-label" style={{ fontWeight: '700' }}>Nueva Fecha de Destino:</span>
+            <input 
+              type="date" 
+              className="form-input" 
+              value={newRouteDateInput} 
+              onChange={(e) => setNewRouteDateInput(e.target.value)} 
+              style={{ background: '#1e1e2e', color: '#fff', border: '1px solid var(--panel-border)', width: '100%', padding: '10px', borderRadius: '8px' }}
+              disabled={isMovingRouteDate}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', marginTop: '25px' }}>
+            <button 
+              type="button"
+              className="btn btn-primary"
+              onClick={handleMoveRouteDate}
+              disabled={isMovingRouteDate || !newRouteDateInput}
+              style={{ flex: 1, margin: 0, padding: '12px', background: 'var(--success)' }}
+            >
+              {isMovingRouteDate ? 'Trasladando...' : 'Confirmar Traslado'}
+            </button>
+            <button 
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowMoveRouteModal(false)}
+              disabled={isMovingRouteDate}
+              style={{ flex: 0.5, margin: 0, padding: '12px' }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <style>{`
@@ -12357,6 +12470,7 @@ function App() {
           </div>
         </div>
       )}
+      {renderMoveRouteModal()}
     </>
   );
 }
