@@ -71,4 +71,10 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **Consistencia e Historial**: Los cambios deben aplicarse localmente y sincronizarse en Supabase de forma atómica para no dejar datos huérfanos o incongruencias en facturaciones.
 * **Redirección de la Vista**: Al finalizar con éxito, el sistema debe cambiar el filtro de fecha activo a la nueva fecha de destino para que el usuario sea redirigido y verifique el traslado de inmediato.
 
+## 16. Separación de Tarifas y Precios para Superadministrador (Filtro por Propietario)
+* **Evitar Duplicados**: El catálogo de tarifas para el Super Administrador debe presentarse de forma organizada y separada para evitar duplicar artículos base con copias de administradores.
+* **Filtro Desplegable (`selectedTariffOwner`)**: Se debe mostrar un selector desplegable en la parte superior para elegir entre "Tarifas Base (Originales)" y las tarifas personalizadas de cada administrador (`users.filter(u => u.role === 'admin')`).
+* **Visualización de Tarifas Base**: Al seleccionar "Tarifas Base", se deben ocultar todas las tarifas que tengan sufijos de administrador o estén creadas por otros administradores, mostrando una lista limpia con las tarifas estándar iniciales.
+* **Visualización de Tarifas Customizadas**: Al seleccionar un administrador específico, la vista debe actualizarse para mostrar únicamente las tarifas y precios de ese administrador (las cuales se inicializan en `0 €`), permitiendo editarlas de forma aislada.
+
 
