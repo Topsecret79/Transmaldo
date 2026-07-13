@@ -9270,258 +9270,6 @@ function App() {
     );
   };
 
-  const exportSingleFurgoDailyReport = async (fid) => {
-    const label = users.find(u => u.id === fid)?.label || fid;
-    
-    const datesSet = new Set();
-    filteredAdminTickets.filter(t => t.furgoId === fid).forEach(t => datesSet.add(t.date));
-    shifts.filter(s => 
-      s.furgoId === fid && 
-      s.status === 'closed' &&
-      (!adminStartDate || s.date >= adminStartDate) &&
-      (!adminEndDate || s.date <= adminEndDate)
-    ).forEach(s => datesSet.add(s.date));
-
-    const sortedDates = Array.from(datesSet).sort((a, b) => b.localeCompare(a));
-
-    const rows = [];
-    let totalBase = 0;
-    let totalMileage = 0;
-    let totalKms = 0;
-    let totalNet = 0;
-
-    sortedDates.forEach(date => {
-      const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid && t.date === date);
-      const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
-      
-      let pms = 0;
-      let deliveries = 0;
-      fSuccess.forEach(t => {
-        t.tasks.forEach(task => {
-          const tid = task.tariffId || '';
-          if (tid.startsWith('PM_')) pms += task.quantity;
-          if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) deliveries += task.quantity;
-        });
-      });
-
-      const shift = shifts.find(s => s.furgoId === fid && s.date === date && s.status === 'closed');
-      const kms = shift ? getRouteKms(fid, date) : 0;
-      const mileage = kms * kmPrice;
-      const base = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
-      const dailyTotal = base + mileage;
-      const iva = dailyTotal * 0.21;
-      const retencion = dailyTotal * 0.01;
-      const net = dailyTotal + iva - retencion;
-
-      totalBase += base;
-      totalMileage += mileage;
-      totalKms += kms;
-      totalNet += net;
-
-      const dateObj = new Date(date + 'T00:00:00');
-      const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
-      const formattedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-
-      rows.push({
-        'Fecha': `${formattedWeekday}, ${date}`,
-        'Éxitos / Total': `${fSuccess.length} / ${fTickets.length}`,
-        'Puestas en Marcha': pms,
-        'Entregas': deliveries,
-        'Kilómetros': `${kms.toFixed(1)} km`,
-        'Kilometraje (€)': mileage.toFixed(2),
-        'Base Imponible (€)': base.toFixed(2),
-        'Total Neto (€)': net.toFixed(2)
-      });
-    });
-
-    rows.push({});
-    rows.push({
-      'Fecha': 'TOTALES ACUMULADOS',
-      'Éxitos / Total': '',
-      'Puestas en Marcha': '',
-      'Entregas': '',
-      'Kilómetros': `${totalKms.toFixed(1)} km`,
-      'Kilometraje (€)': totalMileage.toFixed(2),
-      'Base Imponible (€)': totalBase.toFixed(2),
-      'Total Neto (€)': totalNet.toFixed(2)
-    });
-
-    const XLSX = await import('xlsx');
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Detalle Diario');
-    XLSX.writeFile(wb, `Facturacion_Diaria_${label.replace(/\s+/g, '_')}_${adminStartDate || 'inicio'}_a_${adminEndDate || 'hoy'}.xlsx`);
-  };
-
-  const renderDrilldownModal = () => {
-    if (!selectedDrilldownFurgoId) return null;
-    const fid = selectedDrilldownFurgoId;
-    const label = users.find(u => u.id === fid)?.label || fid;
-
-    const datesSet = new Set();
-    filteredAdminTickets.filter(t => t.furgoId === fid).forEach(t => datesSet.add(t.date));
-    shifts.filter(s => 
-      s.furgoId === fid && 
-      s.status === 'closed' &&
-      (!adminStartDate || s.date >= adminStartDate) &&
-      (!adminEndDate || s.date <= adminEndDate)
-    ).forEach(s => datesSet.add(s.date));
-
-    const sortedDates = Array.from(datesSet).sort((a, b) => b.localeCompare(a));
-
-    let totalBase = 0;
-    let totalMileage = 0;
-    let totalKms = 0;
-    let totalPms = 0;
-    let totalDeliveries = 0;
-    let totalTickets = 0;
-    let totalSuccess = 0;
-
-    const dailyStats = sortedDates.map(date => {
-      const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid && t.date === date);
-      const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
-      
-      let pms = 0;
-      let deliveries = 0;
-      fSuccess.forEach(t => {
-        t.tasks.forEach(task => {
-          const tid = task.tariffId || '';
-          if (tid.startsWith('PM_')) pms += task.quantity;
-          if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) deliveries += task.quantity;
-        });
-      });
-
-      const shift = shifts.find(s => s.furgoId === fid && s.date === date && s.status === 'closed');
-      const kms = shift ? getRouteKms(fid, date) : 0;
-      const mileage = kms * kmPrice;
-      const base = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
-      const dailyTotal = base + mileage;
-      const iva = dailyTotal * 0.21;
-      const retencion = dailyTotal * 0.01;
-      const net = dailyTotal + iva - retencion;
-
-      totalBase += base;
-      totalMileage += mileage;
-      totalKms += kms;
-      totalPms += pms;
-      totalDeliveries += deliveries;
-      totalTickets += fTickets.length;
-      totalSuccess += fSuccess.length;
-
-      const dateObj = new Date(date + 'T00:00:00');
-      const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
-      const formattedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-
-      return {
-        date,
-        formattedWeekday,
-        successCount: fSuccess.length,
-        totalCount: fTickets.length,
-        pms,
-        deliveries,
-        kms,
-        mileage,
-        base,
-        net
-      };
-    });
-
-    const overallTotalNet = (totalBase + totalMileage) * 1.20;
-
-    return (
-      <div className="drilldown-overlay" onClick={() => setSelectedDrilldownFurgoId(null)}>
-        <div className="drilldown-content" onClick={(e) => e.stopPropagation()}>
-          <div className="drilldown-header">
-            <div className="drilldown-title" style={{ textAlign: 'left' }}>
-              <h3>📈 Desglose Diario: {label}</h3>
-              <p>Periodo del {adminStartDate || 'Inicio'} al {adminEndDate || 'Hoy'}</p>
-            </div>
-            <button 
-              type="button" 
-              className="btn btn-secondary" 
-              onClick={() => setSelectedDrilldownFurgoId(null)}
-              style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', padding: 0 }}
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="dashboard-grid" style={{ marginBottom: '20px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-            <div className="stat-card success" style={{ padding: '15px' }}>
-              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Total Neto Acumulado</p>
-              <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{overallTotalNet.toFixed(2)} €</div>
-            </div>
-            <div className="stat-card info" style={{ padding: '15px' }}>
-              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Entregas / Éxitos</p>
-              <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalSuccess} / {totalTickets}</div>
-            </div>
-            <div className="stat-card warning" style={{ padding: '15px' }}>
-              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Kilometraje Total</p>
-              <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalKms.toFixed(1)} km</div>
-              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({totalMileage.toFixed(2)} €)</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: 'var(--text-main)' }}>Detalle Diario</h4>
-            <button 
-              type="button" 
-              className="btn btn-primary btn-small"
-              onClick={() => exportSingleFurgoDailyReport(fid)}
-              style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', height: '34px', margin: 0 }}
-            >
-              <Download size={14} /> Exportar Excel
-            </button>
-          </div>
-
-          {dailyStats.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              No hay actividad registrada en este periodo.
-            </div>
-          ) : (
-            <div className="table-container" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              <table style={{ width: '100%' }}>
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
-                    <th style={{ textAlign: 'center' }}>PMs</th>
-                    <th style={{ textAlign: 'center' }}>Entregas</th>
-                    <th style={{ textAlign: 'center' }}>Kms</th>
-                    <th style={{ textAlign: 'right' }}>Kilometraje</th>
-                    <th style={{ textAlign: 'right' }}>Base Imponible</th>
-                    <th style={{ textAlign: 'right' }}>Total Neto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dailyStats.map(stat => {
-                    const dailyTotal = stat.base + stat.mileage;
-                    const iva = dailyTotal * 0.21;
-                    const retencion = dailyTotal * 0.01;
-                    const net = dailyTotal + iva - retencion;
-
-                    return (
-                      <tr key={stat.date}>
-                        <td style={{ fontWeight: '600' }}>{stat.formattedWeekday}, {stat.date}</td>
-                        <td style={{ textAlign: 'center' }}>{stat.successCount} / {stat.totalCount}</td>
-                        <td style={{ textAlign: 'center' }}>{stat.pms}</td>
-                        <td style={{ textAlign: 'center' }}>{stat.deliveries}</td>
-                        <td style={{ textAlign: 'center' }}>{stat.kms.toFixed(1)} km</td>
-                        <td style={{ textAlign: 'right', color: 'var(--primary)' }}>{stat.mileage.toFixed(2)} €</td>
-                        <td style={{ textAlign: 'right' }}>{stat.base.toFixed(2)} €</td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{net.toFixed(2)} €</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   // --- RENDERIZADO DEL PORTAL DE ADMINISTRADOR ---
   const renderAdminPortal = () => {
     const filteredAdminTickets = visibleTickets.filter(t => {
@@ -9530,6 +9278,258 @@ function App() {
       if (billingFilterFurgo !== 'all' && t.furgoId !== billingFilterFurgo) return false;
       return true;
     });
+
+    const exportSingleFurgoDailyReport = async (fid) => {
+      const label = users.find(u => u.id === fid)?.label || fid;
+      
+      const datesSet = new Set();
+      filteredAdminTickets.filter(t => t.furgoId === fid).forEach(t => datesSet.add(t.date));
+      shifts.filter(s => 
+        s.furgoId === fid && 
+        s.status === 'closed' &&
+        (!adminStartDate || s.date >= adminStartDate) &&
+        (!adminEndDate || s.date <= adminEndDate)
+      ).forEach(s => datesSet.add(s.date));
+
+      const sortedDates = Array.from(datesSet).sort((a, b) => b.localeCompare(a));
+
+      const rows = [];
+      let totalBase = 0;
+      let totalMileage = 0;
+      let totalKms = 0;
+      let totalNet = 0;
+
+      sortedDates.forEach(date => {
+        const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid && t.date === date);
+        const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
+        
+        let pms = 0;
+        let deliveries = 0;
+        fSuccess.forEach(t => {
+          t.tasks.forEach(task => {
+            const tid = task.tariffId || '';
+            if (tid.startsWith('PM_')) pms += task.quantity;
+            if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) deliveries += task.quantity;
+          });
+        });
+
+        const shift = shifts.find(s => s.furgoId === fid && s.date === date && s.status === 'closed');
+        const kms = shift ? getRouteKms(fid, date) : 0;
+        const mileage = kms * kmPrice;
+        const base = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+        const dailyTotal = base + mileage;
+        const iva = dailyTotal * 0.21;
+        const retencion = dailyTotal * 0.01;
+        const net = dailyTotal + iva - retencion;
+
+        totalBase += base;
+        totalMileage += mileage;
+        totalKms += kms;
+        totalNet += net;
+
+        const dateObj = new Date(date + 'T00:00:00');
+        const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
+        const formattedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+
+        rows.push({
+          'Fecha': `${formattedWeekday}, ${date}`,
+          'Éxitos / Total': `${fSuccess.length} / ${fTickets.length}`,
+          'Puestas en Marcha': pms,
+          'Entregas': deliveries,
+          'Kilómetros': `${kms.toFixed(1)} km`,
+          'Kilometraje (€)': mileage.toFixed(2),
+          'Base Imponible (€)': base.toFixed(2),
+          'Total Neto (€)': net.toFixed(2)
+        });
+      });
+
+      rows.push({});
+      rows.push({
+        'Fecha': 'TOTALES ACUMULADOS',
+        'Éxitos / Total': '',
+        'Puestas en Marcha': '',
+        'Entregas': '',
+        'Kilómetros': `${totalKms.toFixed(1)} km`,
+        'Kilometraje (€)': totalMileage.toFixed(2),
+        'Base Imponible (€)': totalBase.toFixed(2),
+        'Total Neto (€)': totalNet.toFixed(2)
+      });
+
+      const XLSX = await import('xlsx');
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Detalle Diario');
+      XLSX.writeFile(wb, `Facturacion_Diaria_${label.replace(/\s+/g, '_')}_${adminStartDate || 'inicio'}_a_${adminEndDate || 'hoy'}.xlsx`);
+    };
+
+    const renderDrilldownModal = () => {
+      if (!selectedDrilldownFurgoId) return null;
+      const fid = selectedDrilldownFurgoId;
+      const label = users.find(u => u.id === fid)?.label || fid;
+
+      const datesSet = new Set();
+      filteredAdminTickets.filter(t => t.furgoId === fid).forEach(t => datesSet.add(t.date));
+      shifts.filter(s => 
+        s.furgoId === fid && 
+        s.status === 'closed' &&
+        (!adminStartDate || s.date >= adminStartDate) &&
+        (!adminEndDate || s.date <= adminEndDate)
+      ).forEach(s => datesSet.add(s.date));
+
+      const sortedDates = Array.from(datesSet).sort((a, b) => b.localeCompare(a));
+
+      let totalBase = 0;
+      let totalMileage = 0;
+      let totalKms = 0;
+      let totalPms = 0;
+      let totalDeliveries = 0;
+      let totalTickets = 0;
+      let totalSuccess = 0;
+
+      const dailyStats = sortedDates.map(date => {
+        const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid && t.date === date);
+        const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
+        
+        let pms = 0;
+        let deliveries = 0;
+        fSuccess.forEach(t => {
+          t.tasks.forEach(task => {
+            const tid = task.tariffId || '';
+            if (tid.startsWith('PM_')) pms += task.quantity;
+            if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) deliveries += task.quantity;
+          });
+        });
+
+        const shift = shifts.find(s => s.furgoId === fid && s.date === date && s.status === 'closed');
+        const kms = shift ? getRouteKms(fid, date) : 0;
+        const mileage = kms * kmPrice;
+        const base = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+        const dailyTotal = base + mileage;
+        const iva = dailyTotal * 0.21;
+        const retencion = dailyTotal * 0.01;
+        const net = dailyTotal + iva - retencion;
+
+        totalBase += base;
+        totalMileage += mileage;
+        totalKms += kms;
+        totalPms += pms;
+        totalDeliveries += deliveries;
+        totalTickets += fTickets.length;
+        totalSuccess += fSuccess.length;
+
+        const dateObj = new Date(date + 'T00:00:00');
+        const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
+        const formattedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+
+        return {
+          date,
+          formattedWeekday,
+          successCount: fSuccess.length,
+          totalCount: fTickets.length,
+          pms,
+          deliveries,
+          kms,
+          mileage,
+          base,
+          net
+        };
+      });
+
+      const overallTotalNet = (totalBase + totalMileage) * 1.20;
+
+      return (
+        <div className="drilldown-overlay" onClick={() => setSelectedDrilldownFurgoId(null)}>
+          <div className="drilldown-content" onClick={(e) => e.stopPropagation()}>
+            <div className="drilldown-header">
+              <div className="drilldown-title" style={{ textAlign: 'left' }}>
+                <h3>📈 Desglose Diario: {label}</h3>
+                <p>Periodo del {adminStartDate || 'Inicio'} al {adminEndDate || 'Hoy'}</p>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setSelectedDrilldownFurgoId(null)}
+                style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', padding: 0 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="dashboard-grid" style={{ marginBottom: '20px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+              <div className="stat-card success" style={{ padding: '15px' }}>
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Total Neto Acumulado</p>
+                <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{overallTotalNet.toFixed(2)} €</div>
+              </div>
+              <div className="stat-card info" style={{ padding: '15px' }}>
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Entregas / Éxitos</p>
+                <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalSuccess} / {totalTickets}</div>
+              </div>
+              <div className="stat-card warning" style={{ padding: '15px' }}>
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Kilometraje Total</p>
+                <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalKms.toFixed(1)} km</div>
+                <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({totalMileage.toFixed(2)} €)</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: '600', color: 'var(--text-main)' }}>Detalle Diario</h4>
+              <button 
+                type="button" 
+                className="btn btn-primary btn-small"
+                onClick={() => exportSingleFurgoDailyReport(fid)}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', height: '34px', margin: 0 }}
+              >
+                <Download size={14} /> Exportar Excel
+              </button>
+            </div>
+
+            {dailyStats.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                No hay actividad registrada en este periodo.
+              </div>
+            ) : (
+              <div className="table-container" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <table style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
+                      <th style={{ textAlign: 'center' }}>PMs</th>
+                      <th style={{ textAlign: 'center' }}>Entregas</th>
+                      <th style={{ textAlign: 'center' }}>Kms</th>
+                      <th style={{ textAlign: 'right' }}>Kilometraje</th>
+                      <th style={{ textAlign: 'right' }}>Base Imponible</th>
+                      <th style={{ textAlign: 'right' }}>Total Neto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailyStats.map(stat => {
+                      const dailyTotal = stat.base + stat.mileage;
+                      const iva = dailyTotal * 0.21;
+                      const retencion = dailyTotal * 0.01;
+                      const net = dailyTotal + iva - retencion;
+
+                      return (
+                        <tr key={stat.date}>
+                          <td style={{ fontWeight: '600' }}>{stat.formattedWeekday}, {stat.date}</td>
+                          <td style={{ textAlign: 'center' }}>{stat.successCount} / {stat.totalCount}</td>
+                          <td style={{ textAlign: 'center' }}>{stat.pms}</td>
+                          <td style={{ textAlign: 'center' }}>{stat.deliveries}</td>
+                          <td style={{ textAlign: 'center' }}>{stat.kms.toFixed(1)} km</td>
+                          <td style={{ textAlign: 'right', color: 'var(--primary)' }}>{stat.mileage.toFixed(2)} €</td>
+                          <td style={{ textAlign: 'right' }}>{stat.base.toFixed(2)} €</td>
+                          <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{net.toFixed(2)} €</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
 
     const successTickets = filteredAdminTickets.filter(t => t.status === 'success' || !t.status);
     const furgos = billingFilterFurgo !== 'all' 
