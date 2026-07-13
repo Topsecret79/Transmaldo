@@ -1663,3 +1663,171 @@ tr:hover td {
   to { transform: translateY(0); opacity: 1; }
 }
 
+/* ================= RESUMEN DIARIO - MODO IMPRIMIBLE / LETRAS NEGRAS ================= */
+.shift-summary-receipt {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05) !important;
+}
+
+.shift-summary-receipt h3 {
+  color: #0f172a !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.shift-summary-receipt button.btn-secondary.btn-small {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.shift-summary-receipt strong {
+  color: #0f172a !important;
+}
+
+/* Forcing general text items to be dark gray or black */
+.shift-summary-receipt div,
+.shift-summary-receipt span {
+  color: #334155 !important;
+}
+
+.shift-summary-receipt strong[style*="color: var(--primary)"],
+.shift-summary-receipt span[style*="color: var(--primary)"],
+.shift-summary-receipt strong[style*="color:var(--primary)"],
+.shift-summary-receipt span[style*="color:var(--primary)"] {
+  color: #4f46e5 !important;
+}
+
+/* Dashed separators */
+.shift-summary-receipt div[style*="border-bottom: 1px dashed"],
+.shift-summary-receipt div[style*="borderBottom: '1px dashed"] {
+  border-bottom: 1px dashed #cbd5e1 !important;
+}
+
+.shift-summary-receipt div[style*="borderBottom"] {
+  border-bottom-color: #cbd5e1 !important;
+}
+
+/* Sub-lists under TVs/Others */
+.shift-summary-receipt div[style*="color: var(--text-muted)"],
+.shift-summary-receipt div[style*="color:var(--text-muted)"] {
+  color: #475569 !important;
+  border-left-color: #cbd5e1 !important;
+}
+.shift-summary-receipt div[style*="color: var(--text-muted)"] strong,
+.shift-summary-receipt div[style*="color:var(--text-muted)"] strong {
+  color: #1e293b !important;
+}
+
+/* COD cash text */
+.shift-summary-receipt div[style*="color: var(--success)"],
+.shift-summary-receipt div[style*="color:var(--success)"] {
+  color: #16a34a !important;
+}
+.shift-summary-receipt div[style*="color: var(--success)"] strong,
+.shift-summary-receipt div[style*="color:var(--success)"] strong {
+  color: #16a34a !important;
+}
+
+/* Kilometers section background & inputs */
+.shift-summary-receipt div[style*="background: rgba(255,255,255,0.02)"],
+.shift-summary-receipt div[style*="background:rgba(255,255,255,0.02)"] {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+}
+.shift-summary-receipt div[style*="background: rgba(255,255,255,0.02)"] span,
+.shift-summary-receipt div[style*="background:rgba(255,255,255,0.02)"] span {
+  color: #334155 !important;
+}
+.shift-summary-receipt div[style*="background: rgba(255,255,255,0.02)"] strong,
+.shift-summary-receipt div[style*="background:rgba(255,255,255,0.02)"] strong {
+  color: #0f172a !important;
+}
+
+.shift-summary-receipt input.form-input {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #4f46e5 !important;
+}
+
+/* Earnings Box */
+.shift-summary-receipt div[style*="background: rgba(99, 102, 241, 0.08)"],
+.shift-summary-receipt div[style*="background:rgba(99, 102, 241, 0.08)"] {
+  background: #f0f4ff !important;
+  border: 1px solid #c7d2fe !important;
+}
+.shift-summary-receipt div[style*="background: rgba(99, 102, 241, 0.08)"] span,
+.shift-summary-receipt div[style*="background:rgba(99, 102, 241, 0.08)"] span {
+  color: #475569 !important;
+}
+.shift-summary-receipt div[style*="background: rgba(99, 102, 241, 0.08)"] strong,
+.shift-summary-receipt div[style*="background:rgba(99, 102, 241, 0.08)"] strong {
+  color: #1e293b !important;
+}
+.shift-summary-receipt div[style*="color: var(--primary)"],
+.shift-summary-receipt div[style*="color:var(--primary)"] {
+  color: #4f46e5 !important;
+}
+
+/* Day tickets list */
+.shift-summary-receipt div[style*="overflow-y: auto"],
+.shift-summary-receipt div[style*="overflowY: 'auto'"],
+.shift-summary-receipt div[style*="overflowY:"] {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.shift-summary-receipt div[style*="border-bottom: 1px solid rgba(255,255,255,0.05)"],
+.shift-summary-receipt div[style*="borderBottom: idx < dayTickets.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none'"] {
+  border-bottom: 1px solid #cbd5e1 !important;
+}
+
+.shift-summary-receipt div[style*="color: '#000'"],
+.shift-summary-receipt div[style*="color:'#000'"],
+.shift-summary-receipt div[style*="color: '#0f172a'"] {
+  color: #0f172a !important;
+}
+
+/* Service tags and TV extra tags */
+.shift-summary-receipt span[style*="background: rgba(79, 70, 229, 0.1)"],
+.shift-summary-receipt span[style*="background:rgba(79, 70, 229, 0.1)"] {
+  background: rgba(79, 70, 229, 0.08) !important;
+  color: #4f46e5 !important;
+  border: 1px solid rgba(79, 70, 229, 0.2) !important;
+}
+
+.shift-summary-receipt span[style*="background: rgba(251, 191, 36, 0.1)"],
+.shift-summary-receipt span[style*="background:rgba(251, 191, 36, 0.1)"] {
+  background: rgba(217, 119, 6, 0.08) !important;
+  color: #b45309 !important;
+  border: 1px solid rgba(217, 119, 6, 0.2) !important;
+}
+
+/* Warning alert notice at the bottom */
+.shift-summary-receipt div[style*="color: var(--danger)"],
+.shift-summary-receipt div[style*="color:var(--danger)"] {
+  color: #b91c1c !important;
+  background: rgba(220, 38, 38, 0.05) !important;
+  border: 1px dashed #fca5a5 !important;
+}
+
+/* Buttons inside modal */
+.shift-summary-receipt button.btn-secondary {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+.shift-summary-receipt button.btn-secondary:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+.shift-summary-receipt button.btn-primary {
+  background: #16a34a !important;
+  color: #ffffff !important;
+}
+.shift-summary-receipt button.btn-primary:hover {
+  background: #15803d !important;
+}
+
+
