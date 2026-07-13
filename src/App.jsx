@@ -9456,7 +9456,7 @@ function App() {
           <div className="drilldown-content" onClick={(e) => e.stopPropagation()}>
             <div className="drilldown-header">
               <div className="drilldown-title" style={{ textAlign: 'left' }}>
-                <h3>📈 Desglose Diario: {label}</h3>
+                <h3>📈 Desglose Diario: {label} <span style={{ fontSize: '0.75rem', opacity: 0.5, color: '#fff', marginLeft: '5px' }}>(v99)</span></h3>
                 <p>Periodo del {adminStartDate || 'Inicio'} al {adminEndDate || 'Hoy'}</p>
               </div>
               <button 
