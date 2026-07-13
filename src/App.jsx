@@ -10960,10 +10960,10 @@ function App() {
                                 type="button" 
                                 onClick={() => {
                                   setEditingTariffId(t.id);
-                                  setEditTariffName(t.name);
-                                  setEditTariffBlock(t.block);
-                                  setEditTariffType(t.type);
-                                  setEditTariffValue(t.value.toString());
+                                  setEditTariffName(t.name || '');
+                                  setEditTariffBlock(t.block || 'Otros');
+                                  setEditTariffType(t.type || 'fixed');
+                                  setEditTariffValue(t.value !== undefined && t.value !== null ? t.value.toString() : '0');
                                 }}
                                 className="btn btn-secondary btn-small"
                                 style={{ padding: '6px 8px', margin: 0, display: 'inline-flex', alignItems: 'center', width: 'auto', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)' }}
