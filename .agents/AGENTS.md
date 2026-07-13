@@ -58,3 +58,17 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **Interactividad y Arrastre**: El cuadro de detalles de parada rápida (`.map-floating-details`) situado sobre el mapa debe ser arrastrable (soporte para mouse/touch dragging). El usuario puede arrastrarlo libremente a cualquier zona del mapa para evitar que obstruya su visualización.
 * **Preservación del Diseño**: El arrastre debe implementarse mediante propiedades CSS `transform` dinámicas, asegurando que se conserve el centrado de pantalla responsivo en móviles al cargar por primera vez y sin alterar la lógica interna de sus botones, enlaces, selectores y cambios de estado.
 
+## 14. Detalle Diario por Furgoneta (Drill-Down)
+* **Interactividad del Dashboard**: Al hacer clic en las columnas del gráfico de barras o en las filas de la tabla de facturación del Dashboard, se debe abrir un modal de desglose diario (`renderDrilldownModal`).
+* **Visualización de Datos**: El modal debe compilar y ordenar cronológicamente todos los días de actividad del repartidor en el periodo, mostrando el neto diario, kilometraje, éxitos y detalles de entregas.
+* **Exportación Individual**: Debe incluir un botón para exportar a Excel (`exportSingleFurgoDailyReport`) con el desglose diario exclusivo del conductor seleccionado.
+* **Ámbito del Renderizado**: Las funciones de compilación y renderizado del modal y su Excel deben declararse dentro del ámbito de la función `renderAdminPortal` para tener acceso por clausura a las variables de filtrado (`filteredAdminTickets`, `shifts`, etc.) y evitar errores de referencia en Android/iOS.
+* **Scroll Nativo en Móviles**: Para garantizar la compatibilidad con Android Chrome, el modal emergente debe tener su scroll vertical en el elemento contenedor de fondo (`.drilldown-overlay` con `overflow-y: auto`), permitiendo que el contenido interior crezca de forma natural y evitando así bloqueos por desbordamientos verticales anidados.
+
+## 15. Traslado de Ruta Completa de Fecha (Bulk Date Transfer)
+* **Botón de Acción**: En la pestaña de Repartos del Periodo (`tickets`), al filtrar por una furgoneta y fecha específicas, debe habilitarse el botón "📅 Cambiar Fecha de esta Ruta".
+* **Traslado de Datos en Lote**: Esta acción abre un modal (`renderMoveRouteModal`) que traslada en un solo paso la fecha de todos los tickets y del turno de kilometraje (`shift`) asociado a esa fecha y conductor a una nueva fecha seleccionada.
+* **Consistencia e Historial**: Los cambios deben aplicarse localmente y sincronizarse en Supabase de forma atómica para no dejar datos huérfanos o incongruencias en facturaciones.
+* **Redirección de la Vista**: Al finalizar con éxito, el sistema debe cambiar el filtro de fecha activo a la nueva fecha de destino para que el usuario sea redirigido y verifique el traslado de inmediato.
+
+
