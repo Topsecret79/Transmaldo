@@ -10712,7 +10712,14 @@ function App() {
                       {blockTariffs.map(t => (
                         <div className="tariff-edit-card" key={t.id}>
                           <div>
-                            <div style={{ fontWeight: '600' }}>{t.name}</div>
+                            <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                              <span>{t.name}</span>
+                              {currentUser?.role === 'superadmin' && (
+                                <span style={{ fontSize: '0.72rem', fontWeight: '500', padding: '1px 6px', borderRadius: '4px', background: !t.createdBy || t.createdBy === 'admin' ? 'rgba(52, 211, 153, 0.15)' : 'rgba(168, 85, 247, 0.15)', color: !t.createdBy || t.createdBy === 'admin' ? '#34d399' : '#e9d5ff', border: !t.createdBy || t.createdBy === 'admin' ? '1px solid rgba(52, 211, 153, 0.25)' : '1px solid rgba(168, 85, 247, 0.25)' }}>
+                                  {!t.createdBy || t.createdBy === 'admin' ? 'Original / Base' : `Admin: ${users.find(u => u.id === t.createdBy)?.label || t.createdBy}`}
+                                </span>
+                              )}
+                            </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.type === 'fixed' ? 'Precio Fijo' : `Multiplicador Módulo: ${t.value} módulos`}</div>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
