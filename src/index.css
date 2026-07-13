@@ -686,6 +686,7 @@ p {
   border-radius: var(--border-radius-md);
   border: 1px solid var(--panel-border);
   width: 100%;
+  touch-action: pan-x pan-y !important;
 }
 
 .table-container table {
@@ -1563,6 +1564,7 @@ tr:hover td {
   z-index: 2000;
   padding: 15px;
   animation: fadeIn 0.25s ease-out;
+  touch-action: auto !important;
 }
 
 .drilldown-content {
@@ -1577,6 +1579,7 @@ tr:hover td {
   padding: 25px;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   color: #ffffff;
+  touch-action: pan-x pan-y !important;
 }
 
 .drilldown-content table th {
