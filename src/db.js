@@ -1345,7 +1345,7 @@ export function addUser(username, label, password, role = 'repartidor', createdB
 }
 
 // Inicializar tarifas de un administrador (copiar por defecto o a 0)
-export function initializeAdminTariffs(newAdminId, option, creatorTariffs) {
+export async function initializeAdminTariffs(newAdminId, option, creatorTariffs) {
   const currentTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
   
   // Lista base: usar las del creador si existen, o sino las DEFAULT_TARIFFS
@@ -1374,7 +1374,7 @@ export function initializeAdminTariffs(newAdminId, option, creatorTariffs) {
   });
   
   const updatedTariffs = [...currentTariffs, ...newTariffsToInsert];
-  saveTariffs(updatedTariffs);
+  await saveTariffs(updatedTariffs);
   return newTariffsToInsert;
 }
 

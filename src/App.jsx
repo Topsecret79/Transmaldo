@@ -10798,6 +10798,44 @@ function App() {
               </div>
             )}
             
+            {selectedTariffOwner !== 'base' && tariffs.filter(t => t.createdBy === selectedTariffOwner || t.id.endsWith('_' + selectedTariffOwner)).length === 0 && (
+              <div className="glass-panel" style={{ padding: '20px', textAlign: 'center', border: '1px solid rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', marginBottom: '20px' }}>
+                <p style={{ color: '#f87171', fontWeight: '600', marginBottom: '15px' }}>
+                  ⚠️ Este administrador no tiene tarifas inicializadas en el sistema.
+                </p>
+                <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-primary" 
+                    onClick={async () => {
+                      if (window.confirm('¿Deseas inicializar las tarifas de este administrador con los precios base actuales?')) {
+                        await initializeAdminTariffs(selectedTariffOwner, 'copy_default', tariffs);
+                        loadData();
+                        triggerAlert('Tarifas inicializadas correctamente');
+                      }
+                    }}
+                    style={{ width: 'auto', margin: 0, padding: '8px 16px' }}
+                  >
+                    ⚙️ Inicializar con Tarifas Base
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={async () => {
+                      if (window.confirm('¿Deseas inicializar las tarifas de este administrador a 0,00 €?')) {
+                        await initializeAdminTariffs(selectedTariffOwner, 'zero', tariffs);
+                        loadData();
+                        triggerAlert('Tarifas inicializadas a 0,00 € correctamente');
+                      }
+                    }}
+                    style={{ width: 'auto', margin: 0, padding: '8px 16px' }}
+                  >
+                    💸 Inicializar a 0,00 €
+                  </button>
+                </div>
+              </div>
+            )}
+            
             <div className="settings-grid">
               <div>
                 {['Paquetería', 'Televisores', 'Instalaciones', 'Otros', 'Gama Blanca', 'Muebles'].map(block => {
@@ -11399,7 +11437,7 @@ function App() {
                 <div className="block-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Plus size={18} color="var(--primary)" /> Crear Nuevo Usuario
                 </div>
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                   e.preventDefault();
                   if (!newUsername.trim() || !newLabel.trim() || !newPassword.trim()) {
                     triggerAlert('Por favor rellena todos los campos', 'error');
@@ -11409,7 +11447,7 @@ function App() {
                   const res = addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id);
                   if (res.success) {
                     if (roleToUse === 'admin') {
-                      initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
+                      await initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
                     }
                     triggerAlert(`Usuario "${newLabel}" creado correctamente`);
                     setNewUsername('');
