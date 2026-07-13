@@ -9860,7 +9860,7 @@ function App() {
                     setShowShiftModal(true);
                   }}
                   className="btn btn-secondary btn-small"
-                  style={{ width: 'auto', margin: 0, padding: '8px 16px', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  style={{ width: 'auto', margin: 0, padding: '8px 16px', background: '#c7d2fe', color: '#000000', border: '1px solid #a5b4fc', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
                 >
                   📊 Ver Resumen en Directo ({ticketFilterDate})
                 </button>
@@ -9871,7 +9871,7 @@ function App() {
                     setShowMoveRouteModal(true);
                   }}
                   className="btn btn-secondary btn-small"
-                  style={{ width: 'auto', margin: 0, padding: '8px 16px', background: 'rgba(168, 85, 247, 0.12)', color: '#e9d5ff', border: '1px solid rgba(168, 85, 247, 0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  style={{ width: 'auto', margin: 0, padding: '8px 16px', background: '#e9d5ff', color: '#000000', border: '1px solid #d8b4fe', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
                 >
                   📅 Cambiar Fecha de esta Ruta
                 </button>
