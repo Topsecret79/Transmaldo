@@ -9738,7 +9738,7 @@ function App() {
                 </div>
 
                 <div className="table-container" style={{ marginTop: '30px' }}>
-                  <table style={{ width: '100%' }}>
+                  <table style={{ width: '100%', minWidth: '1000px' }}>
                     <thead>
                       <tr>
                         <th>Furgoneta</th>
