@@ -626,50 +626,52 @@ export function getUsers() {
   return JSON.parse(localStorage.getItem('delivery_users'));
 }
 
-export function saveUsers(users) {
+export async function saveUsers(users) {
   localStorage.setItem('delivery_users', JSON.stringify(users));
   if (supabase) {
-    (async () => {
-      try {
-        const formatted = users.map(u => ({
-          id: u.id,
-          username: u.username,
-          password: u.password,
-          label: u.label,
-          role: u.role,
-          can_search: u.canSearch || false,
-          created_by: u.createdBy || 'admin',
-          must_change_password: u.mustChangePassword || false
-        }));
-        
-        const { error } = await supabase.from('delivery_users').upsert(formatted);
-        
-        if (error) {
-          console.error("Supabase upsert failed:", error);
-          // Retentar sin la columna 'must_change_password' si no existe en la BD remota
-          if (error.code === '42703' || (error.message && error.message.includes('must_change_password'))) {
-            console.warn("Retrying upsert without 'must_change_password' column...");
-            const fallbackFormatted = users.map(u => ({
-              id: u.id,
-              username: u.username,
-              password: u.password,
-              label: u.label,
-              role: u.role,
-              can_search: u.canSearch || false,
-              created_by: u.createdBy || 'admin'
-            }));
-            const { error: fallbackError } = await supabase.from('delivery_users').upsert(fallbackFormatted);
-            if (fallbackError) {
-              console.error("Fallback upsert also failed:", fallbackError);
-            } else {
-              console.log("Fallback upsert succeeded!");
-            }
+    try {
+      const formatted = users.map(u => ({
+        id: u.id,
+        username: u.username,
+        password: u.password,
+        label: u.label,
+        role: u.role,
+        can_search: u.canSearch || false,
+        created_by: u.createdBy || 'admin',
+        must_change_password: u.mustChangePassword || false
+      }));
+      
+      const { error } = await supabase.from('delivery_users').upsert(formatted);
+      
+      if (error) {
+        console.error("Supabase upsert failed:", error);
+        // Retentar sin la columna 'must_change_password' si no existe en la BD remota
+        if (error.code === '42703' || (error.message && error.message.includes('must_change_password'))) {
+          console.warn("Retrying upsert without 'must_change_password' column...");
+          const fallbackFormatted = users.map(u => ({
+            id: u.id,
+            username: u.username,
+            password: u.password,
+            label: u.label,
+            role: u.role,
+            can_search: u.canSearch || false,
+            created_by: u.createdBy || 'admin'
+          }));
+          const { error: fallbackError } = await supabase.from('delivery_users').upsert(fallbackFormatted);
+          if (fallbackError) {
+            console.error("Fallback upsert also failed:", fallbackError);
+            throw fallbackError;
+          } else {
+            console.log("Fallback upsert succeeded!");
           }
+        } else {
+          throw error;
         }
-      } catch (e) {
-        console.error("Error saving users to Supabase:", e);
       }
-    })();
+    } catch (e) {
+      console.error("Error saving users to Supabase:", e);
+      throw e;
+    }
   }
 }
 
@@ -1325,7 +1327,7 @@ export function resetMonthlyShifts() {
 }
 
 // Crear nuevo usuario dinámicamente
-export function addUser(username, label, password, role = 'repartidor', createdBy = null) {
+export async function addUser(username, label, password, role = 'repartidor', createdBy = null) {
   const users = getUsers();
   if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
     return { success: false, error: 'El usuario ya existe' };
@@ -1340,7 +1342,7 @@ export function addUser(username, label, password, role = 'repartidor', createdB
     mustChangePassword: true
   };
   users.push(newUser);
-  saveUsers(users);
+  await saveUsers(users);
   return { success: true, user: newUser };
 }
 

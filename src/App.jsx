@@ -11444,7 +11444,7 @@ function App() {
                     return;
                   }
                   const roleToUse = (currentUser.role === 'superadmin' || currentUser.role === 'admin') ? newRole : 'repartidor';
-                  const res = addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id);
+                  const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id);
                   if (res.success) {
                     if (roleToUse === 'admin') {
                       await initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
