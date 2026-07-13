@@ -681,9 +681,15 @@ p {
 /* Tables */
 .table-container {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   margin-top: 15px;
   border-radius: var(--border-radius-md);
   border: 1px solid var(--panel-border);
+  width: 100%;
+}
+
+.table-container table {
+  min-width: 1000px;
 }
 
 table {
