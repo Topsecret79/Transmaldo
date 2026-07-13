@@ -3887,15 +3887,15 @@ function App() {
   };
 
 
-  const handleUpdateTariffValue = (id, newValue) => {
+  const handleUpdateTariffValue = async (id, newValue) => {
     const valueNum = parseFloat(newValue) || 0;
     const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
-    saveTariffs(updated);
+    await saveTariffs(updated);
     setTariffs(updated);
     recalculateAllTickets(updated, modulePrice);
   };
 
-  const handleUpdateTariffDetails = (id, updatedDetails) => {
+  const handleUpdateTariffDetails = async (id, updatedDetails) => {
     const updated = tariffs.map(t => {
       if (t.id === id) {
         return {
@@ -3908,21 +3908,21 @@ function App() {
       }
       return t;
     });
-    saveTariffs(updated);
+    await saveTariffs(updated);
     setTariffs(updated);
     recalculateAllTickets(updated, modulePrice);
     triggerAlert('Tarifa actualizada correctamente');
     setEditingTariffId(null);
   };
 
-  const handleCreateTariff = (e) => {
+  const handleCreateTariff = async (e) => {
     e.preventDefault();
     if (!newTariffName.trim() || !newTariffValue.trim()) {
       triggerAlert('Por favor rellena el nombre y precio de la tarifa', 'error');
       return;
     }
     const valNum = parseFloat(newTariffValue) || 0;
-    const res = addTariff({
+    const res = await addTariff({
       name: newTariffName.trim(),
       block: newTariffBlock,
       type: newTariffType,
@@ -3936,9 +3936,9 @@ function App() {
     }
   };
 
-  const handleDeleteTariff = (id, name) => {
+  const handleDeleteTariff = async (id, name) => {
     if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente la tarifa "${name}"?`)) {
-      deleteTariff(id);
+      await deleteTariff(id);
       triggerAlert(`Tarifa "${name}" eliminada`);
       loadData();
     }

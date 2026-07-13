@@ -26,8 +26,13 @@ export function getSupabaseClient() {
 let isSyncing = false;
 let realtimeChannel = null;
 
+export let isSaving = false;
+export function setIsSaving(val) {
+  isSaving = val;
+}
+
 export async function reinitSupabase() {
-  if (isSyncing) return;
+  if (isSyncing || isSaving) return;
   isSyncing = true;
   try {
     const url = localStorage.getItem('supabase_url');
@@ -192,6 +197,7 @@ export async function initializeSupabaseTables() {
 
 export async function syncFromCloud() {
   if (!supabase) return;
+  if (isSaving) return;
   try {
     // Pull Users
     const { data: users, error: errUsers } = await supabase.from('delivery_users').select('*');
@@ -743,58 +749,59 @@ export function getTariffs() {
   return Object.values(tariffMap);
 }
 
-export function saveTariffs(tariffs) {
-  let activeAdminId = null;
-  let isSuperAdmin = false;
+export async function saveTariffs(tariffs) {
+  isSaving = true;
   try {
-    const savedUser = localStorage.getItem('delivery_session');
-    if (savedUser) {
-      const u = JSON.parse(savedUser);
-      if (u) {
-        if (u.role === 'admin') {
-          activeAdminId = u.id;
-        } else if (u.role === 'superadmin') {
-          isSuperAdmin = true;
+    let activeAdminId = null;
+    let isSuperAdmin = false;
+    try {
+      const savedUser = localStorage.getItem('delivery_session');
+      if (savedUser) {
+        const u = JSON.parse(savedUser);
+        if (u) {
+          if (u.role === 'admin') {
+            activeAdminId = u.id;
+          } else if (u.role === 'superadmin') {
+            isSuperAdmin = true;
+          }
         }
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
 
-  const formatted = tariffs.map(t => {
-    let dbId = t.id;
-    let createdBy = t.createdBy || null;
-    if (activeAdminId && !isSuperAdmin) {
-      createdBy = activeAdminId;
-    }
-    
-    // If it's a standard tariff owned by an admin, append the suffix
-    if (createdBy && !t.id.startsWith('CUSTOM_') && !t.id.endsWith(`_${createdBy}`)) {
-      dbId = `${t.id}_${createdBy}`;
-    }
-    
-    return {
-      id: dbId,
-      name: t.name,
-      block: t.block,
-      type: t.type,
-      value: parseFloat(t.value) || 0,
-      createdBy: createdBy
-    };
-  });
+    const formatted = tariffs.map(t => {
+      let dbId = t.id;
+      let createdBy = t.createdBy || null;
+      if (activeAdminId && !isSuperAdmin) {
+        createdBy = activeAdminId;
+      }
+      
+      // If it's a standard tariff owned by an admin, append the suffix
+      if (createdBy && !t.id.startsWith('CUSTOM_') && !t.id.endsWith(`_${createdBy}`)) {
+        dbId = `${t.id}_${createdBy}`;
+      }
+      
+      return {
+        id: dbId,
+        name: t.name,
+        block: t.block,
+        type: t.type,
+        value: parseFloat(t.value) || 0,
+        createdBy: createdBy
+      };
+    });
 
-  const existingRaw = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
-  const mergedMap = {};
-  existingRaw.forEach(t => {
-    if (t && t.id) mergedMap[t.id] = t;
-  });
-  formatted.forEach(t => {
-    if (t && t.id) mergedMap[t.id] = t;
-  });
-  const mergedList = Object.values(mergedMap);
+    const existingRaw = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+    const mergedMap = {};
+    existingRaw.forEach(t => {
+      if (t && t.id) mergedMap[t.id] = t;
+    });
+    formatted.forEach(t => {
+      if (t && t.id) mergedMap[t.id] = t;
+    });
+    const mergedList = Object.values(mergedMap);
 
-  localStorage.setItem('delivery_tariffs', JSON.stringify(mergedList));
-  if (supabase) {
-    (async () => {
+    localStorage.setItem('delivery_tariffs', JSON.stringify(mergedList));
+    if (supabase) {
       try {
         const dbFormatted = formatted.map(t => ({
           id: t.id,
@@ -804,11 +811,15 @@ export function saveTariffs(tariffs) {
           value: t.value,
           created_by: t.createdBy || null
         }));
-        await supabase.from('delivery_tariffs').upsert(dbFormatted);
+        const { error } = await supabase.from('delivery_tariffs').upsert(dbFormatted);
+        if (error) throw error;
       } catch (e) {
         console.error("Error saving tariffs to Supabase:", e);
+        throw e;
       }
-    })();
+    }
+  } finally {
+    isSaving = false;
   }
 }
 
@@ -1459,7 +1470,7 @@ export function saveRouteKms(furgoId, date, kms) {
 }
 
 // Agregar nueva tarifa
-export function addTariff(tariff) {
+export async function addTariff(tariff) {
   const tariffs = getTariffs();
   const id = 'CUSTOM_' + Date.now();
   const newTariff = {
@@ -1467,19 +1478,23 @@ export function addTariff(tariff) {
     id
   };
   tariffs.push(newTariff);
-  saveTariffs(tariffs);
+  await saveTariffs(tariffs);
   return { success: true, tariff: newTariff };
 }
 
 // Eliminar tarifa
-export function deleteTariff(id) {
-  const tariffs = getTariffs();
-  const filtered = tariffs.filter(t => t.id !== id);
-  saveTariffs(filtered);
-  if (supabase) {
-    supabase.from('delivery_tariffs').delete().eq('id', id).then(({ error }) => {
+export async function deleteTariff(id) {
+  isSaving = true;
+  try {
+    const tariffs = getTariffs();
+    const filtered = tariffs.filter(t => t.id !== id);
+    await saveTariffs(filtered);
+    if (supabase) {
+      const { error } = await supabase.from('delivery_tariffs').delete().eq('id', id);
       if (error) console.error("Error deleting tariff from Supabase:", error);
-    });
+    }
+  } finally {
+    isSaving = false;
   }
 }
 
