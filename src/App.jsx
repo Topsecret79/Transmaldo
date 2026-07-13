@@ -9718,7 +9718,7 @@ function App() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '100%' }}>
               <div className="glass-panel" style={{ textAlign: 'left' }}>
                 <h2>Ganancias Acumuladas por Furgoneta</h2>
                 <div className="chart-bar-container">

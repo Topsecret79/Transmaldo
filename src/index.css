@@ -380,6 +380,9 @@ body {
   box-shadow: var(--card-shadow);
   padding: 30px;
   transition: all 0.3s ease;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
