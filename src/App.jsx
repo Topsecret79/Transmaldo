@@ -862,6 +862,9 @@ function App() {
   const [newRouteDateInput, setNewRouteDateInput] = useState('');
   const [isMovingRouteDate, setIsMovingRouteDate] = useState(false);
 
+  // Filtro de propietario de tarifas
+  const [selectedTariffOwner, setSelectedTariffOwner] = useState('base');
+
   // Modal de observaciones para entrega/fallo
   const [obsModalTicketId, setObsModalTicketId] = useState(null);
   const [obsModalStatus, setObsModalStatus] = useState('');
@@ -10700,11 +10703,42 @@ function App() {
           <div className="glass-panel" style={{ textAlign: 'left' }}>
             <h2>Catálogo de Tarifas y Precios</h2>
             <p style={{ marginBottom: '20px' }}>Edita los valores del sistema o añade nuevos artículos. Al cambiarlos, todas las ganancias del mes se recalculan automáticamente.</p>
+
+            {currentUser?.role === 'superadmin' && (
+              <div className="input-group" style={{ marginBottom: '25px', maxWidth: '350px' }}>
+                <span className="input-label" style={{ fontWeight: '700' }}>📂 Filtrar Categoría de Tarifas:</span>
+                <select 
+                  className="form-input" 
+                  value={selectedTariffOwner} 
+                  onChange={(e) => setSelectedTariffOwner(e.target.value)}
+                  style={{ background: '#1e1e2e', color: '#fff', border: '1px solid var(--panel-border)', padding: '8px 12px', borderRadius: '8px' }}
+                >
+                  <option value="base">📌 Tarifas Base (Originales / Por Defecto)</option>
+                  {users.filter(u => u.role === 'admin').map(u => (
+                    <option key={u.id} value={u.id}>🚚 Customizadas de: {u.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             
             <div className="settings-grid">
               <div>
                 {['Paquetería', 'Televisores', 'Instalaciones', 'Otros', 'Gama Blanca', 'Muebles'].map(block => {
-                  const blockTariffs = tariffs.filter(t => t.block === block);
+                  const blockTariffs = tariffs.filter(t => {
+                    const matchesBlock = t.block === block;
+                    if (!matchesBlock) return false;
+                    
+                    if (currentUser?.role === 'superadmin') {
+                      if (selectedTariffOwner === 'base') {
+                        const isPredefinedCopy = ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV', 'TV_ENT_49', 'TV_ENT_74', 'TV_ENT_115', 'TV_COMB_49', 'TV_COMB_74', 'TV_COMB_115', 'TV_VIEJA_URB', 'TV_VIEJA_NO_URB', 'PM_BAS_49', 'PM_BAS_74', 'PM_BAS_115', 'PM_COMP_49', 'PM_COMP_74', 'PM_COMP_115', 'CUELGUE_49', 'CUELGUE_74', 'CUELGUE_115', 'BSND', 'PM_BSND', 'CUELGUE_BSND', 'MFRA', 'SPAR', 'SSUE', 'ALTA', 'TDIC', 'PROY', 'VTEC', 'URGENTE_100', 'URGENTE_120', 'ORDE', 'PANT', 'MCAD'].some(pid => t.id.startsWith(pid + '_'));
+                        if (isPredefinedCopy) return false;
+                        return !t.createdBy || t.createdBy === 'admin';
+                      } else {
+                        return t.createdBy === selectedTariffOwner || t.id.endsWith('_' + selectedTariffOwner);
+                      }
+                    }
+                    return true;
+                  });
                   if (blockTariffs.length === 0) return null;
                   return (
                     <div key={block} style={{ marginBottom: '20px' }}>
