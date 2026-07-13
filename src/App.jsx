@@ -6934,7 +6934,7 @@ function App() {
                             setShowShiftModal(true);
                           }} 
                           className="btn btn-secondary btn-small"
-                          style={{ margin: 0, padding: '8px 14px', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)' }}
+                          style={{ margin: 0, padding: '8px 14px', background: '#cbd5e1', color: '#000000', border: '1px solid #94a3b8', fontWeight: '700' }}
                         >
                           📊 Ver Resumen del Día
                         </button>
