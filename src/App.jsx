@@ -3891,12 +3891,12 @@ function App() {
     try {
       const valueNum = parseFloat(newValue) || 0;
       const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
-      await saveTariffs(updated);
+      saveTariffs(updated);
       setTariffs(updated);
       recalculateAllTickets(updated, modulePrice);
     } catch (error) {
       console.error("Error updating tariff value:", error);
-      triggerAlert('Error al guardar en el servidor, guardado localmente', 'warning');
+      triggerAlert('Error al guardar, intentando localmente', 'warning');
       const valueNum = parseFloat(newValue) || 0;
       const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
       setTariffs(updated);
@@ -3917,14 +3917,14 @@ function App() {
         }
         return t;
       });
-      await saveTariffs(updated);
+      saveTariffs(updated);
       setTariffs(updated);
       recalculateAllTickets(updated, modulePrice);
       triggerAlert('Tarifa actualizada correctamente');
       setEditingTariffId(null);
     } catch (error) {
       console.error("Error updating tariff details:", error);
-      triggerAlert('Error al guardar en el servidor, guardado localmente', 'warning');
+      triggerAlert('Error al guardar, intentando localmente', 'warning');
       const updated = tariffs.map(t => {
         if (t.id === id) {
           return {

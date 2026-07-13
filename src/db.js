@@ -814,10 +814,9 @@ export async function saveTariffs(tariffs) {
           created_by: t.createdBy || null
         }));
         const { error } = await supabase.from('delivery_tariffs').upsert(dbFormatted);
-        if (error) throw error;
+        if (error) console.error("Supabase upsert failed:", error);
       } catch (e) {
         console.error("Error saving tariffs to Supabase:", e);
-        throw e;
       }
     }
   } finally {
