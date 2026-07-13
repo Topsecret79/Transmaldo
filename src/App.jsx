@@ -3888,31 +3888,58 @@ function App() {
 
 
   const handleUpdateTariffValue = async (id, newValue) => {
-    const valueNum = parseFloat(newValue) || 0;
-    const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
-    await saveTariffs(updated);
-    setTariffs(updated);
-    recalculateAllTickets(updated, modulePrice);
+    try {
+      const valueNum = parseFloat(newValue) || 0;
+      const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
+      await saveTariffs(updated);
+      setTariffs(updated);
+      recalculateAllTickets(updated, modulePrice);
+    } catch (error) {
+      console.error("Error updating tariff value:", error);
+      triggerAlert('Error al guardar en el servidor, guardado localmente', 'warning');
+      const valueNum = parseFloat(newValue) || 0;
+      const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
+      setTariffs(updated);
+    }
   };
 
   const handleUpdateTariffDetails = async (id, updatedDetails) => {
-    const updated = tariffs.map(t => {
-      if (t.id === id) {
-        return {
-          ...t,
-          name: updatedDetails.name.trim(),
-          block: updatedDetails.block,
-          type: updatedDetails.type,
-          value: parseFloat(updatedDetails.value) || 0
-        };
-      }
-      return t;
-    });
-    await saveTariffs(updated);
-    setTariffs(updated);
-    recalculateAllTickets(updated, modulePrice);
-    triggerAlert('Tarifa actualizada correctamente');
-    setEditingTariffId(null);
+    try {
+      const updated = tariffs.map(t => {
+        if (t.id === id) {
+          return {
+            ...t,
+            name: (updatedDetails.name || '').trim(),
+            block: updatedDetails.block || 'Otros',
+            type: updatedDetails.type || 'fixed',
+            value: parseFloat(updatedDetails.value) || 0
+          };
+        }
+        return t;
+      });
+      await saveTariffs(updated);
+      setTariffs(updated);
+      recalculateAllTickets(updated, modulePrice);
+      triggerAlert('Tarifa actualizada correctamente');
+      setEditingTariffId(null);
+    } catch (error) {
+      console.error("Error updating tariff details:", error);
+      triggerAlert('Error al guardar en el servidor, guardado localmente', 'warning');
+      const updated = tariffs.map(t => {
+        if (t.id === id) {
+          return {
+            ...t,
+            name: (updatedDetails.name || '').trim(),
+            block: updatedDetails.block || 'Otros',
+            type: updatedDetails.type || 'fixed',
+            value: parseFloat(updatedDetails.value) || 0
+          };
+        }
+        return t;
+      });
+      setTariffs(updated);
+      setEditingTariffId(null);
+    }
   };
 
   const handleCreateTariff = async (e) => {
@@ -3922,25 +3949,37 @@ function App() {
       return;
     }
     const valNum = parseFloat(newTariffValue) || 0;
-    const res = await addTariff({
-      name: newTariffName.trim(),
-      block: newTariffBlock,
-      type: newTariffType,
-      value: valNum
-    });
-    if (res.success) {
-      triggerAlert(`Tarifa "${newTariffName}" añadida correctamente`);
-      setNewTariffName('');
-      setNewTariffValue('');
+    try {
+      const res = await addTariff({
+        name: newTariffName.trim(),
+        block: newTariffBlock,
+        type: newTariffType,
+        value: valNum
+      });
+      if (res.success) {
+        triggerAlert(`Tarifa "${newTariffName}" añadida correctamente`);
+        setNewTariffName('');
+        setNewTariffValue('');
+        loadData();
+      }
+    } catch (err) {
+      console.error(err);
+      triggerAlert('Error al añadir tarifa en el servidor, guardado localmente', 'warning');
       loadData();
     }
   };
 
   const handleDeleteTariff = async (id, name) => {
     if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente la tarifa "${name}"?`)) {
-      await deleteTariff(id);
-      triggerAlert(`Tarifa "${name}" eliminada`);
-      loadData();
+      try {
+        await deleteTariff(id);
+        triggerAlert(`Tarifa "${name}" eliminada`);
+        loadData();
+      } catch (err) {
+        console.error(err);
+        triggerAlert('Error al eliminar tarifa en el servidor, eliminada localmente', 'warning');
+        loadData();
+      }
     }
   };
 
@@ -10809,9 +10848,14 @@ function App() {
                     className="btn btn-primary" 
                     onClick={async () => {
                       if (window.confirm('¿Deseas inicializar las tarifas de este administrador con los precios base actuales?')) {
-                        await initializeAdminTariffs(selectedTariffOwner, 'copy_default', tariffs);
-                        loadData();
-                        triggerAlert('Tarifas inicializadas correctamente');
+                        try {
+                          await initializeAdminTariffs(selectedTariffOwner, 'copy_default', tariffs);
+                          loadData();
+                          triggerAlert('Tarifas inicializadas correctamente');
+                        } catch (err) {
+                          triggerAlert('Error al inicializar en Supabase. Se guardó localmente.', 'warning');
+                          loadData();
+                        }
                       }
                     }}
                     style={{ width: 'auto', margin: 0, padding: '8px 16px' }}
@@ -10823,9 +10867,14 @@ function App() {
                     className="btn btn-secondary" 
                     onClick={async () => {
                       if (window.confirm('¿Deseas inicializar las tarifas de este administrador a 0,00 €?')) {
-                        await initializeAdminTariffs(selectedTariffOwner, 'zero', tariffs);
-                        loadData();
-                        triggerAlert('Tarifas inicializadas a 0,00 € correctamente');
+                        try {
+                          await initializeAdminTariffs(selectedTariffOwner, 'zero', tariffs);
+                          loadData();
+                          triggerAlert('Tarifas inicializadas a 0,00 € correctamente');
+                        } catch (err) {
+                          triggerAlert('Error al inicializar en Supabase. Se guardó localmente.', 'warning');
+                          loadData();
+                        }
                       }
                     }}
                     style={{ width: 'auto', margin: 0, padding: '8px 16px' }}
