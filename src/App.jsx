@@ -585,6 +585,13 @@ function App() {
   const [plannedDriverName, setPlannedDriverName] = useState('');
   const [editingRates, setEditingRates] = useState({});
   const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useState(null);
+  const [editingEmployeeId, setEditingEmployeeId] = useState(null);
+  const [editEmpName, setEditEmpName] = useState('');
+  const [editEmpRole, setEditEmpRole] = useState('chofer');
+  const [editEmpRate, setEditEmpRate] = useState('');
+  const [empSearchQuery, setEmpSearchQuery] = useState('');
+  const [empFilterRole, setEmpFilterRole] = useState('all');
+  const [empFilterStatus, setEmpFilterStatus] = useState('active');
   const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
 
   const [navModalOpen, setNavModalOpen] = useState(false);
@@ -9383,6 +9390,381 @@ function App() {
     );
   };
 
+  // --- PORTAL DE GESTIÓN DE PERSONAL Y EMPLEADOS ---
+  const renderEmployeesPortal = () => {
+    // Filter employees based on search & filter state
+    const filteredEmployees = employeesList.filter(emp => {
+      const matchesSearch = emp.name.toLowerCase().includes(empSearchQuery.toLowerCase());
+      
+      const matchesRole = empFilterRole === 'all' || 
+        (empFilterRole === 'chofer' && (emp.role === 'chofer' || emp.role === 'ambos')) ||
+        (empFilterRole === 'ayudante' && (emp.role === 'ayudante' || emp.role === 'ambos'));
+      
+      const matchesStatus = empFilterStatus === 'all' ||
+        (empFilterStatus === 'active' && emp.active !== false) ||
+        (empFilterStatus === 'inactive' && emp.active === false);
+        
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+
+    const handleStartEdit = (emp) => {
+      setEditingEmployeeId(emp.id);
+      setEditEmpName(emp.name);
+      setEditEmpRole(emp.role || 'chofer');
+      setEditEmpRate(emp.dailyRate || '');
+    };
+
+    const handleSaveEdit = (id) => {
+      if (!editEmpName.trim()) {
+        triggerAlert('El nombre no puede estar vacío', 'error');
+        return;
+      }
+      const rate = parseFloat(editEmpRate) || 0;
+      const updated = employeesList.map(e => {
+        if (e.id === id) {
+          return { ...e, name: editEmpName.trim(), role: editEmpRole, dailyRate: rate };
+        }
+        return e;
+      });
+      setEmployeesList(updated);
+      saveEmployeesList(updated);
+      setEditingEmployeeId(null);
+      triggerAlert('Datos de empleado actualizados');
+      loadData();
+    };
+
+    const handleToggleActive = (emp) => {
+      const newStatus = emp.active === false ? true : false;
+      const confirmMsg = newStatus 
+        ? `¿Estás seguro de que deseas dar de alta nuevamente a ${emp.name}?`
+        : `¿Estás seguro de que deseas dar de baja a ${emp.name}? No aparecerá en las planificaciones futuras, pero se conservará su historial de nóminas.`;
+      
+      if (window.confirm(confirmMsg)) {
+        const updated = employeesList.map(e => {
+          if (e.id === emp.id) {
+            return { ...e, active: newStatus };
+          }
+          return e;
+        });
+        setEmployeesList(updated);
+        saveEmployeesList(updated);
+        triggerAlert(newStatus ? `${emp.name} está de alta` : `${emp.name} ha sido dado de baja`);
+        loadData();
+      }
+    };
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+        
+        {/* Header Block */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid var(--panel-border)',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          flexWrap: 'wrap',
+          gap: '15px'
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              👥 Directorio de Personal y Empleados
+            </h2>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Administra de forma independiente choferes y ayudantes, edita sus perfiles, ajusta tarifas y gestiona altas/bajas.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: '20px', alignItems: 'start' }}>
+          
+          {/* Left Column: Form to Add Employee */}
+          <div className="glass-panel" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px', borderRadius: '12px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--panel-border)' }}>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '700', color: 'var(--primary)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
+              ➕ Registrar Empleado
+            </h3>
+            
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <span className="input-label">Nombre Completo</span>
+              <input 
+                type="text" 
+                className="form-input" 
+                value={newEmployeeName}
+                onChange={(e) => setNewEmployeeName(e.target.value)}
+                placeholder="Ej: Pedro Martínez..."
+                style={{ margin: 0 }}
+              />
+            </div>
+
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <span className="input-label">Rol Predeterminado</span>
+              <select
+                className="form-input"
+                value={newEmployeeRole}
+                onChange={(e) => setNewEmployeeRole(e.target.value)}
+                style={{ margin: 0 }}
+              >
+                <option value="chofer">Chofer</option>
+                <option value="ayudante">Ayudante</option>
+                <option value="ambos">Chofer y Ayudante</option>
+              </select>
+            </div>
+
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <span className="input-label">Tarifa Diaria (€)</span>
+              <input 
+                type="number" 
+                className="form-input" 
+                value={newEmployeeRate}
+                onChange={(e) => setNewEmployeeRate(e.target.value)}
+                placeholder="Ej: 80"
+                style={{ margin: 0 }}
+              />
+            </div>
+
+            <button 
+              type="button" 
+              onClick={handleAddEmployee}
+              className="btn btn-primary"
+              style={{ width: '100%', margin: 0 }}
+            >
+              Registrar Empleado
+            </button>
+          </div>
+
+          {/* Right Column: Search, Filter, and Employees List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            
+            {/* Search & Filter Bar */}
+            <div className="glass-panel" style={{ padding: '15px 20px', borderRadius: '12px', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--panel-border)' }}>
+              
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  value={empSearchQuery}
+                  onChange={(e) => setEmpSearchQuery(e.target.value)}
+                  placeholder="🔍 Buscar empleado por nombre..."
+                  style={{ margin: 0 }}
+                />
+              </div>
+
+              {/* Role filter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Rol:</span>
+                <select
+                  className="form-input"
+                  value={empFilterRole}
+                  onChange={(e) => setEmpFilterRole(e.target.value)}
+                  style={{ width: '140px', margin: 0, padding: '4px 8px', fontSize: '0.82rem', height: '32px' }}
+                >
+                  <option value="all">Todos</option>
+                  <option value="chofer">Choferes</option>
+                  <option value="ayudante">Ayudantes</option>
+                </select>
+              </div>
+
+              {/* Status filter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Estado:</span>
+                <select
+                  className="form-input"
+                  value={empFilterStatus}
+                  onChange={(e) => setEmpFilterStatus(e.target.value)}
+                  style={{ width: '140px', margin: 0, padding: '4px 8px', fontSize: '0.82rem', height: '32px' }}
+                >
+                  <option value="all">Todos</option>
+                  <option value="active">Activos</option>
+                  <option value="inactive">De Baja</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Employee Directory List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {filteredEmployees.length === 0 ? (
+                <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '40px', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '12px' }}>
+                  No se encontraron empleados que coincidan con la búsqueda.
+                </div>
+              ) : (
+                filteredEmployees.map(emp => {
+                  const isEditing = editingEmployeeId === emp.id;
+                  
+                  return (
+                    <div 
+                      key={emp.id}
+                      style={{
+                        background: emp.active === false ? 'rgba(239, 68, 68, 0.02)' : 'rgba(255, 255, 255, 0.01)',
+                        border: emp.active === false ? '1px dashed rgba(239, 68, 68, 0.2)' : '1px solid var(--panel-border)',
+                        borderRadius: '12px',
+                        padding: '16px 20px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '15px',
+                        transition: 'all 0.2s ease',
+                        opacity: emp.active === false ? 0.7 : 1
+                      }}
+                    >
+                      {isEditing ? (
+                        /* Editing Layout */
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', flex: 1 }}>
+                          <div style={{ flex: 2, minWidth: '180px' }}>
+                            <span className="input-label" style={{ fontSize: '0.72rem' }}>Nombre Completo</span>
+                            <input 
+                              type="text" 
+                              className="form-input" 
+                              value={editEmpName}
+                              onChange={(e) => setEditEmpName(e.target.value)}
+                              style={{ margin: 0 }}
+                            />
+                          </div>
+
+                          <div style={{ flex: 1, minWidth: '120px' }}>
+                            <span className="input-label" style={{ fontSize: '0.72rem' }}>Rol</span>
+                            <select
+                              className="form-input"
+                              value={editEmpRole}
+                              onChange={(e) => setEditEmpRole(e.target.value)}
+                              style={{ margin: 0 }}
+                            >
+                              <option value="chofer">Chofer</option>
+                              <option value="ayudante">Ayudante</option>
+                              <option value="ambos">Chofer y Ayudante</option>
+                            </select>
+                          </div>
+
+                          <div style={{ flex: 1, minWidth: '100px' }}>
+                            <span className="input-label" style={{ fontSize: '0.72rem' }}>Tarifa Diaria (€)</span>
+                            <input 
+                              type="number" 
+                              className="form-input" 
+                              value={editEmpRate}
+                              onChange={(e) => setEditEmpRate(e.target.value)}
+                              style={{ margin: 0 }}
+                            />
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-end' }}>
+                            <button 
+                              type="button" 
+                              onClick={() => handleSaveEdit(emp.id)}
+                              className="btn btn-primary"
+                              style={{ margin: 0, padding: '8px 16px', fontSize: '0.82rem' }}
+                            >
+                              💾 Guardar
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => setEditingEmployeeId(null)}
+                              className="btn btn-secondary"
+                              style={{ margin: 0, padding: '8px 16px', fontSize: '0.82rem' }}
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Standard Layout */
+                        <>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            <div style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              background: emp.role === 'chofer' ? 'rgba(99, 102, 241, 0.1)' : emp.role === 'ayudante' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '1.2rem'
+                            }}>
+                              {emp.role === 'chofer' ? '🚚' : emp.role === 'ayudante' ? '🤝' : '🔄'}
+                            </div>
+
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <strong style={{ fontSize: '1.05rem', color: emp.active === false ? 'var(--text-muted)' : '#fff' }}>{emp.name}</strong>
+                                <span style={{ 
+                                  fontSize: '0.68rem', 
+                                  padding: '2px 6px', 
+                                  borderRadius: '4px',
+                                  background: emp.role === 'chofer' ? 'rgba(99, 102, 241, 0.15)' : emp.role === 'ayudante' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                  color: emp.role === 'chofer' ? 'var(--primary)' : emp.role === 'ayudante' ? '#34d399' : '#fbbf24',
+                                  fontWeight: '700'
+                                }}>
+                                  {emp.role === 'chofer' ? 'Chofer' : emp.role === 'ayudante' ? 'Ayudante' : 'Chofer/Ayudante'}
+                                </span>
+
+                                <span style={{
+                                  fontSize: '0.68rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: emp.active === false ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                                  color: emp.active === false ? '#f87171' : '#34d399',
+                                  fontWeight: '700'
+                                }}>
+                                  {emp.active === false ? 'De Baja' : 'Activo'}
+                                </span>
+                              </div>
+                              
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                Tarifa Diaria: <strong style={{ color: 'var(--primary)' }}>{emp.dailyRate} €</strong>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button 
+                              type="button" 
+                              onClick={() => handleStartEdit(emp)}
+                              className="btn btn-secondary btn-small"
+                              style={{ margin: 0, padding: '6px 12px', fontSize: '0.78rem' }}
+                            >
+                              ✏️ Editar
+                            </button>
+
+                            <button 
+                              type="button" 
+                              onClick={() => handleToggleActive(emp)}
+                              className="btn btn-secondary btn-small"
+                              style={{ 
+                                margin: 0, 
+                                padding: '6px 12px', 
+                                fontSize: '0.78rem',
+                                color: emp.active === false ? '#34d399' : '#f87171',
+                                border: emp.active === false ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                                background: 'transparent'
+                              }}
+                            >
+                              {emp.active === false ? '🟢 Dar de Alta' : '🔴 Dar de Baja'}
+                            </button>
+
+                            <button 
+                              type="button" 
+                              onClick={() => handleRemoveEmployee(emp.id, emp.name)}
+                              className="btn btn-danger btn-small"
+                              style={{ margin: 0, padding: '6px 12px', fontSize: '0.78rem' }}
+                            >
+                              🗑️ Eliminar
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    );
+  };
+
   // --- RENDERIZADO DEL CALENDARIO DE TURNOS ---
   const renderShiftCalendar = () => {
     const year = calendarDate.getFullYear();
@@ -9888,7 +10270,7 @@ function App() {
                                 >
                                   <option value="">Por asignar</option>
                                   <option value="custom_input">✍️ Escribir...</option>
-                                  {employeesList.filter(emp => emp.role === 'chofer' || emp.role === 'ambos').map(emp => (
+                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'chofer' || emp.role === 'ambos')).map(emp => (
                                     <option key={emp.id} value={emp.name}>{emp.name}</option>
                                   ))}
                                 </select>
@@ -9914,7 +10296,7 @@ function App() {
                                   style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
                                 >
                                   <option value="">Sin ayudante</option>
-                                  {employeesList.filter(emp => emp.role === 'ayudante' || emp.role === 'ambos').map(emp => (
+                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
                                     <option key={emp.id} value={emp.name}>{emp.name}</option>
                                   ))}
                                 </select>
@@ -10019,7 +10401,7 @@ function App() {
                     >
                       <option value="">Por asignar</option>
                       <option value="custom_input">✍️ Escribir otro...</option>
-                      {employeesList.filter(e => e.role === 'chofer' || e.role === 'ambos').map(emp => (
+                      {employeesList.filter(e => e.active !== false && (e.role === 'chofer' || e.role === 'ambos')).map(emp => (
                         <option key={emp.id} value={emp.name}>{emp.name}</option>
                       ))}
                     </select>
@@ -10047,7 +10429,7 @@ function App() {
                       style={{ margin: 0 }}
                     >
                       <option value="">Sin ayudante</option>
-                      {employeesList.filter(e => e.role === 'ayudante' || e.role === 'ambos').map(emp => (
+                      {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
                         <option key={emp.id} value={emp.name}>{emp.name}</option>
                       ))}
                     </select>
@@ -10430,7 +10812,7 @@ function App() {
                                 >
                                   <option value="">Por asignar</option>
                                   <option value="custom_input">✍️ Escribir...</option>
-                                  {employeesList.filter(emp => emp.role === 'chofer' || emp.role === 'ambos').map(emp => (
+                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'chofer' || emp.role === 'ambos')).map(emp => (
                                     <option key={emp.id} value={emp.name}>{emp.name}</option>
                                   ))}
                                 </select>
@@ -10454,7 +10836,7 @@ function App() {
                                   style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
                                 >
                                   <option value="">Sin ayudante</option>
-                                  {employeesList.filter(emp => emp.role === 'ayudante' || emp.role === 'ambos').map(emp => (
+                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
                                     <option key={emp.id} value={emp.name}>{emp.name}</option>
                                   ))}
                                 </select>
@@ -11392,11 +11774,13 @@ function App() {
           {editingTicketId && (
             <button className={`tab-btn active`} onClick={() => setActiveTab('new_ticket')}>✏️ Editando...</button>
           )}
+          <button className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('employees'); }}>👥 Personal</button>
           <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>Ajustar Precios</button>
           <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}>Furgonetas y Seguridad</button>
           <button className={`tab-btn ${activeTab === 'changelog' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('changelog'); }}>🚀 Actualizaciones</button>
         </div>
 
+        {activeTab === 'employees' && renderEmployeesPortal()}
         {activeTab === 'daily_report' && renderDailyReport()}
         {activeTab === 'calendar' && renderShiftCalendar()}
 
@@ -12962,112 +13346,7 @@ function App() {
               </div>
             </div>
             
-            {/* Gestión de Empleados */}
-            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
-              <div className="block-title">👥 Gestión de Empleados (Personal)</div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                Registra la lista de empleados de la empresa, su rol de trabajo habitual y su pago diario asignado.
-              </p>
-              
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  value={newEmployeeName}
-                  onChange={(e) => setNewEmployeeName(e.target.value)}
-                  placeholder="Nombre completo..."
-                  style={{ maxWidth: '200px', margin: 0 }}
-                />
-                
-                <select
-                  className="form-input"
-                  value={newEmployeeRole}
-                  onChange={(e) => setNewEmployeeRole(e.target.value)}
-                  style={{ maxWidth: '180px', margin: 0 }}
-                >
-                  <option value="chofer">Chofer</option>
-                  <option value="ayudante">Ayudante</option>
-                  <option value="ambos">Chofer y Ayudante</option>
-                </select>
 
-                <input 
-                  type="number" 
-                  className="form-input" 
-                  value={newEmployeeRate}
-                  onChange={(e) => setNewEmployeeRate(e.target.value)}
-                  placeholder="Tarifa diaria (€)..."
-                  style={{ maxWidth: '140px', margin: 0 }}
-                />
-                
-                <button 
-                  type="button" 
-                  onClick={handleAddEmployee}
-                  className="btn btn-primary"
-                  style={{ margin: 0, whiteSpace: 'nowrap' }}
-                >
-                  ➕ Registrar Empleado
-                </button>
-              </div>
-
-              {employeesList.length === 0 ? (
-                <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  No hay empleados registrados.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '600px' }}>
-                  {employeesList.map(emp => (
-                    <div 
-                      key={emp.id} 
-                      style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        padding: '8px 12px', 
-                        border: '1px solid var(--panel-border)', 
-                        background: 'rgba(255,255,255,0.01)', 
-                        borderRadius: '8px' 
-                      }}
-                    >
-                      <div>
-                        <strong style={{ color: '#fff', fontSize: '0.88rem' }}>
-                          {emp.role === 'chofer' ? '🚚' : emp.role === 'ayudante' ? '🤝' : '🔄'} {emp.name}
-                        </strong>
-                        <span style={{ 
-                          fontSize: '0.7rem', 
-                          padding: '2px 6px', 
-                          borderRadius: '4px',
-                          background: emp.role === 'chofer' ? 'rgba(99, 102, 241, 0.15)' : emp.role === 'ayudante' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                          color: emp.role === 'chofer' ? 'var(--primary)' : emp.role === 'ayudante' ? '#34d399' : '#fbbf24',
-                          marginLeft: '10px',
-                          fontWeight: 'bold'
-                        }}>
-                          {emp.role === 'chofer' ? 'Chofer' : emp.role === 'ayudante' ? 'Ayudante' : 'Chofer/Ayudante'}
-                        </span>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '12px' }}>
-                          Tarifa Diaria: <strong style={{ color: 'var(--primary)' }}>{emp.dailyRate} €</strong>
-                        </span>
-                      </div>
-                      <button 
-                        type="button" 
-                        onClick={() => handleRemoveEmployee(emp.id, emp.name)}
-                        style={{ 
-                          background: 'none', 
-                          border: 'none', 
-                          color: '#f87171', 
-                          cursor: 'pointer', 
-                          fontWeight: 'bold', 
-                          fontSize: '0.82rem',
-                          padding: '2px 6px'
-                        }}
-                        title="Eliminar empleado"
-                      >
-                        ✕ Eliminar
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* Gestión de Matrículas */}
             <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
