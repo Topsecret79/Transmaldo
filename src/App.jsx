@@ -282,7 +282,9 @@ import {
   savePlannedShift,
   deletePlannedShift,
   getPlatesList,
-  savePlatesList
+  savePlatesList,
+  getDriverDailyRate,
+  saveDriverDailyRate
 } from './db';
 
 
@@ -563,6 +565,7 @@ function App() {
   const [allowDriverSupportTransfer, setAllowDriverSupportTransfer] = useState(getAllowDriverSupportTransfer());
   const [helpersList, setHelpersList] = useState(() => getHelpersList());
   const [newHelperName, setNewHelperName] = useState('');
+  const [newHelperRate, setNewHelperRate] = useState('');
   const [platesList, setPlatesList] = useState(() => getPlatesList());
   const [newPlateVal, setNewPlateVal] = useState('');
   const [calendarDate, setCalendarDate] = useState(() => new Date());
@@ -573,6 +576,8 @@ function App() {
   const [plannedHelper, setPlannedHelper] = useState('');
   const [plannedMatricula, setPlannedMatricula] = useState('');
   const [customDriverNameInput, setCustomDriverNameInput] = useState('');
+  const [editingRates, setEditingRates] = useState({});
+  const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useState(null);
   const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
 
   const [navModalOpen, setNavModalOpen] = useState(false);
@@ -4449,20 +4454,22 @@ function App() {
 
   const handleAddHelper = () => {
     if (!newHelperName.trim()) return;
-    if (helpersList.includes(newHelperName.trim())) {
+    if (helpersList.some(h => h.name.toLowerCase() === newHelperName.trim().toLowerCase())) {
       triggerAlert('Este ayudante ya está registrado', 'error');
       return;
     }
-    const updated = [...helpersList, newHelperName.trim()];
+    const rate = parseFloat(newHelperRate) || 0;
+    const updated = [...helpersList, { name: newHelperName.trim(), dailyRate: rate }];
     setHelpersList(updated);
     saveHelpersList(updated);
     setNewHelperName('');
+    setNewHelperRate('');
     triggerAlert('Ayudante agregado con éxito');
   };
 
   const handleRemoveHelper = (name) => {
     if (window.confirm(`¿Estás seguro de que deseas eliminar a ${name} de la lista de ayudantes?`)) {
-      const updated = helpersList.filter(h => h !== name);
+      const updated = helpersList.filter(h => h.name !== name);
       setHelpersList(updated);
       saveHelpersList(updated);
       triggerAlert('Ayudante eliminado');
@@ -9463,6 +9470,14 @@ function App() {
             >
               Día
             </button>
+            <button 
+              type="button" 
+              onClick={() => setCalendarViewMode('payroll')} 
+              className={`btn btn-small ${calendarViewMode === 'payroll' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ margin: 0, padding: '6px 12px', fontSize: '0.78rem', borderRadius: '6px', border: 'none', background: calendarViewMode === 'payroll' ? '' : 'transparent' }}
+            >
+              💰 Nóminas y Fichas
+            </button>
           </div>
           
           {/* Navigation Controls */}
@@ -9826,8 +9841,8 @@ function App() {
                                   style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
                                 >
                                   <option value="">Sin ayudante</option>
-                                  {helpersList.map(name => (
-                                    <option key={name} value={name}>{name}</option>
+                                  {helpersList.map(h => (
+                                    <option key={h.name} value={h.name}>{h.name}</option>
                                   ))}
                                 </select>
                               </div>
@@ -9949,8 +9964,8 @@ function App() {
                         style={{ margin: 0 }}
                       >
                         <option value="">Selecciona ayudante (Opcional)...</option>
-                        {helpersList.map(name => (
-                          <option key={name} value={name}>{name}</option>
+                        {helpersList.map(h => (
+                          <option key={h.name} value={h.name}>{h.name}</option>
                         ))}
                       </select>
                     </div>
@@ -10011,6 +10026,233 @@ function App() {
             opacity: 1 !important;
           }
         `}} />
+
+        {/* -------------------- 4. PAYROLL VIEW -------------------- */}
+        {calendarViewMode === 'payroll' && (() => {
+          const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+          const monthShifts = shifts.filter(s => s.date.startsWith(monthPrefix));
+
+          const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
+          const payrollList = [];
+
+          // Add Drivers
+          activeRepartidores.forEach(d => {
+            const currentRate = getDriverDailyRate(d.id) || 0;
+            const datesWorked = monthShifts
+              .filter(s => s.furgoId === d.id || (s.customDriver && s.customDriver.toLowerCase() === d.label.toLowerCase()))
+              .map(s => s.date);
+            const uniqueDates = [...new Set(datesWorked)].sort();
+
+            payrollList.push({
+              id: d.id,
+              name: d.label,
+              role: 'chofer',
+              rate: currentRate,
+              days: uniqueDates.length,
+              dates: uniqueDates
+            });
+          });
+
+          // Add Helpers
+          helpersList.forEach(h => {
+            const currentRate = h.dailyRate || 0;
+            const datesWorked = monthShifts
+              .filter(s => s.helper && s.helper.toLowerCase() === h.name.toLowerCase())
+              .map(s => s.date);
+            const uniqueDates = [...new Set(datesWorked)].sort();
+
+            payrollList.push({
+              id: h.name,
+              name: h.name,
+              role: 'ayudante',
+              rate: currentRate,
+              days: uniqueDates.length,
+              dates: uniqueDates
+            });
+          });
+
+          const totalDays = payrollList.reduce((sum, item) => sum + item.days, 0);
+          const totalAmount = payrollList.reduce((sum, item) => sum + (item.days * item.rate), 0);
+
+          const saveRate = (item, newRateStr) => {
+            const newRate = parseFloat(newRateStr);
+            if (isNaN(newRate) || newRate < 0) {
+              triggerAlert('Introduce una tarifa válida', 'error');
+              return;
+            }
+            if (item.role === 'chofer') {
+              saveDriverDailyRate(item.id, newRate);
+              triggerAlert(`Tarifa de ${item.name} actualizada a ${newRate} €`);
+            } else {
+              const updatedHelpers = helpersList.map(h => {
+                if (h.name === item.name) {
+                  return { ...h, dailyRate: newRate };
+                }
+                return h;
+              });
+              setHelpersList(updatedHelpers);
+              saveHelpersList(updatedHelpers);
+              triggerAlert(`Tarifa de ${item.name} actualizada a ${newRate} €`);
+            }
+            const updatedEditing = { ...editingRates };
+            delete updatedEditing[`${item.role}_${item.id}`];
+            setEditingRates(updatedEditing);
+            loadData();
+          };
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Días Trabajados (${monthNames[month]}):</span>
+                  <strong style={{ fontSize: '1.6rem', color: 'var(--primary)' }}>{totalDays} jornadas</strong>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Nóminas a Pagar:</span>
+                  <strong style={{ fontSize: '1.6rem', color: '#10b981' }}>{totalAmount.toFixed(2)} €</strong>
+                </div>
+              </div>
+
+              <div style={{
+                background: 'rgba(255,255,255,0.01)',
+                border: '1px solid var(--panel-border)',
+                borderRadius: '12px',
+                overflowX: 'auto'
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(255, 255, 255, 0.03)', borderBottom: '1px solid var(--panel-border)' }}>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600' }}>Empleado</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600' }}>Rol</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600' }}>Tarifa por Día (€)</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'center' }}>Días Trabajados</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'right' }}>Total a Pagar</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'center' }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payrollList.map(item => {
+                      const editKey = `${item.role}_${item.id}`;
+                      const activeVal = editingRates[editKey] !== undefined ? editingRates[editKey] : item.rate;
+                      const hasChanged = parseFloat(activeVal) !== item.rate;
+
+                      return (
+                        <tr key={editKey} style={{ borderBottom: '1px solid var(--panel-border)' }}>
+                          <td style={{ padding: '12px 16px', fontSize: '0.9rem', fontWeight: '700', color: '#fff' }}>
+                            {item.role === 'chofer' ? '🚚' : '🤝'} {item.name}
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                            {item.role === 'chofer' ? 'Chofer' : 'Ayudante'}
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input 
+                                type="number" 
+                                className="form-input" 
+                                value={activeVal}
+                                onChange={(e) => setEditingRates({ ...editingRates, [editKey]: e.target.value })}
+                                style={{ width: '80px', padding: '4px 8px', fontSize: '0.85rem', margin: 0, height: '28px' }}
+                              />
+                              {hasChanged && (
+                                <button 
+                                  type="button" 
+                                  onClick={() => saveRate(item, activeVal)}
+                                  className="btn btn-primary"
+                                  style={{ padding: '4px 8px', fontSize: '0.75rem', margin: 0, height: '28px', whiteSpace: 'nowrap' }}
+                                >
+                                  💾 Guardar
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: '0.9rem', textAlign: 'center', fontWeight: '600', color: 'var(--primary)' }}>
+                            {item.days} días
+                          </td>
+                          <td style={{ padding: '12px 16px', fontSize: '0.95rem', textAlign: 'right', fontWeight: '700', color: '#10b981' }}>
+                            {(item.days * item.rate).toFixed(2)} €
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                            <button 
+                              type="button" 
+                              onClick={() => setSelectedPayrollEmployee(item)}
+                              className="btn btn-secondary btn-small"
+                              style={{ margin: 0, padding: '4px 10px', fontSize: '0.78rem' }}
+                            >
+                              👁️ Ver Fechas
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Modal de Detalle de Fechas de Empleado */}
+        {selectedPayrollEmployee && (
+          <div className="obs-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, padding: '15px', backdropFilter: 'blur(4px)' }}>
+            <div className="obs-modal" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '400px', padding: '24px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left' }}>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: 'var(--primary)' }}>
+                  📅 Fechas: {selectedPayrollEmployee.name}
+                </h3>
+                <button 
+                  type="button" 
+                  onClick={() => setSelectedPayrollEmployee(null)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: 0 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', marginBottom: '15px' }}>
+                {selectedPayrollEmployee.dates.length === 0 ? (
+                  <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '10px' }}>
+                    No hay días registrados para este mes.
+                  </div>
+                ) : (
+                  selectedPayrollEmployee.dates.map(dateStr => {
+                    const dateObj = new Date(dateStr + 'T00:00:00');
+                    const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
+                    const capitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+                    return (
+                      <div 
+                        key={dateStr}
+                        style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          padding: '8px 12px', 
+                          background: 'rgba(255,255,255,0.01)', 
+                          border: '1px solid var(--panel-border)', 
+                          borderRadius: '6px',
+                          fontSize: '0.85rem',
+                          color: '#fff'
+                        }}
+                      >
+                        <strong>{capitalized}</strong>
+                        <span style={{ color: 'var(--text-muted)' }}>{dateStr.split('-').reverse().join('/')}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <button 
+                type="button" 
+                onClick={() => setSelectedPayrollEmployee(null)} 
+                className="btn btn-secondary" 
+                style={{ width: '100%', margin: 0 }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* -------------------- COMMON PLAN MODAL (For Month/Week Views) -------------------- */}
         {plannedShiftModalOpen && selectedCalendarDay && (() => {
@@ -10100,8 +10342,8 @@ function App() {
                                   style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
                                 >
                                   <option value="">Sin ayudante</option>
-                                  {helpersList.map(name => (
-                                    <option key={name} value={name}>{name}</option>
+                                  {helpersList.map(h => (
+                                    <option key={h.name} value={h.name}>{h.name}</option>
                                   ))}
                                 </select>
 
@@ -10214,8 +10456,8 @@ function App() {
                           style={{ margin: 0 }}
                         >
                           <option value="">Selecciona ayudante (Opcional)...</option>
-                          {helpersList.map(name => (
-                            <option key={name} value={name}>{name}</option>
+                          {helpersList.map(h => (
+                            <option key={h.name} value={h.name}>{h.name}</option>
                           ))}
                         </select>
                       </div>
@@ -12605,14 +12847,22 @@ function App() {
                 Registra la lista de ayudantes disponibles para que los choferes o tú podáis asignarlos a las rutas diarias.
               </p>
               
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
                 <input 
                   type="text" 
                   className="form-input" 
                   value={newHelperName}
                   onChange={(e) => setNewHelperName(e.target.value)}
                   placeholder="Nombre del nuevo ayudante..."
-                  style={{ maxWidth: '300px', margin: 0 }}
+                  style={{ maxWidth: '250px', margin: 0 }}
+                />
+                <input 
+                  type="number" 
+                  className="form-input" 
+                  value={newHelperRate}
+                  onChange={(e) => setNewHelperRate(e.target.value)}
+                  placeholder="Pago por día (€)..."
+                  style={{ maxWidth: '150px', margin: 0 }}
                 />
                 <button 
                   type="button" 
@@ -12629,41 +12879,43 @@ function App() {
                   No hay ayudantes registrados.
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {helpersList.map(name => (
-                    <span 
-                      key={name} 
-                      className="badge badge-secondary" 
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '500px' }}>
+                  {helpersList.map(h => (
+                    <div 
+                      key={h.name} 
                       style={{ 
-                        fontSize: '0.82rem', 
-                        padding: '6px 12px', 
-                        borderRadius: '20px', 
-                        display: 'inline-flex', 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
                         alignItems: 'center', 
-                        gap: '8px', 
-                        background: 'rgba(255,255,255,0.05)', 
-                        border: '1px solid var(--panel-border)' 
+                        padding: '8px 12px', 
+                        border: '1px solid var(--panel-border)', 
+                        background: 'rgba(255,255,255,0.01)', 
+                        borderRadius: '8px' 
                       }}
                     >
-                      {name}
+                      <div>
+                        <strong style={{ color: '#fff', fontSize: '0.88rem' }}>🤝 {h.name}</strong>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '12px' }}>
+                          Tarifa Diaria: <strong style={{ color: 'var(--primary)' }}>{h.dailyRate} €</strong>
+                        </span>
+                      </div>
                       <button 
                         type="button" 
-                        onClick={() => handleRemoveHelper(name)}
+                        onClick={() => handleRemoveHelper(h.name)}
                         style={{ 
                           background: 'none', 
                           border: 'none', 
                           color: '#f87171', 
                           cursor: 'pointer', 
                           fontWeight: 'bold', 
-                          fontSize: '0.85rem',
-                          padding: 0,
-                          lineHeight: 1
+                          fontSize: '0.82rem',
+                          padding: '2px 6px'
                         }}
                         title="Eliminar ayudante"
                       >
-                        ✕
+                        ✕ Eliminar
                       </button>
-                    </span>
+                    </div>
                   ))}
                 </div>
               )}

@@ -413,9 +413,12 @@ export async function syncFromCloud() {
         }
       }
 
-      // Route Kilometers
+      // Route Kilometers and Driver Daily Rates
       settings.forEach(s => {
         if (s.key && s.key.startsWith('route_kms_')) {
+          localStorage.setItem(`delivery_${s.key}`, s.value);
+        }
+        if (s.key && s.key.startsWith('driver_daily_rate_')) {
           localStorage.setItem(`delivery_${s.key}`, s.value);
         }
       });
@@ -2229,7 +2232,13 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
 export function getHelpersList() {
   const helpersStr = localStorage.getItem('delivery_helpers_list');
   try {
-    return helpersStr ? JSON.parse(helpersStr) : [];
+    const list = helpersStr ? JSON.parse(helpersStr) : [];
+    return list.map(item => {
+      if (typeof item === 'string') {
+        return { name: item, dailyRate: 0 };
+      }
+      return { name: item.name || '', dailyRate: parseFloat(item.dailyRate) || 0 };
+    });
   } catch (e) {
     return [];
   }
@@ -2237,7 +2246,11 @@ export function getHelpersList() {
 
 // Guardar la lista de ayudantes configurados
 export function saveHelpersList(helpers) {
-  const helpersStr = JSON.stringify(helpers);
+  const formatted = helpers.map(item => ({
+    name: item.name.trim(),
+    dailyRate: parseFloat(item.dailyRate) || 0
+  }));
+  const helpersStr = JSON.stringify(formatted);
   localStorage.setItem('delivery_helpers_list', helpersStr);
   if (supabase) {
     supabase.from('delivery_settings').upsert({
@@ -2269,6 +2282,25 @@ export function savePlatesList(plates) {
       value: platesStr
     }).then(({ error }) => {
       if (error) console.error("Error saving plates list to Supabase:", error);
+    });
+  }
+}
+
+// Obtener la tarifa diaria de un chofer
+export function getDriverDailyRate(driverId) {
+  const val = localStorage.getItem(`delivery_driver_daily_rate_${driverId}`);
+  return val ? parseFloat(val) : 0;
+}
+
+// Guardar la tarifa diaria de un chofer
+export function saveDriverDailyRate(driverId, rate) {
+  localStorage.setItem(`delivery_driver_daily_rate_${driverId}`, rate.toString());
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: `driver_daily_rate_${driverId}`,
+      value: rate.toString()
+    }).then(({ error }) => {
+      if (error) console.error(`Error saving driver rate ${driverId} to Supabase:`, error);
     });
   }
 }
