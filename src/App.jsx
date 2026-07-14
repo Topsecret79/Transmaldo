@@ -2919,12 +2919,24 @@ function App() {
       // Artículo principal TV
       if (tv.action !== 'solo_pm' && tv.action !== 'solo_cuelgue') {
         const mainTariffId = tv.action === 'combinado' ? `TV_COMB_${range}` : `TV_ENT_${range}`;
+        const mainTariff = tariffs.find(t => t.id === mainTariffId);
+        let taskName = mainTariff?.name || `TV ${tv.inches}"`;
+        
+        if (tv.action === 'recogida') {
+          taskName = `${taskName} (Recogida)`;
+        } else if (tv.action === 'combinado') {
+          taskName = `${taskName} (Entrega + Recogida)`;
+        } else {
+          taskName = `${taskName} (Entrega)`;
+        }
+
         tasksArray.push({
           tariffId: mainTariffId,
           quantity: 1,
           brand: tv.brand || 'Genérica',
           inches: tv.inches || 43,
           action: tv.action,
+          name: taskName,
           noCharge: getExistingNoCharge(mainTariffId, { inches: tv.inches, brand: tv.brand })
         });
       }
@@ -2990,10 +3002,12 @@ function App() {
             let finalPrice = calculateTaskPrice(tariffId, tariffs, modulePrice);
             
             if (action === 'recogida') {
-              taskName = `Recogida de ${taskName}`;
+              taskName = `${taskName} (Recogida)`;
             } else if (action === 'combinado') {
-              taskName = `Entrega + Recogida de ${taskName}`;
+              taskName = `${taskName} (Entrega + Recogida)`;
               finalPrice = finalPrice * 2;
+            } else {
+              taskName = `${taskName} (Entrega)`;
             }
             
             tasksArray.push({
