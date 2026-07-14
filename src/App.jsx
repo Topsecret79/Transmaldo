@@ -4427,6 +4427,55 @@ function App() {
     }
   };
 
+  const handleReturnToOriginalRoute = async (ticketId) => {
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+
+    const parsed = parseTicketNotes(ticket.notes);
+    const origLabel = parsed.originalRouteLabel;
+    if (!origLabel) return;
+
+    const targetUser = users.find(u => u.label === origLabel);
+    if (!targetUser) {
+      triggerAlert(`No se pudo encontrar al chofer original (${origLabel})`, 'error');
+      return;
+    }
+
+    if (!window.confirm(`¿Quieres devolver este cliente a la ruta original de ${targetUser.label}?`)) {
+      return;
+    }
+
+    try {
+      const cleanNotesText = parsed.cleanNotes;
+      const updatedNotes = encodeTicketNotes(
+        parsed.timeSlot,
+        parsed.estimatedDuration,
+        cleanNotesText,
+        parsed.driverObservations,
+        parsed.failedChargeType,
+        ''
+      );
+
+      const targetDayTickets = tickets.filter(t => t.date === ticket.date && t.furgoId === targetUser.id);
+
+      const updatedTicket = {
+        ...ticket,
+        furgoId: targetUser.id,
+        furgoLabel: targetUser.label,
+        routeName: `Ruta ${targetUser.label} (${ticket.date})`,
+        notes: updatedNotes,
+        routeOrder: targetDayTickets.length + 1
+      };
+
+      await updateTicket(updatedTicket);
+      triggerAlert(`Cliente devuelto a ${targetUser.label} con éxito`);
+      loadData();
+    } catch (err) {
+      console.error("Error returning ticket to original route:", err);
+      triggerAlert("Error al devolver el cliente", "error");
+    }
+  };
+
   const handleUpdateTicketStatus = (id, status, failureReason) => {
     if (status === 'success' || status === 'failed') {
       // If failureReason already provided (e.g. from quickFail grid), skip the obsModal
@@ -7636,25 +7685,50 @@ function App() {
                                 </div>
                                 <div className="driver-card-title">{t.customerName}</div>
                                 {t.notes && t.notes.startsWith('[Ruta Original: ') && (() => {
-                                  const endIdx = t.notes.indexOf(']');
-                                  const label = endIdx !== -1 ? t.notes.substring(16, endIdx) : 'Otra';
-                                  return (
-                                    <span className="badge" style={{ 
-                                      fontSize: '0.72rem', 
-                                      padding: '2px 8px', 
-                                      background: 'rgba(245, 158, 11, 0.15)', 
-                                      border: '1px solid rgba(245, 158, 11, 0.3)', 
-                                      color: '#fbbf24',
-                                      borderRadius: '6px',
-                                      fontWeight: 'bold',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px'
-                                    }}>
-                                      🔄 Auxilio de {label}
-                                    </span>
-                                  );
-                                })()}
+                                   const endIdx = t.notes.indexOf(']');
+                                   const label = endIdx !== -1 ? t.notes.substring(16, endIdx) : 'Otra';
+                                   return (
+                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                       <span className="badge" style={{ 
+                                         fontSize: '0.72rem', 
+                                         padding: '2px 8px', 
+                                         background: 'rgba(245, 158, 11, 0.15)', 
+                                         border: '1px solid rgba(245, 158, 11, 0.3)', 
+                                         color: '#fbbf24',
+                                         borderRadius: '6px',
+                                         fontWeight: 'bold',
+                                         display: 'inline-flex',
+                                         alignItems: 'center',
+                                         gap: '4px'
+                                       }}>
+                                         🔄 Auxilio de {label}
+                                       </span>
+                                       {(!isClosed || isAdminOrSuper) && (
+                                         <button
+                                           type="button"
+                                           onClick={() => handleReturnToOriginalRoute(t.id)}
+                                           style={{
+                                             fontSize: '0.7rem',
+                                             padding: '3px 8px',
+                                             background: 'rgba(239, 68, 68, 0.12)',
+                                             border: '1px solid rgba(239, 68, 68, 0.35)',
+                                             color: '#f87171',
+                                             borderRadius: '4px',
+                                             cursor: 'pointer',
+                                             fontWeight: '700',
+                                             transition: 'background 0.2s ease',
+                                             display: 'inline-flex',
+                                             alignItems: 'center',
+                                             gap: '2px'
+                                           }}
+                                           title={`Devolver esta parada a la ruta original de ${label}`}
+                                         >
+                                           ↩️ Devolver
+                                         </button>
+                                       )}
+                                     </div>
+                                   );
+                                 })()}
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {statusBadge}
