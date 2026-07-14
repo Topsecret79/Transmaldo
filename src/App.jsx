@@ -9522,7 +9522,7 @@ function App() {
           {/* Navigation Controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button type="button" className="btn btn-secondary btn-small" onClick={prevTime} style={{ padding: '8px 12px' }}>◀</button>
-            <span style={{ fontSize: '1.05rem', fontWeight: '700', minWidth: '180px', textAlign: 'center', color: '#fff' }}>
+            <span style={{ fontSize: '1.05rem', fontWeight: '700', minWidth: '180px', textAlign: 'center', color: 'var(--text-main)' }}>
               {headerTitle}
             </span>
             <button type="button" className="btn btn-secondary btn-small" onClick={nextTime} style={{ padding: '8px 12px' }}>▶</button>
