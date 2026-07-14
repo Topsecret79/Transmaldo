@@ -572,6 +572,7 @@ function App() {
   const [plannedFurgoId, setPlannedFurgoId] = useState('');
   const [plannedHelper, setPlannedHelper] = useState('');
   const [plannedMatricula, setPlannedMatricula] = useState('');
+  const [customDriverNameInput, setCustomDriverNameInput] = useState('');
   const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
 
   const [navModalOpen, setNavModalOpen] = useState(false);
@@ -9585,8 +9586,7 @@ function App() {
                       )}
 
                       {cellShifts.map(s => {
-                        const driverObj = users.find(usr => usr.id === s.furgoId);
-                        const driverName = driverObj?.label || s.furgoId;
+                        const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
                         
                         return (
                           <div 
@@ -9705,8 +9705,7 @@ function App() {
                       </span>
                     ) : (
                       dayShifts.map(s => {
-                        const driverObj = users.find(usr => usr.id === s.furgoId);
-                        const driverName = driverObj?.label || s.furgoId;
+                        const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
 
                         return (
                           <div 
@@ -9776,8 +9775,7 @@ function App() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {dayShifts.map(s => {
-                      const driverObj = users.find(usr => usr.id === s.furgoId);
-                      const driverName = driverObj?.label || s.furgoId;
+                      const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
 
                       return (
                         <div 
@@ -9915,14 +9913,31 @@ function App() {
                       <select
                         className="form-input"
                         value={plannedFurgoId}
-                        onChange={(e) => setPlannedFurgoId(e.target.value)}
+                        onChange={(e) => {
+                          setPlannedFurgoId(e.target.value);
+                          setCustomDriverNameInput('');
+                        }}
                         style={{ margin: 0 }}
                       >
                         <option value="">Selecciona chofer...</option>
+                        <option value="custom_input">✍️ Otro / Por asignar...</option>
                         {availableDrivers.map(d => (
                           <option key={d.id} value={d.id}>{d.label}</option>
                         ))}
                       </select>
+                      {plannedFurgoId === 'custom_input' && (
+                        <div style={{ marginTop: '10px' }}>
+                          <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre del Chofer (Opcional)</span>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={customDriverNameInput}
+                            onChange={(e) => setCustomDriverNameInput(e.target.value)}
+                            placeholder="Ej: Chofer de Apoyo, Por asignar, etc."
+                            style={{ margin: 0 }}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <div className="input-group" style={{ marginBottom: 0 }}>
@@ -9959,15 +9974,22 @@ function App() {
                       type="button"
                       onClick={() => {
                         if (!plannedFurgoId) {
-                          triggerAlert('Selecciona un chofer', 'error');
+                          triggerAlert('Selecciona un chofer/opción', 'error');
                           return;
                         }
-                        savePlannedShift(plannedFurgoId, dayStr, plannedHelper, plannedMatricula);
+                        let targetFurgoId = plannedFurgoId;
+                        let targetCustom = '';
+                        if (plannedFurgoId === 'custom_input') {
+                          targetCustom = customDriverNameInput.trim() || 'Por asignar';
+                          targetFurgoId = `custom_temp_${Date.now()}`;
+                        }
+                        savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom);
                         setTimeout(() => {
                           loadData();
                           setPlannedFurgoId('');
                           setPlannedHelper('');
                           setPlannedMatricula('');
+                          setCustomDriverNameInput('');
                           triggerAlert('Turno planificado con éxito');
                         }, 100);
                       }}
@@ -10028,8 +10050,7 @@ function App() {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {dateShifts.map(s => {
-                        const driverObj = users.find(usr => usr.id === s.furgoId);
-                        const driverName = driverObj?.label || s.furgoId;
+                        const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
 
                         return (
                           <div 
@@ -10157,14 +10178,31 @@ function App() {
                         <select
                           className="form-input"
                           value={plannedFurgoId}
-                          onChange={(e) => setPlannedFurgoId(e.target.value)}
+                          onChange={(e) => {
+                            setPlannedFurgoId(e.target.value);
+                            setCustomDriverNameInput('');
+                          }}
                           style={{ margin: 0 }}
                         >
                           <option value="">Selecciona chofer...</option>
+                          <option value="custom_input">✍️ Otro / Por asignar...</option>
                           {availableDrivers.map(d => (
                             <option key={d.id} value={d.id}>{d.label}</option>
                           ))}
                         </select>
+                        {plannedFurgoId === 'custom_input' && (
+                          <div style={{ marginTop: '10px' }}>
+                            <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre del Chofer (Opcional)</span>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={customDriverNameInput}
+                              onChange={(e) => setCustomDriverNameInput(e.target.value)}
+                              placeholder="Ej: Chofer de Apoyo, Por asignar, etc."
+                              style={{ margin: 0 }}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div className="input-group" style={{ marginBottom: 0 }}>
@@ -10201,15 +10239,22 @@ function App() {
                         type="button"
                         onClick={() => {
                           if (!plannedFurgoId) {
-                            triggerAlert('Selecciona un chofer', 'error');
+                            triggerAlert('Selecciona un chofer/opción', 'error');
                             return;
                           }
-                          savePlannedShift(plannedFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula);
+                          let targetFurgoId = plannedFurgoId;
+                          let targetCustom = '';
+                          if (plannedFurgoId === 'custom_input') {
+                            targetCustom = customDriverNameInput.trim() || 'Por asignar';
+                            targetFurgoId = `custom_temp_${Date.now()}`;
+                          }
+                          savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom);
                           setTimeout(() => {
                             loadData();
                             setPlannedFurgoId('');
                             setPlannedHelper('');
                             setPlannedMatricula('');
+                            setCustomDriverNameInput('');
                             triggerAlert('Turno planificado con éxito');
                           }, 100);
                         }}

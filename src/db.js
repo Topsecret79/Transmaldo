@@ -297,6 +297,7 @@ export async function syncFromCloud() {
           createdBy: s.created_by || 'admin',
           helper: parsedObs.helper || (s.summary ? s.summary.helper : ''),
           matricula: parsedObs.matricula || (s.summary ? s.summary.matricula : ''),
+          customDriver: parsedObs.customDriver || '',
           observations: parsedObs.observations,
           kms: s.kms || null,
           startKms: s.start_kms || null,
@@ -1267,10 +1268,27 @@ export function getTVRange(inches) {
 
 // Parse helper, matricula and clean observations from observations string
 export function parseObservationsHelper(obsText) {
-  if (!obsText) return { helper: '', matricula: '', observations: '' };
+  if (!obsText) return { helper: '', matricula: '', customDriver: '', observations: '' };
   let str = obsText.toString();
   let helper = '';
   let matricula = '';
+  let customDriver = '';
+
+  // Extract Chofer
+  if (str.startsWith('[Chofer: ')) {
+    const endIdx = str.indexOf(']');
+    if (endIdx !== -1) {
+      customDriver = str.substring(9, endIdx).trim();
+      str = str.substring(endIdx + 1).trim();
+    }
+  } else if (str.includes('[Chofer: ')) {
+    const startIdx = str.indexOf('[Chofer: ');
+    const endIdx = str.indexOf(']', startIdx);
+    if (endIdx !== -1) {
+      customDriver = str.substring(startIdx + 9, endIdx).trim();
+      str = (str.substring(0, startIdx) + str.substring(endIdx + 1)).trim();
+    }
+  }
 
   // Extract Ayudante
   if (str.startsWith('[Ayudante: ')) {
@@ -1304,13 +1322,16 @@ export function parseObservationsHelper(obsText) {
     }
   }
 
-  return { helper, matricula, observations: str };
+  return { helper, matricula, customDriver, observations: str };
 }
 
 // Encode helper, matricula and observations into observations string
-export function encodeObservationsHelper(helper, matricula, obsText) {
+export function encodeObservationsHelper(helper, matricula, customDriver, obsText) {
   let cleanObs = obsText || '';
   let prefixes = '';
+  if (customDriver && customDriver.trim()) {
+    prefixes += `[Chofer: ${customDriver.trim()}] `;
+  }
   if (helper && helper.trim()) {
     prefixes += `[Ayudante: ${helper.trim()}] `;
   }
@@ -1333,7 +1354,7 @@ export function saveShifts(shifts) {
     (async () => {
       try {
         const formatted = shifts.map(s => {
-          const encodedObs = encodeObservationsHelper(s.helper, s.matricula, s.observations);
+          const encodedObs = encodeObservationsHelper(s.helper, s.matricula, s.customDriver, s.observations);
           return {
             id: s.id,
             furgo_id: s.furgoId,
@@ -1404,6 +1425,7 @@ export function closeShift(furgoId, date, summary) {
 
   const helper = existingShift.helper || (summary ? summary.helper : '') || '';
   const matricula = existingShift.matricula || (summary ? summary.matricula : '') || '';
+  const customDriver = existingShift.customDriver || '';
 
   const newShift = {
     id: shiftId,
@@ -1414,6 +1436,7 @@ export function closeShift(furgoId, date, summary) {
     routeName: existingShift.routeName || '',
     helper,
     matricula,
+    customDriver,
     kms: summary ? summary.kms : null,
     startKms: summary ? summary.startKms : null,
     endKms: summary ? summary.endKms : null,
@@ -1431,14 +1454,15 @@ export function closeShift(furgoId, date, summary) {
   return newShift;
 }
 
-// Guardar turno planificado (fecha, chofer, ayudante y matricula)
-export function savePlannedShift(furgoId, date, helper, matricula) {
+// Guardar turno planificado (fecha, chofer, ayudante, matricula y chofer personalizado)
+export function savePlannedShift(furgoId, date, helper, matricula, customDriver) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const index = shifts.findIndex(s => s.id === shiftId);
   if (index !== -1) {
     shifts[index].helper = helper;
     shifts[index].matricula = matricula;
+    shifts[index].customDriver = customDriver;
   } else {
     shifts.push({
       id: shiftId,
@@ -1449,6 +1473,7 @@ export function savePlannedShift(furgoId, date, helper, matricula) {
       closedAt: null,
       helper,
       matricula,
+      customDriver,
       observations: '',
       routeName: ''
     });
