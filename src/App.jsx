@@ -276,7 +276,11 @@ import {
   saveAllowDriverSupportTransfer,
   getRouteManualStatus,
   saveRouteManualStatus,
-  moveRouteDate
+  moveRouteDate,
+  getHelpersList,
+  saveHelpersList,
+  savePlannedShift,
+  deletePlannedShift
 } from './db';
 
 
@@ -555,6 +559,13 @@ function App() {
   );
   const [shifts, setShifts] = useState([]);
   const [allowDriverSupportTransfer, setAllowDriverSupportTransfer] = useState(getAllowDriverSupportTransfer());
+  const [helpersList, setHelpersList] = useState(() => getHelpersList());
+  const [newHelperName, setNewHelperName] = useState('');
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
+  const [plannedShiftModalOpen, setPlannedShiftModalOpen] = useState(false);
+  const [plannedFurgoId, setPlannedFurgoId] = useState('');
+  const [plannedHelper, setPlannedHelper] = useState('');
   const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
 
   const [navModalOpen, setNavModalOpen] = useState(false);
@@ -1959,6 +1970,7 @@ function App() {
     setGoogleKeyInput(getGoogleMapsKey());
     setMapboxTokenInput(getMapboxToken());
     setAllowDriverSupportTransfer(getAllowDriverSupportTransfer());
+    setHelpersList(getHelpersList() || []);
   };
 
   const loadDataRef = useRef(loadData);
@@ -4424,6 +4436,28 @@ function App() {
     } catch (err) {
       console.error("Error transferring ticket support:", err);
       triggerAlert("Error al realizar la transferencia de apoyo", "error");
+    }
+  };
+
+  const handleAddHelper = () => {
+    if (!newHelperName.trim()) return;
+    if (helpersList.includes(newHelperName.trim())) {
+      triggerAlert('Este ayudante ya está registrado', 'error');
+      return;
+    }
+    const updated = [...helpersList, newHelperName.trim()];
+    setHelpersList(updated);
+    saveHelpersList(updated);
+    setNewHelperName('');
+    triggerAlert('Ayudante agregado con éxito');
+  };
+
+  const handleRemoveHelper = (name) => {
+    if (window.confirm(`¿Estás seguro de que deseas eliminar a ${name} de la lista de ayudantes?`)) {
+      const updated = helpersList.filter(h => h !== name);
+      setHelpersList(updated);
+      saveHelpersList(updated);
+      triggerAlert('Ayudante eliminado');
     }
   };
 
@@ -7086,11 +7120,17 @@ function App() {
                 {(() => {
                   const isClosed = getShiftStatus(currentUser.id, targetDate) === 'closed';
                   const dayTickets = tickets.filter(t => t.furgoId === currentUser.id && t.date === targetDate);
+                  const currentShift = shifts.find(s => s.furgoId === currentUser.id && s.date === targetDate);
                   
                   if (isClosed) {
                     return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700' }}>🔒 Turno Cerrado</span>
+                        {currentShift?.helper && (
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
+                            🤝 Ayudante: {currentShift.helper}
+                          </span>
+                        )}
                         <button 
                           type="button" 
                           onClick={() => {
@@ -7121,6 +7161,11 @@ function App() {
                     return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: '700' }}>🔓 Turno Abierto</span>
+                        {currentShift?.helper && (
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
+                            🤝 Ayudante: {currentShift.helper}
+                          </span>
+                        )}
                         <button 
                           type="button" 
                           onClick={() => {
@@ -9251,6 +9296,414 @@ function App() {
     );
   };
 
+  // --- RENDERIZADO DEL CALENDARIO DE TURNOS ---
+  const renderShiftCalendar = () => {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+
+    const monthNames = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+
+    const prevMonth = () => {
+      const d = new Date(year, month - 1, 1);
+      setCalendarDate(d);
+    };
+
+    const nextMonth = () => {
+      const d = new Date(year, month + 1, 1);
+      setCalendarDate(d);
+    };
+
+    const goToToday = () => {
+      setCalendarDate(new Date());
+    };
+
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const adjustedFirstDay = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
+
+    const calendarCells = [];
+    for (let i = 0; i < adjustedFirstDay; i++) {
+      calendarCells.push(null);
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      calendarCells.push(d);
+    }
+
+    const weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+    const getCellDateStr = (dayNum) => {
+      if (!dayNum) return '';
+      return `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+    };
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid var(--panel-border)',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          flexWrap: 'wrap',
+          gap: '15px'
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '700', color: 'var(--text-main)' }}>
+              📅 Calendario de Turnos y Personal
+            </h2>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Planifica turnos para días futuros y gestiona los equipos diarios (Chofer y Ayudante).
+            </p>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button type="button" className="btn btn-secondary btn-small" onClick={prevMonth} style={{ padding: '8px 12px' }}>◀</button>
+            <span style={{ fontSize: '1.1rem', fontWeight: '700', minWidth: '150px', textAlign: 'center', color: '#fff' }}>
+              {monthNames[month]} {year}
+            </span>
+            <button type="button" className="btn btn-secondary btn-small" onClick={nextMonth} style={{ padding: '8px 12px' }}>▶</button>
+            <button type="button" className="btn btn-primary btn-small" onClick={goToToday} style={{ padding: '8px 12px' }}>Hoy</button>
+          </div>
+        </div>
+
+        <div style={{
+          background: 'rgba(255,255,255,0.01)',
+          border: '1px solid var(--panel-border)',
+          borderRadius: '12px',
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            background: 'rgba(255, 255, 255, 0.03)',
+            borderBottom: '1px solid var(--panel-border)',
+            textAlign: 'center',
+            fontWeight: '700',
+            fontSize: '0.85rem',
+            color: 'var(--text-muted)'
+          }}>
+            {weekdays.map(wd => (
+              <div key={wd} style={{ padding: '12px 6px' }}>{wd}</div>
+            ))}
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7, 1fr)',
+            gridAutoRows: 'minmax(120px, auto)'
+          }}>
+            {calendarCells.map((dayNum, idx) => {
+              const cellDateStr = getCellDateStr(dayNum);
+              const cellShifts = cellDateStr ? shifts.filter(s => s.date === cellDateStr) : [];
+              const isToday = cellDateStr === new Date().toISOString().split('T')[0];
+
+              return (
+                <div 
+                  key={idx} 
+                  onClick={() => {
+                    if (dayNum) {
+                      setSelectedCalendarDay(cellDateStr);
+                      setPlannedFurgoId('');
+                      setPlannedHelper('');
+                      setPlannedShiftModalOpen(true);
+                    }
+                  }}
+                  style={{
+                    padding: '8px',
+                    borderRight: (idx % 7 === 6) ? 'none' : '1px solid var(--panel-border)',
+                    borderBottom: '1px solid var(--panel-border)',
+                    background: !dayNum ? 'transparent' : isToday ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
+                    cursor: dayNum ? 'pointer' : 'default',
+                    transition: 'background 0.2s ease',
+                    position: 'relative',
+                    minHeight: '120px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}
+                  className={dayNum ? 'calendar-day-cell' : ''}
+                  onMouseEnter={(e) => {
+                    if (dayNum) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (dayNum) e.currentTarget.style.background = isToday ? 'rgba(99, 102, 241, 0.05)' : 'transparent';
+                  }}
+                >
+                  {dayNum && (
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      marginBottom: '6px' 
+                    }}>
+                      <span style={{ 
+                        fontSize: '0.9rem', 
+                        fontWeight: '700', 
+                        color: isToday ? 'var(--primary)' : 'var(--text-muted)',
+                        background: isToday ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                        padding: isToday ? '2px 6px' : '0',
+                        borderRadius: '4px'
+                      }}>
+                        {dayNum}
+                      </span>
+                      <span className="plus-indicator" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', opacity: 0 }}>
+                        ➕ Asignar
+                      </span>
+                    </div>
+                  )}
+
+                  {cellShifts.map(s => {
+                    const driverObj = users.find(usr => usr.id === s.furgoId);
+                    const driverName = driverObj?.label || s.furgoId;
+                    
+                    return (
+                      <div 
+                        key={s.id} 
+                        style={{
+                          fontSize: '0.72rem',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.08)' : s.openedAt ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.04)',
+                          border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.15)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(255,255,255,0.08)',
+                          color: s.status === 'closed' ? '#f87171' : s.openedAt ? '#34d399' : '#e5e7eb',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '1px'
+                        }}
+                      >
+                        <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ 
+                            width: '5px', 
+                            height: '5px', 
+                            borderRadius: '50%', 
+                            background: s.status === 'closed' ? '#ef4444' : s.openedAt ? '#10b981' : '#9ca3af',
+                            display: 'inline-block' 
+                          }}></span>
+                          🚚 {driverName}
+                        </div>
+                        {s.helper && (
+                          <div style={{ color: 'var(--text-muted)', paddingLeft: '8px' }}>
+                            🤝 {s.helper}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <style dangerouslySetInnerHTML={{__html: `
+          .calendar-day-cell:hover .plus-indicator {
+            opacity: 1 !important;
+          }
+        `}} />
+
+        {plannedShiftModalOpen && selectedCalendarDay && (() => {
+          const dateShifts = shifts.filter(s => s.date === selectedCalendarDay);
+          const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
+          const availableDrivers = activeRepartidores.filter(d => !dateShifts.some(s => s.furgoId === d.id));
+
+          return (
+            <div className="obs-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, padding: '15px', backdropFilter: 'blur(4px)' }}>
+              <div className="obs-modal" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '500px', padding: '24px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left' }}>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: 'var(--primary)' }}>
+                    📅 Turnos: {selectedCalendarDay.split('-').reverse().join('/')}
+                  </h3>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setPlannedShiftModalOpen(false);
+                      setSelectedCalendarDay(null);
+                    }}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: 0 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: '24px' }}>
+                  <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: '700', color: '#fff' }}>
+                    Turnos Asignados ({dateShifts.length})
+                  </h4>
+
+                  {dateShifts.length === 0 ? (
+                    <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '10px', background: 'rgba(255,255,255,0.01)', borderRadius: '8px', border: '1px dashed var(--panel-border)' }}>
+                      No hay choferes asignados para este día.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {dateShifts.map(s => {
+                        const driverObj = users.find(usr => usr.id === s.furgoId);
+                        const driverName = driverObj?.label || s.furgoId;
+
+                        return (
+                          <div 
+                            key={s.id} 
+                            style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'space-between', 
+                              background: 'rgba(255,255,255,0.02)', 
+                              border: '1px solid var(--panel-border)', 
+                              borderRadius: '8px', 
+                              padding: '10px 12px',
+                              gap: '10px'
+                            }}
+                          >
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                🚚 {driverName}
+                                <span style={{ 
+                                  fontSize: '0.7rem', 
+                                  padding: '1px 5px', 
+                                  borderRadius: '4px',
+                                  background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.15)' : s.openedAt ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
+                                  color: s.status === 'closed' ? '#f87171' : s.openedAt ? '#34d399' : '#9ca3af'
+                                }}>
+                                  {s.status === 'closed' ? 'Cerrado' : s.openedAt ? 'Activo' : 'Planificado'}
+                                </span>
+                              </div>
+                              
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Ayudante:</span>
+                                <select
+                                  className="form-input"
+                                  value={s.helper || ''}
+                                  onChange={(e) => {
+                                    const updatedShifts = shifts.map(curr => {
+                                      if (curr.id === s.id) {
+                                        return { ...curr, helper: e.target.value };
+                                      }
+                                      return curr;
+                                    });
+                                    setShifts(updatedShifts);
+                                    saveShifts(updatedShifts);
+                                    triggerAlert('Ayudante actualizado');
+                                  }}
+                                  disabled={s.status === 'closed'}
+                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                >
+                                  <option value="">Sin ayudante</option>
+                                  {helpersList.map(name => (
+                                    <option key={name} value={name}>{name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
+                                  deletePlannedShift(s.furgoId, selectedCalendarDay);
+                                  setTimeout(() => {
+                                    loadData();
+                                    triggerAlert('Turno eliminado');
+                                  }, 100);
+                                }
+                              }}
+                              style={{ 
+                                background: 'rgba(239, 68, 68, 0.1)', 
+                                border: '1px solid rgba(239, 68, 68, 0.2)', 
+                                color: '#f87171',
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem'
+                              }}
+                              title="Eliminar turno"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--panel-border)', paddingTop: '16px' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '0.9rem', fontWeight: '700', color: 'var(--primary)' }}>
+                    ➕ Planificar Nuevo Turno
+                  </h4>
+
+                  {availableDrivers.length === 0 ? (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      Todos los choferes ya tienen turnos planificados para esta fecha.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <span className="input-label">Chofer / Furgoneta</span>
+                        <select
+                          className="form-input"
+                          value={plannedFurgoId}
+                          onChange={(e) => setPlannedFurgoId(e.target.value)}
+                          style={{ margin: 0 }}
+                        >
+                          <option value="">Selecciona chofer...</option>
+                          {availableDrivers.map(d => (
+                            <option key={d.id} value={d.id}>{d.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <span className="input-label">Ayudante</span>
+                        <select
+                          className="form-input"
+                          value={plannedHelper}
+                          onChange={(e) => setPlannedHelper(e.target.value)}
+                          style={{ margin: 0 }}
+                        >
+                          <option value="">Selecciona ayudante (Opcional)...</option>
+                          {helpersList.map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!plannedFurgoId) {
+                            triggerAlert('Selecciona un chofer', 'error');
+                            return;
+                          }
+                          savePlannedShift(plannedFurgoId, selectedCalendarDay, plannedHelper);
+                          setTimeout(() => {
+                            loadData();
+                            setPlannedFurgoId('');
+                            setPlannedHelper('');
+                            triggerAlert('Turno planificado con éxito');
+                          }, 100);
+                        }}
+                        className="btn btn-primary"
+                        style={{ width: '100%', marginTop: '4px', margin: 0 }}
+                      >
+                        Crear y Asignar Turno
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    );
+  };
+
   // --- RENDERIZADO DEL INFORME DIARIO (Trigger rebuild v99) ---
   const renderDailyReport = () => {
     const prevDay = () => {
@@ -9999,6 +10452,7 @@ function App() {
           <button className={`tab-btn ${activeTab === 'daily_report' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('daily_report'); }}>📊 Informe del Día</button>
           <button className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>Repartos del Periodo ({filteredAdminTickets.length})</button>
           <button className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('map'); }}>🗺️ Mapa de Control</button>
+          <button className={`tab-btn ${activeTab === 'calendar' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('calendar'); }}>📅 Calendario de Turnos</button>
           {hasSearchPermission && (
             <button className={`tab-btn ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('search'); }}>🔍 Buscador General</button>
           )}
@@ -10011,6 +10465,7 @@ function App() {
         </div>
 
         {activeTab === 'daily_report' && renderDailyReport()}
+        {activeTab === 'calendar' && renderShiftCalendar()}
 
         {activeTab === 'dashboard' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -11574,6 +12029,77 @@ function App() {
               </div>
             </div>
             
+            {/* Gestión de Ayudantes */}
+            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
+              <div className="block-title">👥 Gestión de Ayudantes de Reparto</div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Registra la lista de ayudantes disponibles para que los choferes o tú podáis asignarlos a las rutas diarias.
+              </p>
+              
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  value={newHelperName}
+                  onChange={(e) => setNewHelperName(e.target.value)}
+                  placeholder="Nombre del nuevo ayudante..."
+                  style={{ maxWidth: '300px', margin: 0 }}
+                />
+                <button 
+                  type="button" 
+                  onClick={handleAddHelper}
+                  className="btn btn-primary"
+                  style={{ margin: 0, whiteSpace: 'nowrap' }}
+                >
+                  ➕ Añadir Ayudante
+                </button>
+              </div>
+
+              {helpersList.length === 0 ? (
+                <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  No hay ayudantes registrados.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {helpersList.map(name => (
+                    <span 
+                      key={name} 
+                      className="badge badge-secondary" 
+                      style={{ 
+                        fontSize: '0.82rem', 
+                        padding: '6px 12px', 
+                        borderRadius: '20px', 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        background: 'rgba(255,255,255,0.05)', 
+                        border: '1px solid var(--panel-border)' 
+                      }}
+                    >
+                      {name}
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemoveHelper(name)}
+                        style={{ 
+                          background: 'none', 
+                          border: 'none', 
+                          color: '#f87171', 
+                          cursor: 'pointer', 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: 0,
+                          lineHeight: 1
+                        }}
+                        title="Eliminar ayudante"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Puntos de Inicio y Fin de Ruta Predeterminados */}
             <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
               <div className="block-title">📍 Direcciones de Inicio y Fin de Ruta Predeterminadas</div>

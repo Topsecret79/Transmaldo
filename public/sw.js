@@ -1,5 +1,5 @@
 // sw.js - Service Worker optimizado (Network-First) para recibir actualizaciones al instante
-const CACHE_NAME = 'delivery-app-v126';
+const CACHE_NAME = 'delivery-app-v127';
 const ASSETS = [
   './',
   './index.html',

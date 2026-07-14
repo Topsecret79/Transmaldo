@@ -283,17 +283,25 @@ export async function syncFromCloud() {
     // Pull Shifts
     const { data: shifts, error: errShifts } = await supabase.from('delivery_shifts').select('*');
     if (shifts && !errShifts) {
-      const localShifts = shifts.map(s => ({
-        id: s.id,
-        furgoId: s.furgo_id,
-        date: s.date,
-        status: s.status,
-        openedAt: s.opened_at,
-        closedAt: s.closed_at,
-        routeName: s.route_name || '',
-        summary: s.summary || null,
-        createdBy: s.created_by || 'admin'
-      }));
+      const localShifts = shifts.map(s => {
+        const parsedObs = parseObservationsHelper(s.observations);
+        return {
+          id: s.id,
+          furgoId: s.furgo_id,
+          date: s.date,
+          status: s.status,
+          openedAt: s.opened_at,
+          closedAt: s.closed_at,
+          routeName: s.route_name || '',
+          summary: s.summary || null,
+          createdBy: s.created_by || 'admin',
+          helper: parsedObs.helper || (s.summary ? s.summary.helper : ''),
+          observations: parsedObs.observations,
+          kms: s.kms || null,
+          startKms: s.start_kms || null,
+          endKms: s.end_kms || null
+        };
+      });
       localStorage.setItem('delivery_shifts', JSON.stringify(localShifts));
     }
 
@@ -376,6 +384,12 @@ export async function syncFromCloud() {
       const transferSetting = settings.find(s => s.key === 'allow_driver_support_transfer');
       if (transferSetting) {
         localStorage.setItem('delivery_allow_driver_support_transfer', transferSetting.value);
+      }
+
+      // Helpers List
+      const helpersSetting = settings.find(s => s.key === 'delivery_helpers_list');
+      if (helpersSetting) {
+        localStorage.setItem('delivery_helpers_list', helpersSetting.value);
       }
 
       // Km Price
@@ -1244,6 +1258,30 @@ export function getTVRange(inches) {
   return '115';
 }
 
+// Parse helper and clean observations from observations string
+export function parseObservationsHelper(obsText) {
+  if (!obsText) return { helper: '', observations: '' };
+  const str = obsText.toString();
+  if (str.startsWith('[Ayudante: ')) {
+    const endIdx = str.indexOf(']');
+    if (endIdx !== -1) {
+      const helper = str.substring(11, endIdx).trim();
+      const observations = str.substring(endIdx + 1).trim();
+      return { helper, observations };
+    }
+  }
+  return { helper: '', observations: str };
+}
+
+// Encode helper and observations into observations string
+export function encodeObservationsHelper(helper, obsText) {
+  const cleanObs = obsText || '';
+  if (helper && helper.trim()) {
+    return `[Ayudante: ${helper.trim()}] ${cleanObs}`.trim();
+  }
+  return cleanObs;
+}
+
 // Obtener turnos
 export function getShifts() {
   initDB();
@@ -1256,15 +1294,24 @@ export function saveShifts(shifts) {
   if (supabase) {
     (async () => {
       try {
-        const formatted = shifts.map(s => ({
-          id: s.id,
-          furgo_id: s.furgoId,
-          date: s.date,
-          status: s.status,
-          opened_at: s.openedAt || null,
-          closed_at: s.closedAt || null,
-          created_by: s.createdBy || 'admin'
-        }));
+        const formatted = shifts.map(s => {
+          const encodedObs = encodeObservationsHelper(s.helper, s.observations);
+          return {
+            id: s.id,
+            furgo_id: s.furgoId,
+            date: s.date,
+            status: s.status,
+            opened_at: s.openedAt || null,
+            closed_at: s.closedAt || null,
+            created_by: s.createdBy || 'admin',
+            route_name: s.routeName || '',
+            summary: s.summary || null,
+            kms: s.kms || (s.summary ? s.summary.kms : null) || null,
+            start_kms: s.startKms || (s.summary ? s.summary.startKms : null) || null,
+            end_kms: s.endKms || (s.summary ? s.summary.endKms : null) || null,
+            observations: encodedObs
+          };
+        });
         const { error } = await supabase.from('delivery_shifts').upsert(formatted);
         if (error) {
           console.error("Error saving shifts to Supabase:", error);
@@ -1317,6 +1364,8 @@ export function closeShift(furgoId, date, summary) {
   const existingIndex = shifts.findIndex(s => s.id === shiftId);
   const existingShift = existingIndex !== -1 ? shifts[existingIndex] : {};
 
+  const helper = existingShift.helper || (summary ? summary.helper : '') || '';
+
   const newShift = {
     id: shiftId,
     furgoId,
@@ -1324,6 +1373,11 @@ export function closeShift(furgoId, date, summary) {
     status: 'closed',
     closedAt: new Date().toISOString(),
     routeName: existingShift.routeName || '',
+    helper,
+    kms: summary ? summary.kms : null,
+    startKms: summary ? summary.startKms : null,
+    endKms: summary ? summary.endKms : null,
+    observations: summary ? summary.observations : '',
     summary
   };
 
@@ -1335,6 +1389,42 @@ export function closeShift(furgoId, date, summary) {
 
   saveShifts(shifts);
   return newShift;
+}
+
+// Guardar turno planificado (fecha, chofer y ayudante)
+export function savePlannedShift(furgoId, date, helper) {
+  const shifts = getShifts();
+  const shiftId = `${furgoId}_${date}`;
+  const index = shifts.findIndex(s => s.id === shiftId);
+  if (index !== -1) {
+    shifts[index].helper = helper;
+  } else {
+    shifts.push({
+      id: shiftId,
+      furgoId,
+      date,
+      status: 'open',
+      openedAt: null,
+      closedAt: null,
+      helper,
+      observations: '',
+      routeName: ''
+    });
+  }
+  saveShifts(shifts);
+}
+
+// Eliminar un turno planificado
+export function deletePlannedShift(furgoId, date) {
+  const shifts = getShifts();
+  const shiftId = `${furgoId}_${date}`;
+  const filtered = shifts.filter(s => s.id !== shiftId);
+  saveShifts(filtered);
+  if (supabase) {
+    supabase.from('delivery_shifts').delete().eq('id', shiftId).then(({ error }) => {
+      if (error) console.error("Error deleting planned shift from Supabase:", error);
+    });
+  }
 }
 
 // Reabrir un turno
@@ -2066,4 +2156,28 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
   }
 
   return { ticketsCount: ticketsToUpdate.length, hasShift: !!shiftToUpsert };
+}
+
+// Obtener la lista de ayudantes configurados
+export function getHelpersList() {
+  const helpersStr = localStorage.getItem('delivery_helpers_list');
+  try {
+    return helpersStr ? JSON.parse(helpersStr) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Guardar la lista de ayudantes configurados
+export function saveHelpersList(helpers) {
+  const helpersStr = JSON.stringify(helpers);
+  localStorage.setItem('delivery_helpers_list', helpersStr);
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: 'delivery_helpers_list',
+      value: helpersStr
+    }).then(({ error }) => {
+      if (error) console.error("Error saving helpers list to Supabase:", error);
+    });
+  }
 }
