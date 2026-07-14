@@ -154,7 +154,16 @@ export async function initializeSupabaseTables() {
     if (!cloudShifts || cloudShifts.length === 0) {
       const localShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
       if (localShifts.length > 0) {
-        await supabase.from('delivery_shifts').insert(localShifts);
+        const formatted = localShifts.map(s => ({
+          id: s.id,
+          furgo_id: s.furgoId,
+          date: s.date,
+          status: s.status,
+          opened_at: s.openedAt || null,
+          closed_at: s.closedAt || null,
+          created_by: s.createdBy || 'admin'
+        }));
+        await supabase.from('delivery_shifts').insert(formatted);
       }
     }
 
@@ -280,11 +289,31 @@ export async function syncFromCloud() {
       localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
     }
 
-    // Pull Shifts
+    // Pull Shifts and Settings together first
     const { data: shifts, error: errShifts } = await supabase.from('delivery_shifts').select('*');
-    if (shifts && !errShifts) {
+    const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
+
+    if (shifts && !errShifts && settings && !errSettings) {
       const localShifts = shifts.map(s => {
-        const parsedObs = parseObservationsHelper(s.observations);
+        const metaSetting = settings.find(set => set.key === `shift_meta_${s.id}`);
+        let meta = {
+          helper: '',
+          matricula: '',
+          customDriver: '',
+          observations: '',
+          routeName: '',
+          kms: null,
+          startKms: null,
+          endKms: null,
+          summary: null
+        };
+        if (metaSetting) {
+          try {
+            meta = { ...meta, ...JSON.parse(metaSetting.value) };
+          } catch (e) {
+            console.error("Error parsing shift meta:", e);
+          }
+        }
         return {
           id: s.id,
           furgoId: s.furgo_id,
@@ -292,23 +321,21 @@ export async function syncFromCloud() {
           status: s.status,
           openedAt: s.opened_at,
           closedAt: s.closed_at,
-          routeName: s.route_name || '',
-          summary: s.summary || null,
+          routeName: meta.routeName || '',
+          summary: meta.summary || null,
           createdBy: s.created_by || 'admin',
-          helper: parsedObs.helper || (s.summary ? s.summary.helper : ''),
-          matricula: parsedObs.matricula || (s.summary ? s.summary.matricula : ''),
-          customDriver: parsedObs.customDriver || '',
-          observations: parsedObs.observations,
-          kms: s.kms || null,
-          startKms: s.start_kms || null,
-          endKms: s.end_kms || null
+          helper: meta.helper || '',
+          matricula: meta.matricula || '',
+          customDriver: meta.customDriver || '',
+          observations: meta.observations || '',
+          kms: meta.kms || null,
+          startKms: meta.startKms || null,
+          endKms: meta.endKms || null
         };
       });
       localStorage.setItem('delivery_shifts', JSON.stringify(localShifts));
     }
 
-    // Pull Settings
-    const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
     if (settings && !errSettings) {
       let sessionUser = null;
       try {
@@ -1362,30 +1389,43 @@ export function saveShifts(shifts) {
   if (supabase) {
     (async () => {
       try {
-        const formatted = shifts.map(s => {
-          const encodedObs = encodeObservationsHelper(s.helper, s.matricula, s.customDriver, s.observations);
-          return {
-            id: s.id,
-            furgo_id: s.furgoId,
-            date: s.date,
-            status: s.status,
-            opened_at: s.openedAt || null,
-            closed_at: s.closedAt || null,
-            created_by: s.createdBy || 'admin',
-            route_name: s.routeName || '',
-            summary: s.summary || null,
-            kms: s.kms || (s.summary ? s.summary.kms : null) || null,
-            start_kms: s.startKms || (s.summary ? s.summary.startKms : null) || null,
-            end_kms: s.endKms || (s.summary ? s.summary.endKms : null) || null,
-            observations: encodedObs
-          };
-        });
-        const { error } = await supabase.from('delivery_shifts').upsert(formatted);
+        const basicShifts = shifts.map(s => ({
+          id: s.id,
+          furgo_id: s.furgoId,
+          date: s.date,
+          status: s.status,
+          opened_at: s.openedAt || null,
+          closed_at: s.closedAt || null,
+          created_by: s.createdBy || 'admin'
+        }));
+        const { error } = await supabase.from('delivery_shifts').upsert(basicShifts);
         if (error) {
-          console.error("Error saving shifts to Supabase:", error);
+          console.error("Error saving basic shifts to Supabase:", error);
+        }
+
+        // Save metadata for each shift in settings
+        for (const s of shifts) {
+          const meta = {
+            helper: s.helper || '',
+            matricula: s.matricula || '',
+            customDriver: s.customDriver || '',
+            observations: s.observations || '',
+            routeName: s.routeName || '',
+            kms: s.kms || null,
+            startKms: s.startKms || null,
+            endKms: s.endKms || null,
+            summary: s.summary || null
+          };
+          const { error: metaErr } = await supabase.from('delivery_settings').upsert({
+            key: `shift_meta_${s.id}`,
+            value: JSON.stringify(meta)
+          });
+          if (metaErr) {
+            console.error(`Error saving shift meta ${s.id} to Supabase:`, metaErr);
+          }
         }
       } catch (e) {
-        console.error("Error saving shifts to Supabase:", e);
+        console.error("Error saving shifts or meta to Supabase:", e);
       }
     })();
   }
@@ -1504,6 +1544,9 @@ export function deletePlannedShift(furgoId, date) {
     supabase.from('delivery_shifts').delete().eq('id', shiftId).then(({ error }) => {
       if (error) console.error("Error deleting planned shift from Supabase:", error);
     });
+    supabase.from('delivery_settings').delete().eq('key', `shift_meta_${shiftId}`).then(({ error }) => {
+      if (error) console.error("Error deleting shift meta from Supabase:", error);
+    });
   }
 }
 
@@ -1516,6 +1559,9 @@ export function reopenShift(furgoId, date) {
   if (supabase) {
     supabase.from('delivery_shifts').delete().eq('id', shiftId).then(({ error }) => {
       if (error) console.error("Error deleting shift from Supabase:", error);
+    });
+    supabase.from('delivery_settings').delete().eq('key', `shift_meta_${shiftId}`).then(({ error }) => {
+      if (error) console.error("Error deleting shift meta from Supabase:", error);
     });
   }
 }
@@ -2226,11 +2272,22 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
         date: shiftToUpsert.date,
         furgo_id: shiftToUpsert.furgoId,
         status: shiftToUpsert.status,
-        kms: shiftToUpsert.kms,
-        start_kms: shiftToUpsert.startKms,
-        end_kms: shiftToUpsert.endKms,
+        created_by: shiftToUpsert.createdBy || 'admin'
+      });
+      const meta = {
+        helper: shiftToUpsert.helper || '',
+        matricula: shiftToUpsert.matricula || '',
+        customDriver: shiftToUpsert.customDriver || '',
         observations: shiftToUpsert.observations || '',
-        route_name: shiftToUpsert.routeName || ''
+        routeName: shiftToUpsert.routeName || '',
+        kms: shiftToUpsert.kms || null,
+        startKms: shiftToUpsert.startKms || null,
+        endKms: shiftToUpsert.endKms || null,
+        summary: shiftToUpsert.summary || null
+      };
+      await supabase.from('delivery_settings').upsert({
+        key: `shift_meta_${shiftToUpsert.id}`,
+        value: JSON.stringify(meta)
       });
     }
   }
