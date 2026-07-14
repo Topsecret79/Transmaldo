@@ -904,6 +904,7 @@ function App() {
     paqueteria: false,
     gamablanca: false,
     muebles: false,
+    electrodomesticos: false,
     otros: false,
     extras: false
   });
@@ -5088,10 +5089,11 @@ function App() {
     const itemsPaqueteria = tariffs.filter(t => getNormalizedBlock(t.block) === 'paqueteria');
     const itemsGamaBlanca = tariffs.filter(t => getNormalizedBlock(t.block) === 'gama blanca');
     const itemsMuebles = tariffs.filter(t => getNormalizedBlock(t.block) === 'muebles');
+    const itemsElectrodomesticosVarios = tariffs.filter(t => getNormalizedBlock(t.block) === 'electrodomesticos varios');
     const itemsOtros = tariffs.filter(t => {
       const isTvInstallation = t.id.startsWith('PM_BAS_') || t.id.startsWith('PM_COMP_') || t.id.startsWith('CUELGUE_');
       const bNorm = getNormalizedBlock(t.block);
-      return bNorm === 'otros' || bNorm === 'barras de sonido' || bNorm === 'electrodomesticos varios' || bNorm === 'servicios' || (bNorm === 'instalaciones' && !isTvInstallation);
+      return bNorm === 'otros' || bNorm === 'barras de sonido' || bNorm === 'servicios' || (bNorm === 'instalaciones' && !isTvInstallation);
     });
 
     const activeCheckFurgo = editingTicketId ? editingFurgoId : currentUser.id;
@@ -5729,6 +5731,7 @@ function App() {
           const paqueteriaCount = itemsPaqueteria.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
           const gamaBlancaCount = itemsGamaBlanca.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
           const mueblesCount = itemsMuebles.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
+          const electrodomesticosCount = itemsElectrodomesticosVarios.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
           
           const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
           const otrosCount = itemsOtros
@@ -6271,6 +6274,62 @@ function App() {
                   {expandedSections.muebles && (
                     <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {itemsMuebles.map(t => (
+                        <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                          <span className="task-item-label">{t.name}</span>
+                          <div className="qty-counter">
+                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                            <span className="qty-val">{otherQuantities[t.id] || 0}</span>
+                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SECCIÓN E: ELECTRODOMÉSTICOS VARIOS */}
+              {itemsElectrodomesticosVarios.length > 0 && (
+                <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                  <div 
+                    onClick={() => toggleSection('electrodomesticos')} 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '18px 20px', 
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      background: expandedSections.electrodomesticos ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
+                      borderTopLeftRadius: '11px',
+                      borderTopRightRadius: '11px',
+                      borderBottomLeftRadius: expandedSections.electrodomesticos ? '0px' : '11px',
+                      borderBottomRightRadius: expandedSections.electrodomesticos ? '0px' : '11px',
+                      transition: 'background 0.2s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '1.25rem' }}>💻</span>
+                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Electrodomésticos Varios</span>
+                      {electrodomesticosCount > 0 && (
+                        <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                          {electrodomesticosCount} {electrodomesticosCount === 1 ? 'unidad' : 'unidades'}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown 
+                      size={18} 
+                      style={{ 
+                        transform: expandedSections.electrodomesticos ? 'rotate(180deg)' : 'rotate(0deg)', 
+                        transition: 'transform 0.25s ease', 
+                        color: 'var(--text-muted)' 
+                      }} 
+                    />
+                  </div>
+
+                  {expandedSections.electrodomesticos && (
+                    <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {itemsElectrodomesticosVarios.map(t => (
                         <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                           <span className="task-item-label">{t.name}</span>
                           <div className="qty-counter">
