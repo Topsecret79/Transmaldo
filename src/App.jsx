@@ -282,6 +282,11 @@ import {
 
 initDB();
 
+const getNormalizedBlock = (b) => {
+  if (!b) return '';
+  return b.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+};
+
 // Diccionario de calles principales de Barcelona para corrector ortográfico
 const BARCELONA_STREETS = [
   'Balmes', 'Diagonal', 'Gran Via de les Corts Catalanes', 'Aragó', 'Passeig de Gràcia', 
@@ -847,6 +852,9 @@ function App() {
   // Cantidades de otros artículos no-TV (Paquetería y Otros Elementos)
   // { tariffId: quantity }
   const [otherQuantities, setOtherQuantities] = useState(() => getDraftVal('otherQuantities', {}));
+  // Acciones de otros artículos no-TV (por ejemplo, para Electrodomésticos Varios: 'entrega' | 'recogida' | 'combinado')
+  // { tariffId: action }
+  const [otherActions, setOtherActions] = useState(() => getDraftVal('otherActions', {}));
   const [customExtras, setCustomExtras] = useState(() => getDraftVal('customExtras', []));
   const [customExtraName, setCustomExtraName] = useState(() => getDraftVal('customExtraName', ''));
   const [customExtraPrice, setCustomExtraPrice] = useState(() => getDraftVal('customExtraPrice', ''));
@@ -1028,6 +1036,7 @@ function App() {
       showCod,
       formTvs,
       otherQuantities,
+      otherActions,
       customExtras,
       urgenteType
     };
@@ -1057,6 +1066,7 @@ function App() {
     showCod,
     formTvs,
     otherQuantities,
+    otherActions,
     customExtras,
     urgenteType,
     editingTicketId
@@ -2971,11 +2981,37 @@ function App() {
             });
           }
         } else {
-          tasksArray.push({
-            tariffId,
-            quantity,
-            noCharge: getExistingNoCharge(tariffId)
-          });
+          const originalTariff = tariffs.find(t => t.id === tariffId);
+          const isElectrodomestico = originalTariff && getNormalizedBlock(originalTariff.block) === 'electrodomesticos varios';
+          
+          if (isElectrodomestico) {
+            const action = otherActions[tariffId] || 'entrega';
+            let taskName = originalTariff.name;
+            let finalPrice = calculateTaskPrice(tariffId, tariffs, modulePrice);
+            
+            if (action === 'recogida') {
+              taskName = `Recogida de ${taskName}`;
+            } else if (action === 'combinado') {
+              taskName = `Entrega + Recogida de ${taskName}`;
+              finalPrice = finalPrice * 2;
+            }
+            
+            tasksArray.push({
+              tariffId,
+              quantity,
+              action,
+              name: taskName,
+              unitPrice: finalPrice,
+              price: finalPrice,
+              noCharge: getExistingNoCharge(tariffId)
+            });
+          } else {
+            tasksArray.push({
+              tariffId,
+              quantity,
+              noCharge: getExistingNoCharge(tariffId)
+            });
+          }
         }
       }
     });
@@ -3108,6 +3144,7 @@ function App() {
       setLastVerifiedAddress('');
       setFormTvs([]);
       setOtherQuantities({});
+      setOtherActions({});
       setCustomExtras([]);
       setCustomExtraName('');
       setCustomExtraPrice('');
@@ -3816,6 +3853,7 @@ function App() {
 
     const tempCustomExtras = [];
     const tempDescriptions = {};
+    const tempActions = {};
     let localUrgente = 'none';
 
     // Reconstruir otros artículos no-TV y sus descripciones de paquetería
@@ -3847,6 +3885,9 @@ function App() {
 
       if (!isTVRelated) {
         tempOthers[t.tariffId] = (tempOthers[t.tariffId] || 0) + t.quantity;
+        if (t.action) {
+          tempActions[t.tariffId] = t.action;
+        }
         const isPaqueteria = ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(t.tariffId);
         if (isPaqueteria) {
           const match = t.name ? t.name.match(/\(([^)]+)\)/) : null;
@@ -3861,6 +3902,7 @@ function App() {
 
     setFormTvs(tempTvs);
     setOtherQuantities(tempOthers);
+    setOtherActions(tempActions);
     setOtherDescriptions(tempDescriptions);
     setCustomExtras(tempCustomExtras);
     setUrgenteType(localUrgente);
@@ -3881,6 +3923,7 @@ function App() {
     setPostcode('');
     setFormTvs([]);
     setOtherQuantities({});
+    setOtherActions({});
     setCustomExtras([]);
     setCustomExtraName('');
     setCustomExtraPrice('');
@@ -5081,10 +5124,7 @@ function App() {
       return renderCreateRouteForm();
     }
 
-    const getNormalizedBlock = (b) => {
-      if (!b) return '';
-      return b.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    };
+
 
     const itemsPaqueteria = tariffs.filter(t => getNormalizedBlock(t.block) === 'paqueteria');
     const itemsGamaBlanca = tariffs.filter(t => getNormalizedBlock(t.block) === 'gama blanca');
@@ -6329,16 +6369,65 @@ function App() {
 
                   {expandedSections.electrodomesticos && (
                     <div style={{ padding: '20px', borderTop: '1px solid var(--panel-border)', animation: 'fadeIn 0.2s ease', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {itemsElectrodomesticosVarios.map(t => (
-                        <div key={t.id} className="task-item-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                          <span className="task-item-label">{t.name}</span>
-                          <div className="qty-counter">
-                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
-                            <span className="qty-val">{otherQuantities[t.id] || 0}</span>
-                            <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                      {itemsElectrodomesticosVarios.map(t => {
+                        const qty = otherQuantities[t.id] || 0;
+                        const action = otherActions[t.id] || 'entrega';
+                        
+                        return (
+                          <div key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div className="task-item-row" style={{ borderBottom: 'none', paddingBottom: 0, marginBottom: 0 }}>
+                              <span className="task-item-label">{t.name}</span>
+                              <div className="qty-counter">
+                                <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, -1)} disabled={isClosed}><Minus size={14} /></button>
+                                <span className="qty-val">{qty}</span>
+                                <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
+                              </div>
+                            </div>
+                            
+                            {qty > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '8px', animation: 'fadeIn 0.2s ease' }}>
+                                <span className="input-label" style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Acción:</span>
+                                <div className="action-pills" style={{ margin: 0, scale: '0.9', transformOrigin: 'right center' }}>
+                                  <button 
+                                    type="button" 
+                                    className={`action-pill-opt ${action === 'entrega' ? 'active' : ''}`}
+                                    onClick={() => {
+                                      if (isClosed) return;
+                                      setOtherActions(prev => ({ ...prev, [t.id]: 'entrega' }));
+                                    }}
+                                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                  >
+                                    Entrega
+                                  </button>
+                                  <button 
+                                    type="button" 
+                                    className={`action-pill-opt ${action === 'recogida' ? 'active' : ''}`}
+                                    onClick={() => {
+                                      if (isClosed) return;
+                                      setOtherActions(prev => ({ ...prev, [t.id]: 'recogida' }));
+                                    }}
+                                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                  >
+                                    Recogida
+                                  </button>
+                                  <button 
+                                    type="button" 
+                                    className={`action-pill-opt ${action === 'combinado' ? 'active' : ''}`}
+                                    onClick={() => {
+                                      if (isClosed) return;
+                                      setOtherActions(prev => ({ ...prev, [t.id]: 'combinado' }));
+                                    }}
+                                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                    title="Entrega + Recogida (Cambio)"
+                                  >
+                                    Ent+Rec (Cambio)
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
