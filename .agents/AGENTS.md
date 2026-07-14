@@ -102,6 +102,25 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **Sufijos de Nombre de Tareas**: Al compilar los repartos, se debe guardar explícitamente el nombre de la tarea anexando el sufijo del servicio: `(Entrega)`, `(Recogida)` o `(Entrega + Recogida)`. Esto aplica uniformemente a **Televisores** y **Electrodomésticos Varios**.
 * **Retorno Rápido de Auxilios**: Todo reparto recibido en modo de auxilio/apoyo mostrará un botón rojo interactivo **`↩️ Devolver`** al lado de la etiqueta amarilla `🔄 Auxilio de [Chofer]`. Este botón permite al chofer receptor devolver con un solo clic el cliente a la furgoneta y ruta original de procedencia sin tener que reasignarlo manualmente.
 
+## 21. Registro Unificado de Empleados y Desconexión de Dispositivos
+* **Separación de Conceptos**: Los inicios de sesión (furgonetas/dispositivos) son independientes de las personas físicas que trabajan (choferes y ayudantes).
+* **Gestión Independiente**: Todo el personal se registra en un directorio unificado (**👥 Personal**) con su nombre, rol (Chofer, Ayudante o Ambos) y tarifa diaria predeterminada.
+* **Control de Altas y Bajas (Estado Activo/Inactivo)**:
+  - Los empleados marcados como inactivos (de baja) son excluidos automáticamente de los selectores y menús desplegables para programar turnos futuros.
+  - Para proteger la contabilidad de la empresa, dar de baja a un empleado **nunca** borra su historial de nóminas de meses anteriores.
 
+## 22. Filtro de Visibilidad en el Calendario
+* **Evitar Ruido Visual**: El calendario (en vistas de mes, semana y día) debe mostrar únicamente los turnos planificados que tengan un chofer y/o un ayudante asignados.
+* **Ocultar Vacíos**: Los turnos en los que no se haya asignado a ninguna persona (dejando ambos campos vacíos) deben filtrarse y ocultarse de las cuadrículas visuales.
 
+## 23. Almacenamiento de Metadatos de Turno en Configuración (Compatibilidad de BD)
+* **Restricción de Esquema en Supabase**: La tabla remota `delivery_shifts` de Supabase solo cuenta con las 7 columnas básicas (`id`, `furgo_id`, `date`, `status`, `opened_at`, `closed_at`, `created_by`). Carece de columnas como `observations`, `kms`, `start_kms`, `end_kms` o `route_name`.
+* **Mecanismo de Compatibilidad**:
+  - Al guardar turnos (`saveShifts` y en `moveRouteDate`), se envían únicamente las 7 columnas básicas a `delivery_shifts` en Supabase.
+  - Toda la metadata extendida (ayudante, matrícula, chofer libre, observaciones, ruta, kms, etc.) se enpaqueta como JSON y se guarda en la tabla `delivery_settings` bajo la clave `shift_meta_<ID_DEL_TURNO>`.
+  - Al cargar los datos (`syncFromCloud`), se obtienen ambos conjuntos de datos y se fusionan en el cliente para reconstruir el objeto de turno completo de forma transparente.
 
+## 24. Cifrado Criptográfico de Contraseñas (SHA-256)
+* **No guardar en texto plano**: Las contraseñas se encriptan utilizando el algoritmo de cifrado `SHA-256` nativo del navegador (`crypto.subtle.digest`) antes de guardarse en Supabase y LocalStorage.
+* **Inicio de Sesión Adaptativo**: El sistema de autenticación admite el acceso comparando la contraseña ingresada con el texto plano antiguo o con el hash SHA-256, facilitando el inicio de sesión.
+* **Migración Automática**: Al cargarse el dashboard de administrador, se ejecuta una verificación en segundo plano que detecta cuentas con contraseñas en texto plano, las encripta automáticamente y actualiza la base de datos en la nube de forma transparente.
