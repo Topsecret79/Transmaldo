@@ -286,7 +286,9 @@ import {
   getDriverDailyRate,
   saveDriverDailyRate,
   getEmployeesList,
-  saveEmployeesList
+  saveEmployeesList,
+  hashPassword,
+  isSHA256
 } from './db';
 
 
@@ -1918,6 +1920,21 @@ function App() {
       setTariffs(finalTariffs);
       setUsers(finalUsers);
       setShifts(finalShifts);
+
+      // Background migration for plain-text passwords to SHA-256
+      (async () => {
+        let needsMigration = false;
+        for (const usr of finalUsers) {
+          if (usr.password && !isSHA256(usr.password)) {
+            needsMigration = true;
+            break;
+          }
+        }
+        if (needsMigration) {
+          console.log("Migrating plain-text passwords to SHA-256 hashes...");
+          await saveUsers(finalUsers);
+        }
+      })();
       
       // Extraer rutas activas de los tickets para que se sincronicen entre dispositivos
       const extractedRoutes = [];
@@ -2123,10 +2140,12 @@ function App() {
     
     const username = usernameInput.trim();
     const password = passwordInput.trim();
+    const hashedVal = await hashPassword(password);
     
     const dbUsers = getUsers() || [];
     let foundUser = dbUsers.find(
-      u => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+      u => u.username.toLowerCase() === username.toLowerCase() && 
+      (u.password === password || u.password === hashedVal)
     );
 
     // Fallback: Si no se encuentra localmente, hacer consulta en vivo a Supabase
@@ -2138,7 +2157,7 @@ function App() {
             .from('delivery_users')
             .select('*')
             .ilike('username', username)
-            .eq('password', password);
+            .or(`password.eq.${password},password.eq.${hashedVal}`);
             
           if (cloudUsers && cloudUsers.length > 0 && !error) {
             const u = cloudUsers[0];

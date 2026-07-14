@@ -494,7 +494,7 @@ export async function syncFromCloud() {
 }
 
 const DEFAULT_USERS = [
-  { id: 'admin', username: 'admin', label: 'Super Administrador', role: 'superadmin', password: 'admin' }
+  { id: 'admin', username: 'admin', label: 'Super Administrador', role: 'superadmin', password: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918' }
 ];
 
 const DEFAULT_MODULE_PRICE = 3.81;
@@ -704,6 +704,32 @@ export function initDB() {
   localStorage.setItem('delivery_db_cleared_once', 'true');
 }
 
+// Hash password using browser-native SHA-256 Web Crypto API
+export async function hashPassword(password) {
+  if (!password) return '';
+  try {
+    const msgBuffer = new TextEncoder().encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  } catch (e) {
+    console.error("Crypto subtle hash failed, falling back to simple hash:", e);
+    let hash = 0;
+    for (let i = 0; i < password.length; i++) {
+      const char = password.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash;
+    }
+    return hash.toString(16).padStart(64, '0');
+  }
+}
+
+// Check if string is SHA-256 hash format
+export function isSHA256(str) {
+  return /^[a-f0-9]{64}$/i.test(str);
+}
+
 // Obtener datos
 export function getUsers() {
   initDB();
@@ -711,10 +737,20 @@ export function getUsers() {
 }
 
 export async function saveUsers(users) {
-  localStorage.setItem('delivery_users', JSON.stringify(users));
+  // Automatically hash plain-text passwords
+  const hashedUsers = [];
+  for (const u of users) {
+    let pwd = u.password || '';
+    if (pwd && !isSHA256(pwd)) {
+      pwd = await hashPassword(pwd);
+    }
+    hashedUsers.push({ ...u, password: pwd });
+  }
+
+  localStorage.setItem('delivery_users', JSON.stringify(hashedUsers));
   if (supabase) {
     try {
-      const formatted = users.map(u => ({
+      const formatted = hashedUsers.map(u => ({
         id: u.id,
         username: u.username,
         password: u.password,
@@ -732,7 +768,7 @@ export async function saveUsers(users) {
         // Retentar sin la columna 'must_change_password' si no existe en la BD remota
         if (error.code === '42703' || (error.message && error.message.includes('must_change_password'))) {
           console.warn("Retrying upsert without 'must_change_password' column...");
-          const fallbackFormatted = users.map(u => ({
+          const fallbackFormatted = hashedUsers.map(u => ({
             id: u.id,
             username: u.username,
             password: u.password,
