@@ -1464,7 +1464,7 @@ export function closeShift(furgoId, date, summary) {
 }
 
 // Guardar turno planificado (fecha, chofer, ayudante, matricula y chofer personalizado)
-export function savePlannedShift(furgoId, date, helper, matricula, customDriver) {
+export function savePlannedShift(furgoId, date, helper, matricula, customDriver, createdBy = 'admin') {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const index = shifts.findIndex(s => s.id === shiftId);
@@ -1472,6 +1472,9 @@ export function savePlannedShift(furgoId, date, helper, matricula, customDriver)
     shifts[index].helper = helper;
     shifts[index].matricula = matricula;
     shifts[index].customDriver = customDriver;
+    if (createdBy && createdBy !== 'admin') {
+      shifts[index].createdBy = createdBy;
+    }
   } else {
     shifts.push({
       id: shiftId,
@@ -1484,7 +1487,8 @@ export function savePlannedShift(furgoId, date, helper, matricula, customDriver)
       matricula,
       customDriver,
       observations: '',
-      routeName: ''
+      routeName: '',
+      createdBy
     });
   }
   saveShifts(shifts);

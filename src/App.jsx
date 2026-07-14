@@ -1902,7 +1902,7 @@ function App() {
           finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.id || usr.id === u.id));
           const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === u.id || !t.createdBy));
           finalTariffs = processAndDeduplicateTariffs(activeTariffsRaw, u.id);
-          finalShifts = rawShifts.filter(s => s && (s.createdBy === u.id || myUserIds.includes(s.furgoId)));
+          finalShifts = rawShifts.filter(s => s && (s.createdBy === u.id || s.createdBy === 'admin' || myUserIds.includes(s.furgoId)));
         } else if (u.role === 'repartidor') {
           finalTickets = rawTickets.filter(t => t && t.furgoId === u.id);
           finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.createdBy || usr.id === u.id || usr.id === u.createdBy));
@@ -10463,7 +10463,7 @@ function App() {
                       } else {
                         targetCustom = plannedDriverName;
                       }
-                      savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom);
+                      savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom, currentUser?.id);
                       setTimeout(() => {
                         loadData();
                         setPlannedFurgoId('');
@@ -10994,7 +10994,7 @@ function App() {
                         } else {
                           targetCustom = plannedDriverName;
                         }
-                        savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom);
+                        savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom, currentUser?.id);
                         setTimeout(() => {
                           loadData();
                           setPlannedFurgoId('');
