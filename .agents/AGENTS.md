@@ -90,5 +90,18 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
   - La cabecera debe mostrar el nombre del bloque, un icono alusivo (ej: 📦, 📺, 🔧), la cantidad de artículos y un indicador visual (`▲` / `▼`).
   - Por defecto, únicamente el bloque principal de "Paquetería" debe estar abierto al cargar.
 
+## 19. Subdivisión del Bloque "Otros" en el Catálogo de Tarifas
+* **Tres Nuevos Grupos**: El bloque antiguo "Otros" se divide en tres categorías específicas en el catálogo:
+  - **Barras de Sonido**: Para `barra de sonido`, `pm barra de sonido` y `cuelgue barra de sonido`.
+  - **Electrodomésticos Varios**: Para `proyector`, `ordenador`, `pantalla`, `micro cadena`, `marco frame`, `DVD / Blu-Ray`, `soporte suelo`, `soporte fijo`, `altavoces` y `toca discos`.
+  - **Servicios**: Para `pellets`, `servicio urgente 100€`, `servicio urgente 120€` y `visita tecnica`.
+* **Consistencia de Liquidación**: Para resúmenes diarios, totalizados y cierres, los nuevos bloques deben agruparse o computarse de forma unificada bajo el paraguas de liquidaciones complementarias (equivalente a cómo funcionaba "Otros" anteriormente) para no alterar las fórmulas financieras de ganancias.
+
+## 20. Lógica de Acción y Retorno Rápido de Apoyo
+* **Lógica de Acción en Electrodomésticos**: Los artículos en la categoría **Electrodomésticos Varios** deben permitir al chofer seleccionar la acción a realizar: **Entrega**, **Recogida**, o **Ent+Rec (Cambio)**.
+* **Sufijos de Nombre de Tareas**: Al compilar los repartos, se debe guardar explícitamente el nombre de la tarea anexando el sufijo del servicio: `(Entrega)`, `(Recogida)` o `(Entrega + Recogida)`. Esto aplica uniformemente a **Televisores** y **Electrodomésticos Varios**.
+* **Retorno Rápido de Auxilios**: Todo reparto recibido en modo de auxilio/apoyo mostrará un botón rojo interactivo **`↩️ Devolver`** al lado de la etiqueta amarilla `🔄 Auxilio de [Chofer]`. Este botón permite al chofer receptor devolver con un solo clic el cliente a la furgoneta y ruta original de procedencia sin tener que reasignarlo manualmente.
+
+
 
 
