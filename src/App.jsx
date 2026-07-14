@@ -9962,7 +9962,7 @@ function App() {
               }}>
                 {calendarCells.map((dayNum, idx) => {
                   const cellDateStr = getCellDateStr(dayNum);
-                  const cellShifts = cellDateStr ? shifts.filter(s => s.date === cellDateStr) : [];
+                  const cellShifts = cellDateStr ? shifts.filter(s => s.date === cellDateStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim()))) : [];
                   const isToday = cellDateStr === new Date().toISOString().split('T')[0];
 
                   return (
@@ -10075,7 +10075,7 @@ function App() {
           }}>
             {weekDays.map((dayDate, idx) => {
               const dayStr = getFormattedDateStr(dayDate);
-              const dayShifts = shifts.filter(s => s.date === dayStr);
+              const dayShifts = shifts.filter(s => s.date === dayStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim())));
               const isToday = dayStr === new Date().toISOString().split('T')[0];
               const weekdayName = dayDate.toLocaleDateString('es-ES', { weekday: 'long' });
               const capitalized = weekdayName.charAt(0).toUpperCase() + weekdayName.slice(1);
@@ -10181,7 +10181,7 @@ function App() {
         {/* -------------------- 3. DAY VIEW -------------------- */}
         {calendarViewMode === 'day' && (() => {
           const dayStr = getFormattedDateStr(calendarDate);
-          const dayShifts = shifts.filter(s => s.date === dayStr);
+          const dayShifts = shifts.filter(s => s.date === dayStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim())));
           const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
           const availableDrivers = activeRepartidores.filter(d => !dayShifts.some(s => s.furgoId === d.id));
 
