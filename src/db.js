@@ -400,6 +400,12 @@ export async function syncFromCloud() {
         localStorage.setItem('delivery_plates_list', platesSetting.value);
       }
 
+      // Employees List
+      const empSetting = settings.find(s => s.key === 'delivery_employees_list');
+      if (empSetting) {
+        localStorage.setItem('delivery_employees_list', empSetting.value);
+      }
+
       // Km Price
       if (userId) {
         const kmPriceKey = `km_price_${userId}`;
@@ -2301,6 +2307,50 @@ export function saveDriverDailyRate(driverId, rate) {
       value: rate.toString()
     }).then(({ error }) => {
       if (error) console.error(`Error saving driver rate ${driverId} to Supabase:`, error);
+    });
+  }
+}
+
+// Obtener la lista de empleados configurados
+export function getEmployeesList() {
+  const empStr = localStorage.getItem('delivery_employees_list');
+  try {
+    if (empStr) {
+      return JSON.parse(empStr);
+    }
+    // Si no existe, migrar del antiguo helpersList
+    const helpers = getHelpersList();
+    const migrated = helpers.map((h, index) => ({
+      id: `emp_${Date.now()}_${index}`,
+      name: h.name,
+      role: 'ayudante',
+      dailyRate: h.dailyRate
+    }));
+    if (migrated.length > 0) {
+      localStorage.setItem('delivery_employees_list', JSON.stringify(migrated));
+    }
+    return migrated;
+  } catch (e) {
+    return [];
+  }
+}
+
+// Guardar la lista de empleados configurados
+export function saveEmployeesList(employees) {
+  const formatted = employees.map(item => ({
+    id: item.id || `emp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+    name: item.name.trim(),
+    role: item.role || 'chofer',
+    dailyRate: parseFloat(item.dailyRate) || 0
+  }));
+  const empStr = JSON.stringify(formatted);
+  localStorage.setItem('delivery_employees_list', empStr);
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: 'delivery_employees_list',
+      value: empStr
+    }).then(({ error }) => {
+      if (error) console.error("Error saving employees list to Supabase:", error);
     });
   }
 }

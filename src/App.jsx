@@ -284,7 +284,9 @@ import {
   getPlatesList,
   savePlatesList,
   getDriverDailyRate,
-  saveDriverDailyRate
+  saveDriverDailyRate,
+  getEmployeesList,
+  saveEmployeesList
 } from './db';
 
 
@@ -566,6 +568,10 @@ function App() {
   const [helpersList, setHelpersList] = useState(() => getHelpersList());
   const [newHelperName, setNewHelperName] = useState('');
   const [newHelperRate, setNewHelperRate] = useState('');
+  const [employeesList, setEmployeesList] = useState(() => getEmployeesList());
+  const [newEmployeeName, setNewEmployeeName] = useState('');
+  const [newEmployeeRole, setNewEmployeeRole] = useState('chofer');
+  const [newEmployeeRate, setNewEmployeeRate] = useState('');
   const [platesList, setPlatesList] = useState(() => getPlatesList());
   const [newPlateVal, setNewPlateVal] = useState('');
   const [calendarDate, setCalendarDate] = useState(() => new Date());
@@ -576,6 +582,7 @@ function App() {
   const [plannedHelper, setPlannedHelper] = useState('');
   const [plannedMatricula, setPlannedMatricula] = useState('');
   const [customDriverNameInput, setCustomDriverNameInput] = useState('');
+  const [plannedDriverName, setPlannedDriverName] = useState('');
   const [editingRates, setEditingRates] = useState({});
   const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useState(null);
   const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
@@ -1984,6 +1991,7 @@ function App() {
     setAllowDriverSupportTransfer(getAllowDriverSupportTransfer());
     setHelpersList(getHelpersList() || []);
     setPlatesList(getPlatesList() || []);
+    setEmployeesList(getEmployeesList() || []);
   };
 
   const loadDataRef = useRef(loadData);
@@ -4496,6 +4504,37 @@ function App() {
       setPlatesList(updated);
       savePlatesList(updated);
       triggerAlert('Matrícula eliminada');
+    }
+  };
+
+  const handleAddEmployee = () => {
+    if (!newEmployeeName.trim()) return;
+    if (employeesList.some(e => e.name.toLowerCase() === newEmployeeName.trim().toLowerCase())) {
+      triggerAlert('Este empleado ya está registrado', 'error');
+      return;
+    }
+    const rate = parseFloat(newEmployeeRate) || 0;
+    const newEmp = {
+      id: `emp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      name: newEmployeeName.trim(),
+      role: newEmployeeRole,
+      dailyRate: rate
+    };
+    const updated = [...employeesList, newEmp];
+    setEmployeesList(updated);
+    saveEmployeesList(updated);
+    setNewEmployeeName('');
+    setNewEmployeeRate('');
+    setNewEmployeeRole('chofer');
+    triggerAlert('Empleado registrado con éxito');
+  };
+
+  const handleRemoveEmployee = (id, name) => {
+    if (window.confirm(`¿Estás seguro de que deseas eliminar a ${name} de la lista de empleados?`)) {
+      const updated = employeesList.filter(e => e.id !== id);
+      setEmployeesList(updated);
+      saveEmployeesList(updated);
+      triggerAlert('Empleado eliminado');
     }
   };
 
@@ -9822,6 +9861,40 @@ function App() {
 
                             <div style={{ display: 'flex', gap: '15px', marginTop: '8px', flexWrap: 'wrap' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                <span>Chofer:</span>
+                                <select
+                                  className="form-input"
+                                  value={s.customDriver || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    let newCustom = val;
+                                    if (val === 'custom_input') {
+                                      const typed = window.prompt('Escribe el nombre del chofer:');
+                                      if (typed === null) return;
+                                      newCustom = typed.trim() || 'Por asignar';
+                                    }
+                                    const updatedShifts = shifts.map(curr => {
+                                      if (curr.id === s.id) {
+                                        return { ...curr, customDriver: newCustom };
+                                      }
+                                      return curr;
+                                    });
+                                    setShifts(updatedShifts);
+                                    saveShifts(updatedShifts);
+                                    triggerAlert('Chofer actualizado');
+                                  }}
+                                  disabled={s.status === 'closed'}
+                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                >
+                                  <option value="">Por asignar</option>
+                                  <option value="custom_input">✍️ Escribir...</option>
+                                  {employeesList.filter(emp => emp.role === 'chofer' || emp.role === 'ambos').map(emp => (
+                                    <option key={emp.id} value={emp.name}>{emp.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                                 <span>Ayudante:</span>
                                 <select
                                   className="form-input"
@@ -9841,8 +9914,8 @@ function App() {
                                   style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
                                 >
                                   <option value="">Sin ayudante</option>
-                                  {helpersList.map(h => (
-                                    <option key={h.name} value={h.name}>{h.name}</option>
+                                  {employeesList.filter(emp => emp.role === 'ayudante' || emp.role === 'ambos').map(emp => (
+                                    <option key={emp.id} value={emp.name}>{emp.name}</option>
                                   ))}
                                 </select>
                               </div>
@@ -9917,104 +9990,114 @@ function App() {
                   ➕ Planificar Turno para Hoy
                 </h3>
 
-                {availableDrivers.length === 0 ? (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', textAlign: 'center', padding: '15px' }}>
-                    Todos los choferes ya tienen turnos planificados para esta fecha.
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                    <div className="input-group" style={{ marginBottom: 0 }}>
-                      <span className="input-label">Chofer / Furgoneta</span>
-                      <select
-                        className="form-input"
-                        value={plannedFurgoId}
-                        onChange={(e) => {
-                          setPlannedFurgoId(e.target.value);
-                          setCustomDriverNameInput('');
-                        }}
-                        style={{ margin: 0 }}
-                      >
-                        <option value="">Selecciona chofer...</option>
-                        <option value="custom_input">✍️ Otro / Por asignar...</option>
-                        {availableDrivers.map(d => (
-                          <option key={d.id} value={d.id}>{d.label}</option>
-                        ))}
-                      </select>
-                      {plannedFurgoId === 'custom_input' && (
-                        <div style={{ marginTop: '10px' }}>
-                          <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre del Chofer (Opcional)</span>
-                          <input
-                            type="text"
-                            className="form-input"
-                            value={customDriverNameInput}
-                            onChange={(e) => setCustomDriverNameInput(e.target.value)}
-                            placeholder="Ej: Chofer de Apoyo, Por asignar, etc."
-                            style={{ margin: 0 }}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="input-group" style={{ marginBottom: 0 }}>
-                      <span className="input-label">Ayudante</span>
-                      <select
-                        className="form-input"
-                        value={plannedHelper}
-                        onChange={(e) => setPlannedHelper(e.target.value)}
-                        style={{ margin: 0 }}
-                      >
-                        <option value="">Selecciona ayudante (Opcional)...</option>
-                        {helpersList.map(h => (
-                          <option key={h.name} value={h.name}>{h.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="input-group" style={{ marginBottom: 0 }}>
-                      <span className="input-label">Matrícula (Vehículo)</span>
-                      <select
-                        className="form-input"
-                        value={plannedMatricula}
-                        onChange={(e) => setPlannedMatricula(e.target.value)}
-                        style={{ margin: 0 }}
-                      >
-                        <option value="">Selecciona matrícula (Opcional)...</option>
-                        {platesList.map(plate => (
-                          <option key={plate} value={plate}>{plate}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!plannedFurgoId) {
-                          triggerAlert('Selecciona un chofer/opción', 'error');
-                          return;
-                        }
-                        let targetFurgoId = plannedFurgoId;
-                        let targetCustom = '';
-                        if (plannedFurgoId === 'custom_input') {
-                          targetCustom = customDriverNameInput.trim() || 'Por asignar';
-                          targetFurgoId = `custom_temp_${Date.now()}`;
-                        }
-                        savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom);
-                        setTimeout(() => {
-                          loadData();
-                          setPlannedFurgoId('');
-                          setPlannedHelper('');
-                          setPlannedMatricula('');
-                          setCustomDriverNameInput('');
-                          triggerAlert('Turno planificado con éxito');
-                        }, 100);
-                      }}
-                      className="btn btn-primary"
-                      style={{ width: '100%', marginTop: '5px', margin: 0 }}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Furgoneta / Dispositivo</span>
+                    <select
+                      className="form-input"
+                      value={plannedFurgoId}
+                      onChange={(e) => setPlannedFurgoId(e.target.value)}
+                      style={{ margin: 0 }}
                     >
-                      Planificar y Asignar Turno
-                    </button>
+                      <option value="">Por asignar / Sin furgoneta</option>
+                      {activeRepartidores.map(d => (
+                        <option key={d.id} value={d.id}>{d.label}</option>
+                      ))}
+                    </select>
                   </div>
-                )}
+
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Chofer (Persona)</span>
+                    <select
+                      className="form-input"
+                      value={plannedDriverName}
+                      onChange={(e) => {
+                        setPlannedDriverName(e.target.value);
+                        setCustomDriverNameInput('');
+                      }}
+                      style={{ margin: 0 }}
+                    >
+                      <option value="">Por asignar</option>
+                      <option value="custom_input">✍️ Escribir otro...</option>
+                      {employeesList.filter(e => e.role === 'chofer' || e.role === 'ambos').map(emp => (
+                        <option key={emp.id} value={emp.name}>{emp.name}</option>
+                      ))}
+                    </select>
+                    {plannedDriverName === 'custom_input' && (
+                      <div style={{ marginTop: '10px' }}>
+                        <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre del Chofer</span>
+                        <input
+                          type="text"
+                          className="form-input"
+                          value={customDriverNameInput}
+                          onChange={(e) => setCustomDriverNameInput(e.target.value)}
+                          placeholder="Ej: Chofer de refuerzo, etc."
+                          style={{ margin: 0 }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Ayudante (Persona)</span>
+                    <select
+                      className="form-input"
+                      value={plannedHelper}
+                      onChange={(e) => setPlannedHelper(e.target.value)}
+                      style={{ margin: 0 }}
+                    >
+                      <option value="">Sin ayudante</option>
+                      {employeesList.filter(e => e.role === 'ayudante' || e.role === 'ambos').map(emp => (
+                        <option key={emp.id} value={emp.name}>{emp.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Matrícula (Vehículo)</span>
+                    <select
+                      className="form-input"
+                      value={plannedMatricula}
+                      onChange={(e) => setPlannedMatricula(e.target.value)}
+                      style={{ margin: 0 }}
+                    >
+                      <option value="">Selecciona matrícula (Opcional)...</option>
+                      {platesList.map(plate => (
+                        <option key={plate} value={plate}>{plate}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      let targetFurgoId = plannedFurgoId;
+                      if (!targetFurgoId) {
+                        targetFurgoId = `custom_temp_${Date.now()}`;
+                      }
+                      let targetCustom = '';
+                      if (plannedDriverName === 'custom_input') {
+                        targetCustom = customDriverNameInput.trim() || 'Por asignar';
+                      } else {
+                        targetCustom = plannedDriverName;
+                      }
+                      savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom);
+                      setTimeout(() => {
+                        loadData();
+                        setPlannedFurgoId('');
+                        setPlannedHelper('');
+                        setPlannedMatricula('');
+                        setPlannedDriverName('');
+                        setCustomDriverNameInput('');
+                        triggerAlert('Turno planificado con éxito');
+                      }, 100);
+                    }}
+                    className="btn btn-primary"
+                    style={{ width: '100%', marginTop: '5px', margin: 0 }}
+                  >
+                    Planificar y Asignar Turno
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -10032,42 +10115,40 @@ function App() {
           const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
           const monthShifts = shifts.filter(s => s.date.startsWith(monthPrefix));
 
-          const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
           const payrollList = [];
 
-          // Add Drivers
-          activeRepartidores.forEach(d => {
-            const currentRate = getDriverDailyRate(d.id) || 0;
-            const datesWorked = monthShifts
-              .filter(s => s.furgoId === d.id || (s.customDriver && s.customDriver.toLowerCase() === d.label.toLowerCase()))
-              .map(s => s.date);
-            const uniqueDates = [...new Set(datesWorked)].sort();
+          employeesList.forEach(emp => {
+            // Count dates worked as driver
+            const driverDates = monthShifts
+              .filter(s => s.customDriver && s.customDriver.toLowerCase() === emp.name.toLowerCase())
+              .map(s => ({ date: s.date, role: 'Chofer' }));
 
-            payrollList.push({
-              id: d.id,
-              name: d.label,
-              role: 'chofer',
-              rate: currentRate,
-              days: uniqueDates.length,
-              dates: uniqueDates
+            // Count dates worked as helper
+            const helperDates = monthShifts
+              .filter(s => s.helper && s.helper.toLowerCase() === emp.name.toLowerCase())
+              .map(s => ({ date: s.date, role: 'Ayudante' }));
+
+            // Merge and sort
+            const combined = [...driverDates, ...helperDates];
+            combined.sort((a, b) => a.date.localeCompare(b.date));
+
+            // Unique by date
+            const unique = [];
+            const seen = new Set();
+            combined.forEach(item => {
+              if (!seen.has(item.date)) {
+                seen.add(item.date);
+                unique.push(item);
+              }
             });
-          });
-
-          // Add Helpers
-          helpersList.forEach(h => {
-            const currentRate = h.dailyRate || 0;
-            const datesWorked = monthShifts
-              .filter(s => s.helper && s.helper.toLowerCase() === h.name.toLowerCase())
-              .map(s => s.date);
-            const uniqueDates = [...new Set(datesWorked)].sort();
 
             payrollList.push({
-              id: h.name,
-              name: h.name,
-              role: 'ayudante',
-              rate: currentRate,
-              days: uniqueDates.length,
-              dates: uniqueDates
+              id: emp.id,
+              name: emp.name,
+              role: emp.role,
+              rate: emp.dailyRate || 0,
+              days: unique.length,
+              dates: unique
             });
           });
 
@@ -10080,20 +10161,16 @@ function App() {
               triggerAlert('Introduce una tarifa válida', 'error');
               return;
             }
-            if (item.role === 'chofer') {
-              saveDriverDailyRate(item.id, newRate);
-              triggerAlert(`Tarifa de ${item.name} actualizada a ${newRate} €`);
-            } else {
-              const updatedHelpers = helpersList.map(h => {
-                if (h.name === item.name) {
-                  return { ...h, dailyRate: newRate };
-                }
-                return h;
-              });
-              setHelpersList(updatedHelpers);
-              saveHelpersList(updatedHelpers);
-              triggerAlert(`Tarifa de ${item.name} actualizada a ${newRate} €`);
-            }
+            const updatedEmployees = employeesList.map(emp => {
+              if (emp.id === item.id) {
+                return { ...emp, dailyRate: newRate };
+              }
+              return emp;
+            });
+            setEmployeesList(updatedEmployees);
+            saveEmployeesList(updatedEmployees);
+            triggerAlert(`Tarifa de ${item.name} actualizada a ${newRate} €`);
+            
             const updatedEditing = { ...editingRates };
             delete updatedEditing[`${item.role}_${item.id}`];
             setEditingRates(updatedEditing);
@@ -10216,13 +10293,13 @@ function App() {
                     No hay días registrados para este mes.
                   </div>
                 ) : (
-                  selectedPayrollEmployee.dates.map(dateStr => {
-                    const dateObj = new Date(dateStr + 'T00:00:00');
+                  selectedPayrollEmployee.dates.map(dObj => {
+                    const dateObj = new Date(dObj.date + 'T00:00:00');
                     const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
                     const capitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
                     return (
                       <div 
-                        key={dateStr}
+                        key={dObj.date}
                         style={{ 
                           display: 'flex', 
                           justifyContent: 'space-between', 
@@ -10234,8 +10311,11 @@ function App() {
                           color: '#fff'
                         }}
                       >
-                        <strong>{capitalized}</strong>
-                        <span style={{ color: 'var(--text-muted)' }}>{dateStr.split('-').reverse().join('/')}</span>
+                        <div>
+                          <strong>{capitalized}</strong>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '10px' }}>({dObj.role})</span>
+                        </div>
+                        <span style={{ color: 'var(--text-muted)' }}>{dObj.date.split('-').reverse().join('/')}</span>
                       </div>
                     );
                   })
@@ -10323,7 +10403,39 @@ function App() {
                               </div>
                               
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Ayudante:</span>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Chofer:</span>
+                                <select
+                                  className="form-input"
+                                  value={s.customDriver || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    let newCustom = val;
+                                    if (val === 'custom_input') {
+                                      const typed = window.prompt('Escribe el nombre del chofer:');
+                                      if (typed === null) return;
+                                      newCustom = typed.trim() || 'Por asignar';
+                                    }
+                                    const updatedShifts = shifts.map(curr => {
+                                      if (curr.id === s.id) {
+                                        return { ...curr, customDriver: newCustom };
+                                      }
+                                      return curr;
+                                    });
+                                    setShifts(updatedShifts);
+                                    saveShifts(updatedShifts);
+                                    triggerAlert('Chofer actualizado');
+                                  }}
+                                  disabled={s.status === 'closed'}
+                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                >
+                                  <option value="">Por asignar</option>
+                                  <option value="custom_input">✍️ Escribir...</option>
+                                  {employeesList.filter(emp => emp.role === 'chofer' || emp.role === 'ambos').map(emp => (
+                                    <option key={emp.id} value={emp.name}>{emp.name}</option>
+                                  ))}
+                                </select>
+
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>Ayudante:</span>
                                 <select
                                   className="form-input"
                                   value={s.helper || ''}
@@ -10342,8 +10454,8 @@ function App() {
                                   style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
                                 >
                                   <option value="">Sin ayudante</option>
-                                  {helpersList.map(h => (
-                                    <option key={h.name} value={h.name}>{h.name}</option>
+                                  {employeesList.filter(emp => emp.role === 'ayudante' || emp.role === 'ambos').map(emp => (
+                                    <option key={emp.id} value={emp.name}>{emp.name}</option>
                                   ))}
                                 </select>
 
@@ -10409,104 +10521,114 @@ function App() {
                     ➕ Planificar Nuevo Turno
                   </h4>
 
-                  {availableDrivers.length === 0 ? (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                      Todos los choferes ya tienen turnos planificados para esta fecha.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div className="input-group" style={{ marginBottom: 0 }}>
-                        <span className="input-label">Chofer / Furgoneta</span>
-                        <select
-                          className="form-input"
-                          value={plannedFurgoId}
-                          onChange={(e) => {
-                            setPlannedFurgoId(e.target.value);
-                            setCustomDriverNameInput('');
-                          }}
-                          style={{ margin: 0 }}
-                        >
-                          <option value="">Selecciona chofer...</option>
-                          <option value="custom_input">✍️ Otro / Por asignar...</option>
-                          {availableDrivers.map(d => (
-                            <option key={d.id} value={d.id}>{d.label}</option>
-                          ))}
-                        </select>
-                        {plannedFurgoId === 'custom_input' && (
-                          <div style={{ marginTop: '10px' }}>
-                            <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre del Chofer (Opcional)</span>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={customDriverNameInput}
-                              onChange={(e) => setCustomDriverNameInput(e.target.value)}
-                              placeholder="Ej: Chofer de Apoyo, Por asignar, etc."
-                              style={{ margin: 0 }}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="input-group" style={{ marginBottom: 0 }}>
-                        <span className="input-label">Ayudante</span>
-                        <select
-                          className="form-input"
-                          value={plannedHelper}
-                          onChange={(e) => setPlannedHelper(e.target.value)}
-                          style={{ margin: 0 }}
-                        >
-                          <option value="">Selecciona ayudante (Opcional)...</option>
-                          {helpersList.map(h => (
-                            <option key={h.name} value={h.name}>{h.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="input-group" style={{ marginBottom: 0 }}>
-                        <span className="input-label">Matrícula (Vehículo)</span>
-                        <select
-                          className="form-input"
-                          value={plannedMatricula}
-                          onChange={(e) => setPlannedMatricula(e.target.value)}
-                          style={{ margin: 0 }}
-                        >
-                          <option value="">Selecciona matrícula (Opcional)...</option>
-                          {platesList.map(plate => (
-                            <option key={plate} value={plate}>{plate}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!plannedFurgoId) {
-                            triggerAlert('Selecciona un chofer/opción', 'error');
-                            return;
-                          }
-                          let targetFurgoId = plannedFurgoId;
-                          let targetCustom = '';
-                          if (plannedFurgoId === 'custom_input') {
-                            targetCustom = customDriverNameInput.trim() || 'Por asignar';
-                            targetFurgoId = `custom_temp_${Date.now()}`;
-                          }
-                          savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom);
-                          setTimeout(() => {
-                            loadData();
-                            setPlannedFurgoId('');
-                            setPlannedHelper('');
-                            setPlannedMatricula('');
-                            setCustomDriverNameInput('');
-                            triggerAlert('Turno planificado con éxito');
-                          }, 100);
-                        }}
-                        className="btn btn-primary"
-                        style={{ width: '100%', marginTop: '4px', margin: 0 }}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Furgoneta / Dispositivo</span>
+                      <select
+                        className="form-input"
+                        value={plannedFurgoId}
+                        onChange={(e) => setPlannedFurgoId(e.target.value)}
+                        style={{ margin: 0 }}
                       >
-                        Crear y Asignar Turno
-                      </button>
+                        <option value="">Por asignar / Sin furgoneta</option>
+                        {activeRepartidores.map(d => (
+                          <option key={d.id} value={d.id}>{d.label}</option>
+                        ))}
+                      </select>
                     </div>
-                  )}
+
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Chofer (Persona)</span>
+                      <select
+                        className="form-input"
+                        value={plannedDriverName}
+                        onChange={(e) => {
+                          setPlannedDriverName(e.target.value);
+                          setCustomDriverNameInput('');
+                        }}
+                        style={{ margin: 0 }}
+                      >
+                        <option value="">Por asignar</option>
+                        <option value="custom_input">✍️ Escribir otro...</option>
+                        {employeesList.filter(e => e.role === 'chofer' || e.role === 'ambos').map(emp => (
+                          <option key={emp.id} value={emp.name}>{emp.name}</option>
+                        ))}
+                      </select>
+                      {plannedDriverName === 'custom_input' && (
+                        <div style={{ marginTop: '10px' }}>
+                          <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre del Chofer</span>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={customDriverNameInput}
+                            onChange={(e) => setCustomDriverNameInput(e.target.value)}
+                            placeholder="Ej: Chofer de refuerzo, etc."
+                            style={{ margin: 0 }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Ayudante (Persona)</span>
+                      <select
+                        className="form-input"
+                        value={plannedHelper}
+                        onChange={(e) => setPlannedHelper(e.target.value)}
+                        style={{ margin: 0 }}
+                      >
+                        <option value="">Sin ayudante</option>
+                        {employeesList.filter(e => e.role === 'ayudante' || e.role === 'ambos').map(emp => (
+                          <option key={emp.id} value={emp.name}>{emp.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Matrícula (Vehículo)</span>
+                      <select
+                        className="form-input"
+                        value={plannedMatricula}
+                        onChange={(e) => setPlannedMatricula(e.target.value)}
+                        style={{ margin: 0 }}
+                      >
+                        <option value="">Selecciona matrícula (Opcional)...</option>
+                        {platesList.map(plate => (
+                          <option key={plate} value={plate}>{plate}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        let targetFurgoId = plannedFurgoId;
+                        if (!targetFurgoId) {
+                          targetFurgoId = `custom_temp_${Date.now()}`;
+                        }
+                        let targetCustom = '';
+                        if (plannedDriverName === 'custom_input') {
+                          targetCustom = customDriverNameInput.trim() || 'Por asignar';
+                        } else {
+                          targetCustom = plannedDriverName;
+                        }
+                        savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom);
+                        setTimeout(() => {
+                          loadData();
+                          setPlannedFurgoId('');
+                          setPlannedHelper('');
+                          setPlannedMatricula('');
+                          setPlannedDriverName('');
+                          setCustomDriverNameInput('');
+                          triggerAlert('Turno planificado con éxito');
+                        }, 100);
+                      }}
+                      className="btn btn-primary"
+                      style={{ width: '100%', marginTop: '4px', margin: 0 }}
+                    >
+                      Crear y Asignar Turno
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -12840,49 +12962,62 @@ function App() {
               </div>
             </div>
             
-            {/* Gestión de Ayudantes */}
+            {/* Gestión de Empleados */}
             <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
-              <div className="block-title">👥 Gestión de Ayudantes de Reparto</div>
+              <div className="block-title">👥 Gestión de Empleados (Personal)</div>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                Registra la lista de ayudantes disponibles para que los choferes o tú podáis asignarlos a las rutas diarias.
+                Registra la lista de empleados de la empresa, su rol de trabajo habitual y su pago diario asignado.
               </p>
               
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '20px' }}>
                 <input 
                   type="text" 
                   className="form-input" 
-                  value={newHelperName}
-                  onChange={(e) => setNewHelperName(e.target.value)}
-                  placeholder="Nombre del nuevo ayudante..."
-                  style={{ maxWidth: '250px', margin: 0 }}
+                  value={newEmployeeName}
+                  onChange={(e) => setNewEmployeeName(e.target.value)}
+                  placeholder="Nombre completo..."
+                  style={{ maxWidth: '200px', margin: 0 }}
                 />
+                
+                <select
+                  className="form-input"
+                  value={newEmployeeRole}
+                  onChange={(e) => setNewEmployeeRole(e.target.value)}
+                  style={{ maxWidth: '180px', margin: 0 }}
+                >
+                  <option value="chofer">Chofer</option>
+                  <option value="ayudante">Ayudante</option>
+                  <option value="ambos">Chofer y Ayudante</option>
+                </select>
+
                 <input 
                   type="number" 
                   className="form-input" 
-                  value={newHelperRate}
-                  onChange={(e) => setNewHelperRate(e.target.value)}
-                  placeholder="Pago por día (€)..."
-                  style={{ maxWidth: '150px', margin: 0 }}
+                  value={newEmployeeRate}
+                  onChange={(e) => setNewEmployeeRate(e.target.value)}
+                  placeholder="Tarifa diaria (€)..."
+                  style={{ maxWidth: '140px', margin: 0 }}
                 />
+                
                 <button 
                   type="button" 
-                  onClick={handleAddHelper}
+                  onClick={handleAddEmployee}
                   className="btn btn-primary"
                   style={{ margin: 0, whiteSpace: 'nowrap' }}
                 >
-                  ➕ Añadir Ayudante
+                  ➕ Registrar Empleado
                 </button>
               </div>
 
-              {helpersList.length === 0 ? (
+              {employeesList.length === 0 ? (
                 <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  No hay ayudantes registrados.
+                  No hay empleados registrados.
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '500px' }}>
-                  {helpersList.map(h => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '600px' }}>
+                  {employeesList.map(emp => (
                     <div 
-                      key={h.name} 
+                      key={emp.id} 
                       style={{ 
                         display: 'flex', 
                         justifyContent: 'space-between', 
@@ -12894,14 +13029,27 @@ function App() {
                       }}
                     >
                       <div>
-                        <strong style={{ color: '#fff', fontSize: '0.88rem' }}>🤝 {h.name}</strong>
+                        <strong style={{ color: '#fff', fontSize: '0.88rem' }}>
+                          {emp.role === 'chofer' ? '🚚' : emp.role === 'ayudante' ? '🤝' : '🔄'} {emp.name}
+                        </strong>
+                        <span style={{ 
+                          fontSize: '0.7rem', 
+                          padding: '2px 6px', 
+                          borderRadius: '4px',
+                          background: emp.role === 'chofer' ? 'rgba(99, 102, 241, 0.15)' : emp.role === 'ayudante' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                          color: emp.role === 'chofer' ? 'var(--primary)' : emp.role === 'ayudante' ? '#34d399' : '#fbbf24',
+                          marginLeft: '10px',
+                          fontWeight: 'bold'
+                        }}>
+                          {emp.role === 'chofer' ? 'Chofer' : emp.role === 'ayudante' ? 'Ayudante' : 'Chofer/Ayudante'}
+                        </span>
                         <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: '12px' }}>
-                          Tarifa Diaria: <strong style={{ color: 'var(--primary)' }}>{h.dailyRate} €</strong>
+                          Tarifa Diaria: <strong style={{ color: 'var(--primary)' }}>{emp.dailyRate} €</strong>
                         </span>
                       </div>
                       <button 
                         type="button" 
-                        onClick={() => handleRemoveHelper(h.name)}
+                        onClick={() => handleRemoveEmployee(emp.id, emp.name)}
                         style={{ 
                           background: 'none', 
                           border: 'none', 
@@ -12911,7 +13059,7 @@ function App() {
                           fontSize: '0.82rem',
                           padding: '2px 6px'
                         }}
-                        title="Eliminar ayudante"
+                        title="Eliminar empleado"
                       >
                         ✕ Eliminar
                       </button>
