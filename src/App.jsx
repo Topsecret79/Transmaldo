@@ -280,7 +280,9 @@ import {
   getHelpersList,
   saveHelpersList,
   savePlannedShift,
-  deletePlannedShift
+  deletePlannedShift,
+  getPlatesList,
+  savePlatesList
 } from './db';
 
 
@@ -561,11 +563,14 @@ function App() {
   const [allowDriverSupportTransfer, setAllowDriverSupportTransfer] = useState(getAllowDriverSupportTransfer());
   const [helpersList, setHelpersList] = useState(() => getHelpersList());
   const [newHelperName, setNewHelperName] = useState('');
+  const [platesList, setPlatesList] = useState(() => getPlatesList());
+  const [newPlateVal, setNewPlateVal] = useState('');
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [plannedShiftModalOpen, setPlannedShiftModalOpen] = useState(false);
   const [plannedFurgoId, setPlannedFurgoId] = useState('');
   const [plannedHelper, setPlannedHelper] = useState('');
+  const [plannedMatricula, setPlannedMatricula] = useState('');
   const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
 
   const [navModalOpen, setNavModalOpen] = useState(false);
@@ -1971,6 +1976,7 @@ function App() {
     setMapboxTokenInput(getMapboxToken());
     setAllowDriverSupportTransfer(getAllowDriverSupportTransfer());
     setHelpersList(getHelpersList() || []);
+    setPlatesList(getPlatesList() || []);
   };
 
   const loadDataRef = useRef(loadData);
@@ -4458,6 +4464,29 @@ function App() {
       setHelpersList(updated);
       saveHelpersList(updated);
       triggerAlert('Ayudante eliminado');
+    }
+  };
+
+  const handleAddPlate = () => {
+    if (!newPlateVal.trim()) return;
+    const cleanPlate = newPlateVal.trim().toUpperCase();
+    if (platesList.includes(cleanPlate)) {
+      triggerAlert('Esta matrícula ya está registrada', 'error');
+      return;
+    }
+    const updated = [...platesList, cleanPlate];
+    setPlatesList(updated);
+    savePlatesList(updated);
+    setNewPlateVal('');
+    triggerAlert('Matrícula agregada con éxito');
+  };
+
+  const handleRemovePlate = (plate) => {
+    if (window.confirm(`¿Estás seguro de que deseas eliminar la matrícula ${plate}?`)) {
+      const updated = platesList.filter(p => p !== plate);
+      setPlatesList(updated);
+      savePlatesList(updated);
+      triggerAlert('Matrícula eliminada');
     }
   };
 
@@ -7131,6 +7160,11 @@ function App() {
                             🤝 Ayudante: {currentShift.helper}
                           </span>
                         )}
+                        {currentShift?.matricula && (
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(244, 63, 94, 0.08)', color: '#fda4af', border: '1px solid rgba(244, 63, 94, 0.25)', fontWeight: '700' }}>
+                            🚐 Vehículo: {currentShift.matricula}
+                          </span>
+                        )}
                         <button 
                           type="button" 
                           onClick={() => {
@@ -7164,6 +7198,11 @@ function App() {
                         {currentShift?.helper && (
                           <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
                             🤝 Ayudante: {currentShift.helper}
+                          </span>
+                        )}
+                        {currentShift?.matricula && (
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(244, 63, 94, 0.08)', color: '#fda4af', border: '1px solid rgba(244, 63, 94, 0.25)', fontWeight: '700' }}>
+                            🚐 Vehículo: {currentShift.matricula}
                           </span>
                         )}
                         <button 
@@ -9486,9 +9525,10 @@ function App() {
                           }}></span>
                           🚚 {driverName}
                         </div>
-                        {s.helper && (
-                          <div style={{ color: 'var(--text-muted)', paddingLeft: '8px' }}>
-                            🤝 {s.helper}
+                        {(s.matricula || s.helper) && (
+                          <div style={{ color: 'var(--text-muted)', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                            {s.matricula && <span>🚐 {s.matricula}</span>}
+                            {s.helper && <span>🤝 {s.helper}</span>}
                           </div>
                         )}
                       </div>
@@ -9574,7 +9614,7 @@ function App() {
                                 </span>
                               </div>
                               
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Ayudante:</span>
                                 <select
                                   className="form-input"
@@ -9596,6 +9636,30 @@ function App() {
                                   <option value="">Sin ayudante</option>
                                   {helpersList.map(name => (
                                     <option key={name} value={name}>{name}</option>
+                                  ))}
+                                </select>
+
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>Matrícula:</span>
+                                <select
+                                  className="form-input"
+                                  value={s.matricula || ''}
+                                  onChange={(e) => {
+                                    const updatedShifts = shifts.map(curr => {
+                                      if (curr.id === s.id) {
+                                        return { ...curr, matricula: e.target.value };
+                                      }
+                                      return curr;
+                                    });
+                                    setShifts(updatedShifts);
+                                    saveShifts(updatedShifts);
+                                    triggerAlert('Matrícula actualizada');
+                                  }}
+                                  disabled={s.status === 'closed'}
+                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                >
+                                  <option value="">Sin matrícula</option>
+                                  {platesList.map(plate => (
+                                    <option key={plate} value={plate}>{plate}</option>
                                   ))}
                                 </select>
                               </div>
@@ -9673,6 +9737,21 @@ function App() {
                         </select>
                       </div>
 
+                      <div className="input-group" style={{ marginBottom: 0 }}>
+                        <span className="input-label">Matrícula (Vehículo)</span>
+                        <select
+                          className="form-input"
+                          value={plannedMatricula}
+                          onChange={(e) => setPlannedMatricula(e.target.value)}
+                          style={{ margin: 0 }}
+                        >
+                          <option value="">Selecciona matrícula (Opcional)...</option>
+                          {platesList.map(plate => (
+                            <option key={plate} value={plate}>{plate}</option>
+                          ))}
+                        </select>
+                      </div>
+
                       <button
                         type="button"
                         onClick={() => {
@@ -9680,11 +9759,12 @@ function App() {
                             triggerAlert('Selecciona un chofer', 'error');
                             return;
                           }
-                          savePlannedShift(plannedFurgoId, selectedCalendarDay, plannedHelper);
+                          savePlannedShift(plannedFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula);
                           setTimeout(() => {
                             loadData();
                             setPlannedFurgoId('');
                             setPlannedHelper('');
+                            setPlannedMatricula('');
                             triggerAlert('Turno planificado con éxito');
                           }, 100);
                         }}
@@ -12100,6 +12180,77 @@ function App() {
               )}
             </div>
 
+            {/* Gestión de Matrículas */}
+            <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
+              <div className="block-title">🚐 Gestión de Matrículas (Vehículos)</div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                Registra la lista de matrículas de las furgonetas para llevar un control de qué vehículo se utilizó en cada jornada.
+              </p>
+              
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  value={newPlateVal}
+                  onChange={(e) => setNewPlateVal(e.target.value)}
+                  placeholder="Ej: 1234ABC..."
+                  style={{ maxWidth: '300px', margin: 0 }}
+                />
+                <button 
+                  type="button" 
+                  onClick={handleAddPlate}
+                  className="btn btn-primary"
+                  style={{ margin: 0, whiteSpace: 'nowrap' }}
+                >
+                  ➕ Añadir Matrícula
+                </button>
+              </div>
+
+              {platesList.length === 0 ? (
+                <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  No hay matrículas registradas.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {platesList.map(plate => (
+                    <span 
+                      key={plate} 
+                      className="badge badge-secondary" 
+                      style={{ 
+                        fontSize: '0.82rem', 
+                        padding: '6px 12px', 
+                        borderRadius: '20px', 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        background: 'rgba(255,255,255,0.05)', 
+                        border: '1px solid var(--panel-border)' 
+                      }}
+                    >
+                      🚐 {plate}
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemovePlate(plate)}
+                        style={{ 
+                          background: 'none', 
+                          border: 'none', 
+                          color: '#f87171', 
+                          cursor: 'pointer', 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: 0,
+                          lineHeight: 1
+                        }}
+                        title="Eliminar matrícula"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Puntos de Inicio y Fin de Ruta Predeterminados */}
             <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
               <div className="block-title">📍 Direcciones de Inicio y Fin de Ruta Predeterminadas</div>
@@ -13002,6 +13153,8 @@ function App() {
                     <div><strong>Furgoneta:</strong> {furgoLabel}</div>
                     <div><strong>Fecha:</strong> {targetDate}</div>
                     {routeNameText && <div><strong>Ruta:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📍 {routeNameText}</span></div>}
+                    {existingShift?.matricula && <div><strong>Vehículo (Matrícula):</strong> <span style={{ color: '#fda4af', fontWeight: '600' }}>🚐 {existingShift.matricula}</span></div>}
+                    {existingShift?.helper && <div><strong>Ayudante:</strong> <span style={{ color: '#a5b4fc', fontWeight: '600' }}>🤝 {existingShift.helper}</span></div>}
                     <div style={{ borderBottom: '1px dashed var(--panel-border)', margin: '5px 0' }}></div>
                     
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>

@@ -296,6 +296,7 @@ export async function syncFromCloud() {
           summary: s.summary || null,
           createdBy: s.created_by || 'admin',
           helper: parsedObs.helper || (s.summary ? s.summary.helper : ''),
+          matricula: parsedObs.matricula || (s.summary ? s.summary.matricula : ''),
           observations: parsedObs.observations,
           kms: s.kms || null,
           startKms: s.start_kms || null,
@@ -390,6 +391,12 @@ export async function syncFromCloud() {
       const helpersSetting = settings.find(s => s.key === 'delivery_helpers_list');
       if (helpersSetting) {
         localStorage.setItem('delivery_helpers_list', helpersSetting.value);
+      }
+
+      // Plates List
+      const platesSetting = settings.find(s => s.key === 'delivery_plates_list');
+      if (platesSetting) {
+        localStorage.setItem('delivery_plates_list', platesSetting.value);
       }
 
       // Km Price
@@ -1258,28 +1265,59 @@ export function getTVRange(inches) {
   return '115';
 }
 
-// Parse helper and clean observations from observations string
+// Parse helper, matricula and clean observations from observations string
 export function parseObservationsHelper(obsText) {
-  if (!obsText) return { helper: '', observations: '' };
-  const str = obsText.toString();
+  if (!obsText) return { helper: '', matricula: '', observations: '' };
+  let str = obsText.toString();
+  let helper = '';
+  let matricula = '';
+
+  // Extract Ayudante
   if (str.startsWith('[Ayudante: ')) {
     const endIdx = str.indexOf(']');
     if (endIdx !== -1) {
-      const helper = str.substring(11, endIdx).trim();
-      const observations = str.substring(endIdx + 1).trim();
-      return { helper, observations };
+      helper = str.substring(11, endIdx).trim();
+      str = str.substring(endIdx + 1).trim();
+    }
+  } else if (str.includes('[Ayudante: ')) {
+    const startIdx = str.indexOf('[Ayudante: ');
+    const endIdx = str.indexOf(']', startIdx);
+    if (endIdx !== -1) {
+      helper = str.substring(startIdx + 11, endIdx).trim();
+      str = (str.substring(0, startIdx) + str.substring(endIdx + 1)).trim();
     }
   }
-  return { helper: '', observations: str };
+
+  // Extract Matricula
+  if (str.startsWith('[Matricula: ')) {
+    const endIdx = str.indexOf(']');
+    if (endIdx !== -1) {
+      matricula = str.substring(12, endIdx).trim();
+      str = str.substring(endIdx + 1).trim();
+    }
+  } else if (str.includes('[Matricula: ')) {
+    const startIdx = str.indexOf('[Matricula: ');
+    const endIdx = str.indexOf(']', startIdx);
+    if (endIdx !== -1) {
+      matricula = str.substring(startIdx + 12, endIdx).trim();
+      str = (str.substring(0, startIdx) + str.substring(endIdx + 1)).trim();
+    }
+  }
+
+  return { helper, matricula, observations: str };
 }
 
-// Encode helper and observations into observations string
-export function encodeObservationsHelper(helper, obsText) {
-  const cleanObs = obsText || '';
+// Encode helper, matricula and observations into observations string
+export function encodeObservationsHelper(helper, matricula, obsText) {
+  let cleanObs = obsText || '';
+  let prefixes = '';
   if (helper && helper.trim()) {
-    return `[Ayudante: ${helper.trim()}] ${cleanObs}`.trim();
+    prefixes += `[Ayudante: ${helper.trim()}] `;
   }
-  return cleanObs;
+  if (matricula && matricula.trim()) {
+    prefixes += `[Matricula: ${matricula.trim()}] `;
+  }
+  return `${prefixes}${cleanObs}`.trim();
 }
 
 // Obtener turnos
@@ -1295,7 +1333,7 @@ export function saveShifts(shifts) {
     (async () => {
       try {
         const formatted = shifts.map(s => {
-          const encodedObs = encodeObservationsHelper(s.helper, s.observations);
+          const encodedObs = encodeObservationsHelper(s.helper, s.matricula, s.observations);
           return {
             id: s.id,
             furgo_id: s.furgoId,
@@ -1365,6 +1403,7 @@ export function closeShift(furgoId, date, summary) {
   const existingShift = existingIndex !== -1 ? shifts[existingIndex] : {};
 
   const helper = existingShift.helper || (summary ? summary.helper : '') || '';
+  const matricula = existingShift.matricula || (summary ? summary.matricula : '') || '';
 
   const newShift = {
     id: shiftId,
@@ -1374,6 +1413,7 @@ export function closeShift(furgoId, date, summary) {
     closedAt: new Date().toISOString(),
     routeName: existingShift.routeName || '',
     helper,
+    matricula,
     kms: summary ? summary.kms : null,
     startKms: summary ? summary.startKms : null,
     endKms: summary ? summary.endKms : null,
@@ -1391,13 +1431,14 @@ export function closeShift(furgoId, date, summary) {
   return newShift;
 }
 
-// Guardar turno planificado (fecha, chofer y ayudante)
-export function savePlannedShift(furgoId, date, helper) {
+// Guardar turno planificado (fecha, chofer, ayudante y matricula)
+export function savePlannedShift(furgoId, date, helper, matricula) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const index = shifts.findIndex(s => s.id === shiftId);
   if (index !== -1) {
     shifts[index].helper = helper;
+    shifts[index].matricula = matricula;
   } else {
     shifts.push({
       id: shiftId,
@@ -1407,6 +1448,7 @@ export function savePlannedShift(furgoId, date, helper) {
       openedAt: null,
       closedAt: null,
       helper,
+      matricula,
       observations: '',
       routeName: ''
     });
@@ -2178,6 +2220,30 @@ export function saveHelpersList(helpers) {
       value: helpersStr
     }).then(({ error }) => {
       if (error) console.error("Error saving helpers list to Supabase:", error);
+    });
+  }
+}
+
+// Obtener la lista de matriculas configuradas
+export function getPlatesList() {
+  const platesStr = localStorage.getItem('delivery_plates_list');
+  try {
+    return platesStr ? JSON.parse(platesStr) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Guardar la lista de matriculas configuradas
+export function savePlatesList(plates) {
+  const platesStr = JSON.stringify(plates);
+  localStorage.setItem('delivery_plates_list', platesStr);
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: 'delivery_plates_list',
+      value: platesStr
+    }).then(({ error }) => {
+      if (error) console.error("Error saving plates list to Supabase:", error);
     });
   }
 }
