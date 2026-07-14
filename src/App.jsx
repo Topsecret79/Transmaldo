@@ -10743,7 +10743,7 @@ function App() {
 
           return (
             <div className="obs-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, padding: '15px', backdropFilter: 'blur(4px)' }}>
-              <div className="obs-modal" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '500px', padding: '24px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left' }}>
+              <div className="obs-modal" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', padding: '24px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left' }}>
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
                   <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: 'var(--primary)' }}>
@@ -10951,7 +10951,7 @@ function App() {
                       >
                         <option value="">Por asignar</option>
                         <option value="custom_input">✍️ Escribir otro...</option>
-                        {employeesList.filter(e => e.role === 'chofer' || e.role === 'ambos').map(emp => (
+                        {employeesList.filter(e => e.active !== false && (e.role === 'chofer' || e.role === 'ambos')).map(emp => (
                           <option key={emp.id} value={emp.name}>{emp.name}</option>
                         ))}
                       </select>
@@ -10979,7 +10979,7 @@ function App() {
                         style={{ margin: 0 }}
                       >
                         <option value="">Sin ayudante</option>
-                        {employeesList.filter(e => e.role === 'ayudante' || e.role === 'ambos').map(emp => (
+                        {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
                           <option key={emp.id} value={emp.name}>{emp.name}</option>
                         ))}
                       </select>
