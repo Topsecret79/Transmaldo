@@ -476,22 +476,22 @@ const DEFAULT_TARIFFS = [
   { id: 'CUELGUE_115', name: 'Cuelgue en Pared 75" a 115"', block: 'Instalaciones', type: 'modules', value: 10 },
 
   // Otros Elementos
-  { id: 'BSND', name: 'Barra de Sonido', block: 'Otros', type: 'fixed', value: 5.23 },
-  { id: 'PM_BSND', name: 'Puesta en Marcha Barra de Sonido', block: 'Otros', type: 'modules', value: 3 },
-  { id: 'CUELGUE_BSND', name: 'Cuelgue Barra de Sonido', block: 'Otros', type: 'modules', value: 8 },
-  { id: 'MFRA', name: 'Marco Frame', block: 'Otros', type: 'modules', value: 3 },
-  { id: 'SPAR', name: 'Soporte de Pared', block: 'Otros', type: 'fixed', value: 5.23 },
-  { id: 'SSUE', name: 'Soporte de Suelo', block: 'Otros', type: 'fixed', value: 5.23 },
-  { id: 'ALTA', name: 'Altavoces', block: 'Otros', type: 'modules', value: 3 },
-  { id: 'TDIC', name: 'Toca discos', block: 'Otros', type: 'modules', value: 3 },
-  { id: 'PROY', name: 'Proyector', block: 'Otros', type: 'fixed', value: 5.23 },
-  { id: 'VTEC', name: 'Visita Técnica', block: 'Otros', type: 'modules', value: 5 },
-  { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Otros', type: 'fixed', value: 100 },
-  { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 },
+  { id: 'BSND', name: 'Barra de Sonido', block: 'Barras de Sonido', type: 'fixed', value: 5.23 },
+  { id: 'PM_BSND', name: 'Puesta en Marcha Barra de Sonido', block: 'Barras de Sonido', type: 'modules', value: 3 },
+  { id: 'CUELGUE_BSND', name: 'Cuelgue Barra de Sonido', block: 'Barras de Sonido', type: 'modules', value: 8 },
+  { id: 'MFRA', name: 'Marco Frame', block: 'Electrodomésticos Varios', type: 'modules', value: 3 },
+  { id: 'SPAR', name: 'Soporte de Pared', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+  { id: 'SSUE', name: 'Soporte de Suelo', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+  { id: 'ALTA', name: 'Altavoces', block: 'Electrodomésticos Varios', type: 'modules', value: 3 },
+  { id: 'TDIC', name: 'Toca discos', block: 'Electrodomésticos Varios', type: 'modules', value: 3 },
+  { id: 'PROY', name: 'Proyector', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+  { id: 'VTEC', name: 'Visita Técnica', block: 'Servicios', type: 'modules', value: 5 },
+  { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Servicios', type: 'fixed', value: 100 },
+  { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Servicios', type: 'fixed', value: 120 },
   // Nuevos artículos
-  { id: 'ORDE', name: 'Ordenador', block: 'Otros', type: 'fixed', value: 5.23 },
-  { id: 'PANT', name: 'Pantalla', block: 'Otros', type: 'fixed', value: 5.23 },
-  { id: 'MCAD', name: 'Micro Cadena', block: 'Otros', type: 'fixed', value: 5.23 }
+  { id: 'ORDE', name: 'Ordenador', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+  { id: 'PANT', name: 'Pantalla', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+  { id: 'MCAD', name: 'Micro Cadena', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 }
 ];
 
 export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74, 75, 77, 83, 85, 98, 100, 115];
@@ -543,16 +543,16 @@ export function initDB() {
       const hasSoundbarPM = current.some(t => t.id === 'PM_BSND');
       if (!hasSoundbarPM) {
         current.push(
-          { id: 'PM_BSND', name: 'Puesta en Marcha Barra de Sonido', block: 'Otros', type: 'modules', value: 3 },
-          { id: 'CUELGUE_BSND', name: 'Cuelgue Barra de Sonido', block: 'Otros', type: 'modules', value: 8 }
+          { id: 'PM_BSND', name: 'Puesta en Marcha Barra de Sonido', block: 'Barras de Sonido', type: 'modules', value: 3 },
+          { id: 'CUELGUE_BSND', name: 'Cuelgue Barra de Sonido', block: 'Barras de Sonido', type: 'modules', value: 8 }
         );
       }
 
       const hasUrgente = current.some(t => t.id === 'URGENTE_100');
       if (!hasUrgente) {
         current.push(
-          { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Otros', type: 'fixed', value: 100 },
-          { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Otros', type: 'fixed', value: 120 }
+          { id: 'URGENTE_100', name: 'Servicio Urgente 100€', block: 'Servicios', type: 'fixed', value: 100 },
+          { id: 'URGENTE_120', name: 'Servicio Urgente 120€', block: 'Servicios', type: 'fixed', value: 120 }
         );
       }
       
@@ -590,7 +590,7 @@ export function initDB() {
         current.push({
           id: 'VTEC',
           name: 'Visita Técnica',
-          block: 'Otros',
+          block: 'Servicios',
           type: 'modules',
           value: 5
         });
@@ -600,11 +600,37 @@ export function initDB() {
       const hasOrde = current.some(t => t.id === 'ORDE');
       if (!hasOrde) {
         current.push(
-          { id: 'ORDE', name: 'Ordenador', block: 'Otros', type: 'fixed', value: 5.23 },
-          { id: 'PANT', name: 'Pantalla', block: 'Otros', type: 'fixed', value: 5.23 },
-          { id: 'MCAD', name: 'Micro Cadena', block: 'Otros', type: 'fixed', value: 5.23 }
+          { id: 'ORDE', name: 'Ordenador', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+          { id: 'PANT', name: 'Pantalla', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+          { id: 'MCAD', name: 'Micro Cadena', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 }
         );
       }
+
+      // Split 'Otros' block into new categories: 'Barras de Sonido', 'Electrodomésticos Varios', 'Servicios'
+      const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
+      const electroIds = ['PROY', 'ORDE', 'PANT', 'MCAD', 'MFRA', 'SPAR', 'SSUE', 'ALTA', 'TDIC'];
+      const serviceIds = ['URGENTE_100', 'URGENTE_120', 'VTEC'];
+      
+      let changed = false;
+      current = current.map(t => {
+        const matchesSoundbar = soundbarIds.some(sid => t.id === sid || t.id.startsWith(sid + '_'));
+        const matchesElectro = electroIds.some(eid => t.id === eid || t.id.startsWith(eid + '_'));
+        const matchesService = serviceIds.some(sid => t.id === sid || t.id.startsWith(sid + '_'));
+        
+        if (matchesSoundbar && t.block !== 'Barras de Sonido') {
+          changed = true;
+          return { ...t, block: 'Barras de Sonido' };
+        }
+        if (matchesElectro && t.block !== 'Electrodomésticos Varios') {
+          changed = true;
+          return { ...t, block: 'Electrodomésticos Varios' };
+        }
+        if (matchesService && t.block !== 'Servicios') {
+          changed = true;
+          return { ...t, block: 'Servicios' };
+        }
+        return t;
+      });
       
       localStorage.setItem('delivery_tariffs', JSON.stringify(current));
     } catch (e) {

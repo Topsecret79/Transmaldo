@@ -877,6 +877,9 @@ function App() {
     'Paquetería': true,
     'Televisores': false,
     'Instalaciones': false,
+    'Barras de Sonido': false,
+    'Electrodomésticos Varios': false,
+    'Servicios': false,
     'Gama Blanca': false,
     'Muebles': false,
     'Otros': false
@@ -5088,7 +5091,7 @@ function App() {
     const itemsOtros = tariffs.filter(t => {
       const isTvInstallation = t.id.startsWith('PM_BAS_') || t.id.startsWith('PM_COMP_') || t.id.startsWith('CUELGUE_');
       const bNorm = getNormalizedBlock(t.block);
-      return bNorm === 'otros' || (bNorm === 'instalaciones' && !isTvInstallation);
+      return bNorm === 'otros' || bNorm === 'barras de sonido' || bNorm === 'electrodomesticos varios' || bNorm === 'servicios' || (bNorm === 'instalaciones' && !isTvInstallation);
     });
 
     const activeCheckFurgo = editingTicketId ? editingFurgoId : currentUser.id;
@@ -10898,7 +10901,7 @@ function App() {
             
             <div className="settings-grid">
               <div>
-                {['Paquetería', 'Televisores', 'Instalaciones', 'Otros', 'Gama Blanca', 'Muebles'].map(block => {
+                {['Paquetería', 'Televisores', 'Instalaciones', 'Barras de Sonido', 'Electrodomésticos Varios', 'Servicios', 'Gama Blanca', 'Muebles'].map(block => {
                   const blockTariffs = tariffs.filter(t => {
                     const matchesBlock = t.block === block;
                     if (!matchesBlock) return false;
@@ -10938,6 +10941,9 @@ function App() {
                             {block === 'Paquetería' ? '📦' : 
                              block === 'Televisores' ? '📺' : 
                              block === 'Instalaciones' ? '🔧' : 
+                             block === 'Barras de Sonido' ? '🔊' :
+                             block === 'Electrodomésticos Varios' ? '💻' :
+                             block === 'Servicios' ? '🛠️' :
                              block === 'Gama Blanca' ? '🔌' : 
                              block === 'Muebles' ? '🛋️' : '🏷️'}
                           </span>
@@ -10982,6 +10988,9 @@ function App() {
                                         <option value="Paquetería">Paquetería</option>
                                         <option value="Televisores">Televisores</option>
                                         <option value="Instalaciones">Instalaciones</option>
+                                        <option value="Barras de Sonido">Barras de Sonido</option>
+                                        <option value="Electrodomésticos Varios">Electrodomésticos Varios</option>
+                                        <option value="Servicios">Servicios</option>
                                         <option value="Gama Blanca">Gama Blanca</option>
                                         <option value="Muebles">Muebles</option>
                                         <option value="Otros">Otros</option>
@@ -11116,6 +11125,9 @@ function App() {
                         onChange={(e) => setNewTariffBlock(e.target.value)}
                       >
                         <option value="Otros">Otros Elementos</option>
+                        <option value="Barras de Sonido">Barras de Sonido</option>
+                        <option value="Electrodomésticos Varios">Electrodomésticos Varios</option>
+                        <option value="Servicios">Servicios</option>
                         <option value="Paquetería">Paquetería</option>
                         <option value="Televisores">Televisores</option>
                         <option value="Instalaciones">Instalaciones</option>
