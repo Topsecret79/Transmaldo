@@ -234,17 +234,27 @@ export async function syncFromCloud() {
     // Pull Users
     const { data: users, error: errUsers } = await supabase.from('delivery_users').select('*');
     if (users && !errUsers) {
-      const localUsers = users.map(u => ({
-        id: u.id,
-        username: u.username,
-        password: u.password,
-        label: u.label,
-        role: u.role,
-        canSearch: u.can_search || false,
-        createdBy: u.created_by || 'admin',
-        mustChangePassword: !!u.must_change_password,
-        permissions: u.permissions || null
-      }));
+      let localCurrent = [];
+      try {
+        localCurrent = JSON.parse(localStorage.getItem('delivery_users')) || [];
+      } catch (e) {}
+
+      const localUsers = users.map(u => {
+        const existingLocal = localCurrent.find(lu => lu.id === u.id);
+        return {
+          id: u.id,
+          username: u.username,
+          password: u.password,
+          label: u.label,
+          role: u.role,
+          canSearch: u.can_search || false,
+          createdBy: u.created_by || 'admin',
+          mustChangePassword: !!u.must_change_password,
+          permissions: Object.prototype.hasOwnProperty.call(u, 'permissions')
+            ? u.permissions
+            : (existingLocal ? existingLocal.permissions : null)
+        };
+      });
       localStorage.setItem('delivery_users', JSON.stringify(localUsers));
     }
 
