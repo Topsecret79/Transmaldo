@@ -285,7 +285,7 @@ export async function syncFromCloud() {
     // Pull Tickets
     const { data: tickets, error: errTickets } = await supabase.from('delivery_tickets').select('*');
     if (tickets && !errTickets) {
-      const localTickets = tickets.map(t => ({
+      const cloudTickets = tickets.map(t => ({
         id: t.id,
         date: t.date,
         furgoId: t.furgo_id,
@@ -309,7 +309,32 @@ export async function syncFromCloud() {
         createdAt: t.created_at,
         createdBy: t.created_by || 'admin'
       }));
-      localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
+
+      // Offline-First reconciliation: merge cloud tickets with pending local tickets
+      let localCurrent = [];
+      try {
+        localCurrent = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+      } catch (e) {}
+
+      let deletedIds = [];
+      try {
+        deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+      } catch (e) {}
+
+      const pendingLocal = localCurrent.filter(t => t && t._syncStatus === 'pending');
+      const filteredCloud = cloudTickets.filter(t => t && !deletedIds.includes(t.id));
+
+      const mergedTickets = [...filteredCloud];
+      pendingLocal.forEach(localT => {
+        const cloudIndex = mergedTickets.findIndex(t => t.id === localT.id);
+        if (cloudIndex !== -1) {
+          mergedTickets[cloudIndex] = localT;
+        } else {
+          mergedTickets.push(localT);
+        }
+      });
+
+      localStorage.setItem('delivery_tickets', JSON.stringify(mergedTickets));
     }
 
     // Pull Shifts and Settings together first
@@ -1002,7 +1027,24 @@ export async function saveTickets(tickets) {
         created_by: t.createdBy || 'admin'
       }));
       const { error } = await supabase.from('delivery_tickets').upsert(formatted);
-      if (error) console.error("Supabase upsert failed in saveTickets:", error);
+      if (error) {
+        console.error("Supabase upsert failed in saveTickets:", error);
+      } else {
+        // Clear _syncStatus flag on successful upsert
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+          const updatedLocal = currentLocal.map(t => {
+            if (t && t._syncStatus === 'pending') {
+              const { _syncStatus, ...rest } = t;
+              return rest;
+            }
+            return t;
+          });
+          localStorage.setItem('delivery_tickets', JSON.stringify(updatedLocal));
+        } catch (e) {
+          console.error("Error clearing local sync status:", e);
+        }
+      }
     } catch (e) {
       console.error("Error saving tickets to Supabase:", e);
     } finally {
@@ -1105,7 +1147,8 @@ export function addTicket(ticketData) {
     lat: ticketData.lat || null,
     lng: ticketData.lng || null,
     routeOrder: ticketData.routeOrder || null,
-    createdBy: ticketData.createdBy || 'admin'
+    createdBy: ticketData.createdBy || 'admin',
+    _syncStatus: 'pending'
   };
 
   tickets.push(newTicket);
@@ -1178,7 +1221,8 @@ export function updateTicket(updatedTicket) {
       completedLat: updatedTicket.completedLat !== undefined ? updatedTicket.completedLat : tickets[index].completedLat,
       completedLng: updatedTicket.completedLng !== undefined ? updatedTicket.completedLng : tickets[index].completedLng,
       routeOrder: updatedTicket.routeOrder !== undefined ? updatedTicket.routeOrder : tickets[index].routeOrder,
-      createdBy: updatedTicket.createdBy || tickets[index].createdBy || 'admin'
+      createdBy: updatedTicket.createdBy || tickets[index].createdBy || 'admin',
+      _syncStatus: 'pending'
     };
     saveTickets(tickets);
     return tickets[index];
@@ -1255,6 +1299,7 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
       }
     }
 
+    tickets[index]._syncStatus = 'pending';
     saveTickets(tickets);
     return tickets[index];
   }
@@ -1266,9 +1311,26 @@ export function deleteTicket(ticketId) {
   const tickets = getTickets();
   const filtered = tickets.filter(t => t.id !== ticketId);
   saveTickets(filtered);
+
+  // Track tombstone deleted ID to avoid re-downloading during background sync
+  try {
+    const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+    deletedIds.push(ticketId);
+    localStorage.setItem('delivery_deleted_tickets', JSON.stringify(deletedIds));
+  } catch (e) {}
+
   if (supabase) {
     supabase.from('delivery_tickets').delete().eq('id', ticketId).then(({ error }) => {
-      if (error) console.error("Error deleting ticket from Supabase:", error);
+      if (error) {
+        console.error("Error deleting ticket from Supabase:", error);
+      } else {
+        // Remove tombstone ID once confirmed deleted on the cloud
+        try {
+          const currentDeleted = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+          const updatedDeleted = currentDeleted.filter(id => id !== ticketId);
+          localStorage.setItem('delivery_deleted_tickets', JSON.stringify(updatedDeleted));
+        } catch (e) {}
+      }
     });
   }
 }
