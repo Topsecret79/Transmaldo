@@ -1578,7 +1578,9 @@ function App() {
           map = window.L.map(mapElementId, {
             zoomControl: true,
             attributionControl: true,
-            rotate: true
+            rotate: true,
+            touchRotate: true,
+            rotateControl: false
           }).setView([41.3879, 2.16992], 12);
           mapInstanceRef.current = map;
 
