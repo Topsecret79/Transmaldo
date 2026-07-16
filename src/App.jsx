@@ -1520,7 +1520,12 @@ function App() {
       }
     };
 
-    let handleDriverLocationUpdate = null;
+    const handleDriverLocationUpdate = () => {
+      if (typeof window.updateLiveDriversOnMapFn === 'function') {
+        window.updateLiveDriversOnMapFn();
+      }
+    };
+    window.addEventListener('driver-location-updated', handleDriverLocationUpdate);
 
     const timer = setTimeout(() => {
       const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');
@@ -1792,7 +1797,7 @@ function App() {
         });
 
         // 5. Dibujar repartidores en tiempo real y registrar listener ligero
-        const updateLiveDriversOnMap = () => {
+        window.updateLiveDriversOnMapFn = () => {
           if (!mapDriversLayerGroupRef.current || !mapInstanceRef.current) return;
           mapDriversLayerGroupRef.current.clearLayers();
 
@@ -1816,7 +1821,7 @@ function App() {
             const locTime = new Date(updatedAtStr).getTime();
             if (isNaN(locTime)) return;
             const timeDiff = Date.now() - locTime;
-            if (timeDiff > 6 * 60 * 60 * 1000) return; // Filtro de inactividad de 6 horas
+            if (timeDiff > 48 * 60 * 60 * 1000) return; // Filtro de inactividad de 48 horas
 
             const latLng = [latNum, lngNum];
             bounds.push(latLng);
@@ -1861,12 +1866,9 @@ function App() {
           });
         };
 
-        updateLiveDriversOnMap();
-
-        handleDriverLocationUpdate = () => {
-          updateLiveDriversOnMap();
-        };
-        window.addEventListener('driver-location-updated', handleDriverLocationUpdate);
+        if (typeof window.updateLiveDriversOnMapFn === 'function') {
+          window.updateLiveDriversOnMapFn();
+        }
 
         // 6. Auto-ajustar el zoom del mapa para mostrar todos los puntos (solo al iniciar o cambiar filtros)
         const currentFilterKey = `${activeTab}_${targetDate}_${mapFilterFurgo}_${shiftSummaryDate}`;
@@ -1883,9 +1885,8 @@ function App() {
     return () => {
       clearTimeout(timer);
       delete window.handleChangeMapStopOrder;
-      if (handleDriverLocationUpdate) {
-        window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
-      }
+      delete window.updateLiveDriversOnMapFn;
+      window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
       const isAdminMap = document.getElementById('admin-map');
       const isDriverMap = document.getElementById('driver-map');
       if (!isAdminMap && !isDriverMap && mapInstanceRef.current !== null) {
