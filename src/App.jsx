@@ -231,6 +231,7 @@ import {
   getTariffs, 
   saveTariffs, 
   getTickets, 
+  saveTickets,
   addTicket, 
   updateTicket, 
   deleteTicket, 
