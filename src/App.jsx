@@ -980,6 +980,8 @@ function App() {
   const lastFittedRef = useRef('');
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [routeStartAddr, setRouteStartAddr] = useState(getRouteStartAddr());
+  const [rotateLoaded, setRotateLoaded] = useState(false);
+  const [mapRotationState, setMapRotationState] = useState(0);
   const [routeEndAddr, setRouteEndAddr] = useState(getRouteEndAddr());
   const [startSuggestions, setStartSuggestions] = useState([]);
   const [endSuggestions, setEndSuggestions] = useState([]);
@@ -1508,6 +1510,8 @@ function App() {
 
   // Inicialización y actualización del Mapa Leaflet (Admin o Repartidor)
   useEffect(() => {
+    if (!rotateLoaded) return;
+
     window.handleChangeMapStopOrder = (ticketId, targetValue) => {
       const ticketToMove = tickets.find(tk => tk && tk.id === ticketId);
       if (ticketToMove) {
@@ -1531,9 +1535,16 @@ function App() {
         if (map === null) {
           map = window.L.map(mapElementId, {
             zoomControl: true,
-            attributionControl: true
+            attributionControl: true,
+            rotate: true
           }).setView([41.3879, 2.16992], 12);
           mapInstanceRef.current = map;
+
+          map.on('rotate', () => {
+            if (typeof map.getBearing === 'function') {
+              setMapRotationState(Math.round(map.getBearing()));
+            }
+          });
 
           // Deseleccionar pin al hacer clic en el fondo del mapa
           map.on('click', (e) => {
@@ -1888,7 +1899,7 @@ function App() {
         mapDriversLayerGroupRef.current = null;
       }
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser, rotateLoaded]);
 
 
 
@@ -2073,6 +2084,14 @@ function App() {
   useEffect(() => {
     loadDataRef.current = loadData;
   });
+
+  useEffect(() => {
+    import('leaflet-rotate').then(() => {
+      setRotateLoaded(true);
+    }).catch(err => {
+      console.error("Failed to load leaflet-rotate plugin dynamically:", err);
+    });
+  }, []);
 
   useEffect(() => {
     const activeFurgo = currentUser?.role === 'repartidor' 
@@ -8465,6 +8484,25 @@ function App() {
             🚚 Centrar Repartidor
           </button>
         )}
+        <button 
+          type="button" 
+          onClick={() => {
+            const map = mapInstanceRef.current;
+            if (!map) return;
+            const currentBearing = typeof map.getBearing === 'function' ? map.getBearing() : 0;
+            const newBearing = (currentBearing + 90) % 360;
+            if (typeof map.setBearing === 'function') {
+              map.setBearing(newBearing);
+              setMapRotationState(newBearing);
+            } else {
+              triggerAlert('La rotación del mapa no está disponible');
+            }
+          }}
+          className="btn btn-secondary btn-sm"
+          style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', backdropFilter: 'blur(10px)', color: 'var(--text-main)', padding: '6px 10px', fontSize: '0.72rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', height: '32px', margin: 0 }}
+        >
+          🔄 Girar Mapa ({mapRotationState}°)
+        </button>
       </div>
     );
   };
