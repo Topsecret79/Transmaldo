@@ -12240,7 +12240,7 @@ function App() {
             <button className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('employees'); }}>👥 Personal</button>
           )}
           {showVanPricing && (
-            <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>Ajustar Precios</button>
+            <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>Precios Corte Inglés</button>
           )}
           {(showStaff || showSecurity) && (
             <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}>Furgonetas y Seguridad</button>
@@ -14293,7 +14293,7 @@ function App() {
                                 { id: 'shift_calendar', label: '📅 Calendario de Turnos' },
                                 { id: 'general_search', label: '🔍 Buscador General' },
                                 { id: 'staff', label: '👤 Personal (Admins/Choferes)' },
-                                { id: 'van_pricing', label: '💰 Ajustar Precios' },
+                                { id: 'van_pricing', label: '💰 Precios Corte Inglés' },
                                 { id: 'security', label: '⚙️ Seguridad / Sistema' }
                               ].map(mod => {
                                 let isAllowed = true;
