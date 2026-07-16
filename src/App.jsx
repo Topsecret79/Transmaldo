@@ -8426,6 +8426,24 @@ function App() {
   // --- CONTROLES DE CENTRADO DE MAPA ---
   const renderMapCenterControls = (isAdminMap) => {
     const activeFurgo = isAdminMap ? mapFilterFurgo : currentUser?.id;
+    const buttonStyle = {
+      background: 'var(--panel-bg)',
+      border: '1px solid var(--panel-border)',
+      backdropFilter: 'blur(10px)',
+      color: 'var(--text-main)',
+      padding: 0,
+      width: '36px',
+      height: '36px',
+      fontSize: '1.2rem',
+      borderRadius: '8px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+      margin: 0
+    };
+
     return (
       <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 999, display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <button 
@@ -8454,9 +8472,10 @@ function App() {
             }
           }}
           className="btn btn-secondary btn-sm"
-          style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', backdropFilter: 'blur(10px)', color: 'var(--text-main)', padding: '6px 10px', fontSize: '0.72rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', height: '32px', margin: 0 }}
+          style={buttonStyle}
+          title="Centrar mapa en la ruta completa (📍)"
         >
-          📍 Centrar Ruta
+          📍
         </button>
         {activeFurgo && activeFurgo !== 'all' && (
           <button 
@@ -8479,9 +8498,10 @@ function App() {
               }
             }}
             className="btn btn-secondary btn-sm"
-            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', backdropFilter: 'blur(10px)', color: 'var(--text-main)', padding: '6px 10px', fontSize: '0.72rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', height: '32px', margin: 0 }}
+            style={buttonStyle}
+            title="Centrar mapa en el repartidor (🚚)"
           >
-            🚚 Centrar Repartidor
+            🚚
           </button>
         )}
         <button 
@@ -8499,9 +8519,16 @@ function App() {
             }
           }}
           className="btn btn-secondary btn-sm"
-          style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', backdropFilter: 'blur(10px)', color: 'var(--text-main)', padding: '6px 10px', fontSize: '0.72rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', height: '32px', margin: 0 }}
+          style={buttonStyle}
+          title={`Girar mapa +90° (Orientación actual: ${mapRotationState}°) 🧭`}
         >
-          🔄 Girar Mapa ({mapRotationState}°)
+          <span style={{ 
+            display: 'inline-block', 
+            transform: `rotate(${-mapRotationState}deg)`, 
+            transition: 'transform 0.25s ease-out' 
+          }}>
+            🧭
+          </span>
         </button>
       </div>
     );
