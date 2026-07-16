@@ -8429,19 +8429,20 @@ function App() {
     const buttonStyle = {
       background: 'var(--panel-bg)',
       border: '1px solid var(--panel-border)',
-      backdropFilter: 'blur(10px)',
+      backdropFilter: 'blur(12px)',
       color: 'var(--text-main)',
       padding: 0,
-      width: '36px',
-      height: '36px',
-      fontSize: '1.2rem',
-      borderRadius: '8px',
+      width: '38px',
+      height: '38px',
+      fontSize: '1.25rem',
+      borderRadius: '50%',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       cursor: 'pointer',
-      boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-      margin: 0
+      boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+      margin: 0,
+      transition: 'all 0.2s ease'
     };
 
     return (
