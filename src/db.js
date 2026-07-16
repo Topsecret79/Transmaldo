@@ -56,10 +56,12 @@ export async function reinitSupabase() {
           realtimeChannel = supabase
             .channel('delivery-realtime-sync')
             .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+              console.log("Realtime payload received:", payload);
               if (payload.table === 'delivery_settings') {
                 const record = payload.new || {};
                 if (record.key && record.key.startsWith('loc_')) {
                   const fid = record.key.substring(4);
+                  console.log("Realtime GPS update received for driver:", fid, record.value);
                   try {
                     const val = JSON.parse(record.value);
                     const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};

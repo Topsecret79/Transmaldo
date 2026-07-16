@@ -1527,6 +1527,43 @@ function App() {
     };
     window.addEventListener('driver-location-updated', handleDriverLocationUpdate);
 
+    // Fallback de sondeo automático en segundo plano cada 15 segundos por si el websocket realtime falla o se bloquea
+    const fallbackPollInterval = setInterval(() => {
+      const supabaseClient = getSupabaseClient();
+      if (supabaseClient) {
+        supabaseClient.from('delivery_settings').select('*')
+          .then(({ data, error }) => {
+            if (data && !error) {
+              const locations = {};
+              data.forEach(s => {
+                if (s.key && s.key.startsWith('loc_')) {
+                  const fid = s.key.substring(4);
+                  try {
+                    const val = JSON.parse(s.value);
+                    if (val && typeof val === 'object' && val.lat !== undefined && val.lng !== undefined) {
+                      locations[fid] = {
+                        lat: parseFloat(val.lat),
+                        lng: parseFloat(val.lng),
+                        updatedAt: val.updatedAt || new Date().toISOString()
+                      };
+                    }
+                  } catch (e) {}
+                }
+              });
+              if (Object.keys(locations).length > 0) {
+                localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+                if (typeof window.updateLiveDriversOnMapFn === 'function') {
+                  window.updateLiveDriversOnMapFn();
+                }
+              }
+            }
+          })
+          .catch(err => {
+            console.warn("Background driver locations polling failed:", err);
+          });
+      }
+    }, 15000);
+
     const timer = setTimeout(() => {
       const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');
       const isDriverMap = activeTab === 'driver_map' && document.getElementById('driver-map');
@@ -1884,6 +1921,7 @@ function App() {
 
     return () => {
       clearTimeout(timer);
+      clearInterval(fallbackPollInterval);
       delete window.handleChangeMapStopOrder;
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
