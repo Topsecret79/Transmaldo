@@ -949,40 +949,44 @@ export function getTickets() {
   return JSON.parse(localStorage.getItem('delivery_tickets'));
 }
 
-export function saveTickets(tickets) {
+export async function saveTickets(tickets) {
   localStorage.setItem('delivery_tickets', JSON.stringify(tickets));
   if (supabase) {
-    (async () => {
-      try {
-        const formatted = tickets.map(t => ({
-          id: t.id,
-          date: t.date,
-          furgo_id: t.furgoId,
-          furgo_label: t.furgoLabel,
-          route_name: t.routeName,
-          customer_name: t.customerName,
-          phone: t.phone,
-          address: t.address,
-          postcode: t.postcode,
-          notes: t.notes,
-          cod_amount: t.codAmount,
-          tasks: t.tasks,
-          total_price: t.totalPrice,
-          status: t.status,
-          failure_reason: t.failureReason || '',
-          lat: t.lat,
-          lng: t.lng,
-          completed_lat: t.completedLat,
-          completed_lng: t.completedLng,
-          route_order: t.routeOrder,
-          created_at: t.createdAt,
-          created_by: t.createdBy || 'admin'
-        }));
-        await supabase.from('delivery_tickets').upsert(formatted);
-      } catch (e) {
-        console.error("Error saving tickets to Supabase:", e);
-      }
-    })();
+    isSaving = true;
+    try {
+      const formatted = tickets.map(t => ({
+        id: t.id,
+        date: t.date,
+        furgo_id: t.furgoId,
+        furgo_label: t.furgoLabel,
+        route_name: t.routeName,
+        customer_name: t.customerName,
+        phone: t.phone,
+        address: t.address,
+        postcode: t.postcode,
+        notes: t.notes,
+        cod_amount: t.codAmount,
+        tasks: t.tasks,
+        total_price: t.totalPrice,
+        status: t.status,
+        failure_reason: t.failureReason || '',
+        lat: t.lat,
+        lng: t.lng,
+        completed_lat: t.completedLat,
+        completed_lng: t.completedLng,
+        route_order: t.routeOrder,
+        created_at: t.createdAt,
+        created_by: t.createdBy || 'admin'
+      }));
+      const { error } = await supabase.from('delivery_tickets').upsert(formatted);
+      if (error) console.error("Supabase upsert failed in saveTickets:", error);
+    } catch (e) {
+      console.error("Error saving tickets to Supabase:", e);
+    } finally {
+      setTimeout(() => {
+        isSaving = false;
+      }, 1500);
+    }
   }
 }
 
@@ -1083,38 +1087,6 @@ export function addTicket(ticketData) {
 
   tickets.push(newTicket);
   saveTickets(tickets);
-  if (supabase) {
-    (async () => {
-      try {
-        await supabase.from('delivery_tickets').insert({
-          id: newTicket.id,
-          date: newTicket.date,
-          furgo_id: newTicket.furgoId,
-          furgo_label: newTicket.furgoLabel,
-          route_name: newTicket.routeName,
-          customer_name: newTicket.customerName,
-          phone: newTicket.phone,
-          address: newTicket.address,
-          postcode: newTicket.postcode,
-          notes: newTicket.notes,
-          cod_amount: newTicket.codAmount,
-          tasks: newTicket.tasks,
-          total_price: newTicket.totalPrice,
-          status: newTicket.status,
-          failure_reason: newTicket.failureReason || '',
-          lat: newTicket.lat,
-          lng: newTicket.lng,
-          completed_lat: newTicket.completedLat,
-          completed_lng: newTicket.completedLng,
-          route_order: newTicket.routeOrder,
-          created_at: newTicket.createdAt,
-          created_by: newTicket.createdBy || 'admin'
-        });
-      } catch (e) {
-        console.error("Error pushing ticket to Supabase:", e);
-      }
-    })();
-  }
   return newTicket;
 }
 
@@ -1186,39 +1158,6 @@ export function updateTicket(updatedTicket) {
       createdBy: updatedTicket.createdBy || tickets[index].createdBy || 'admin'
     };
     saveTickets(tickets);
-    if (supabase) {
-      (async () => {
-        try {
-          const t = tickets[index];
-          await supabase.from('delivery_tickets').upsert({
-            id: t.id,
-            date: t.date,
-            furgo_id: t.furgoId,
-            furgo_label: t.furgoLabel,
-            route_name: t.routeName,
-            customer_name: t.customerName,
-            phone: t.phone,
-            address: t.address,
-            postcode: t.postcode,
-            notes: t.notes,
-            cod_amount: t.codAmount,
-            tasks: t.tasks,
-            total_price: t.totalPrice,
-            status: t.status,
-            failure_reason: t.failureReason || '',
-            lat: t.lat,
-            lng: t.lng,
-            completed_lat: t.completedLat,
-            completed_lng: t.completedLng,
-            route_order: t.routeOrder,
-            created_at: t.createdAt,
-            created_by: t.createdBy || 'admin'
-          });
-        } catch (e) {
-          console.error("Error updating ticket in Supabase:", e);
-        }
-      })();
-    }
     return tickets[index];
   }
   return null;
@@ -1294,20 +1233,6 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
     }
 
     saveTickets(tickets);
-    if (supabase) {
-      supabase.from('delivery_tickets').update({
-        status: status,
-        failure_reason: failureReason,
-        completed_lat: completedLat,
-        completed_lng: completedLng,
-        notes: tickets[index].notes,
-        furgo_id: tickets[index].furgoId,
-        furgo_label: tickets[index].furgoLabel || null,
-        route_name: tickets[index].routeName || null
-      }).eq('id', ticketId).then(({ error }) => {
-        if (error) console.error("Error updating ticket status in Supabase:", error);
-      });
-    }
     return tickets[index];
   }
   return null;
