@@ -231,6 +231,9 @@ export async function syncFromCloud() {
   if (!supabase) return;
   if (isSaving) return;
   try {
+    // Pull settings first so we can use them for user permissions fallback if needed
+    const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
+
     // Pull Users
     const { data: users, error: errUsers } = await supabase.from('delivery_users').select('*');
     if (users && !errUsers) {
@@ -241,6 +244,18 @@ export async function syncFromCloud() {
 
       const localUsers = users.map(u => {
         const existingLocal = localCurrent.find(lu => lu.id === u.id);
+        
+        let pVal = u.permissions;
+        if (pVal === undefined || pVal === null) {
+          const settingKey = `user_permissions_${u.id}`;
+          const metaSetting = settings ? settings.find(s => s.key === settingKey) : null;
+          if (metaSetting) {
+            pVal = metaSetting.value;
+          } else {
+            pVal = existingLocal ? existingLocal.permissions : null;
+          }
+        }
+
         return {
           id: u.id,
           username: u.username,
@@ -250,9 +265,7 @@ export async function syncFromCloud() {
           canSearch: u.can_search || false,
           createdBy: u.created_by || 'admin',
           mustChangePassword: !!u.must_change_password,
-          permissions: (u.permissions !== undefined)
-            ? u.permissions
-            : (existingLocal ? existingLocal.permissions : null)
+          permissions: pVal
         };
       });
       localStorage.setItem('delivery_users', JSON.stringify(localUsers));
@@ -348,9 +361,8 @@ export async function syncFromCloud() {
       localStorage.setItem('delivery_tickets', JSON.stringify(mergedTickets));
     }
 
-    // Pull Shifts and Settings together first
+    // Pull Shifts
     const { data: shifts, error: errShifts } = await supabase.from('delivery_shifts').select('*');
-    const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
 
     if (shifts && !errShifts && settings && !errSettings) {
       const localShifts = shifts.map(s => {
@@ -829,6 +841,16 @@ export async function saveUsers(users) {
     localStorage.setItem('delivery_users', JSON.stringify(hashedUsers));
     
     if (supabase) {
+      // Guardar también en delivery_settings como plan de respaldo para sincronizar entre dispositivos
+      for (const u of hashedUsers) {
+        if (u.role === 'admin') {
+          const permString = typeof u.permissions === 'object' ? JSON.stringify(u.permissions) : (u.permissions || null);
+          supabase.from('delivery_settings').upsert({
+            key: `user_permissions_${u.id}`,
+            value: permString || '{}'
+          }).then(() => {}).catch(err => console.warn("Failed saving backup permissions to settings:", err));
+        }
+      }
       try {
         // Intentar primero con todas las columnas
         const formatted = hashedUsers.map(u => ({
