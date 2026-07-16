@@ -182,8 +182,13 @@ const fetchRoadRoute = async (points) => {
     if (!response.ok) return null;
     const data = await response.json();
     if (data && data.routes && data.routes.length > 0) {
-      const routeCoords = data.routes[0].geometry.coordinates;
-      return routeCoords.map(c => [c[1], c[0]]);
+      const route = data.routes[0];
+      const routeCoords = route.geometry.coordinates;
+      return {
+        geometry: routeCoords.map(c => [c[1], c[0]]),
+        distance: route.distance, // en metros
+        duration: route.duration  // en segundos
+      };
     }
   } catch (e) {
     console.error("OSRM Routing failed:", e);
@@ -964,6 +969,7 @@ function App() {
   const [changelogSearch, setChangelogSearch] = useState('');
   const [isTrackingActive, setIsTrackingActive] = useState(true);
   const [gpsStatus, setGpsStatus] = useState('inactive'); // 'active' | 'error' | 'inactive'
+  const [routeStats, setRouteStats] = useState({});
   const watchIdRef = useRef(null);
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
@@ -1733,10 +1739,19 @@ function App() {
 
             // Cargar trazado de carreteras reales asíncronamente desde OSRM
             fetchRoadRoute(routeCoords.map(c => ({ lat: c[0], lng: c[1] })))
-              .then(roadCoords => {
-                if (roadCoords && roadCoords.length > 0) {
-                  polylineRef.setLatLngs(roadCoords);
+              .then(roadData => {
+                if (roadData && roadData.geometry && roadData.geometry.length > 0) {
+                  polylineRef.setLatLngs(roadData.geometry);
                   polylineRef.setStyle({ dashArray: null, weight: 4, opacity: 0.85 });
+                  
+                  // Guardar estadísticas de ruta
+                  setRouteStats(prev => ({
+                    ...prev,
+                    [fid]: {
+                      distance: roadData.distance,
+                      duration: roadData.duration
+                    }
+                  }));
                 }
               })
               .catch(err => {
@@ -7157,6 +7172,7 @@ function App() {
                   id="driver-map" 
                   className="map-element"
                 ></div>
+                {renderMapCenterControls(false)}
                 {renderMapFloatingPanel()}
               </div>
               
@@ -8313,6 +8329,71 @@ function App() {
     );
   };
 
+  // --- CONTROLES DE CENTRADO DE MAPA ---
+  const renderMapCenterControls = (isAdminMap) => {
+    const activeFurgo = isAdminMap ? mapFilterFurgo : currentUser?.id;
+    return (
+      <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 999, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <button 
+          type="button" 
+          onClick={() => {
+            const map = mapInstanceRef.current;
+            if (!map) return;
+            const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
+            const dayTickets = tickets.filter(t => {
+              if (!t) return false;
+              if (t.date !== targetDate) return false;
+              if (isAdminMap) {
+                if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+              } else {
+                if (t.furgoId !== currentUser?.id) return false;
+              }
+              const latNum = parseFloat(t.lat);
+              const lngNum = parseFloat(t.lng);
+              return !isNaN(latNum) && !isNaN(lngNum);
+            });
+            if (dayTickets.length > 0) {
+              const bounds = dayTickets.map(t => [parseFloat(t.lat), parseFloat(t.lng)]);
+              map.fitBounds(bounds, { padding: [50, 50] });
+            } else {
+              triggerAlert('No hay paradas de ruta para centrar');
+            }
+          }}
+          className="btn btn-secondary btn-sm"
+          style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', backdropFilter: 'blur(10px)', color: 'var(--text-main)', padding: '6px 10px', fontSize: '0.72rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', height: '32px', margin: 0 }}
+        >
+          📍 Centrar Ruta
+        </button>
+        {activeFurgo && activeFurgo !== 'all' && (
+          <button 
+            type="button" 
+            onClick={() => {
+              const map = mapInstanceRef.current;
+              if (!map) return;
+              const liveLocations = getDriverLocations();
+              if (liveLocations[activeFurgo]) {
+                const loc = liveLocations[activeFurgo];
+                const latNum = parseFloat(loc.lat);
+                const lngNum = parseFloat(loc.lng);
+                if (!isNaN(latNum) && !isNaN(lngNum)) {
+                  map.setView([latNum, lngNum], 16);
+                } else {
+                  triggerAlert('Coordenadas del repartidor no válidas');
+                }
+              } else {
+                triggerAlert('Sin señal GPS reciente en vivo');
+              }
+            }}
+            className="btn btn-secondary btn-sm"
+            style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', backdropFilter: 'blur(10px)', color: 'var(--text-main)', padding: '6px 10px', fontSize: '0.72rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', height: '32px', margin: 0 }}
+          >
+            🚚 Centrar Repartidor
+          </button>
+        )}
+      </div>
+    );
+  };
+
   // --- PANEL DE DETALLE FLOTANTE EN EL MAPA ---
   const renderMapFloatingPanel = () => {
     const handleDragStart = (e) => {
@@ -8643,7 +8724,14 @@ function App() {
 
     let totalDistance = 0;
     let totalTransit = 0;
-    if (activeFurgo !== 'all') {
+    let isOsrmStats = false;
+    
+    if (activeFurgo && activeFurgo !== 'all' && routeStats[activeFurgo]) {
+      const stats = routeStats[activeFurgo];
+      totalDistance = stats.distance / 1000; // a km
+      totalTransit = Math.round(stats.duration / 60); // a minutos
+      isOsrmStats = true;
+    } else if (activeFurgo !== 'all') {
       if (timelineSchedules.__totals) {
         totalDistance = parseFloat(timelineSchedules.__totals.totalDistance) || 0;
         let sumTransit = 0;
@@ -8667,7 +8755,7 @@ function App() {
           <span>📋 Secuencia de Paradas ({sortedDayTickets.length})</span>
           {activeFurgo !== 'all' && sortedDayTickets.length > 0 && (
             <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold' }}>
-              🛣️ {totalDistance.toFixed(1)} km | 🚗 {totalTransit} min viaje
+              {isOsrmStats ? '🛣️ OSRM: ' : '🛣️ '} {totalDistance.toFixed(1)} km | 🚗 {totalTransit} min viaje
             </span>
           )}
         </h3>
@@ -12723,6 +12811,7 @@ function App() {
                   id="admin-map" 
                   className="map-element"
                 ></div>
+                {renderMapCenterControls(true)}
                 {renderMapFloatingPanel()}
               </div>
               
@@ -14241,25 +14330,25 @@ function App() {
                 gap: '6px', 
                 cursor: 'pointer',
                 borderColor: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.3)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.3)' : 'rgba(255, 255, 255, 0.1)',
-                background: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.05)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.05)' : 'transparent',
+                background: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.05)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.05)' : 'rgba(255, 255, 255, 0.02)',
               }}
               onClick={() => {
                 setIsTrackingActive(false);
                 setTimeout(() => setIsTrackingActive(true), 200);
                 triggerAlert('Reconectando GPS y solicitando ubicación...');
               }}
-              title={gpsStatus === 'active' ? 'GPS Conectado. Haz clic para refrescar.' : gpsStatus === 'error' ? 'GPS Offline. Haz clic para reconectar.' : 'GPS Inactivo'}
+              title={gpsStatus === 'active' ? 'GPS Conectado. Haz clic para refrescar.' : gpsStatus === 'error' ? 'GPS Offline. Haz clic para reconectar.' : 'GPS Apagado'}
             >
               <span style={{ 
                 width: '8px', 
                 height: '8px', 
                 borderRadius: '50%', 
-                backgroundColor: gpsStatus === 'active' ? '#34d399' : '#f87171',
+                backgroundColor: gpsStatus === 'active' ? '#34d399' : gpsStatus === 'error' ? '#f87171' : '#9ca3af',
                 boxShadow: gpsStatus === 'active' ? '0 0 8px #34d399' : 'none',
                 display: 'inline-block'
               }}></span>
-              <span style={{ fontSize: '0.78rem', fontWeight: '600', color: gpsStatus === 'active' ? '#34d399' : '#f87171' }}>
-                {gpsStatus === 'active' ? 'GPS' : 'GPS Offline'}
+              <span style={{ fontSize: '0.78rem', fontWeight: '600', color: gpsStatus === 'active' ? '#34d399' : gpsStatus === 'error' ? '#f87171' : '#9ca3af' }}>
+                {gpsStatus === 'active' ? 'GPS' : gpsStatus === 'error' ? 'GPS Offline' : 'GPS Apagado'}
               </span>
             </div>
           )}
