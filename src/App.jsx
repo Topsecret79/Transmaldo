@@ -1516,6 +1516,8 @@ function App() {
       }
     };
 
+    let handleDriverLocationUpdate = null;
+
     const timer = setTimeout(() => {
       const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');
       const isDriverMap = activeTab === 'driver_map' && document.getElementById('driver-map');
@@ -1840,7 +1842,7 @@ function App() {
 
         updateLiveDriversOnMap();
 
-        const handleDriverLocationUpdate = () => {
+        handleDriverLocationUpdate = () => {
           updateLiveDriversOnMap();
         };
         window.addEventListener('driver-location-updated', handleDriverLocationUpdate);
@@ -1860,7 +1862,9 @@ function App() {
     return () => {
       clearTimeout(timer);
       delete window.handleChangeMapStopOrder;
-      window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
+      if (handleDriverLocationUpdate) {
+        window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
+      }
       const isAdminMap = document.getElementById('admin-map');
       const isDriverMap = document.getElementById('driver-map');
       if (!isAdminMap && !isDriverMap && mapInstanceRef.current !== null) {
