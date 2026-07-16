@@ -982,6 +982,14 @@ function App() {
   const [routeStartAddr, setRouteStartAddr] = useState(getRouteStartAddr());
   const [rotateLoaded, setRotateLoaded] = useState(false);
   const [mapRotationState, setMapRotationState] = useState(0);
+  const [mapControlsPos, setMapControlsPos] = useState(() => {
+    try {
+      const saved = localStorage.getItem('delivery_map_controls_pos');
+      return saved ? JSON.parse(saved) : { top: 10, left: 10 };
+    } catch(e) {
+      return { top: 10, left: 10 };
+    }
+  });
   const [routeEndAddr, setRouteEndAddr] = useState(getRouteEndAddr());
   const [startSuggestions, setStartSuggestions] = useState([]);
   const [endSuggestions, setEndSuggestions] = useState([]);
@@ -8468,6 +8476,47 @@ function App() {
     );
   };
 
+  const handleMapControlsDragStart = (e) => {
+    // Evitar scroll o comportamiento por defecto en tactil
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const startX = clientX - mapControlsPos.left;
+    const startY = clientY - mapControlsPos.top;
+
+    const handleMove = (moveEvent) => {
+      const currentX = moveEvent.touches ? moveEvent.touches[0].clientX : moveEvent.clientX;
+      const currentY = moveEvent.touches ? moveEvent.touches[0].clientY : moveEvent.clientY;
+
+      let newLeft = currentX - startX;
+      let newTop = currentY - startY;
+
+      // Mantener dentro del area visible de la pantalla
+      const padding = 10;
+      newLeft = Math.max(padding, Math.min(window.innerWidth - 60, newLeft));
+      newTop = Math.max(padding, Math.min(window.innerHeight - 200, newTop));
+
+      const newPos = { top: newTop, left: newLeft };
+      setMapControlsPos(newPos);
+      localStorage.setItem('delivery_map_controls_pos', JSON.stringify(newPos));
+    };
+
+    const handleEnd = () => {
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
+    };
+
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleMove, { passive: false });
+    document.addEventListener('touchend', handleEnd);
+  };
+
   // --- CONTROLES DE CENTRADO DE MAPA ---
   const renderMapCenterControls = (isAdminMap) => {
     const activeFurgo = isAdminMap ? mapFilterFurgo : currentUser?.id;
@@ -8491,7 +8540,30 @@ function App() {
     };
 
     return (
-      <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 999, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ 
+        position: 'absolute', 
+        top: `${mapControlsPos.top}px`, 
+        left: `${mapControlsPos.left}px`, 
+        zIndex: 999, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: '8px' 
+      }}>
+        <div 
+          onMouseDown={handleMapControlsDragStart}
+          onTouchStart={handleMapControlsDragStart}
+          style={{ 
+            ...buttonStyle, 
+            cursor: 'grab', 
+            fontSize: '1.05rem',
+            background: 'rgba(79, 70, 229, 0.25)',
+            border: '1px solid var(--primary)',
+            color: 'var(--primary)'
+          }}
+          title="Arrastra para mover los controles de posición ✥"
+        >
+          ✥
+        </div>
         <button 
           type="button" 
           onClick={() => {
