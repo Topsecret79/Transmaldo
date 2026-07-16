@@ -55,7 +55,28 @@ export async function reinitSupabase() {
         try {
           realtimeChannel = supabase
             .channel('delivery-realtime-sync')
-            .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+            .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+              if (payload.table === 'delivery_settings') {
+                const record = payload.new || {};
+                if (record.key && record.key.startsWith('loc_')) {
+                  const fid = record.key.substring(4);
+                  try {
+                    const val = JSON.parse(record.value);
+                    const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+                    locations[fid] = {
+                      lat: parseFloat(val.lat),
+                      lng: parseFloat(val.lng),
+                      updatedAt: val.updatedAt || val.timestamp
+                    };
+                    localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+                    
+                    window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: { fid, lat: val.lat, lng: val.lng } }));
+                  } catch (e) {
+                    console.error("Error parsing realtime driver location:", e);
+                  }
+                  return;
+                }
+              }
               syncFromCloud();
             })
             .subscribe();

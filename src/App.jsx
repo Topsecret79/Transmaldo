@@ -975,6 +975,7 @@ function App() {
   const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
   const mapInstanceRef = useRef(null);
   const mapLayerGroupRef = useRef(null);
+  const mapDriversLayerGroupRef = useRef(null);
   const lastFittedRef = useRef('');
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [routeStartAddr, setRouteStartAddr] = useState(getRouteStartAddr());
@@ -1580,6 +1581,12 @@ function App() {
           mapLayerGroupRef.current.clearLayers();
         }
 
+        if (!mapDriversLayerGroupRef.current) {
+          mapDriversLayerGroupRef.current = window.L.layerGroup().addTo(map);
+        } else {
+          mapDriversLayerGroupRef.current.clearLayers();
+        }
+
         // 3. Filtrar y ordenar los tickets geocodificados
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
         
@@ -1760,70 +1767,82 @@ function App() {
           }
         });
 
-        // 5. Dibujar repartidores en tiempo real
-        const liveLocations = getDriverLocations();
-        Object.entries(liveLocations).forEach(([fid, loc]) => {
-          if (!loc || loc.lat === undefined || loc.lng === undefined) return;
-          const latNum = parseFloat(loc.lat);
-          const lngNum = parseFloat(loc.lng);
-          if (isNaN(latNum) || isNaN(lngNum)) return;
+        // 5. Dibujar repartidores en tiempo real y registrar listener ligero
+        const updateLiveDriversOnMap = () => {
+          if (!mapDriversLayerGroupRef.current || !mapInstanceRef.current) return;
+          mapDriversLayerGroupRef.current.clearLayers();
 
-          if (isAdminMap) {
-            if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
-            if (!activeRepartidores.map(r => r.id).includes(fid)) return;
-          } else {
-            // Driver map: only show their own location
-            if (fid !== currentUser?.id) return;
-          }
+          const liveLocations = getDriverLocations();
+          Object.entries(liveLocations).forEach(([fid, loc]) => {
+            if (!loc || loc.lat === undefined || loc.lng === undefined) return;
+            const latNum = parseFloat(loc.lat);
+            const lngNum = parseFloat(loc.lng);
+            if (isNaN(latNum) || isNaN(lngNum)) return;
 
-          const updatedAtStr = loc.updatedAt || loc.timestamp;
-          if (!updatedAtStr) return;
-          const locTime = new Date(updatedAtStr).getTime();
-          if (isNaN(locTime)) return;
-          const timeDiff = Date.now() - locTime;
-          if (timeDiff > 6 * 60 * 60 * 1000) return; // Filtro de inactividad de 6 horas
+            if (isAdminMap) {
+              if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
+              if (!activeRepartidores.map(r => r.id).includes(fid)) return;
+            } else {
+              // Driver map: only show their own location
+              if (fid !== currentUser?.id) return;
+            }
 
-          const latLng = [latNum, lngNum];
-          bounds.push(latLng);
-          const furgoLabel = users.find(u => u.id === fid)?.label || fid;
+            const updatedAtStr = loc.updatedAt || loc.timestamp;
+            if (!updatedAtStr) return;
+            const locTime = new Date(updatedAtStr).getTime();
+            if (isNaN(locTime)) return;
+            const timeDiff = Date.now() - locTime;
+            if (timeDiff > 6 * 60 * 60 * 1000) return; // Filtro de inactividad de 6 horas
 
-          const liveHtml = `
-            <div style="
-              width: 32px;
-              height: 32px;
-              border-radius: 50%;
-              background: rgba(139, 92, 246, 0.2);
-              border: 2px solid #a78bfa;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              box-shadow: 0 0 15px #a78bfa;
-              animation: gpsPulse 2s infinite ease-in-out;
-              font-size: 16px;
-            ">
-              🚚
-            </div>
-          `;
+            const latLng = [latNum, lngNum];
+            bounds.push(latLng);
+            const furgoLabel = users.find(u => u.id === fid)?.label || fid;
 
-          const liveIcon = window.L.divIcon({
-            html: liveHtml,
-            className: '',
-            iconSize: [32, 32],
-            iconAnchor: [16, 16]
+            const liveHtml = `
+              <div style="
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                background: rgba(139, 92, 246, 0.2);
+                border: 2px solid #a78bfa;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 0 15px #a78bfa;
+                animation: gpsPulse 2s infinite ease-in-out;
+                font-size: 16px;
+              ">
+                🚚
+              </div>
+            `;
+
+            const liveIcon = window.L.divIcon({
+              html: liveHtml,
+              className: '',
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
+            });
+
+            const popupContent = `
+              <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
+                <strong style="color: #a78bfa; font-size: 0.95rem;">🚚 ${furgoLabel} (En Vivo)</strong>
+                <div style="margin-top: 5px;">Última señal: <strong>${new Date(locTime).toLocaleTimeString()}</strong></div>
+                <div style="margin-top: 2px; font-size: 0.75rem; color: #9ca3af;">GPS: ${latNum.toFixed(5)}, ${lngNum.toFixed(5)}</div>
+              </div>
+            `;
+
+            window.L.marker(latLng, { icon: liveIcon })
+              .addTo(mapDriversLayerGroupRef.current)
+              .bindPopup(popupContent);
           });
+        };
 
-          const popupContent = `
-            <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
-              <strong style="color: #a78bfa; font-size: 0.95rem;">🚚 ${furgoLabel} (En Vivo)</strong>
-              <div style="margin-top: 5px;">Última señal: <strong>${new Date(locTime).toLocaleTimeString()}</strong></div>
-              <div style="margin-top: 2px; font-size: 0.75rem; color: #9ca3af;">GPS: ${latNum.toFixed(5)}, ${lngNum.toFixed(5)}</div>
-            </div>
-          `;
+        updateLiveDriversOnMap();
 
-          window.L.marker(latLng, { icon: liveIcon })
-            .addTo(mapLayerGroupRef.current)
-            .bindPopup(popupContent);
-        });
+        const handleDriverLocationUpdate = () => {
+          updateLiveDriversOnMap();
+        };
+        window.addEventListener('driver-location-updated', handleDriverLocationUpdate);
 
         // 6. Auto-ajustar el zoom del mapa para mostrar todos los puntos (solo al iniciar o cambiar filtros)
         const currentFilterKey = `${activeTab}_${targetDate}_${mapFilterFurgo}_${shiftSummaryDate}`;
@@ -1840,6 +1859,7 @@ function App() {
     return () => {
       clearTimeout(timer);
       delete window.handleChangeMapStopOrder;
+      window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
       const isAdminMap = document.getElementById('admin-map');
       const isDriverMap = document.getElementById('driver-map');
       if (!isAdminMap && !isDriverMap && mapInstanceRef.current !== null) {
@@ -1850,6 +1870,7 @@ function App() {
         }
         mapInstanceRef.current = null;
         mapLayerGroupRef.current = null;
+        mapDriversLayerGroupRef.current = null;
       }
     };
   }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser]);
