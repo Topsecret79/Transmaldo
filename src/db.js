@@ -870,7 +870,7 @@ export async function saveUsers(users) {
         if (error) {
           console.error("Supabase upsert failed, attempting fallbacks:", error);
           
-          if (error.code === '42703') {
+          if (error.code === '42703' || error.code === 'PGRST204') {
             const errMsg = error.message || '';
             const hasPermissionsErr = errMsg.includes('permissions');
             const hasMustChangeErr = errMsg.includes('must_change_password');
@@ -904,7 +904,7 @@ export async function saveUsers(users) {
             const { error: fallbackError } = await supabase.from('delivery_users').upsert(fallbackFormatted);
             
             // Si el fallback sigue fallando por la otra columna
-            if (fallbackError && fallbackError.code === '42703') {
+            if (fallbackError && (fallbackError.code === '42703' || fallbackError.code === 'PGRST204')) {
               console.warn("Second upsert failed, retrying with minimal columns...");
               const fallbackMsg = fallbackError.message || '';
               if (fallbackMsg.includes('permissions')) {
