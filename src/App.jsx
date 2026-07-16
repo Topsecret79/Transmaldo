@@ -1704,6 +1704,8 @@ function App() {
                 justify-content: center; 
                 border: 2px solid #fff;
                 box-shadow: 0 0 10px rgba(0,0,0,0.5);
+                transform: rotate(${-mapRotationState}deg);
+                transition: transform 0.25s ease-out;
               ">
                 ${seqIndex + 1}
               </div>
@@ -1879,6 +1881,8 @@ function App() {
                 box-shadow: 0 0 15px #a78bfa;
                 animation: gpsPulse 2s infinite ease-in-out;
                 font-size: 16px;
+                transform: rotate(${-mapRotationState}deg);
+                transition: transform 0.25s ease-out;
               ">
                 🚚
               </div>
