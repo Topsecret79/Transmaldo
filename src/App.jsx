@@ -2835,8 +2835,7 @@ function App() {
     setTickets(updatedTickets);
 
     try {
-      if (dbTicketA) await updateTicket(dbTicketA);
-      if (dbTicketB) await updateTicket(dbTicketB);
+      saveTickets(updatedTickets);
       saveRouteManualStatus(ticketA.furgoId, ticketA.date, true);
     } catch (e) {
       console.error("Error saving manual route order:", e);
@@ -2882,11 +2881,7 @@ function App() {
     setTickets(updatedTickets);
 
     try {
-      for (const t of updatedTickets) {
-        if (t && t.date === ticketToMove.date && t.furgoId === ticketToMove.furgoId) {
-          await updateTicket(t);
-        }
-      }
+      saveTickets(updatedTickets);
       saveRouteManualStatus(ticketToMove.furgoId, ticketToMove.date, true);
       triggerAlert(`📍 Parada reordenada con éxito a la posición ${targetPos}`);
     } catch (err) {
@@ -3500,10 +3495,16 @@ function App() {
 
       const route = [...completedTickets, ...optimizedMorning, ...optimizedAny, ...optimizedAfternoon];
 
-      route.forEach((ticket, index) => {
-        ticket.routeOrder = index + 1;
-        updateTicket(ticket);
+      const optimizedWithOrder = route.map((ticket, index) => ({
+        ...ticket,
+        routeOrder: index + 1
+      }));
+      const updatedAllTickets = tickets.map(t => {
+        const match = optimizedWithOrder.find(x => x.id === t.id);
+        return match ? match : t;
       });
+      setTickets(updatedAllTickets);
+      saveTickets(updatedAllTickets);
 
       saveRouteManualStatus(targetFurgo, targetDate, false);
 
@@ -3776,10 +3777,15 @@ function App() {
 
       const finalSequence = [...completedTickets, ...optimizedNormal, ...optimizedSkipped];
 
-      finalSequence.forEach((ticket, index) => {
-        ticket.routeOrder = index + 1;
-        updateTicket(ticket);
+      const orderedSequence = finalSequence.map((ticket, index) => ({
+        ...ticket,
+        routeOrder: index + 1
+      }));
+      const updatedAll = allTickets.map(t => {
+        const match = orderedSequence.find(x => x.id === t.id);
+        return match ? match : t;
       });
+      saveTickets(updatedAll);
 
       loadData();
     } catch (err) {

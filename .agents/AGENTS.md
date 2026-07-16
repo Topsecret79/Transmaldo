@@ -127,3 +127,7 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **No guardar en texto plano**: Las contraseñas se encriptan utilizando el algoritmo de cifrado `SHA-256` nativo del navegador (`crypto.subtle.digest`) antes de guardarse en Supabase y LocalStorage.
 * **Inicio de Sesión Adaptativo**: El sistema de autenticación admite el acceso comparando la contraseña ingresada con el texto plano antiguo o con el hash SHA-256, facilitando el inicio de sesión.
 * **Migración Automática**: Al cargarse el dashboard de administrador, se ejecuta una verificación en segundo plano que detecta cuentas con contraseñas en texto plano, las encripta automáticamente y actualiza la base de datos en la nube de forma transparente.
+
+## 25. Actualizaciones de Orden de Ruta Atómicas (Evitar Condiciones de Carrera)
+* **Guardado por Lotes**: Queda estrictamente prohibido realizar bucles de actualización secuenciales llamando a `updateTicket` para guardar cambios de ordenamiento o secuencia en masa.
+* **Llamada Única**: Se debe calcular el nuevo `routeOrder` en memoria y llamar a `saveTickets` exactamente una vez pasándole el array completo de tickets actualizado. Esto previene condiciones de carrera en Supabase debido a múltiples peticiones simultáneas concurrentes y garantiza que el orden manual persista fielmente.
