@@ -126,14 +126,28 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 ## 24. Cifrado Criptográfico de Contraseñas (SHA-256)
 * **No guardar en texto plano**: Las contraseñas se encriptan utilizando el algoritmo de cifrado `SHA-256` nativo del navegador (`crypto.subtle.digest`) antes de guardarse en Supabase y LocalStorage.
 * **Inicio de Sesión Adaptativo**: El sistema de autenticación admite el acceso comparando la contraseña ingresada con el texto plano antiguo o con el hash SHA-256, facilitando el inicio de sesión.
-* **Migración Automática**: Al cargarse el dashboard de administrador, se ejecuta una verificación en segundo plano que detecta cuentas con contraseñas en texto plano, las encripta automáticamente y actualiza la base de datos en la nube de forma transparente.
-
 ## 25. Actualizaciones de Orden de Ruta Atómicas (Evitar Condiciones de Carrera)
 * **Guardado por Lotes**: Queda estrictamente prohibido realizar bucles de actualización secuenciales llamando a `updateTicket` para guardar cambios de ordenamiento o secuencia en masa.
 * **Llamada Única**: Se debe calcular el nuevo `routeOrder` en memoria y llamar a `saveTickets` exactamente una vez pasándole el array completo de tickets actualizado. Esto previene condiciones de carrera en Supabase debido a múltiples peticiones simultáneas concurrentes y garantiza que el orden manual persista fielmente.
 * **Bloqueo de Sincronización Realtime (`isSaving` lock)**: Durante ejecuciones de guardado a Supabase en `saveTickets`, se debe establecer la bandera de control de escritura global `isSaving = true`. Esto obliga a los canales en tiempo real (`postgres_changes`) a ignorar las notificaciones de actualización generadas por el propio cliente, evitando bucles de retroalimentación de datos incompletos. Se debe usar un retraso controlado de 1.5 segundos (`setTimeout`) al desactivar la bandera para permitir que todos los eventos de la red se hayan procesado y descartado.
-* **Eliminar Escrituras Duplicadas**: Asegurar que las funciones individuales de creación (`addTicket`), actualización (`updateTicket`), y cambio de estado (`updateTicketStatus`) deleguen la persistencia remota en `saveTickets` in lo de realizar llamadas paralelas concurrentes a Supabase.
+* **Eliminar Escrituras Duplicadas**: Asegurar que las funciones individuales de creación (`addTicket`), actualización (`updateTicket`), y cambio de estado (`updateTicketStatus`) deleguen la persistencia remota en `saveTickets` en lugar de realizar llamadas paralelas concurrentes a Supabase.
 
 ## 26. Optimización de Renderizado de Mapas y Eventos GPS en Tiempo Real
 * **Capa Independiente de Repartidores (LayerGroups)**: Los marcadores correspondientes a la ubicación en tiempo real de los repartidores (camiones 🚚) deben cargarse y limpiarse en una capa Leaflet independiente (`mapDriversLayerGroupRef`).
 * **Actualización Ligera sin Re-render de Mapa**: Queda prohibido recargar la lista de tickets o invocar la reconstrucción del mapa completo ante una actualización de coordenadas GPS de los conductores. Las nuevas coordenadas deben procesarse en segundo plano a través de eventos personalizados del navegador (`driver-location-updated`), actualizando únicamente la capa de camiones de forma ligera, preservando intactos los popups abiertos, el zoom y las interacciones del administrador con los marcadores de clientes.
+
+## 27. Control de Accesos y Permisos por Módulos (Coordinadores)
+* **Permisos Granulares**: Los coordinadores (usuarios con rol `admin`) pueden tener acceso restringido a ciertos módulos. El Super Administrador gestiona estos permisos mediante casillas de verificación.
+* **Módulos Soportados**:
+  - `report_day` (Informe del Día)
+  - `deliveries_period` (Repartos del Período)
+  - `map_control` (Mapa de Control)
+  - `shift_calendar` (Calendario de Turnos)
+  - `general_search` (Buscador General)
+  - `staff` (Personal (Admins/Choferes))
+  - `van_pricing` (Precios Corte Inglés)
+  - `security` (Seguridad / Sistema)
+* **Sincronización en Red Alternativa**: Como la tabla `delivery_users` en Supabase carece del campo nativo `permissions` por defecto, los permisos se deben persistir y sincronizar también en la tabla general `delivery_settings` bajo la clave `user_permissions_ID_DEL_COORDINADOR` como plan de respaldo y sincronización cruzada en tiempo real.
+* **Inicio de Sesión y Carga**: Durante el inicio de sesión (`handleLogin`), el cliente debe consultar activamente `delivery_settings` para obtener los permisos más recientes de dicho coordinador.
+* **Ocultación y Redirección**: La interfaz debe ocultar dinámicamente las pestañas de navegación correspondientes a módulos no permitidos, y redirigir automáticamente al usuario si por alguna recarga entra en una pestaña bloqueada.
+* **Cerrojo `isSaving`**: Todas las modificaciones a usuarios deben activar la bandera de control `isSaving` para evitar que la sincronización realtime (`syncFromCloud`) sobrescriba el estado local a mitad del proceso de guardado y reintento.
