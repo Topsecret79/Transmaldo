@@ -34,6 +34,9 @@ Este archivo contiene reglas, restricciones de diseño y pautas de comportamient
 * **Preservación del Orden Manual**: Cuando un conductor o administrador realiza un reordenamiento manual de paradas (cambio de secuencia de ruta), se debe marcar la ruta como "manual" para esa furgoneta y día. En este estado, el sistema tiene prohibido auto-optimizar o reordenar los tickets pendientes al completar paradas.
 * **Restablecimiento por Optimización**: Si se presiona el botón "Optimizar Ruta", la ruta pierde el estado "manual" y se re-calcula de forma óptima.
 * **Optimización con Punto de Llegada (Fin)**: El algoritmo de optimización automática del sistema debe contemplar el punto de partida (inicio) y el punto de llegada (fin/retorno). Debe buscar la ruta más corta desde el inicio, pasando por los diferentes bloques horarios, y finalizando lo más cerca posible del punto de llegada establecido en los ajustes.
+* **Preservación de Paradas Completadas (Historial)**: Al ejecutar la optimización manual (`handleOptimizeRoute`), el sistema **debe separar** los tickets ya completados (`success` o `failed`) de los pendientes, conservando su orden de visita intacto.
+* **Punto de Inicio de Paradas Restantes**: La optimización de las paradas pendientes restantes debe iniciarse desde las coordenadas del último punto de entrega completado, en lugar de recalcular desde el origen.
+* **Guardado y Sincronización por Furgoneta**: Las direcciones de salida/retorno de la ruta deben guardarse asociadas al ID de la furgoneta seleccionada, y el formulario del mapa debe cargarlas dinámicamente al cambiar de furgoneta en los selectores.
 
 ## 9. Cálculo de Hora de Llegada Estimada (ETA) y Retorno a Origen
 * **Cálculo de Llegada**: La hora estimada de llegada de cada parada se calcula secuencialmente sumando el tiempo de tránsito desde la parada anterior (estimado a 35 km/h) y el tiempo de servicio/duración configurado para cada cliente.

@@ -2038,6 +2038,20 @@ function App() {
     loadDataRef.current = loadData;
   });
 
+  useEffect(() => {
+    const activeFurgo = currentUser?.role === 'repartidor' 
+      ? currentUser.id 
+      : (activeTab === 'tickets' ? ticketFilterFurgo : mapFilterFurgo);
+      
+    if (activeFurgo && activeFurgo !== 'all') {
+      setRouteStartAddr(getRouteStartAddr(activeFurgo));
+      setRouteEndAddr(getRouteEndAddr(activeFurgo));
+    } else {
+      setRouteStartAddr(getRouteStartAddr());
+      setRouteEndAddr(getRouteEndAddr());
+    }
+  }, [mapFilterFurgo, ticketFilterFurgo, activeTab, currentUser]);
+
   const triggerAlert = (text, type = 'success') => {
     setAlertMsg({ text, type });
     setTimeout(() => setAlertMsg({ text: '', type: '' }), 4000);
@@ -3283,8 +3297,8 @@ function App() {
 
     setIsOptimizing(true);
     
-    saveRouteStartAddr(routeStartAddr, currentUser.id);
-    saveRouteEndAddr(routeEndAddr, currentUser.id);
+    saveRouteStartAddr(routeStartAddr, targetFurgo);
+    saveRouteEndAddr(routeEndAddr, targetFurgo);
 
     try {
       let startCoords = null;
@@ -3347,19 +3361,38 @@ function App() {
         return R * c;
       };
 
-      const parsedTickets = ticketsWithCoords.map(t => {
+      // Separar completados y pendientes
+      const completedTickets = ticketsWithCoords.filter(t => t.status === 'success' || t.status === 'failed');
+      const pendingTickets = ticketsWithCoords.filter(t => t.status !== 'success' && t.status !== 'failed');
+
+      // Preservar el orden de paradas ya completadas
+      completedTickets.sort((a, b) => {
+        const aOrder = a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
+        const bOrder = b.routeOrder !== undefined && b.routeOrder !== null && b.routeOrder !== '' ? Number(b.routeOrder) : Infinity;
+        return aOrder - bOrder;
+      });
+
+      // El punto de partida de la optimización será la última parada completada (si existe), o el origen
+      let currentPos = startCoords;
+      if (completedTickets.length > 0) {
+        const lastCompleted = completedTickets[completedTickets.length - 1];
+        if (lastCompleted.lat && lastCompleted.lng) {
+          currentPos = { lat: parseFloat(lastCompleted.lat), lng: parseFloat(lastCompleted.lng) };
+        }
+      }
+
+      const parsedPending = pendingTickets.map(t => {
         const parsed = parseTicketNotes(t.notes);
         return { ...t, timeSlot: parsed.timeSlot, estimatedDuration: parsed.estimatedDuration };
       });
 
-      const morningTickets = parsedTickets.filter(t => t.timeSlot === 'morning');
-      const anyTickets = parsedTickets.filter(t => t.timeSlot === 'any' || !t.timeSlot);
-      const afternoonTickets = parsedTickets.filter(t => t.timeSlot === 'afternoon');
+      const morningTickets = parsedPending.filter(t => t.timeSlot === 'morning');
+      const anyTickets = parsedPending.filter(t => t.timeSlot === 'any' || !t.timeSlot);
+      const afternoonTickets = parsedPending.filter(t => t.timeSlot === 'afternoon');
 
       const morningNN = [];
       const anyNN = [];
       const afternoonNN = [];
-      let currentPos = startCoords;
 
       const getInitialNN = (group, nnList) => {
         const unvisited = [...group];
@@ -3450,11 +3483,11 @@ function App() {
       };
 
       const morningEnd = getSegmentEndCoords(anyNN, afternoonNN, endCoords);
-      const optimizedMorning = optimize2Opt(morningNN, startCoords, morningEnd);
+      const optimizedMorning = optimize2Opt(morningNN, currentPos, morningEnd);
 
       const anyStart = optimizedMorning.length > 0 
         ? { lat: optimizedMorning[optimizedMorning.length - 1].lat, lng: optimizedMorning[optimizedMorning.length - 1].lng }
-        : startCoords;
+        : currentPos;
       const anyEnd = getSegmentEndCoords(afternoonNN, null, endCoords);
       const optimizedAny = optimize2Opt(anyNN, anyStart, anyEnd);
 
@@ -3462,10 +3495,10 @@ function App() {
         ? { lat: optimizedAny[optimizedAny.length - 1].lat, lng: optimizedAny[optimizedAny.length - 1].lng }
         : (optimizedMorning.length > 0 
             ? { lat: optimizedMorning[optimizedMorning.length - 1].lat, lng: optimizedMorning[optimizedMorning.length - 1].lng }
-            : startCoords);
+            : currentPos);
       const optimizedAfternoon = optimize2Opt(afternoonNN, afternoonStart, endCoords);
 
-      const route = [...optimizedMorning, ...optimizedAny, ...optimizedAfternoon];
+      const route = [...completedTickets, ...optimizedMorning, ...optimizedAny, ...optimizedAfternoon];
 
       route.forEach((ticket, index) => {
         ticket.routeOrder = index + 1;
