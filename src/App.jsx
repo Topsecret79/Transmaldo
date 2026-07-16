@@ -8505,16 +8505,16 @@ function App() {
     };
 
     const handleEnd = () => {
-      document.removeEventListener('mousemove', handleMove);
-      document.removeEventListener('mouseup', handleEnd);
-      document.removeEventListener('touchmove', handleMove);
-      document.removeEventListener('touchend', handleEnd);
+      document.removeEventListener('mousemove', handleMove, true);
+      document.removeEventListener('mouseup', handleEnd, true);
+      document.removeEventListener('touchmove', handleMove, true);
+      document.removeEventListener('touchend', handleEnd, true);
     };
 
-    document.addEventListener('mousemove', handleMove);
-    document.addEventListener('mouseup', handleEnd);
-    document.addEventListener('touchmove', handleMove, { passive: false });
-    document.addEventListener('touchend', handleEnd);
+    document.addEventListener('mousemove', handleMove, true);
+    document.addEventListener('mouseup', handleEnd, true);
+    document.addEventListener('touchmove', handleMove, { capture: true, passive: false });
+    document.addEventListener('touchend', handleEnd, true);
   };
 
   // --- CONTROLES DE CENTRADO DE MAPA ---
@@ -8558,7 +8558,8 @@ function App() {
             fontSize: '1.05rem',
             background: 'rgba(79, 70, 229, 0.25)',
             border: '1px solid var(--primary)',
-            color: 'var(--primary)'
+            color: 'var(--primary)',
+            touchAction: 'none'
           }}
           title="Arrastra para mover los controles de posición ✥"
         >
