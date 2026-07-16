@@ -1739,20 +1739,15 @@ function App() {
               return [latNum, lngNum];
             });
 
-            // Dibujar línea recta como fallback inmediato
-            const polylineRef = window.L.polyline(routeCoords, {
-              color: driverColor,
-              weight: 3,
-              opacity: 0.75,
-              dashArray: '6, 6'
-            }).addTo(mapLayerGroupRef.current);
-
             // Cargar trazado de carreteras reales asíncronamente desde OSRM
             fetchRoadRoute(routeCoords.map(c => ({ lat: c[0], lng: c[1] })))
               .then(roadData => {
                 if (roadData && roadData.geometry && roadData.geometry.length > 0) {
-                  polylineRef.setLatLngs(roadData.geometry);
-                  polylineRef.setStyle({ dashArray: null, weight: 4, opacity: 0.85 });
+                  window.L.polyline(roadData.geometry, {
+                    color: driverColor,
+                    weight: 4,
+                    opacity: 0.85
+                  }).addTo(mapLayerGroupRef.current);
                   
                   // Guardar estadísticas de ruta
                   setRouteStats(prev => ({
@@ -1762,10 +1757,25 @@ function App() {
                       duration: roadData.duration
                     }
                   }));
+                } else {
+                  // Fallback inmediato si no hay geometría OSRM
+                  window.L.polyline(routeCoords, {
+                    color: driverColor,
+                    weight: 3,
+                    opacity: 0.75,
+                    dashArray: '6, 6'
+                  }).addTo(mapLayerGroupRef.current);
                 }
               })
               .catch(err => {
-                console.error("OSRM route path failed:", err);
+                console.error("OSRM route path failed, using fallback:", err);
+                // Fallback inmediato si falla la API
+                window.L.polyline(routeCoords, {
+                  color: driverColor,
+                  weight: 3,
+                  opacity: 0.75,
+                  dashArray: '6, 6'
+                }).addTo(mapLayerGroupRef.current);
               });
           }
         });
