@@ -242,7 +242,8 @@ export async function syncFromCloud() {
         role: u.role,
         canSearch: u.can_search || false,
         createdBy: u.created_by || 'admin',
-        mustChangePassword: !!u.must_change_password
+        mustChangePassword: !!u.must_change_password,
+        permissions: u.permissions || null
       }));
       localStorage.setItem('delivery_users', JSON.stringify(localUsers));
     }
@@ -792,12 +793,19 @@ export async function saveUsers(users) {
     if (pwd && !isSHA256(pwd)) {
       pwd = await hashPassword(pwd);
     }
-    hashedUsers.push({ ...u, password: pwd });
+    // Asegurar que permissions sea una cadena JSON si es un objeto, o null
+    let permissionsVal = u.permissions;
+    if (permissionsVal && typeof permissionsVal === 'object') {
+      permissionsVal = JSON.stringify(permissionsVal);
+    }
+    hashedUsers.push({ ...u, password: pwd, permissions: permissionsVal || null });
   }
 
   localStorage.setItem('delivery_users', JSON.stringify(hashedUsers));
+  
   if (supabase) {
     try {
+      // Intentar primero con todas las columnas
       const formatted = hashedUsers.map(u => ({
         id: u.id,
         username: u.username,
@@ -806,28 +814,74 @@ export async function saveUsers(users) {
         role: u.role,
         can_search: u.canSearch || false,
         created_by: u.createdBy || 'admin',
-        must_change_password: u.mustChangePassword || false
+        must_change_password: u.mustChangePassword || false,
+        permissions: u.permissions || null
       }));
       
       const { error } = await supabase.from('delivery_users').upsert(formatted);
       
       if (error) {
-        console.error("Supabase upsert failed:", error);
-        // Retentar sin la columna 'must_change_password' si no existe en la BD remota
-        if (error.code === '42703' || (error.message && error.message.includes('must_change_password'))) {
-          console.warn("Retrying upsert without 'must_change_password' column...");
-          const fallbackFormatted = hashedUsers.map(u => ({
-            id: u.id,
-            username: u.username,
-            password: u.password,
-            label: u.label,
-            role: u.role,
-            can_search: u.canSearch || false,
-            created_by: u.createdBy || 'admin'
-          }));
+        console.error("Supabase upsert failed, attempting fallbacks:", error);
+        
+        if (error.code === '42703') {
+          const errMsg = error.message || '';
+          const hasPermissionsErr = errMsg.includes('permissions');
+          const hasMustChangeErr = errMsg.includes('must_change_password');
+          
+          if (hasPermissionsErr) {
+            localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
+          }
+          
+          // Reintentar ajustando las columnas disponibles
+          const fallbackFormatted = hashedUsers.map(u => {
+            const row = {
+              id: u.id,
+              username: u.username,
+              password: u.password,
+              label: u.label,
+              role: u.role,
+              can_search: u.canSearch || false,
+              created_by: u.createdBy || 'admin'
+            };
+            
+            // Añadir condicionalmente solo si no fallaron en el primer intento
+            if (!hasMustChangeErr) {
+              row.must_change_password = u.mustChangePassword || false;
+            }
+            if (!hasPermissionsErr) {
+              row.permissions = u.permissions || null;
+            }
+            return row;
+          });
+          
           const { error: fallbackError } = await supabase.from('delivery_users').upsert(fallbackFormatted);
-          if (fallbackError) {
-            console.error("Fallback upsert also failed:", fallbackError);
+          
+          // Si el fallback sigue fallando por la otra columna
+          if (fallbackError && fallbackError.code === '42703') {
+            console.warn("Second upsert failed, retrying with minimal columns...");
+            const fallbackMsg = fallbackError.message || '';
+            if (fallbackMsg.includes('permissions')) {
+              localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
+            }
+            
+            const minimalFormatted = hashedUsers.map(u => ({
+              id: u.id,
+              username: u.username,
+              password: u.password,
+              label: u.label,
+              role: u.role,
+              can_search: u.canSearch || false,
+              created_by: u.createdBy || 'admin'
+            }));
+            
+            const { error: minimalError } = await supabase.from('delivery_users').upsert(minimalFormatted);
+            if (minimalError) {
+              console.error("Minimal upsert failed:", minimalError);
+              throw minimalError;
+            } else {
+              console.log("Minimal upsert succeeded!");
+            }
+          } else if (fallbackError) {
             throw fallbackError;
           } else {
             console.log("Fallback upsert succeeded!");
@@ -835,6 +889,9 @@ export async function saveUsers(users) {
         } else {
           throw error;
         }
+      } else {
+        // Upsert primario funcionó, borrar la bandera de error si existía
+        localStorage.removeItem('delivery_supabase_needs_permissions_col');
       }
     } catch (e) {
       console.error("Error saving users to Supabase:", e);
@@ -2461,3 +2518,26 @@ export function saveEmployeesList(employees) {
     });
   }
 }
+
+// Función auxiliar para verificar si un usuario tiene permiso para acceder a un módulo específico
+export function hasPermission(user, moduleId) {
+  if (!user) return false;
+  if (user.role === 'superadmin') return true; // El Super Administrador siempre tiene acceso completo
+  
+  let pObj = user.permissions;
+  if (pObj) {
+    if (typeof pObj === 'string') {
+      try {
+        pObj = JSON.parse(pObj);
+      } catch (e) {
+        pObj = {};
+      }
+    }
+    // Si el permiso está explícitamente configurado como false, se deniega.
+    // Si no está (undefined) o es true, se permite (compatibilidad por defecto).
+    return pObj[moduleId] !== false;
+  }
+  
+  return true; // Acceso por defecto para usuarios antiguos sin permisos configurados
+}
+
