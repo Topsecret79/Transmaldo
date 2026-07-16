@@ -2364,6 +2364,32 @@ function App() {
         setPasswordInput('');
         return;
       }
+      
+      // Intentar obtener permisos más recientes de delivery_settings para coordinadores
+      const supabaseClient = getSupabaseClient();
+      if (supabaseClient && foundUser.role === 'admin') {
+        try {
+          const { data: settingData } = await supabaseClient
+            .from('delivery_settings')
+            .select('value')
+            .eq('key', `user_permissions_${foundUser.id}`)
+            .maybeSingle();
+          if (settingData && settingData.value) {
+            try {
+              let parsedPerms = JSON.parse(settingData.value);
+              if (parsedPerms && typeof parsedPerms === 'string') {
+                parsedPerms = JSON.parse(parsedPerms);
+              }
+              foundUser.permissions = parsedPerms;
+            } catch(e) {
+              console.error("Error parsing settings permissions during login:", e);
+            }
+          }
+        } catch(err) {
+          console.error("Error fetching settings permissions during login:", err);
+        }
+      }
+
       setCurrentUser(foundUser);
       localStorage.setItem('delivery_session', JSON.stringify(foundUser));
       setActiveTab((foundUser.role === 'admin' || foundUser.role === 'superadmin') ? 'dashboard' : 'new_ticket');
@@ -14776,7 +14802,13 @@ function App() {
               </span>
             </div>
           )}
-          <div className="user-badge"><User size={14} />{currentUser.label}</div>
+          <div className="user-badge" title={`Rol: ${currentUser.role}\nPermisos: ${JSON.stringify(loggedInUserObj?.permissions || {})}`}>
+            <User size={14} />
+            {currentUser.label}
+            {currentUser.role === 'admin' && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--primary)', marginLeft: '5px', fontWeight: 'bold' }}>(Coord)</span>
+            )}
+          </div>
           <button 
             onClick={async () => {
               if (window.confirm('¿Quieres comprobar y forzar la descarga de la última versión de la aplicación?')) {
