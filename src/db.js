@@ -792,121 +792,139 @@ export function isSHA256(str) {
 // Obtener datos
 export function getUsers() {
   initDB();
-  return JSON.parse(localStorage.getItem('delivery_users'));
+  const raw = localStorage.getItem('delivery_users');
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw) || [];
+    return list.map(u => {
+      let pObj = u.permissions;
+      if (pObj && typeof pObj === 'string') {
+        try { pObj = JSON.parse(pObj); } catch(e) {}
+      }
+      return { ...u, permissions: pObj || null };
+    });
+  } catch (e) {
+    return [];
+  }
 }
 
 export async function saveUsers(users) {
-  // Automatically hash plain-text passwords
-  const hashedUsers = [];
-  for (const u of users) {
-    let pwd = u.password || '';
-    if (pwd && !isSHA256(pwd)) {
-      pwd = await hashPassword(pwd);
+  setIsSaving(true);
+  try {
+    // Automatically hash plain-text passwords
+    const hashedUsers = [];
+    for (const u of users) {
+      let pwd = u.password || '';
+      if (pwd && !isSHA256(pwd)) {
+        pwd = await hashPassword(pwd);
+      }
+      // Asegurar que permissions sea una cadena JSON si es un objeto, o null
+      let permissionsVal = u.permissions;
+      if (permissionsVal && typeof permissionsVal === 'object') {
+        permissionsVal = JSON.stringify(permissionsVal);
+      }
+      hashedUsers.push({ ...u, password: pwd, permissions: permissionsVal || null });
     }
-    // Asegurar que permissions sea una cadena JSON si es un objeto, o null
-    let permissionsVal = u.permissions;
-    if (permissionsVal && typeof permissionsVal === 'object') {
-      permissionsVal = JSON.stringify(permissionsVal);
-    }
-    hashedUsers.push({ ...u, password: pwd, permissions: permissionsVal || null });
-  }
 
-  localStorage.setItem('delivery_users', JSON.stringify(hashedUsers));
-  
-  if (supabase) {
-    try {
-      // Intentar primero con todas las columnas
-      const formatted = hashedUsers.map(u => ({
-        id: u.id,
-        username: u.username,
-        password: u.password,
-        label: u.label,
-        role: u.role,
-        can_search: u.canSearch || false,
-        created_by: u.createdBy || 'admin',
-        must_change_password: u.mustChangePassword || false,
-        permissions: u.permissions || null
-      }));
-      
-      const { error } = await supabase.from('delivery_users').upsert(formatted);
-      
-      if (error) {
-        console.error("Supabase upsert failed, attempting fallbacks:", error);
+    localStorage.setItem('delivery_users', JSON.stringify(hashedUsers));
+    
+    if (supabase) {
+      try {
+        // Intentar primero con todas las columnas
+        const formatted = hashedUsers.map(u => ({
+          id: u.id,
+          username: u.username,
+          password: u.password,
+          label: u.label,
+          role: u.role,
+          can_search: u.canSearch || false,
+          created_by: u.createdBy || 'admin',
+          must_change_password: u.mustChangePassword || false,
+          permissions: u.permissions || null
+        }));
         
-        if (error.code === '42703') {
-          const errMsg = error.message || '';
-          const hasPermissionsErr = errMsg.includes('permissions');
-          const hasMustChangeErr = errMsg.includes('must_change_password');
+        const { error } = await supabase.from('delivery_users').upsert(formatted);
+        
+        if (error) {
+          console.error("Supabase upsert failed, attempting fallbacks:", error);
           
-          if (hasPermissionsErr) {
-            localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
-          }
-          
-          // Reintentar ajustando las columnas disponibles
-          const fallbackFormatted = hashedUsers.map(u => {
-            const row = {
-              id: u.id,
-              username: u.username,
-              password: u.password,
-              label: u.label,
-              role: u.role,
-              can_search: u.canSearch || false,
-              created_by: u.createdBy || 'admin'
-            };
+          if (error.code === '42703') {
+            const errMsg = error.message || '';
+            const hasPermissionsErr = errMsg.includes('permissions');
+            const hasMustChangeErr = errMsg.includes('must_change_password');
             
-            // Añadir condicionalmente solo si no fallaron en el primer intento
-            if (!hasMustChangeErr) {
-              row.must_change_password = u.mustChangePassword || false;
-            }
-            if (!hasPermissionsErr) {
-              row.permissions = u.permissions || null;
-            }
-            return row;
-          });
-          
-          const { error: fallbackError } = await supabase.from('delivery_users').upsert(fallbackFormatted);
-          
-          // Si el fallback sigue fallando por la otra columna
-          if (fallbackError && fallbackError.code === '42703') {
-            console.warn("Second upsert failed, retrying with minimal columns...");
-            const fallbackMsg = fallbackError.message || '';
-            if (fallbackMsg.includes('permissions')) {
+            if (hasPermissionsErr) {
               localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
             }
             
-            const minimalFormatted = hashedUsers.map(u => ({
-              id: u.id,
-              username: u.username,
-              password: u.password,
-              label: u.label,
-              role: u.role,
-              can_search: u.canSearch || false,
-              created_by: u.createdBy || 'admin'
-            }));
+            // Reintentar ajustando las columnas disponibles
+            const fallbackFormatted = hashedUsers.map(u => {
+              const row = {
+                id: u.id,
+                username: u.username,
+                password: u.password,
+                label: u.label,
+                role: u.role,
+                can_search: u.canSearch || false,
+                created_by: u.createdBy || 'admin'
+              };
+              
+              // Añadir condicionalmente solo si no fallaron en el primer intento
+              if (!hasMustChangeErr) {
+                row.must_change_password = u.mustChangePassword || false;
+              }
+              if (!hasPermissionsErr) {
+                row.permissions = u.permissions || null;
+              }
+              return row;
+            });
             
-            const { error: minimalError } = await supabase.from('delivery_users').upsert(minimalFormatted);
-            if (minimalError) {
-              console.error("Minimal upsert failed:", minimalError);
-              throw minimalError;
+            const { error: fallbackError } = await supabase.from('delivery_users').upsert(fallbackFormatted);
+            
+            // Si el fallback sigue fallando por la otra columna
+            if (fallbackError && fallbackError.code === '42703') {
+              console.warn("Second upsert failed, retrying with minimal columns...");
+              const fallbackMsg = fallbackError.message || '';
+              if (fallbackMsg.includes('permissions')) {
+                localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
+              }
+              
+              const minimalFormatted = hashedUsers.map(u => ({
+                id: u.id,
+                username: u.username,
+                password: u.password,
+                label: u.label,
+                role: u.role,
+                can_search: u.canSearch || false,
+                created_by: u.createdBy || 'admin'
+              }));
+              
+              const { error: minimalError } = await supabase.from('delivery_users').upsert(minimalFormatted);
+              if (minimalError) {
+                console.error("Minimal upsert failed:", minimalError);
+                throw minimalError;
+              } else {
+                console.log("Minimal upsert succeeded!");
+              }
+            } else if (fallbackError) {
+              throw fallbackError;
             } else {
-              console.log("Minimal upsert succeeded!");
+              console.log("Fallback upsert succeeded!");
             }
-          } else if (fallbackError) {
-            throw fallbackError;
           } else {
-            console.log("Fallback upsert succeeded!");
+            throw error;
           }
         } else {
-          throw error;
+          // Upsert primario funcionó, borrar la bandera de error si existía
+          localStorage.removeItem('delivery_supabase_needs_permissions_col');
         }
-      } else {
-        // Upsert primario funcionó, borrar la bandera de error si existía
-        localStorage.removeItem('delivery_supabase_needs_permissions_col');
+      } catch (e) {
+        console.error("Error saving users to Supabase:", e);
+        throw e;
       }
-    } catch (e) {
-      console.error("Error saving users to Supabase:", e);
-      throw e;
     }
+  } finally {
+    setIsSaving(false);
   }
 }
 
