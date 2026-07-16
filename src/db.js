@@ -250,7 +250,7 @@ export async function syncFromCloud() {
           canSearch: u.can_search || false,
           createdBy: u.created_by || 'admin',
           mustChangePassword: !!u.must_change_password,
-          permissions: Object.prototype.hasOwnProperty.call(u, 'permissions')
+          permissions: (u.permissions !== undefined)
             ? u.permissions
             : (existingLocal ? existingLocal.permissions : null)
         };
