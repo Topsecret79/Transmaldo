@@ -2724,6 +2724,7 @@ function App() {
     setIsLinking(true);
     try {
       // 1. Registrar al usuario en Supabase Auth
+      let authUser = null;
       const { data, error } = await supabaseClient.auth.signUp({
         email: email,
         password: password,
@@ -2737,12 +2738,28 @@ function App() {
       });
       
       if (error) {
-        setLinkageError(`Error de registro: ${error.message}`);
-        setIsLinking(false);
-        return;
+        const errMsg = (error.message || '').toLowerCase();
+        if (errMsg.includes('already') || errMsg.includes('registered') || error.code === 'user_already_exists') {
+          // Intentar iniciar sesión para verificar que la contraseña es correcta y obtener el UUID
+          const { data: signInData, error: signInErr } = await supabaseClient.auth.signInWithPassword({
+            email: email,
+            password: password
+          });
+          if (signInErr) {
+            setLinkageError(`El correo ya está registrado en Supabase Auth, pero la contraseña introducida no coincide o la cuenta está pendiente de confirmación.`);
+            setIsLinking(false);
+            return;
+          } else if (signInData && signInData.user) {
+            authUser = signInData.user;
+          }
+        } else {
+          setLinkageError(`Error de registro: ${error.message}`);
+          setIsLinking(false);
+          return;
+        }
+      } else {
+        authUser = data.user;
       }
-      
-      const authUser = data.user;
       
       // 2. Actualizar el perfil local y remoto del usuario vinculándole el email y el auth_uid
       const dbUsers = getUsers() || [];
