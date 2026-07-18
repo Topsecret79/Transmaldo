@@ -5071,10 +5071,10 @@ function App() {
     setShifts(updatedShifts);
     await saveShifts(updatedShifts);
     
-    // Force sync push
-    if (typeof reinitSupabase === 'function') {
-      await reinitSupabase();
-    }
+    // Update local ref key to match the saved state and avoid sync race condition resets
+    const key = `${shiftId}_${driverCustomDriver.trim()}_${driverMatricula.trim()}_${driverHelper}_${driverHelper2}`;
+    lastLoadedShiftRef.current = key;
+    
     triggerAlert('Configuración del turno guardada y sincronizada correctamente');
   };
 
