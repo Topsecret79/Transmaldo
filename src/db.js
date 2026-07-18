@@ -1596,9 +1596,10 @@ export async function saveShifts(shifts) {
         console.error("Error saving basic shifts to Supabase:", error);
       }
 
-      // Save metadata for each shift in settings
-      for (const s of shifts) {
-        const meta = {
+      // Save metadata for all shifts in settings in a single batch upsert
+      const metaRows = shifts.map(s => ({
+        key: `shift_meta_${s.id}`,
+        value: JSON.stringify({
           helper: s.helper || '',
           helper2: s.helper2 || '',
           matricula: s.matricula || '',
@@ -1609,13 +1610,12 @@ export async function saveShifts(shifts) {
           startKms: s.startKms || null,
           endKms: s.endKms || null,
           summary: s.summary || null
-        };
-        const { error: metaErr } = await supabase.from('delivery_settings').upsert({
-          key: `shift_meta_${s.id}`,
-          value: JSON.stringify(meta)
-        });
+        })
+      }));
+      if (metaRows.length > 0) {
+        const { error: metaErr } = await supabase.from('delivery_settings').upsert(metaRows);
         if (metaErr) {
-          console.error(`Error saving shift meta ${s.id} to Supabase:`, metaErr);
+          console.error("Error saving shift meta batch to Supabase:", metaErr);
         }
       }
     } catch (e) {
