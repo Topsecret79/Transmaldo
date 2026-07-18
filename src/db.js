@@ -2676,3 +2676,93 @@ export function hasPermission(user, moduleId) {
   return true; // Acceso por defecto para usuarios antiguos sin permisos configurados
 }
 
+/**
+ * Saves only the driver/helper/plate metadata for a single shift directly to localStorage
+ * AND Supabase, bypassing the full shifts array save. This prevents any race condition
+ * with the periodic sync cycle overwriting data.
+ */
+export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, matricula, helper, helper2) {
+  // 1. Update the specific shift in localStorage directly
+  let localShifts = [];
+  try {
+    localShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+  } catch (e) {}
+
+  const idx = localShifts.findIndex(s => s.id === shiftId);
+  if (idx !== -1) {
+    localShifts[idx] = {
+      ...localShifts[idx],
+      customDriver,
+      matricula,
+      helper,
+      helper2
+    };
+  } else {
+    // Create new shift entry if doesn't exist
+    localShifts.push({
+      id: shiftId,
+      furgoId,
+      date,
+      status: 'open',
+      openedAt: new Date().toISOString(),
+      closedAt: null,
+      customDriver,
+      matricula,
+      helper,
+      helper2,
+      observations: '',
+      routeName: '',
+      createdBy: 'driver'
+    });
+  }
+  localStorage.setItem('delivery_shifts', JSON.stringify(localShifts));
+
+  // 2. Save to Supabase directly (both the shift row and its metadata setting)
+  if (supabase) {
+    try {
+      // Upsert the basic shift row
+      const { error: shiftErr } = await supabase.from('delivery_shifts').upsert([{
+        id: shiftId,
+        furgo_id: furgoId,
+        date,
+        status: localShifts.find(s => s.id === shiftId)?.status || 'open',
+        opened_at: localShifts.find(s => s.id === shiftId)?.openedAt || new Date().toISOString(),
+        closed_at: localShifts.find(s => s.id === shiftId)?.closedAt || null,
+        created_by: 'driver'
+      }]);
+      if (shiftErr) console.error('saveDriverShiftMeta: error upserting shift row:', shiftErr);
+
+      // Get existing meta to preserve other fields (kms, summary, observations, etc.)
+      const { data: existingMeta } = await supabase
+        .from('delivery_settings')
+        .select('value')
+        .eq('key', `shift_meta_${shiftId}`)
+        .single();
+
+      let currentMeta = {};
+      if (existingMeta?.value) {
+        try { currentMeta = JSON.parse(existingMeta.value); } catch (e) {}
+      }
+
+      // Merge: keep existing fields, override only driver/plate/helper fields
+      const newMeta = {
+        ...currentMeta,
+        customDriver,
+        matricula,
+        helper,
+        helper2
+      };
+
+      const { error: metaErr } = await supabase.from('delivery_settings').upsert([{
+        key: `shift_meta_${shiftId}`,
+        value: JSON.stringify(newMeta)
+      }]);
+      if (metaErr) console.error('saveDriverShiftMeta: error upserting shift meta:', metaErr);
+
+    } catch (e) {
+      console.error('saveDriverShiftMeta: unexpected error:', e);
+    }
+  }
+
+  return localShifts;
+}

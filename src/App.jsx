@@ -394,7 +394,8 @@ import {
   saveEmployeesList,
   hashPassword,
   isSHA256,
-  hasPermission
+  hasPermission,
+  saveDriverShiftMeta
 } from './db';
 
 
@@ -5040,42 +5041,30 @@ function App() {
       return;
     }
 
-    const index = shifts.findIndex(s => s.id === shiftId);
-    let updatedShifts = [...shifts];
-    if (index !== -1) {
-      updatedShifts[index] = {
-        ...updatedShifts[index],
-        customDriver: driverCustomDriver.trim(),
-        matricula: driverMatricula.trim(),
-        helper: driverHelper,
-        helper2: driverHelper2
-      };
-    } else {
-      updatedShifts.push({
-        id: shiftId,
-        furgoId: currentUser.id,
-        date: activeDate,
-        status: 'open',
-        openedAt: new Date().toISOString(),
-        closedAt: null,
-        helper: driverHelper,
-        helper2: driverHelper2,
-        matricula: driverMatricula.trim(),
-        customDriver: driverCustomDriver.trim(),
-        observations: '',
-        routeName: '',
-        createdBy: 'driver'
-      });
-    }
-    
+    const driver = driverCustomDriver.trim();
+    const plate = driverMatricula.trim();
+
+    // Use the atomic saveDriverShiftMeta function that writes directly to localStorage
+    // and Supabase without touching or depending on the full shifts array.
+    // This eliminates ALL race conditions with the periodic sync cycle.
+    const updatedShifts = await saveDriverShiftMeta(
+      shiftId,
+      currentUser.id,
+      activeDate,
+      driver,
+      plate,
+      driverHelper,
+      driverHelper2
+    );
+
+    // Update React state to reflect the saved data
     setShifts(updatedShifts);
-    await saveShifts(updatedShifts);
     
-    // Update local ref key to match the saved state and avoid sync race condition resets
-    const key = `${shiftId}_${driverCustomDriver.trim()}_${driverMatricula.trim()}_${driverHelper}_${driverHelper2}`;
+    // Update ref key so the useEffect does NOT reset the fields when shifts state updates
+    const key = `${shiftId}_${driver}_${plate}_${driverHelper}_${driverHelper2}`;
     lastLoadedShiftRef.current = key;
     
-    triggerAlert('Configuración del turno guardada y sincronizada correctamente');
+    triggerAlert('Configuración del turno guardada correctamente ✓');
   };
 
   const handleUpdateDriverShiftField = (field, value) => {
