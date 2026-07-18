@@ -265,7 +265,9 @@ export async function syncFromCloud() {
           canSearch: u.can_search || false,
           createdBy: u.created_by || 'admin',
           mustChangePassword: !!u.must_change_password,
-          permissions: pVal
+          permissions: pVal,
+          email: u.email || null,
+          auth_uid: u.auth_uid || null
         };
       });
       localStorage.setItem('delivery_users', JSON.stringify(localUsers));
@@ -862,7 +864,9 @@ export async function saveUsers(users) {
           can_search: u.canSearch || false,
           created_by: u.createdBy || 'admin',
           must_change_password: u.mustChangePassword || false,
-          permissions: u.permissions || null
+          permissions: u.permissions || null,
+          email: u.email || null,
+          auth_uid: u.auth_uid || null
         }));
         
         const { error } = await supabase.from('delivery_users').upsert(formatted);
@@ -874,9 +878,14 @@ export async function saveUsers(users) {
             const errMsg = error.message || '';
             const hasPermissionsErr = errMsg.includes('permissions');
             const hasMustChangeErr = errMsg.includes('must_change_password');
+            const hasEmailErr = errMsg.includes('email');
+            const hasAuthUidErr = errMsg.includes('auth_uid');
             
             if (hasPermissionsErr) {
               localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
+            }
+            if (hasEmailErr || hasAuthUidErr) {
+              localStorage.setItem('delivery_supabase_needs_auth_migration_cols', 'true');
             }
             
             // Reintentar ajustando las columnas disponibles
@@ -897,6 +906,12 @@ export async function saveUsers(users) {
               }
               if (!hasPermissionsErr) {
                 row.permissions = u.permissions || null;
+              }
+              if (!hasEmailErr) {
+                row.email = u.email || null;
+              }
+              if (!hasAuthUidErr) {
+                row.auth_uid = u.auth_uid || null;
               }
               return row;
             });
@@ -939,6 +954,7 @@ export async function saveUsers(users) {
         } else {
           // Upsert primario funcionó, borrar la bandera de error si existía
           localStorage.removeItem('delivery_supabase_needs_permissions_col');
+          localStorage.removeItem('delivery_supabase_needs_auth_migration_cols');
         }
       } catch (e) {
         console.error("Error saving users to Supabase:", e);
@@ -1725,10 +1741,13 @@ export function resetMonthlyShifts() {
 }
 
 // Crear nuevo usuario dinámicamente
-export async function addUser(username, label, password, role = 'repartidor', createdBy = null) {
+export async function addUser(username, label, password, role = 'repartidor', createdBy = null, email = null, auth_uid = null) {
   const users = getUsers();
   if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
     return { success: false, error: 'El usuario ya existe' };
+  }
+  if (email && users.some(u => u.email && u.email.toLowerCase() === email.toLowerCase())) {
+    return { success: false, error: 'El correo electrónico ya está registrado' };
   }
   const newUser = {
     id: username.toLowerCase().trim(),
@@ -1737,7 +1756,9 @@ export async function addUser(username, label, password, role = 'repartidor', cr
     password: password.trim(),
     role,
     createdBy,
-    mustChangePassword: true
+    mustChangePassword: true,
+    email: email || null,
+    auth_uid: auth_uid || null
   };
   users.push(newUser);
   await saveUsers(users);

@@ -318,7 +318,8 @@ import {
   Minus,
   Clock,
   Navigation,
-  Phone
+  Phone,
+  Mail
 } from 'lucide-react';
 import { 
   initDB, 
@@ -656,6 +657,15 @@ function App() {
   const [forceChangePasswordUser, setForceChangePasswordUser] = useState(null);
   const [newPasswordVal, setNewPasswordVal] = useState('');
   const [confirmPasswordVal, setConfirmPasswordVal] = useState('');
+
+  // Estados para vinculación de correo electrónico de administradores
+  const [emailLinkageUser, setEmailLinkageUser] = useState(null);
+  const [linkageEmail, setLinkageEmail] = useState('');
+  const [linkagePassword, setLinkagePassword] = useState('');
+  const [linkageConfirmPassword, setLinkageConfirmPassword] = useState('');
+  const [linkageError, setLinkageError] = useState('');
+  const [isLinking, setIsLinking] = useState(false);
+
 
   const [tickets, setTickets] = useState([]);
   const [tariffs, setTariffs] = useState([]);
@@ -1088,6 +1098,7 @@ function App() {
   const [newLabel, setNewLabel] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('repartidor');
+  const [newEmailState, setNewEmailState] = useState('');
   const [newAdminPricingOption, setNewAdminPricingOption] = useState('copy_default');
   const [expandedSections, setExpandedSections] = useState({
     tv: true,
@@ -2457,30 +2468,49 @@ function App() {
     e.preventDefault();
     setLoginError('');
     
-    const username = usernameInput.trim();
+    const inputIdentifier = usernameInput.trim();
     const password = passwordInput.trim();
-    const hashedVal = await hashPassword(password);
+    const isEmail = inputIdentifier.includes('@');
     
+    let foundUser = null;
     const dbUsers = getUsers() || [];
-    let foundUser = dbUsers.find(
-      u => u.username.toLowerCase() === username.toLowerCase() && 
-      (u.password === password || u.password === hashedVal)
-    );
-
-    // Fallback: Si no se encuentra localmente, hacer consulta en vivo a Supabase
-    if (!foundUser) {
+    
+    if (isEmail) {
+      // 1. AUTENTICACIÓN POR CORREO ELECTRÓNICO (SUPABASE AUTH)
       const supabaseClient = getSupabaseClient();
-      if (supabaseClient) {
-        try {
-          const { data: cloudUsers, error } = await supabaseClient
+      if (!supabaseClient) {
+        setLoginError('Error de red: no se pudo inicializar la base de datos.');
+        return;
+      }
+      
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+          email: inputIdentifier,
+          password: password
+        });
+        
+        if (error) {
+          setLoginError(`Error de autenticación: ${error.message === 'Invalid login credentials' ? 'Correo o contraseña incorrectos' : error.message}`);
+          return;
+        }
+        
+        const authUser = data.user;
+        
+        // Buscar el perfil de usuario en delivery_users usando el UID o el correo
+        let profile = dbUsers.find(
+          u => u.auth_uid === authUser.id || (u.email && u.email.toLowerCase() === inputIdentifier.toLowerCase())
+        );
+        
+        // Fallback: Si no está guardado localmente, consultar a Supabase en vivo
+        if (!profile) {
+          const { data: cloudProfile, error: errProfile } = await supabaseClient
             .from('delivery_users')
             .select('*')
-            .ilike('username', username)
-            .or(`password.eq.${password},password.eq.${hashedVal}`);
+            .or(`auth_uid.eq.${authUser.id},email.eq.${inputIdentifier}`);
             
-          if (cloudUsers && cloudUsers.length > 0 && !error) {
-            const u = cloudUsers[0];
-            foundUser = {
+          if (cloudProfile && cloudProfile.length > 0 && !errProfile) {
+            const u = cloudProfile[0];
+            profile = {
               id: u.id,
               username: u.username,
               password: u.password,
@@ -2488,14 +2518,74 @@ function App() {
               role: u.role,
               canSearch: u.can_search || false,
               createdBy: u.created_by || 'admin',
-              mustChangePassword: !!u.must_change_password
+              mustChangePassword: !!u.must_change_password,
+              email: u.email,
+              auth_uid: u.auth_uid || authUser.id
             };
-            // Guardarlo localmente en la lista de usuarios para futuras cargas offline
-            const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
-            saveUsers(updatedUsers);
+            
+            // Si el perfil en la base de datos no tiene guardado el UID aún, actualizarlo
+            if (!u.auth_uid) {
+              const updatedUsers = [...dbUsers.filter(usr => usr.id !== profile.id), profile];
+              saveUsers(updatedUsers);
+            }
           }
-        } catch (err) {
-          console.error("Live login query failed:", err);
+        }
+        
+        if (profile) {
+          // Confirmar que tiene permisos de administración
+          if (profile.role !== 'admin' && profile.role !== 'superadmin' && profile.role !== 'coordinador') {
+            setLoginError('Acceso denegado: este método es exclusivo para administradores.');
+            return;
+          }
+          foundUser = profile;
+        } else {
+          setLoginError('No se encontró un perfil de usuario asignado a este correo.');
+          return;
+        }
+      } catch (err) {
+        console.error("Supabase email login failed:", err);
+        setLoginError('Error de conexión al autenticar con el correo.');
+        return;
+      }
+    } else {
+      // 2. AUTENTICACIÓN CLÁSICA POR NOMBRE DE USUARIO (REPARTIDORES O VINCULACIÓN PENDIENTE)
+      const hashedVal = await hashPassword(password);
+      
+      foundUser = dbUsers.find(
+        u => u.username.toLowerCase() === inputIdentifier.toLowerCase() && 
+        (u.password === password || u.password === hashedVal)
+      );
+
+      if (!foundUser) {
+        const supabaseClient = getSupabaseClient();
+        if (supabaseClient) {
+          try {
+            const { data: cloudUsers, error } = await supabaseClient
+              .from('delivery_users')
+              .select('*')
+              .ilike('username', inputIdentifier)
+              .or(`password.eq.${password},password.eq.${hashedVal}`);
+              
+            if (cloudUsers && cloudUsers.length > 0 && !error) {
+              const u = cloudUsers[0];
+              foundUser = {
+                id: u.id,
+                username: u.username,
+                password: u.password,
+                label: u.label,
+                role: u.role,
+                canSearch: u.can_search || false,
+                createdBy: u.created_by || 'admin',
+                mustChangePassword: !!u.must_change_password,
+                email: u.email || null,
+                auth_uid: u.auth_uid || null
+              };
+              const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
+              saveUsers(updatedUsers);
+            }
+          } catch (err) {
+            console.error("Live login query failed:", err);
+          }
         }
       }
     }
@@ -2503,6 +2593,14 @@ function App() {
     if (foundUser) {
       if (foundUser.mustChangePassword) {
         setForceChangePasswordUser(foundUser);
+        setUsernameInput('');
+        setPasswordInput('');
+        return;
+      }
+      
+      // SI ES ADMINISTRADOR O COORDINADOR Y NO TIENE EMAIL VINCULADO -> FORZAR FLUJO DE VINCULACIÓN
+      if ((foundUser.role === 'admin' || foundUser.role === 'superadmin' || foundUser.role === 'coordinador') && !foundUser.email) {
+        setEmailLinkageUser(foundUser);
         setUsernameInput('');
         setPasswordInput('');
         return;
@@ -2581,6 +2679,100 @@ function App() {
       setConfirmPasswordVal('');
       await reinitSupabase();
       loadData();
+    }
+  };
+
+  const handleEmailLinkageSubmit = async (e) => {
+    e.preventDefault();
+    setLinkageError('');
+    
+    const email = linkageEmail.trim();
+    const password = linkagePassword.trim();
+    const confirm = linkageConfirmPassword.trim();
+    
+    if (!email || !email.includes('@')) {
+      setLinkageError('Por favor introduce un correo electrónico válido.');
+      return;
+    }
+    if (!password) {
+      setLinkageError('Por favor introduce una contraseña.');
+      return;
+    }
+    if (password.length < 6) {
+      setLinkageError('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (password !== confirm) {
+      setLinkageError('Las contraseñas no coinciden.');
+      return;
+    }
+    
+    const supabaseClient = getSupabaseClient();
+    if (!supabaseClient) {
+      setLinkageError('Error de red: no se pudo inicializar la base de datos.');
+      return;
+    }
+    
+    setIsLinking(true);
+    try {
+      // 1. Registrar al usuario en Supabase Auth
+      const { data, error } = await supabaseClient.auth.signUp({
+        email: email,
+        password: password,
+        options: {
+          data: {
+            role: emailLinkageUser.role,
+            label: emailLinkageUser.label
+          }
+        }
+      });
+      
+      if (error) {
+        setLinkageError(`Error de registro: ${error.message}`);
+        setIsLinking(false);
+        return;
+      }
+      
+      const authUser = data.user;
+      
+      // 2. Actualizar el perfil local y remoto del usuario vinculándole el email y el auth_uid
+      const dbUsers = getUsers() || [];
+      const updatedUsers = dbUsers.map(u => {
+        if (u.id === emailLinkageUser.id) {
+          return {
+            ...u,
+            email: email.toLowerCase(),
+            auth_uid: authUser.id,
+            mustChangePassword: false
+          };
+        }
+        return u;
+      });
+      
+      const updatedUserObj = updatedUsers.find(u => u.id === emailLinkageUser.id);
+      if (updatedUserObj) {
+        await saveUsers(updatedUsers);
+        
+        // 3. Iniciar sesión automáticamente
+        setCurrentUser(updatedUserObj);
+        localStorage.setItem('delivery_session', JSON.stringify(updatedUserObj));
+        setActiveTab((updatedUserObj.role === 'admin' || updatedUserObj.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+        
+        triggerAlert('¡Cuenta vinculada con éxito y sesión iniciada!');
+        
+        setEmailLinkageUser(null);
+        setLinkageEmail('');
+        setLinkagePassword('');
+        setLinkageConfirmPassword('');
+        
+        await reinitSupabase();
+        loadData();
+      }
+    } catch (err) {
+      console.error("Email linkage failed:", err);
+      setLinkageError('Ocurrió un error inesperado al vincular la cuenta.');
+    } finally {
+      setIsLinking(false);
     }
   };
 
@@ -14486,7 +14678,37 @@ function App() {
                     return;
                   }
                   const roleToUse = (currentUser.role === 'superadmin' || currentUser.role === 'admin') ? newRole : 'repartidor';
-                  const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id);
+                  const isUserAdmin = roleToUse === 'admin';
+                  
+                  let authUid = null;
+                  const emailVal = isUserAdmin && newEmailState.trim() ? newEmailState.trim().toLowerCase() : null;
+                  
+                  if (isUserAdmin && emailVal) {
+                    const supabaseClient = getSupabaseClient();
+                    if (supabaseClient) {
+                      try {
+                        const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
+                          email: emailVal,
+                          password: newPassword.trim(),
+                          options: {
+                            data: {
+                              role: roleToUse,
+                              label: newLabel.trim()
+                            }
+                          }
+                        });
+                        if (authErr) {
+                          triggerAlert(`Nota de registro: ${authErr.message}. El perfil necesitará vincularse en su primer login.`, 'warning');
+                        } else if (authData && authData.user) {
+                          authUid = authData.user.id;
+                        }
+                      } catch (err) {
+                        console.error("Auth signUp error during user creation:", err);
+                      }
+                    }
+                  }
+
+                  const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id, emailVal, authUid);
                   if (res.success) {
                     if (roleToUse === 'admin') {
                       await initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
@@ -14496,6 +14718,7 @@ function App() {
                     setNewLabel('');
                     setNewPassword('');
                     setNewRole('repartidor');
+                    setNewEmailState('');
                     setNewAdminPricingOption('copy_default');
                     loadData();
                   } else {
@@ -14503,7 +14726,7 @@ function App() {
                   }
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
                   <div className="input-group">
-                    <span className="input-label">Usuario (para Login)</span>
+                    <span className="input-label">Usuario (para Login clásico)</span>
                     <input type="text" className="form-input" placeholder="Ej. furgo4" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} required />
                   </div>
                   <div className="input-group">
@@ -14530,19 +14753,34 @@ function App() {
                     </div>
                   )}
                   {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && newRole === 'admin' && (
-                    <div className="input-group">
-                      <span className="input-label">Configuración Inicial de Tarifas</span>
-                      <select 
-                        className="form-input" 
-                        value={newAdminPricingOption} 
-                        onChange={(e) => setNewAdminPricingOption(e.target.value)}
-                        required
-                        style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
-                      >
-                        <option value="copy_default">Copiar precios de tarifas por defecto</option>
-                        <option value="zero">Iniciar precios a 0,00 €</option>
-                      </select>
-                    </div>
+                    <>
+                      <div className="input-group">
+                        <span className="input-label">Correo Electrónico (Opcional - Para Login Seguro)</span>
+                        <input 
+                          type="email" 
+                          className="form-input" 
+                          placeholder="ejemplo@correo.com" 
+                          value={newEmailState} 
+                          onChange={(e) => setNewEmailState(e.target.value)} 
+                        />
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          Si se deja vacío, el nuevo administrador podrá vincular su correo personal la primera vez que inicie sesión.
+                        </span>
+                      </div>
+                      <div className="input-group">
+                        <span className="input-label">Configuración Inicial de Tarifas</span>
+                        <select 
+                          className="form-input" 
+                          value={newAdminPricingOption} 
+                          onChange={(e) => setNewAdminPricingOption(e.target.value)}
+                          required
+                          style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
+                        >
+                          <option value="copy_default">Copiar precios de tarifas por defecto</option>
+                          <option value="zero">Iniciar precios a 0,00 €</option>
+                        </select>
+                      </div>
+                    </>
                   )}
                   <button type="submit" className="btn btn-primary" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
                     <Plus size={16} /> Crear Nuevo Usuario
@@ -14559,6 +14797,17 @@ function App() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)' }}>
                           👤 {u.username} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({u.role === 'superadmin' ? 'Super Admin' : u.role === 'admin' ? 'Administrador' : 'Repartidor'})</span>
+                          {u.role === 'admin' && (
+                            u.email ? (
+                              <span style={{ fontSize: '0.72rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' }} title={u.email}>
+                                📧 {u.email}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' }}>
+                                ⚠️ Correo sin vincular
+                              </span>
+                            )
+                          )}
                         </span>
                         {u.id !== 'admin' && u.id !== currentUser.id && (
                           <button 
@@ -14772,6 +15021,82 @@ function App() {
                   setForceChangePasswordUser(null);
                   setNewPasswordVal('');
                   setConfirmPasswordVal('');
+                }}
+                style={{ marginTop: '8px', background: 'transparent', border: 'none', color: 'var(--text-muted)' }}
+              >
+                Cancelar
+              </button>
+            </form>
+          ) : emailLinkageUser ? (
+            <form onSubmit={handleEmailLinkageSubmit} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <Mail size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
+                <h1 className="login-title" style={{ fontWeight: '800', letterSpacing: '-0.03em', margin: 0 }}>Vincular Correo</h1>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>
+                  ¡Hola, <strong>{emailLinkageUser.label}</strong>! Para mejorar la seguridad de tu cuenta administrativa, vincula tu correo electrónico personal.
+                </p>
+              </div>
+
+              {linkageError && (
+                <div style={{ color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: '10px' }}>
+                  ⚠️ {linkageError}
+                </div>
+              )}
+
+              <div className="input-group">
+                <span className="input-label">Correo Electrónico Personal</span>
+                <input 
+                  type="email" 
+                  className="form-input" 
+                  placeholder="ejemplo@correo.com" 
+                  value={linkageEmail} 
+                  onChange={(e) => setLinkageEmail(e.target.value)} 
+                  required 
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">Establecer Contraseña de Correo</span>
+                <input 
+                  type="password" 
+                  className="form-input" 
+                  placeholder="Mínimo 6 caracteres" 
+                  value={linkagePassword} 
+                  onChange={(e) => setLinkagePassword(e.target.value)} 
+                  required 
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">Confirmar Contraseña</span>
+                <input 
+                  type="password" 
+                  className="form-input" 
+                  placeholder="Repite la contraseña" 
+                  value={linkageConfirmPassword} 
+                  onChange={(e) => setLinkageConfirmPassword(e.target.value)} 
+                  required 
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }} disabled={isLinking}>
+                {isLinking ? '🔄 Vinculando cuenta...' : '📧 Vincular Cuenta y Acceder'}
+              </button>
+
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setEmailLinkageUser(null);
+                  setLinkageEmail('');
+                  setLinkagePassword('');
+                  setLinkageConfirmPassword('');
+                  setLinkageError('');
                 }}
                 style={{ marginTop: '8px', background: 'transparent', border: 'none', color: 'var(--text-muted)' }}
               >
