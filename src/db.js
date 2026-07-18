@@ -367,7 +367,13 @@ export async function syncFromCloud() {
     const { data: shifts, error: errShifts } = await supabase.from('delivery_shifts').select('*');
 
     if (shifts && !errShifts && settings && !errSettings) {
-      const localShifts = shifts.map(s => {
+      // Load existing local shifts so we can preserve any pending/unsaved metadata
+      let localExisting = [];
+      try {
+        localExisting = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+      } catch (e) {}
+
+      const cloudShifts = shifts.map(s => {
         const metaSetting = settings.find(set => set.key === `shift_meta_${s.id}`);
         let meta = {
           helper: '',
@@ -408,7 +414,40 @@ export async function syncFromCloud() {
           endKms: meta.endKms || null
         };
       });
-      localStorage.setItem('delivery_shifts', JSON.stringify(localShifts));
+
+      // Merge: start from cloud, but if local version has richer metadata (non-empty driver/plate)
+      // and the cloud version is empty, prefer the local data to avoid losing unsaved state
+      const mergedShifts = [...cloudShifts];
+      localExisting.forEach(localS => {
+        const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
+        if (cloudIdx !== -1) {
+          const cloud = mergedShifts[cloudIdx];
+          // If local has more complete metadata than cloud, keep the local values
+          if (
+            (localS.customDriver && !cloud.customDriver) ||
+            (localS.matricula && !cloud.matricula)
+          ) {
+            mergedShifts[cloudIdx] = {
+              ...cloud,
+              customDriver: cloud.customDriver || localS.customDriver || '',
+              matricula: cloud.matricula || localS.matricula || '',
+              helper: cloud.helper || localS.helper || '',
+              helper2: cloud.helper2 || localS.helper2 || '',
+              observations: cloud.observations || localS.observations || '',
+              routeName: cloud.routeName || localS.routeName || '',
+              kms: cloud.kms || localS.kms || null,
+              startKms: cloud.startKms || localS.startKms || null,
+              endKms: cloud.endKms || localS.endKms || null,
+              summary: cloud.summary || localS.summary || null
+            };
+          }
+        } else {
+          // Local shift not yet in cloud - keep it
+          mergedShifts.push(localS);
+        }
+      });
+
+      localStorage.setItem('delivery_shifts', JSON.stringify(mergedShifts));
     }
 
     if (settings && !errSettings) {
