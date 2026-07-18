@@ -2,36 +2,54 @@
 
 /* ================= VARIABLES DE TEMAS DISPONIBLES ================= */
 
+/* Colores de tarjetas del Calendario de Turnos — MODO CLARO (letra oscura) */
 :root {
-  --shift-planned-bg: rgba(0, 0, 0, 0.05);
-  --shift-planned-border: rgba(0, 0, 0, 0.1);
-  --shift-planned-text: var(--text-main);
-  --shift-planned-detail: var(--text-muted);
+  --shift-planned-bg: rgba(99, 102, 241, 0.10);
+  --shift-planned-border: rgba(99, 102, 241, 0.25);
+  --shift-planned-text: #312e81;
+  --shift-planned-detail: #4338ca;
   
-  --shift-active-bg: rgba(16, 185, 129, 0.1);
-  --shift-active-border: rgba(16, 185, 129, 0.25);
-  --shift-active-text: #047857;
+  --shift-active-bg: rgba(16, 185, 129, 0.12);
+  --shift-active-border: rgba(16, 185, 129, 0.30);
+  --shift-active-text: #065f46;
   
-  --shift-closed-bg: rgba(239, 68, 68, 0.08);
-  --shift-closed-border: rgba(239, 68, 68, 0.2);
-  --shift-closed-text: #b91c1c;
+  --shift-closed-bg: rgba(239, 68, 68, 0.10);
+  --shift-closed-border: rgba(239, 68, 68, 0.25);
+  --shift-closed-text: #7f1d1d;
 }
 
+/* Colores de tarjetas del Calendario de Turnos — MODO OSCURO (letra clara) */
 @media (prefers-color-scheme: dark) {
   :root {
-    --shift-planned-bg: rgba(255, 255, 255, 0.09);
-    --shift-planned-border: rgba(255, 255, 255, 0.18);
-    --shift-planned-text: #ffffff;
-    --shift-planned-detail: #e5e7eb;
+    --shift-planned-bg: rgba(99, 102, 241, 0.18);
+    --shift-planned-border: rgba(99, 102, 241, 0.35);
+    --shift-planned-text: #c7d2fe;
+    --shift-planned-detail: #a5b4fc;
     
-    --shift-active-bg: rgba(16, 185, 129, 0.15);
-    --shift-active-border: rgba(16, 185, 129, 0.35);
-    --shift-active-text: #4ade80;
+    --shift-active-bg: rgba(16, 185, 129, 0.18);
+    --shift-active-border: rgba(16, 185, 129, 0.40);
+    --shift-active-text: #6ee7b7;
     
-    --shift-closed-bg: rgba(239, 68, 68, 0.15);
-    --shift-closed-border: rgba(239, 68, 68, 0.35);
-    --shift-closed-text: #ff8a8a;
+    --shift-closed-bg: rgba(239, 68, 68, 0.18);
+    --shift-closed-border: rgba(239, 68, 68, 0.40);
+    --shift-closed-text: #fca5a5;
   }
+}
+
+/* Override explícito para clase dark-mode (evita depender solo de prefers-color-scheme) */
+body.dark-mode {
+  --shift-planned-bg: rgba(99, 102, 241, 0.18);
+  --shift-planned-border: rgba(99, 102, 241, 0.35);
+  --shift-planned-text: #c7d2fe;
+  --shift-planned-detail: #a5b4fc;
+  
+  --shift-active-bg: rgba(16, 185, 129, 0.18);
+  --shift-active-border: rgba(16, 185, 129, 0.40);
+  --shift-active-text: #6ee7b7;
+  
+  --shift-closed-bg: rgba(239, 68, 68, 0.18);
+  --shift-closed-border: rgba(239, 68, 68, 0.40);
+  --shift-closed-text: #fca5a5;
 }
 
 /* 1. TEMA ESMERALDA (Por Defecto) */
