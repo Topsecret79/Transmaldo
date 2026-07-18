@@ -4984,6 +4984,7 @@ function App() {
   };
 
   const handleUpdateDriverShiftField = (field, value) => {
+    const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
     const shiftId = `${currentUser.id}_${targetDate}`;
     const index = shifts.findIndex(s => s.id === shiftId);
     
