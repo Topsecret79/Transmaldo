@@ -28,4 +28,6 @@ Estas reglas definen el comportamiento esperado y las restricciones de diseño p
 * **Inicio de Sesión Mixto**: Los repartidores (choferes) se autentican mediante su nombre de usuario y PIN hash local/remoto clásica. Los administradores y coordinadores se autentican mediante su correo electrónico personal a través de Supabase Auth.
 * **Vinculación en Caliente**: Los administradores existentes sin correo asociado deben ser redirigidos en su primer inicio de sesión clásico a un diálogo para vincular su correo personal de forma no destructiva, conservando su histórico de tarifas y repartos.
 * **Tolerancia a Cambios de Esquema**: Si la base de datos remota carece de las columnas de seguridad (`email`, `auth_uid`, `permissions`), la aplicación debe capturar el error `42703`/`PGRST204` de forma silenciosa, realizar el upsert omitiendo dichas columnas, persistirlas localmente y mostrar una recomendación de migración SQL en el panel del Superadmin.
+* **Detección Dinámica de Columnas**: Al guardar o hacer upsert de usuarios, la aplicación debe consultar primero la estructura de la tabla (usando una consulta de límite 1) para construir dinámicamente el objeto de fila. Esto evita fallos causados por columnas incompatibles o inexistentes en la base de datos remota de Supabase sin descartar información crítica como el `email` y `auth_uid`.
+
 
