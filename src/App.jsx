@@ -690,6 +690,10 @@ function App() {
     (loggedInUserObj.role === 'admin' ? showGeneralSearch : loggedInUserObj.canSearch)
   );
   const [shifts, setShifts] = useState([]);
+  const [driverCustomDriver, setDriverCustomDriver] = useState('');
+  const [driverMatricula, setDriverMatricula] = useState('');
+  const [driverHelper, setDriverHelper] = useState('');
+  const [driverHelper2, setDriverHelper2] = useState('');
   const [allowDriverSupportTransfer, setAllowDriverSupportTransfer] = useState(getAllowDriverSupportTransfer());
   const [helpersList, setHelpersList] = useState(() => getHelpersList());
   const [newHelperName, setNewHelperName] = useState('');
@@ -951,6 +955,18 @@ function App() {
   useEffect(() => {
     localStorage.setItem('delivery_active_routes', JSON.stringify(activeRoutes));
   }, [activeRoutes]);
+
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'repartidor') {
+      const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+      const shiftId = `${currentUser.id}_${activeDate}`;
+      const s = shifts.find(item => item.id === shiftId);
+      setDriverCustomDriver(s?.customDriver || currentUser.label || '');
+      setDriverMatricula(s?.matricula || '');
+      setDriverHelper(s?.helper || '');
+      setDriverHelper2(s?.helper2 || '');
+    }
+  }, [shifts, shiftSummaryDate, currentUser]);
 
   useEffect(() => {
     if (currentRouteId !== null) {
@@ -4983,6 +4999,72 @@ function App() {
     }
   };
 
+  const hasUnsavedShiftChanges = () => {
+    if (!currentUser) return false;
+    const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+    const shiftId = `${currentUser.id}_${activeDate}`;
+    const s = shifts.find(item => item.id === shiftId);
+    
+    const dbDriver = s?.customDriver || currentUser.label || '';
+    const dbMatricula = s?.matricula || '';
+    const dbHelper = s?.helper || '';
+    const dbHelper2 = s?.helper2 || '';
+    
+    return dbDriver !== driverCustomDriver ||
+           dbMatricula !== driverMatricula ||
+           dbHelper !== driverHelper ||
+           dbHelper2 !== driverHelper2;
+  };
+
+  const handleSaveDriverShiftSettings = async () => {
+    if (!currentUser) return;
+    const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+    const shiftId = `${currentUser.id}_${activeDate}`;
+    
+    // Validation: driver and plate are mandatory
+    if (!driverCustomDriver || !driverCustomDriver.trim() || !driverMatricula || !driverMatricula.trim()) {
+      triggerAlert('El Chofer y la Matrícula del vehículo son campos obligatorios.', 'error');
+      return;
+    }
+
+    const index = shifts.findIndex(s => s.id === shiftId);
+    let updatedShifts = [...shifts];
+    if (index !== -1) {
+      updatedShifts[index] = {
+        ...updatedShifts[index],
+        customDriver: driverCustomDriver.trim(),
+        matricula: driverMatricula.trim(),
+        helper: driverHelper,
+        helper2: driverHelper2
+      };
+    } else {
+      updatedShifts.push({
+        id: shiftId,
+        furgoId: currentUser.id,
+        date: activeDate,
+        status: 'open',
+        openedAt: new Date().toISOString(),
+        closedAt: null,
+        helper: driverHelper,
+        helper2: driverHelper2,
+        matricula: driverMatricula.trim(),
+        customDriver: driverCustomDriver.trim(),
+        observations: '',
+        routeName: '',
+        createdBy: 'driver'
+      });
+    }
+    
+    setShifts(updatedShifts);
+    await saveShifts(updatedShifts);
+    
+    // Force sync push
+    if (typeof reinitSupabase === 'function') {
+      await reinitSupabase();
+    }
+    triggerAlert('Configuración del turno guardada y sincronizada correctamente');
+  };
+
   const handleUpdateDriverShiftField = (field, value) => {
     const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
     const shiftId = `${currentUser.id}_${targetDate}`;
@@ -7944,18 +8026,20 @@ function App() {
                           
                           <button 
                             type="button" 
-                            onClick={() => {
+                            onClick={async () => {
                               if (dayTickets.length === 0) {
                                 triggerAlert('No puedes cerrar un turno sin registrar entregas para ese día.', 'error');
                                 return;
                               }
                               
-                              const currentDriverVal = currentShift?.customDriver || currentUser.label;
-                              const currentMatriculaVal = currentShift?.matricula;
-                              
-                              if (!currentDriverVal || !currentDriverVal.trim() || !currentMatriculaVal || !currentMatriculaVal.trim()) {
+                              if (!driverCustomDriver || !driverCustomDriver.trim() || !driverMatricula || !driverMatricula.trim()) {
                                 triggerAlert('El Chofer y la Matrícula del vehículo son campos obligatorios para poder finalizar el turno.', 'error');
                                 return;
+                              }
+
+                              // Auto-save any unsaved changes before opening the finalization modal
+                              if (hasUnsavedShiftChanges()) {
+                                await handleSaveDriverShiftSettings();
                               }
                               
                               const existingKms = getRouteKms(currentUser.id, targetDate);
@@ -8003,7 +8087,7 @@ function App() {
                             <span className="input-label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Chofer (Obligatorio) *</span>
                             <select
                               className="form-input"
-                              value={currentShift?.customDriver || currentUser.label || ''}
+                              value={driverCustomDriver}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 let newDriver = val;
@@ -8012,14 +8096,14 @@ function App() {
                                   if (typed === null) return;
                                   newDriver = typed.trim() || currentUser.label || 'Por asignar';
                                 }
-                                handleUpdateDriverShiftField('customDriver', newDriver);
+                                setDriverCustomDriver(newDriver);
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Por asignar</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
-                              {currentShift?.customDriver && !employeesList.some(emp => emp.name === currentShift.customDriver) && (
-                                <option value={currentShift.customDriver} style={{ color: '#000', background: '#fff' }}>{currentShift.customDriver}</option>
+                              {driverCustomDriver && !employeesList.some(emp => emp.name === driverCustomDriver) && (
+                                <option value={driverCustomDriver} style={{ color: '#000', background: '#fff' }}>{driverCustomDriver}</option>
                               )}
                               {employeesList.filter(emp => emp.active !== false).map(emp => (
                                 <option key={emp.id} value={emp.name} style={{ color: '#000', background: '#fff' }}>{emp.name}</option>
@@ -8032,7 +8116,7 @@ function App() {
                             <span className="input-label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Matrícula (Obligatorio) *</span>
                             <select
                               className="form-input"
-                              value={currentShift?.matricula || ''}
+                              value={driverMatricula}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 let newPlate = val;
@@ -8041,14 +8125,14 @@ function App() {
                                   if (typed === null) return;
                                   newPlate = typed.trim().toUpperCase() || '';
                                 }
-                                handleUpdateDriverShiftField('matricula', newPlate);
+                                setDriverMatricula(newPlate);
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar matrícula...</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
-                              {currentShift?.matricula && !platesList.includes(currentShift.matricula) && (
-                                <option value={currentShift.matricula} style={{ color: '#000', background: '#fff' }}>{currentShift.matricula}</option>
+                              {driverMatricula && !platesList.includes(driverMatricula) && (
+                                <option value={driverMatricula} style={{ color: '#000', background: '#fff' }}>{driverMatricula}</option>
                               )}
                               {platesList.map(plate => (
                                 <option key={plate} value={plate} style={{ color: '#000', background: '#fff' }}>{plate}</option>
@@ -8061,7 +8145,7 @@ function App() {
                             <span className="input-label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Ayudante (Opcional)</span>
                             <select
                               className="form-input"
-                              value={currentShift?.helper || ''}
+                              value={driverHelper}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 let newHelper = val;
@@ -8070,14 +8154,14 @@ function App() {
                                   if (typed === null) return;
                                   newHelper = typed.trim() || '';
                                 }
-                                handleUpdateDriverShiftField('helper', newHelper);
+                                setDriverHelper(newHelper);
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Sin ayudante</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
-                              {currentShift?.helper && !employeesList.some(emp => emp.name === currentShift.helper) && (
-                                <option value={currentShift.helper} style={{ color: '#000', background: '#fff' }}>{currentShift.helper}</option>
+                              {driverHelper && !employeesList.some(emp => emp.name === driverHelper) && (
+                                <option value={driverHelper} style={{ color: '#000', background: '#fff' }}>{driverHelper}</option>
                               )}
                               {employeesList.filter(emp => emp.active !== false).map(emp => (
                                 <option key={emp.id} value={emp.name} style={{ color: '#000', background: '#fff' }}>{emp.name}</option>
@@ -8090,7 +8174,7 @@ function App() {
                             <span className="input-label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Ayudante 2 (Opcional)</span>
                             <select
                               className="form-input"
-                              value={currentShift?.helper2 || ''}
+                              value={driverHelper2}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 let newHelper2 = val;
@@ -8099,19 +8183,47 @@ function App() {
                                   if (typed === null) return;
                                   newHelper2 = typed.trim() || '';
                                 }
-                                handleUpdateDriverShiftField('helper2', newHelper2);
+                                setDriverHelper2(newHelper2);
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Sin segundo ayudante</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
-                              {currentShift?.helper2 && !employeesList.some(emp => emp.name === currentShift.helper2) && (
-                                <option value={currentShift.helper2} style={{ color: '#000', background: '#fff' }}>{currentShift.helper2}</option>
+                              {driverHelper2 && !employeesList.some(emp => emp.name === driverHelper2) && (
+                                <option value={driverHelper2} style={{ color: '#000', background: '#fff' }}>{driverHelper2}</option>
                               )}
                               {employeesList.filter(emp => emp.active !== false).map(emp => (
                                 <option key={emp.id} value={emp.name} style={{ color: '#000', background: '#fff' }}>{emp.name}</option>
                               ))}
                             </select>
+                          </div>
+
+                          {/* Botón Guardar Cambios del Turno */}
+                          <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+                            {hasUnsavedShiftChanges() && (
+                              <span style={{ fontSize: '0.78rem', color: 'var(--warning)', fontWeight: 'bold' }}>
+                                ⚠️ Cambios sin guardar
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={handleSaveDriverShiftSettings}
+                              className="btn btn-primary"
+                              style={{ 
+                                margin: 0, 
+                                padding: '8px 16px', 
+                                background: hasUnsavedShiftChanges() ? 'var(--primary)' : 'rgba(255,255,255,0.1)', 
+                                border: '1px solid var(--panel-border)',
+                                color: '#ffffff',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                fontWeight: '700',
+                                boxShadow: hasUnsavedShiftChanges() ? '0 0 10px rgba(99, 102, 241, 0.4)' : 'none'
+                              }}
+                            >
+                              💾 Guardar Configuración del Turno
+                            </button>
                           </div>
                         </div>
                       </div>
