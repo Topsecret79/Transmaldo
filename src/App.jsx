@@ -2190,8 +2190,6 @@ function App() {
     if (activeTab !== 'users') {
       setAppNameInput(getAppName(u?.id) || 'My Delivery Team');
     }
-    setRouteStartAddr(getRouteStartAddr(u?.id));
-    setRouteEndAddr(getRouteEndAddr(u?.id));
     setGoogleKeyInput(getGoogleMapsKey());
     setMapboxTokenInput(getMapboxToken());
     setAllowDriverSupportTransfer(getAllowDriverSupportTransfer());
