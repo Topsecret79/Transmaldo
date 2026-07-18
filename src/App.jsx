@@ -11261,80 +11261,96 @@ function App() {
 
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                                 <span>Ayudante:</span>
-                                <select
-                                  className="form-input"
-                                  value={s.helper || ''}
-                                  onChange={(e) => {
-                                    const updatedShifts = shifts.map(curr => {
-                                      if (curr.id === s.id) {
-                                        return { ...curr, helper: e.target.value };
+                                 <select
+                                   className="form-input"
+                                    value={s.helper || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      let newHelper = val;
+                                      if (val === 'custom_input') {
+                                        const typed = window.prompt('Escribe el nombre del ayudante:');
+                                        if (typed === null) return;
+                                        newHelper = typed.trim() || '';
                                       }
-                                      return curr;
-                                    });
-                                    setShifts(updatedShifts);
-                                    saveShifts(updatedShifts);
-                                    triggerAlert('Ayudante actualizado');
-                                  }}
-                                  disabled={s.status === 'closed'}
-                                  style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.75rem', 
-                                    height: '24px', 
-                                    width: 'auto', 
-                                    margin: 0,
-                                    color: '#ffffff',
-                                    background: 'rgba(255, 255, 255, 0.05)',
-                                    border: '1px solid var(--panel-border)',
-                                    borderRadius: '4px'
-                                  }}
-                                >
-                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
-                                  {s.helper && !employeesList.some(emp => emp.name === s.helper) && (
-                                    <option value={s.helper} style={{ color: '#000000', background: '#ffffff' }}>{s.helper}</option>
-                                  )}
-                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
-                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                <span>Ayudante 2:</span>
-                                <select
-                                  className="form-input"
-                                  value={s.helper2 || ''}
-                                  onChange={(e) => {
-                                    const updatedShifts = shifts.map(curr => {
-                                      if (curr.id === s.id) {
-                                        return { ...curr, helper2: e.target.value };
+                                      const updatedShifts = shifts.map(curr => {
+                                        if (curr.id === s.id) {
+                                          return { ...curr, helper: newHelper };
+                                        }
+                                        return curr;
+                                      });
+                                      setShifts(updatedShifts);
+                                      saveShifts(updatedShifts);
+                                      triggerAlert('Ayudante actualizado');
+                                    }}
+                                    disabled={s.status === 'closed'}
+                                    style={{ 
+                                      padding: '2px 6px', 
+                                      fontSize: '0.75rem', 
+                                      height: '24px', 
+                                      width: 'auto', 
+                                      margin: 0,
+                                      color: '#ffffff',
+                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      border: '1px solid var(--panel-border)',
+                                      borderRadius: '4px'
+                                    }}
+                                  >
+                                    <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
+                                    <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                    {s.helper && !employeesList.some(emp => emp.name === s.helper) && (
+                                      <option value={s.helper} style={{ color: '#000000', background: '#ffffff' }}>{s.helper}</option>
+                                    )}
+                                    {employeesList.filter(emp => emp.active !== false).map(emp => (
+                                      <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+  
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                  <span>Ayudante 2:</span>
+                                  <select
+                                    className="form-input"
+                                    value={s.helper2 || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      let newHelper2 = val;
+                                      if (val === 'custom_input') {
+                                        const typed = window.prompt('Escribe el nombre del segundo ayudante:');
+                                        if (typed === null) return;
+                                        newHelper2 = typed.trim() || '';
                                       }
-                                      return curr;
-                                    });
-                                    setShifts(updatedShifts);
-                                    saveShifts(updatedShifts);
-                                    triggerAlert('Segundo ayudante actualizado');
-                                  }}
-                                  disabled={s.status === 'closed'}
-                                  style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.75rem', 
-                                    height: '24px', 
-                                    width: 'auto', 
-                                    margin: 0,
-                                    color: '#ffffff',
-                                    background: 'rgba(255, 255, 255, 0.05)',
-                                    border: '1px solid var(--panel-border)',
-                                    borderRadius: '4px'
-                                  }}
-                                >
-                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante 2</option>
-                                  {s.helper2 && !employeesList.some(emp => emp.name === s.helper2) && (
-                                    <option value={s.helper2} style={{ color: '#000000', background: '#ffffff' }}>{s.helper2}</option>
-                                  )}
-                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
-                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
-                                  ))}
-                                </select>
+                                      const updatedShifts = shifts.map(curr => {
+                                        if (curr.id === s.id) {
+                                          return { ...curr, helper2: newHelper2 };
+                                        }
+                                        return curr;
+                                      });
+                                      setShifts(updatedShifts);
+                                      saveShifts(updatedShifts);
+                                      triggerAlert('Segundo ayudante actualizado');
+                                    }}
+                                    disabled={s.status === 'closed'}
+                                    style={{ 
+                                      padding: '2px 6px', 
+                                      fontSize: '0.75rem', 
+                                      height: '24px', 
+                                      width: 'auto', 
+                                      margin: 0,
+                                      color: '#ffffff',
+                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      border: '1px solid var(--panel-border)',
+                                      borderRadius: '4px'
+                                    }}
+                                  >
+                                    <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante 2</option>
+                                    <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                    {s.helper2 && !employeesList.some(emp => emp.name === s.helper2) && (
+                                      <option value={s.helper2} style={{ color: '#000000', background: '#ffffff' }}>{s.helper2}</option>
+                                    )}
+                                    {employeesList.filter(emp => emp.active !== false).map(emp => (
+                                      <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                                    ))}
+                                  </select>
                               </div>
 
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -11477,7 +11493,7 @@ function App() {
                       style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
-                      {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
+                      {employeesList.filter(e => e.active !== false).map(emp => (
                         <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                       ))}
                     </select>
@@ -11492,7 +11508,7 @@ function App() {
                       style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin segundo ayudante</option>
-                      {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
+                      {employeesList.filter(e => e.active !== false).map(emp => (
                         <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                       ))}
                     </select>
@@ -11929,9 +11945,16 @@ function App() {
                                   className="form-input"
                                   value={s.helper || ''}
                                   onChange={(e) => {
+                                    const val = e.target.value;
+                                    let newHelper = val;
+                                    if (val === 'custom_input') {
+                                      const typed = window.prompt('Escribe el nombre del ayudante:');
+                                      if (typed === null) return;
+                                      newHelper = typed.trim() || '';
+                                    }
                                     const updatedShifts = shifts.map(curr => {
                                       if (curr.id === s.id) {
-                                        return { ...curr, helper: e.target.value };
+                                        return { ...curr, helper: newHelper };
                                       }
                                       return curr;
                                     });
@@ -11953,10 +11976,11 @@ function App() {
                                   }}
                                 >
                                   <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
+                                  <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
                                   {s.helper && !employeesList.some(emp => emp.name === s.helper) && (
                                     <option value={s.helper} style={{ color: '#000000', background: '#ffffff' }}>{s.helper}</option>
                                   )}
-                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
+                                  {employeesList.filter(emp => emp.active !== false).map(emp => (
                                     <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
@@ -11966,9 +11990,16 @@ function App() {
                                   className="form-input"
                                   value={s.helper2 || ''}
                                   onChange={(e) => {
+                                    const val = e.target.value;
+                                    let newHelper2 = val;
+                                    if (val === 'custom_input') {
+                                      const typed = window.prompt('Escribe el nombre del segundo ayudante:');
+                                      if (typed === null) return;
+                                      newHelper2 = typed.trim() || '';
+                                    }
                                     const updatedShifts = shifts.map(curr => {
                                       if (curr.id === s.id) {
-                                        return { ...curr, helper2: e.target.value };
+                                        return { ...curr, helper2: newHelper2 };
                                       }
                                       return curr;
                                     });
@@ -11990,10 +12021,11 @@ function App() {
                                   }}
                                 >
                                   <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante 2</option>
+                                  <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
                                   {s.helper2 && !employeesList.some(emp => emp.name === s.helper2) && (
                                     <option value={s.helper2} style={{ color: '#000000', background: '#ffffff' }}>{s.helper2}</option>
                                   )}
-                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
+                                  {employeesList.filter(emp => emp.active !== false).map(emp => (
                                     <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
@@ -12130,7 +12162,7 @@ function App() {
                         style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
-                        {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
+                        {employeesList.filter(e => e.active !== false).map(emp => (
                           <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                         ))}
                       </select>
@@ -12145,7 +12177,7 @@ function App() {
                         style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin segundo ayudante</option>
-                        {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
+                        {employeesList.filter(e => e.active !== false).map(emp => (
                           <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                         ))}
                       </select>
