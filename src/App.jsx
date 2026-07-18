@@ -2728,6 +2728,7 @@ function App() {
         email: email,
         password: password,
         options: {
+          emailRedirectTo: window.location.origin + window.location.pathname,
           data: {
             role: emailLinkageUser.role,
             label: emailLinkageUser.label
@@ -14699,6 +14700,7 @@ function App() {
                           email: emailVal,
                           password: newPassword.trim(),
                           options: {
+                            emailRedirectTo: window.location.origin + window.location.pathname,
                             data: {
                               role: roleToUse,
                               label: newLabel.trim()
