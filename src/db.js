@@ -371,6 +371,7 @@ export async function syncFromCloud() {
         const metaSetting = settings.find(set => set.key === `shift_meta_${s.id}`);
         let meta = {
           helper: '',
+          helper2: '',
           matricula: '',
           customDriver: '',
           observations: '',
@@ -398,6 +399,7 @@ export async function syncFromCloud() {
           summary: meta.summary || null,
           createdBy: s.created_by || 'admin',
           helper: meta.helper || '',
+          helper2: meta.helper2 || '',
           matricula: meta.matricula || '',
           customDriver: meta.customDriver || '',
           observations: meta.observations || '',
@@ -1598,6 +1600,7 @@ export function saveShifts(shifts) {
         for (const s of shifts) {
           const meta = {
             helper: s.helper || '',
+            helper2: s.helper2 || '',
             matricula: s.matricula || '',
             customDriver: s.customDriver || '',
             observations: s.observations || '',
@@ -1695,12 +1698,13 @@ export function closeShift(furgoId, date, summary) {
 }
 
 // Guardar turno planificado (fecha, chofer, ayudante, matricula y chofer personalizado)
-export function savePlannedShift(furgoId, date, helper, matricula, customDriver, createdBy = 'admin') {
+export function savePlannedShift(furgoId, date, helper, matricula, customDriver, createdBy = 'admin', helper2 = '') {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const index = shifts.findIndex(s => s.id === shiftId);
   if (index !== -1) {
     shifts[index].helper = helper;
+    shifts[index].helper2 = helper2;
     shifts[index].matricula = matricula;
     shifts[index].customDriver = customDriver;
     if (createdBy && createdBy !== 'admin') {
@@ -1715,6 +1719,7 @@ export function savePlannedShift(furgoId, date, helper, matricula, customDriver,
       openedAt: null,
       closedAt: null,
       helper,
+      helper2,
       matricula,
       customDriver,
       observations: '',
@@ -2472,6 +2477,7 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
       });
       const meta = {
         helper: shiftToUpsert.helper || '',
+        helper2: shiftToUpsert.helper2 || '',
         matricula: shiftToUpsert.matricula || '',
         customDriver: shiftToUpsert.customDriver || '',
         observations: shiftToUpsert.observations || '',

@@ -706,6 +706,7 @@ function App() {
   const [plannedShiftModalOpen, setPlannedShiftModalOpen] = useState(false);
   const [plannedFurgoId, setPlannedFurgoId] = useState('');
   const [plannedHelper, setPlannedHelper] = useState('');
+  const [plannedHelper2, setPlannedHelper2] = useState('');
   const [plannedMatricula, setPlannedMatricula] = useState('');
   const [customDriverNameInput, setCustomDriverNameInput] = useState('');
   const [plannedDriverName, setPlannedDriverName] = useState('');
@@ -7859,6 +7860,11 @@ function App() {
                             🤝 Ayudante: {currentShift.helper}
                           </span>
                         )}
+                        {currentShift?.helper2 && (
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
+                            🤝 Ayudante 2: {currentShift.helper2}
+                          </span>
+                        )}
                         {currentShift?.matricula && (
                           <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(244, 63, 94, 0.08)', color: '#fda4af', border: '1px solid rgba(244, 63, 94, 0.25)', fontWeight: '700' }}>
                             🚐 Vehículo: {currentShift.matricula}
@@ -7897,6 +7903,11 @@ function App() {
                         {currentShift?.helper && (
                           <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
                             🤝 Ayudante: {currentShift.helper}
+                          </span>
+                        )}
+                        {currentShift?.helper2 && (
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
+                            🤝 Ayudante 2: {currentShift.helper2}
                           </span>
                         )}
                         {currentShift?.matricula && (
@@ -10975,10 +10986,11 @@ function App() {
                                 }}></span>
                                 🚚 {driverName}
                               </div>
-                              {(s.matricula || s.helper) && (
+                              {(s.matricula || s.helper || s.helper2) && (
                                 <div style={{ color: 'var(--shift-planned-detail)', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                                   {s.matricula && <span>🚐 {s.matricula}</span>}
                                   {s.helper && <span>🤝 {s.helper}</span>}
+                                  {s.helper2 && <span>🤝 {s.helper2}</span>}
                                 </div>
                               )}
                             </div>
@@ -11090,6 +11102,7 @@ function App() {
                             </strong>
                             {s.matricula && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🚐 {s.matricula}</span>}
                             {s.helper && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🤝 {s.helper}</span>}
+                            {s.helper2 && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🤝 {s.helper2}</span>}
                           </div>
                         );
                       })
@@ -11108,7 +11121,7 @@ function App() {
         {/* -------------------- 3. DAY VIEW -------------------- */}
         {calendarViewMode === 'day' && (() => {
           const dayStr = getFormattedDateStr(calendarDate);
-          const dayShifts = shifts.filter(s => s.date === dayStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim())));
+          const dayShifts = shifts.filter(s => s.date === dayStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim()) || (s.helper2 && s.helper2.trim())));
           const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
           const availableDrivers = activeRepartidores.filter(d => !dayShifts.some(s => s.furgoId === d.id));
 
@@ -11248,6 +11261,45 @@ function App() {
                                   <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
                                   {s.helper && !employeesList.some(emp => emp.name === s.helper) && (
                                     <option value={s.helper} style={{ color: '#000000', background: '#ffffff' }}>{s.helper}</option>
+                                  )}
+                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
+                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                <span>Ayudante 2:</span>
+                                <select
+                                  className="form-input"
+                                  value={s.helper2 || ''}
+                                  onChange={(e) => {
+                                    const updatedShifts = shifts.map(curr => {
+                                      if (curr.id === s.id) {
+                                        return { ...curr, helper2: e.target.value };
+                                      }
+                                      return curr;
+                                    });
+                                    setShifts(updatedShifts);
+                                    saveShifts(updatedShifts);
+                                    triggerAlert('Segundo ayudante actualizado');
+                                  }}
+                                  disabled={s.status === 'closed'}
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.75rem', 
+                                    height: '24px', 
+                                    width: 'auto', 
+                                    margin: 0,
+                                    color: '#ffffff',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px'
+                                  }}
+                                >
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante 2</option>
+                                  {s.helper2 && !employeesList.some(emp => emp.name === s.helper2) && (
+                                    <option value={s.helper2} style={{ color: '#000000', background: '#ffffff' }}>{s.helper2}</option>
                                   )}
                                   {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
                                     <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
@@ -11402,6 +11454,21 @@ function App() {
                   </div>
 
                   <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Ayudante 2 (Persona)</span>
+                    <select
+                      className="form-input"
+                      value={plannedHelper2}
+                      onChange={(e) => setPlannedHelper2(e.target.value)}
+                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                    >
+                      <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin segundo ayudante</option>
+                      {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
+                        <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="input-group" style={{ marginBottom: 0 }}>
                     <span className="input-label">Matrícula (Vehículo)</span>
                     <select
                       className="form-input"
@@ -11429,11 +11496,12 @@ function App() {
                       } else {
                         targetCustom = plannedDriverName;
                       }
-                      savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom, currentUser?.id);
+                      savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom, currentUser?.id, plannedHelper2);
                       setTimeout(() => {
                         loadData();
                         setPlannedFurgoId('');
                         setPlannedHelper('');
+                        setPlannedHelper2('');
                         setPlannedMatricula('');
                         setPlannedDriverName('');
                         setCustomDriverNameInput('');
@@ -11473,7 +11541,7 @@ function App() {
 
             // Count dates worked as helper
             const helperDates = monthShifts
-              .filter(s => s.helper && s.helper.toLowerCase() === emp.name.toLowerCase())
+              .filter(s => (s.helper && s.helper.toLowerCase() === emp.name.toLowerCase()) || (s.helper2 && s.helper2.toLowerCase() === emp.name.toLowerCase()))
               .map(s => ({ date: s.date, role: 'Ayudante' }));
 
             // Merge and sort
@@ -11833,6 +11901,43 @@ function App() {
                                   ))}
                                 </select>
 
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>Ayudante 2:</span>
+                                <select
+                                  className="form-input"
+                                  value={s.helper2 || ''}
+                                  onChange={(e) => {
+                                    const updatedShifts = shifts.map(curr => {
+                                      if (curr.id === s.id) {
+                                        return { ...curr, helper2: e.target.value };
+                                      }
+                                      return curr;
+                                    });
+                                    setShifts(updatedShifts);
+                                    saveShifts(updatedShifts);
+                                    triggerAlert('Segundo ayudante actualizado');
+                                  }}
+                                  disabled={s.status === 'closed'}
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.75rem', 
+                                    height: '24px', 
+                                    width: 'auto', 
+                                    margin: 0,
+                                    color: '#ffffff',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px'
+                                  }}
+                                >
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante 2</option>
+                                  {s.helper2 && !employeesList.some(emp => emp.name === s.helper2) && (
+                                    <option value={s.helper2} style={{ color: '#000000', background: '#ffffff' }}>{s.helper2}</option>
+                                  )}
+                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
+                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                                  ))}
+                                </select>
+
                                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>Matrícula:</span>
                                 <select
                                   className="form-input"
@@ -11972,6 +12077,21 @@ function App() {
                     </div>
 
                     <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Ayudante 2 (Persona)</span>
+                      <select
+                        className="form-input"
+                        value={plannedHelper2}
+                        onChange={(e) => setPlannedHelper2(e.target.value)}
+                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                      >
+                        <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin segundo ayudante</option>
+                        {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
+                          <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="input-group" style={{ marginBottom: 0 }}>
                       <span className="input-label">Matrícula (Vehículo)</span>
                       <select
                         className="form-input"
@@ -11999,11 +12119,12 @@ function App() {
                         } else {
                           targetCustom = plannedDriverName;
                         }
-                        savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom, currentUser?.id);
+                        savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom, currentUser?.id, plannedHelper2);
                         setTimeout(() => {
                           loadData();
                           setPlannedFurgoId('');
                           setPlannedHelper('');
+                          setPlannedHelper2('');
                           setPlannedMatricula('');
                           setPlannedDriverName('');
                           setCustomDriverNameInput('');
@@ -15689,6 +15810,7 @@ function App() {
                     {routeNameText && <div><strong>Ruta:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📍 {routeNameText}</span></div>}
                     {existingShift?.matricula && <div><strong>Vehículo (Matrícula):</strong> <span style={{ color: '#fda4af', fontWeight: '600' }}>🚐 {existingShift.matricula}</span></div>}
                     {existingShift?.helper && <div><strong>Ayudante:</strong> <span style={{ color: '#a5b4fc', fontWeight: '600' }}>🤝 {existingShift.helper}</span></div>}
+                    {existingShift?.helper2 && <div><strong>Ayudante 2:</strong> <span style={{ color: '#a5b4fc', fontWeight: '600' }}>🤝 {existingShift.helper2}</span></div>}
                     <div style={{ borderBottom: '1px dashed var(--panel-border)', margin: '5px 0' }}></div>
                     
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
