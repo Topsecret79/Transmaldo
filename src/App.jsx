@@ -5660,7 +5660,7 @@ function App() {
                   setCurrentRouteId(null);
                   setShowCreateRouteFormFields(true);
                 }}
-                style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(99, 102, 241, 0.12)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.3)' }}
+                style={{ width: 'auto', margin: 0, padding: '6px 12px', background: '#ffffff', color: '#000000', fontWeight: 'bold', border: '1px solid #ffffff' }}
               >
                 ➕ Nueva Ruta / Fecha
               </button>
