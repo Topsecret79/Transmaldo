@@ -8013,7 +8013,7 @@ function App() {
                                 }
                                 handleUpdateDriverShiftField('customDriver', newDriver);
                               }}
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid var(--panel-border)' }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Por asignar</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
@@ -8042,7 +8042,7 @@ function App() {
                                 }
                                 handleUpdateDriverShiftField('matricula', newPlate);
                               }}
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid var(--panel-border)' }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar matrícula...</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
@@ -8071,7 +8071,7 @@ function App() {
                                 }
                                 handleUpdateDriverShiftField('helper', newHelper);
                               }}
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid var(--panel-border)' }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Sin ayudante</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
@@ -8100,7 +8100,7 @@ function App() {
                                 }
                                 handleUpdateDriverShiftField('helper2', newHelper2);
                               }}
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid var(--panel-border)' }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Sin segundo ayudante</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
