@@ -1066,16 +1066,24 @@ function App() {
   const [driverMatricula, setDriverMatricula] = useState('');
   const [driverHelper, setDriverHelper] = useState('');
   const [driverHelper2, setDriverHelper2] = useState('');
+  const lastLoadedShiftRef = useRef(null);
 
   useEffect(() => {
     if (currentUser && currentUser.role === 'repartidor') {
       const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
       const shiftId = `${currentUser.id}_${activeDate}`;
-      const s = shifts.find(item => item.id === shiftId);
-      setDriverCustomDriver(s?.customDriver || currentUser.label || '');
-      setDriverMatricula(s?.matricula || '');
-      setDriverHelper(s?.helper || '');
-      setDriverHelper2(s?.helper2 || '');
+      const s = Array.isArray(shifts) ? shifts.find(item => item.id === shiftId) : undefined;
+      
+      // Compare database values using a key string to detect genuine DB/date changes
+      const key = `${shiftId}_${s?.customDriver || ''}_${s?.matricula || ''}_${s?.helper || ''}_${s?.helper2 || ''}`;
+      
+      if (lastLoadedShiftRef.current !== key) {
+        lastLoadedShiftRef.current = key;
+        setDriverCustomDriver(s?.customDriver || currentUser.label || '');
+        setDriverMatricula(s?.matricula || '');
+        setDriverHelper(s?.helper || '');
+        setDriverHelper2(s?.helper2 || '');
+      }
     }
   }, [shifts, shiftSummaryDate, currentUser]);
 
