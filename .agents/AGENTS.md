@@ -30,4 +30,9 @@ Estas reglas definen el comportamiento esperado y las restricciones de diseño p
 * **Tolerancia a Cambios de Esquema**: Si la base de datos remota carece de las columnas de seguridad (`email`, `auth_uid`, `permissions`), la aplicación debe capturar el error `42703`/`PGRST204` de forma silenciosa, realizar el upsert omitiendo dichas columnas, persistirlas localmente y mostrar una recomendación de migración SQL en el panel del Superadmin.
 * **Detección Dinámica de Columnas**: Al guardar o hacer upsert de usuarios, la aplicación debe consultar primero la estructura de la tabla (usando una consulta de límite 1) para construir dinámicamente el objeto de fila. Esto evita fallos causados por columnas incompatibles o inexistentes en la base de datos remota de Supabase sin descartar información crítica como el `email` y `auth_uid`.
 
+## 📅 Gestión de Turnos y Nóminas
+* **Soporte para Múltiples Ayudantes**: El sistema de turnos soporta la asignación de hasta dos ayudantes (`helper` y `helper2`) por cada ruta/furgoneta. Toda interfaz que muestre, planifique o edite los detalles de los turnos en el calendario (vista mensual, semanal, diaria y modal) debe incluir soporte para ambos ayudantes de manera explícita.
+* **Cálculo de Nóminas Consolidado**: Al calcular los días y tarifas devengados por los empleados en las nóminas del período, el sistema debe auditar y contar tanto los turnos realizados como chofer, como aquellos realizados en el rol de primer ayudante (`helper`) o de segundo ayudante (`helper2`).
+
+
 
