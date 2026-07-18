@@ -1192,7 +1192,7 @@ function App() {
             const formatted = data.map(item => ({
               lat: item.lat.toString(),
               lon: item.lng.toString(),
-              display_name: `${item.address}, ${item.province}, España`
+              display_name: item.muni ? `${item.address}, ${item.muni}, ${item.province}, España` : `${item.address}, ${item.province}, España`
             }));
             setTarget(formatted);
             return;
@@ -2686,7 +2686,7 @@ function App() {
               const formatted = cartoData.map(item => ({
                 lat: item.lat.toString(),
                 lon: item.lng.toString(),
-                display_name: `${item.address}, ${item.province}, España`,
+                display_name: item.muni ? `${item.address}, ${item.muni}, ${item.province}, España` : `${item.address}, ${item.province}, España`,
                 address: {
                   road: item.address,
                   postcode: item.postalCode || '',

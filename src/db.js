@@ -2048,7 +2048,7 @@ export async function geocodeAddress(addressText) {
             return {
               lat: first.lat,
               lng: first.lng,
-              displayName: `${first.address}, ${first.province}, España`,
+              displayName: first.muni ? `${first.address}, ${first.muni}, ${first.province}, España` : `${first.address}, ${first.province}, España`,
               postcode: first.postalCode || ''
             };
           }
