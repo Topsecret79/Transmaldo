@@ -1,153 +1,25 @@
-# Reglas del Proyecto - Control de Repartos y Ganancias
+# Transmaldo Delivery App - Reglas de Desarrollo y Buenas Prácticas
 
-Este archivo contiene reglas, restricciones de diseño y pautas de comportamiento específicas del proyecto que todos los agentes de IA deben respetar al modificar el código.
+Estas reglas definen el comportamiento esperado y las restricciones de diseño para este proyecto:
 
-## 1. Restricción de Visualización de Ganancias (Permisos)
-* **Choferes/Repartidores**: No pueden visualizar el "Total Ganado (Día)" ni el desglose financiero detallado en el resumen de cierre de jornada. Esta información es estrictamente confidencial y exclusiva para Administradores y Super Administradores.
-* **Administradores / Super Admins**: Tienen visibilidad completa de todas las ganancias acumuladas, cálculos de kilometraje y totales diarios en el resumen.
+## 🗺️ Cartografía y Mapas
+* **Motor de Mapas**: Se utiliza Leaflet (`react` y `leaflet`) como motor de mapas ligero y gratuito.
+* **Capas base**: Las capas oficiales por defecto son las teselas raster de Google Maps:
+  * Google Calles (`https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=es`)
+  * Google Satélite Híbrido (`https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=es`)
+  * Google Tráfico en Vivo (`https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&hl=es`)
+* **Rotación de Mapa**: Habilitada la rotación interactiva mediante `leaflet-rotate`.
+* **Legibilidad de Marcadores**: Al girar el mapa, los marcadores, números de parada e información flotante deben contra-rotarse automáticamente (`transform: rotate(${-mapRotationState}deg)`) para permanecer legibles verticalmente de izquierda a derecha.
+* **Trazado de Rutas**: Utilizar siempre `preferCanvas: true` en la inicialización del mapa para que las líneas de la trayectoria se dibujen directamente en el lienzo Canvas, previniendo lag o desfase visual al rotar/arrastrar.
 
-## 2. Filtros de Servicios en Reportes
-* **Exclusiones por Defecto**: Los servicios marcados como "Fallidos" (failed) y los cobros manuales o en mano deben excluirse de los cálculos de reportes financieros estándar, a menos que se activen de forma explícita opciones de visualización alternativas.
+## 🛰️ Geocodificación y Direcciones (España)
+* **Buscador Principal**: Priorizar siempre la API premium gratuita de `CartoCiudad` para búsquedas y autocompletados en territorio español. Usar Nominatim (OpenStreetMap) únicamente como fallback en caso de error o dirección internacional.
+* **Formateo de Direcciones**: Incorporar siempre el municipio/pueblo (`item.muni`) en las sugerencias estructuradas devueltas por CartoCiudad.
+* **Resolución de Código Postal**: Para paradas antiguas, manuales o importadas que carezcan del texto de la población, utilizar el helper `getTownAndProvinceFromPostcode` en el frontend para mostrar dinámicamente el pueblo asociado al código postal al lado de la dirección.
 
-## 3. Gestión de Rutas de Apoyo (Auxilio) y Reasignación Automática
-* **Formato de Notas**: Los tickets de auxilio/apoyo deben comenzar siempre con la etiqueta `[Ruta Original: <Nombre de Ruta>]` al principio de las notas (ej. `[Ruta Original: Ruta 151] [Horario: Mañana] ...`).
-* **Preservación Obligatoria**: Cualquier función que procese, parsee o actualice las notas de los tickets (como `parseTicketNotes`, `encodeTicketNotes` o `executeTicketStatusUpdate`) debe mantener y conservar esta etiqueta `[Ruta Original: ...]` en el primer lugar de la cadena.
-* **Disparador de Reasignación**: La base de datos local y remota depende del prefijo exacto `[Ruta Original: ` para reasignar automáticamente el ticket al vehículo propietario original cuando el repartidor de apoyo finaliza la entrega (estado `success` o `failed`). Si el prefijo se pierde o se mueve de sitio, la reasignación fallará y las ganancias se calcularán incorrectamente.
+## 🔄 Sincronización en Segundo Plano y Estados
+* **No Interrupción**: Las consultas recurrentes de sincronización (como `loadData()` cada 15 segundos) nunca deben limpiar, restaurar o sobrescribir los valores activos que el usuario esté escribiendo en formularios, campos de origen de ruta (`routeStartAddr`) o destino (`routeEndAddr`).
+* **Control de Concurrencia**: Utilizar variables de cerrojo como `isSaving` para evitar interrupciones o sobredepósitos de datos locales mientras se están guardando cambios en la base de datos remota de Supabase.
 
-## 4. Visualización de Jornadas y Cierres
-* **Turno de Hoy**: Si un chofer cierra su turno, este debe aparecer de inmediato en la lista de turnos cerrados históricos del día (en lugar de filtrarse o quedar invisible hasta el día siguiente).
-
-## 5. Tarifas Personalizadas de Catálogo
-* **Cálculo de Precios**: Las tarifas que pertenecen al catálogo personalizado definido por el administrador deben evaluarse mediante la función `calculateTaskPrice` consultando el catálogo global de tarifas (`tariffs`), en lugar de ser tratadas como extras manuales y costar `0.00 €`.
-* **Priorización de 'isCustom'**: Al agregar o actualizar un ticket, la verificación para determinar si una tarifa es verdaderamente personalizada (`isCustom`) debe consultar el catálogo global para no confundir tarifas catalogadas con extras introducidos manualmente al vuelo.
-
-## 6. Preferencia de Navegador GPS
-* **Flujo del Modal**: Al iniciar la navegación, se debe mostrar un modal interactivo premium para elegir entre Google Maps y Waze, ofreciendo la opción de recordar la decisión.
-* **Persistencia**: La elección del navegador preferido se almacena localmente y se puede cambiar o restablecer desde la pestaña de Ajustes del usuario.
-
-## 7. Restricción de Visualización de Actualizaciones (Changelog)
-* **Acceso Restringido**: El portal o pestaña "Actualizaciones" (Changelog) es información de uso técnico y administrativo interno.
-* **Choferes/Repartidores**: Tienen prohibido visualizar la pestaña "Actualizaciones" en su portal. Debe removerse de sus menús de navegación.
-* **Administradores / Super Admins**: Son los únicos que pueden acceder a la pestaña "Actualizaciones" para revisar el historial de cambios del sistema.
-
-## 8. Preservación de Ordenamiento Manual y Optimización con Fin de Ruta
-* **Preservación del Orden Manual**: Cuando un conductor o administrador realiza un reordenamiento manual de paradas (cambio de secuencia de ruta), se debe marcar la ruta como "manual" para esa furgoneta y día. En este estado, el sistema tiene prohibido auto-optimizar o reordenar los tickets pendientes al completar paradas.
-* **Restablecimiento por Optimización**: Si se presiona el botón "Optimizar Ruta", la ruta pierde el estado "manual" y se re-calcula de forma óptima.
-* **Optimización con Punto de Llegada (Fin)**: El algoritmo de optimización automática del sistema debe contemplar el punto de partida (inicio) y el punto de llegada (fin/retorno). Debe buscar la ruta más corta desde el inicio, pasando por los diferentes bloques horarios, y finalizando lo más cerca posible del punto de llegada establecido en los ajustes.
-* **Preservación de Paradas Completadas (Historial)**: Al ejecutar la optimización manual (`handleOptimizeRoute`), el sistema **debe separar** los tickets ya completados (`success` o `failed`) de los pendientes, conservando su orden de visita intacto.
-* **Punto de Inicio de Paradas Restantes**: La optimización de las paradas pendientes restantes debe iniciarse desde las coordenadas del último punto de entrega completado, en lugar de recalcular desde el origen.
-* **Guardado y Sincronización por Furgoneta**: Las direcciones de salida/retorno de la ruta deben guardarse asociadas al ID de la furgoneta seleccionada, y el formulario del mapa debe cargarlas dinámicamente al cambiar de furgoneta en los selectores.
-
-## 9. Cálculo de Hora de Llegada Estimada (ETA) y Retorno a Origen
-* **Cálculo de Llegada**: La hora estimada de llegada de cada parada se calcula secuencialmente sumando el tiempo de tránsito desde la parada anterior (estimado a 35 km/h) y el tiempo de servicio/duración configurado para cada cliente.
-* **Inclusión del Retorno**: La ruta de reparto no finaliza al atender al último cliente; se debe sumar el tramo final desde la última parada hasta el **Punto de Llegada (Retorno/Fin)**.
-* **Métricas Totales**: La hora de fin de jornada y la distancia total del día mostradas al conductor y administrador deben incluir obligatoriamente este trayecto de retorno para reflejar fielmente la jornada real y el combustible/distancia consumidos.
-
-## 10. Fecha de Trabajo por Defecto al Cargar o Actualizar
-* **Comportamiento General**: Al abrir, actualizar o recargar la aplicación, todos los filtros y vistas de fechas (incluyendo el portal del repartidor y el del administrador) se deben inicializar por defecto con la fecha del día en curso (hoy).
-* **Búsqueda Manual**: Se prohíbe dejar las vistas de fecha vacías o cargar por defecto todo el histórico acumulado. Si el usuario o administrador desea consultar otra jornada de trabajo anterior o futura, deberá hacerlo seleccionando manualmente la fecha mediante los filtros de búsqueda correspondientes.
-
-## 11. Cambio de Contraseña Obligatorio para Nuevos Usuarios
-* **Creación de Usuario**: Cuando el Super Administrador crea un nuevo usuario (sea administrador o repartidor), se establece la propiedad `mustChangePassword` como `true` por defecto.
-* **Flujo del Primer Inicio de Sesión**: Al iniciar sesión por primera vez con sus credenciales temporales, el sistema debe interceptar el acceso y redirigir obligatoriamente al usuario a una pantalla de "Cambio de Contraseña".
-* **Establecimiento de Contraseña Privada**: El usuario debe introducir y confirmar su nueva contraseña privada. Una vez guardada con éxito, se actualiza en la base de datos, se desactiva el flag (`mustChangePassword: false`) y se inicia su sesión automáticamente. Esto asegura que solo el propio usuario conozca su contraseña de acceso.
-
-## 12. Filtro de Furgoneta/Repartidor en Corte de Facturación (Periodo)
-* **Filtrado General**: El dashboard del administrador y la herramienta de corte de facturación por rango de fechas (Corte de Periodo) deben permitir filtrar la información por una furgoneta/repartidor específica además de por fechas.
-* **Cálculo de Totales**: Al seleccionar una furgoneta del filtro de facturación, todos los resúmenes acumulados (Total del Periodo, Entregas con éxito, Puestas en Marcha, kilometraje y distancia acumulada) y los desgloses en las tablas de facturación y gráficos deben corresponder exclusivamente a la furgoneta seleccionada.
-* **Exportación de Datos**: La descarga del informe detallado a Excel (.xlsx) debe respetar obligatoriamente este filtro, exportando únicamente los repartos y el kilometraje acumulado de la furgoneta seleccionada cuando no esté en opción "Todas las furgonetas".
-
-## 13. Cuadro de Detalle Flotante Arrastrable (Draggable) en el Mapa
-* **Interactividad y Arrastre**: El cuadro de detalles de parada rápida (`.map-floating-details`) situado sobre el mapa debe ser arrastrable (soporte para mouse/touch dragging). El usuario puede arrastrarlo libremente a cualquier zona del mapa para evitar que obstruya su visualización.
-* **Preservación del Diseño**: El arrastre debe implementarse mediante propiedades CSS `transform` dinámicas, asegurando que se conserve el centrado de pantalla responsivo en móviles al cargar por primera vez y sin alterar la lógica interna de sus botones, enlaces, selectores y cambios de estado.
-
-## 14. Detalle Diario por Furgoneta (Drill-Down)
-* **Interactividad del Dashboard**: Al hacer clic en las columnas del gráfico de barras o en las filas de la tabla de facturación del Dashboard, se debe abrir un modal de desglose diario (`renderDrilldownModal`).
-* **Visualización de Datos**: El modal debe compilar y ordenar cronológicamente todos los días de actividad del repartidor en el periodo, mostrando el neto diario, kilometraje, éxitos y detalles de entregas.
-* **Exportación Individual**: Debe incluir un botón para exportar a Excel (`exportSingleFurgoDailyReport`) con el desglose diario exclusivo del conductor seleccionado.
-* **Ámbito del Renderizado**: Las funciones de compilación y renderizado del modal y su Excel deben declararse dentro del ámbito de la función `renderAdminPortal` para tener acceso por clausura a las variables de filtrado (`filteredAdminTickets`, `shifts`, etc.) y evitar errores de referencia en Android/iOS.
-* **Scroll Nativo en Móviles**: Para garantizar la compatibilidad con Android Chrome, el modal emergente debe tener su scroll vertical en el elemento contenedor de fondo (`.drilldown-overlay` con `overflow-y: auto`), permitiendo que el contenido interior crezca de forma natural y evitando así bloqueos por desbordamientos verticales anidados.
-
-## 15. Traslado de Ruta Completa de Fecha (Bulk Date Transfer)
-* **Botón de Acción**: En la pestaña de Repartos del Periodo (`tickets`), al filtrar por una furgoneta y fecha específicas, debe habilitarse el botón "📅 Cambiar Fecha de esta Ruta".
-* **Traslado de Datos en Lote**: Esta acción abre un modal (`renderMoveRouteModal`) que traslada en un solo paso la fecha de todos los tickets y del turno de kilometraje (`shift`) asociado a esa fecha y conductor a una nueva fecha seleccionada.
-* **Consistencia e Historial**: Los cambios deben aplicarse localmente y sincronizarse en Supabase de forma atómica para no dejar datos huérfanos o incongruencias en facturaciones.
-* **Redirección de la Vista**: Al finalizar con éxito, el sistema debe cambiar el filtro de fecha activo a la nueva fecha de destino para que el usuario sea redirigido y verifique el traslado de inmediato.
-
-## 16. Separación de Tarifas y Precios para Superadministrador (Filtro por Propietario)
-* **Evitar Duplicados**: El catálogo de tarifas para el Super Administrador debe presentarse de forma organizada y separada para evitar duplicar artículos base con copias de administradores.
-* **Filtro Desplegable (`selectedTariffOwner`)**: Se debe mostrar un selector desplegable en la parte superior para elegir entre "Tarifas Base (Originales)" y las tarifas personalizadas de cada administrador (`users.filter(u => u.role === 'admin')`).
-* **Visualización de Tarifas Base**: Al seleccionar "Tarifas Base", se deben ocultar todas las tarifas que tengan sufijos de administrador o estén creadas por otros administradores, mostrando una lista limpia con las tarifas estándar iniciales.
-* **Visualización de Tarifas Customizadas**: Al seleccionar un administrador específico, la vista debe actualizarse para mostrar únicamente las tarifas y precios de ese administrador (las cuales se inicializan en `0 €`), permitiendo editarlas de forma aislada.
-
-## 17. Edición y Eliminación Detallada de Tarifas en Catálogo
-* **Edición Detallada en Línea**: En lugar de solo editar el valor numérico, el sistema debe permitir editar el Nombre, Bloque/Categoría, Tipo (Fijo o Módulos) y Valor de cualquier tarifa mediante un modo de edición en línea (`editingTariffId` y `handleUpdateTariffDetails`).
-* **Permiso de Eliminación**: Se debe permitir eliminar tarifas usando la función `handleDeleteTariff`.
-  - **Administradores comunes**: Solo pueden eliminar tarifas personalizadas creadas manualmente (`t.id.startsWith('CUSTOM_')`).
-  - **Super Administrador**: Tiene control total y puede eliminar cualquier tarifa (incluyendo predefined y copias) de la categoría activa seleccionada.
-
-## 18. Bloques de Tarifas Colapsables (Accordion)
-* **Organización Visual**: Para mejorar la navegación y evitar el desorden visual, cada bloque de tarifas (Paquetería, Televisores, Instalaciones, Gama Blanca, Muebles, Otros) debe presentarse como una sección colapsable (tipo acordeón).
-* **Interacción del Acordeón**:
-  - Al pulsar sobre la cabecera del bloque (`collapsible-block-header`), se expande o colapsa el contenido.
-  - La cabecera debe mostrar el nombre del bloque, un icono alusivo (ej: 📦, 📺, 🔧), la cantidad de artículos y un indicador visual (`▲` / `▼`).
-  - Por defecto, únicamente el bloque principal de "Paquetería" debe estar abierto al cargar.
-
-## 19. Subdivisión del Bloque "Otros" en el Catálogo de Tarifas
-* **Tres Nuevos Grupos**: El bloque antiguo "Otros" se divide en tres categorías específicas en el catálogo:
-  - **Barras de Sonido**: Para `barra de sonido`, `pm barra de sonido` y `cuelgue barra de sonido`.
-  - **Electrodomésticos Varios**: Para `proyector`, `ordenador`, `pantalla`, `micro cadena`, `marco frame`, `DVD / Blu-Ray`, `soporte suelo`, `soporte fijo`, `altavoces` y `toca discos`.
-  - **Servicios**: Para `pellets`, `servicio urgente 100€`, `servicio urgente 120€` y `visita tecnica`.
-* **Consistencia de Liquidación**: Para resúmenes diarios, totalizados y cierres, los nuevos bloques deben agruparse o computarse de forma unificada bajo el paraguas de liquidaciones complementarias (equivalente a cómo funcionaba "Otros" anteriormente) para no alterar las fórmulas financieras de ganancias.
-
-## 20. Lógica de Acción y Retorno Rápido de Apoyo
-* **Lógica de Acción en Electrodomésticos**: Los artículos en la categoría **Electrodomésticos Varios** deben permitir al chofer seleccionar la acción a realizar: **Entrega**, **Recogida**, o **Ent+Rec (Cambio)**.
-* **Sufijos de Nombre de Tareas**: Al compilar los repartos, se debe guardar explícitamente el nombre de la tarea anexando el sufijo del servicio: `(Entrega)`, `(Recogida)` o `(Entrega + Recogida)`. Esto aplica uniformemente a **Televisores** y **Electrodomésticos Varios**.
-* **Retorno Rápido de Auxilios**: Todo reparto recibido en modo de auxilio/apoyo mostrará un botón rojo interactivo **`↩️ Devolver`** al lado de la etiqueta amarilla `🔄 Auxilio de [Chofer]`. Este botón permite al chofer receptor devolver con un solo clic el cliente a la furgoneta y ruta original de procedencia sin tener que reasignarlo manualmente.
-
-## 21. Registro Unificado de Empleados y Desconexión de Dispositivos
-* **Separación de Conceptos**: Los inicios de sesión (furgonetas/dispositivos) son independientes de las personas físicas que trabajan (choferes y ayudantes).
-* **Gestión Independiente**: Todo el personal se registra en un directorio unificado (**👥 Personal**) con su nombre, rol (Chofer, Ayudante o Ambos) y tarifa diaria predeterminada.
-* **Control de Altas y Bajas (Estado Activo/Inactivo)**:
-  - Los empleados marcados como inactivos (de baja) son excluidos automáticamente de los selectores y menús desplegables para programar turnos futuros.
-  - Para proteger la contabilidad de la empresa, dar de baja a un empleado **nunca** borra su historial de nóminas de meses anteriores.
-
-## 22. Filtro de Visibilidad en el Calendario
-* **Evitar Ruido Visual**: El calendario (en vistas de mes, semana y día) debe mostrar únicamente los turnos planificados que tengan un chofer y/o un ayudante asignados.
-* **Ocultar Vacíos**: Los turnos en los que no se haya asignado a ninguna persona (dejando ambos campos vacíos) deben filtrarse y ocultarse de las cuadrículas visuales.
-
-## 23. Almacenamiento de Metadatos de Turno en Configuración (Compatibilidad de BD)
-* **Restricción de Esquema en Supabase**: La tabla remota `delivery_shifts` de Supabase solo cuenta con las 7 columnas básicas (`id`, `furgo_id`, `date`, `status`, `opened_at`, `closed_at`, `created_by`). Carece de columnas como `observations`, `kms`, `start_kms`, `end_kms` o `route_name`.
-* **Mecanismo de Compatibilidad**:
-  - Al guardar turnos (`saveShifts` y en `moveRouteDate`), se envían únicamente las 7 columnas básicas a `delivery_shifts` en Supabase.
-  - Toda la metadata extendida (ayudante, matrícula, chofer libre, observaciones, ruta, kms, etc.) se enpaqueta como JSON y se guarda en la tabla `delivery_settings` bajo la clave `shift_meta_<ID_DEL_TURNO>`.
-  - Al cargar los datos (`syncFromCloud`), se obtienen ambos conjuntos de datos y se fusionan en el cliente para reconstruir el objeto de turno completo de forma transparente.
-
-## 24. Cifrado Criptográfico de Contraseñas (SHA-256)
-* **No guardar en texto plano**: Las contraseñas se encriptan utilizando el algoritmo de cifrado `SHA-256` nativo del navegador (`crypto.subtle.digest`) antes de guardarse en Supabase y LocalStorage.
-* **Inicio de Sesión Adaptativo**: El sistema de autenticación admite el acceso comparando la contraseña ingresada con el texto plano antiguo o con el hash SHA-256, facilitando el inicio de sesión.
-## 25. Actualizaciones de Orden de Ruta Atómicas (Evitar Condiciones de Carrera)
-* **Guardado por Lotes**: Queda estrictamente prohibido realizar bucles de actualización secuenciales llamando a `updateTicket` para guardar cambios de ordenamiento o secuencia en masa.
-* **Llamada Única**: Se debe calcular el nuevo `routeOrder` en memoria y llamar a `saveTickets` exactamente una vez pasándole el array completo de tickets actualizado. Esto previene condiciones de carrera en Supabase debido a múltiples peticiones simultáneas concurrentes y garantiza que el orden manual persista fielmente.
-* **Bloqueo de Sincronización Realtime (`isSaving` lock)**: Durante ejecuciones de guardado a Supabase en `saveTickets`, se debe establecer la bandera de control de escritura global `isSaving = true`. Esto obliga a los canales en tiempo real (`postgres_changes`) a ignorar las notificaciones de actualización generadas por el propio cliente, evitando bucles de retroalimentación de datos incompletos. Se debe usar un retraso controlado de 1.5 segundos (`setTimeout`) al desactivar la bandera para permitir que todos los eventos de la red se hayan procesado y descartado.
-* **Eliminar Escrituras Duplicadas**: Asegurar que las funciones individuales de creación (`addTicket`), actualización (`updateTicket`), y cambio de estado (`updateTicketStatus`) deleguen la persistencia remota en `saveTickets` en lugar de realizar llamadas paralelas concurrentes a Supabase.
-
-## 26. Optimización de Renderizado de Mapas y Eventos GPS en Tiempo Real
-* **Capa Independiente de Repartidores (LayerGroups)**: Los marcadores correspondientes a la ubicación en tiempo real de los repartidores (camiones 🚚) deben cargarse y limpiarse en una capa Leaflet independiente (`mapDriversLayerGroupRef`).
-* **Actualización Ligera sin Re-render de Mapa**: Queda prohibido recargar la lista de tickets o invocar la reconstrucción del mapa completo ante una actualización de coordenadas GPS de los conductores. Las nuevas coordenadas deben procesarse en segundo plano a través de eventos personalizados del navegador (`driver-location-updated`), actualizando únicamente la capa de camiones de forma ligera, preservando intactos los popups abiertos, el zoom y las interacciones del administrador con los marcadores de clientes.
-
-## 27. Control de Accesos y Permisos por Módulos (Coordinadores)
-* **Permisos Granulares**: Los coordinadores (usuarios con rol `admin`) pueden tener acceso restringido a ciertos módulos. El Super Administrador gestiona estos permisos mediante casillas de verificación.
-* **Módulos Soportados**:
-  - `report_day` (Informe del Día)
-  - `deliveries_period` (Repartos del Período)
-  - `map_control` (Mapa de Control)
-  - `shift_calendar` (Calendario de Turnos)
-  - `general_search` (Buscador General)
-  - `staff` (Personal (Admins/Choferes))
-  - `van_pricing` (Precios Corte Inglés)
-  - `security` (Seguridad / Sistema)
-* **Sincronización en Red Alternativa**: Como la tabla `delivery_users` en Supabase carece del campo nativo `permissions` por defecto, los permisos se deben persistir y sincronizar también en la tabla general `delivery_settings` bajo la clave `user_permissions_ID_DEL_COORDINADOR` como plan de respaldo y sincronización cruzada en tiempo real.
-* **Inicio de Sesión y Carga**: Durante el inicio de sesión (`handleLogin`), el cliente debe consultar activamente `delivery_settings` para obtener los permisos más recientes de dicho coordinador.
-* **Ocultación y Redirección**: La interfaz debe ocultar dinámicamente las pestañas de navegación correspondientes a módulos no permitidos, y redirigir automáticamente al usuario si por alguna recarga entra en una pestaña bloqueada.
-* **Cerrojo `isSaving`**: Todas las modificaciones a usuarios deben activar la bandera de control `isSaving` para evitar que la sincronización realtime (`syncFromCloud`) sobrescriba el estado local a mitad del proceso de guardado y reintento.
+## 🎨 Interfaz y Accesibilidad
+* **Tema Oscuro**: Mantener un diseño premium con altos contrastes. Los botones críticos de acción (como `➕ Nueva Ruta / Fecha`) deben usar un fondo blanco sólido y texto en negro negrita para destacar claramente sobre el fondo oscuro.
