@@ -854,20 +854,42 @@ export async function saveUsers(users) {
         }
       }
       try {
-        // Intentar primero con todas las columnas
-        const formatted = hashedUsers.map(u => ({
-          id: u.id,
-          username: u.username,
-          password: u.password,
-          label: u.label,
-          role: u.role,
-          can_search: u.canSearch || false,
-          created_by: u.createdBy || 'admin',
-          must_change_password: u.mustChangePassword || false,
-          permissions: u.permissions || null,
-          email: u.email || null,
-          auth_uid: u.auth_uid || null
-        }));
+        // Detectar dinámicamente las columnas que existen realmente en la base de datos
+        let dbColumns = null;
+        try {
+          const { data: colCheckData } = await supabase.from('delivery_users').select('*').limit(1);
+          if (colCheckData && colCheckData.length > 0) {
+            dbColumns = Object.keys(colCheckData[0]);
+          }
+        } catch (colErr) {
+          console.warn("No se pudo detectar las columnas de delivery_users directamente, se usará fallback de errores:", colErr);
+        }
+
+        const formatted = hashedUsers.map(u => {
+          const row = {
+            id: u.id,
+            username: u.username,
+            password: u.password,
+            label: u.label,
+            role: u.role,
+            can_search: u.canSearch || false,
+            created_by: u.createdBy || 'admin'
+          };
+          
+          if (!dbColumns || dbColumns.includes('must_change_password')) {
+            row.must_change_password = u.mustChangePassword || false;
+          }
+          if (!dbColumns || dbColumns.includes('permissions')) {
+            row.permissions = u.permissions || null;
+          }
+          if (!dbColumns || dbColumns.includes('email')) {
+            row.email = u.email || null;
+          }
+          if (!dbColumns || dbColumns.includes('auth_uid')) {
+            row.auth_uid = u.auth_uid || null;
+          }
+          return row;
+        });
         
         const { error } = await supabase.from('delivery_users').upsert(formatted);
         
