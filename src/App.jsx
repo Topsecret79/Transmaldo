@@ -1671,7 +1671,22 @@ function App() {
             setSelectedMapTicket(null);
           });
 
-          // Cargar capas de mapa (Claro Minimalista, Oscuro Premium, Calles Moderno, Satélite)
+          // Cargar capas de mapa (Google, Claro Minimalista, Oscuro Premium, Calles Moderno, Satélite)
+          const googleStreets = window.L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=es', {
+            attribution: '&copy; Google Maps',
+            maxZoom: 22
+          });
+
+          const googleHybrid = window.L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=es', {
+            attribution: '&copy; Google Maps',
+            maxZoom: 22
+          });
+
+          const googleTraffic = window.L.tileLayer('https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&hl=es', {
+            attribution: '&copy; Google Maps',
+            maxZoom: 22
+          });
+
           const positron = window.L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
             subdomains: 'abcd',
@@ -1695,12 +1710,15 @@ function App() {
             maxZoom: 19
           });
 
-          // Activar el Claro Minimalista (Positron) por defecto
-          positron.addTo(map);
+          // Activar Google Calles por defecto
+          googleStreets.addTo(map);
 
           const baseMaps = {
-            "Claro Minimalista ⚪": positron,
+            "Google Calles 🗺️": googleStreets,
+            "Google Satélite Híbrido 🛰️": googleHybrid,
+            "Google Tráfico en Vivo 🚗": googleTraffic,
             "Oscuro Premium ⚫": darkMatter,
+            "Claro Minimalista ⚪": positron,
             "Calles Moderno 🗺️": voyager,
             "Satélite Real 🛰️": satellite
           };
@@ -2277,8 +2295,8 @@ function App() {
         attributionControl: false
       }).setView(latLng, 16);
 
-      window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 20
+      window.L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=es', {
+        maxZoom: 22
       }).addTo(map);
 
       const marker = window.L.marker(latLng, {
@@ -5064,6 +5082,16 @@ function App() {
       url = `https://waze.com/ul?ll=${latitude},${longitude}&navigate=yes`;
     } else {
       url = `https://waze.com/ul?q=${encodeURIComponent(address)}&navigate=yes`;
+    }
+    window.open(url, '_blank');
+  };
+
+  const openStreetView = (address, latitude, longitude) => {
+    let url = '';
+    if (latitude && longitude) {
+      url = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${latitude},${longitude}`;
+    } else {
+      url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
     }
     window.open(url, '_blank');
   };
@@ -8060,6 +8088,18 @@ function App() {
                                   >
                                     <MapPin size={14} color="var(--primary)" />
                                   </button>
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openStreetView(t.address, t.latitude, t.longitude);
+                                    }}
+                                    className="btn btn-secondary btn-small"
+                                    style={{ display: 'inline-flex', padding: '8px', margin: 0, width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', alignItems: 'center', justifyContent: 'center' }}
+                                    title="Ver Calle (Street View)"
+                                  >
+                                    📸
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -8358,18 +8398,32 @@ function App() {
                                   </div>
                                 )}
                               </div>
-                              <button 
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleNavigate(t.address, t.latitude, t.longitude, t.id);
-                                }}
-                                className="btn btn-secondary btn-small"
-                                style={{ display: 'inline-flex', padding: '10px', margin: 0, width: 'auto', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)' }}
-                                title="Iniciar GPS"
-                              >
-                                <MapPin size={16} color="var(--primary)" />
-                              </button>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button 
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleNavigate(t.address, t.latitude, t.longitude, t.id);
+                                  }}
+                                  className="btn btn-secondary btn-small"
+                                  style={{ display: 'inline-flex', padding: '10px', margin: 0, width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)', alignItems: 'center', justifyContent: 'center' }}
+                                  title="Iniciar GPS"
+                                >
+                                  <MapPin size={16} color="var(--primary)" />
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openStreetView(t.address, t.latitude, t.longitude);
+                                  }}
+                                  className="btn btn-secondary btn-small"
+                                  style={{ display: 'inline-flex', padding: '10px', margin: 0, width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', alignItems: 'center', justifyContent: 'center' }}
+                                  title="Ver Calle (Street View)"
+                                >
+                                  📸
+                                </button>
+                              </div>
                             </div>
 
                             {/* Cobro Contra Reembolso */}
@@ -9013,7 +9067,7 @@ function App() {
             </div>
 
             {/* Botones de acción rápida */}
-            <div className="map-floating-actions-container">
+            <div className="map-floating-actions-container" style={{ display: 'flex', gap: '6px', width: '100%', flexWrap: 'wrap' }}>
               <button 
                 type="button"
                 onClick={(e) => {
@@ -9024,6 +9078,17 @@ function App() {
                 style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
               >
                 <Navigation size={14} style={{ marginRight: '2px' }} /> Navegar
+              </button>
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openStreetView(ticketToShow.address, ticketToShow.latitude, ticketToShow.longitude);
+                }}
+                className="btn btn-secondary btn-small map-floating-action-btn"
+                style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, borderColor: '#10b981', color: '#10b981', background: 'rgba(16, 185, 129, 0.05)' }}
+              >
+                📸 Street View
               </button>
               {ticketToShow.phone && (
                 <a 
