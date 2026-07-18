@@ -23,6 +23,104 @@ const sortTicketsByRouteOrder = (ticketList) => {
   });
 };
 
+// Diccionario de códigos postales comunes de España para resolver la población automáticamente
+const getTownAndProvinceFromPostcode = (postcode) => {
+  if (!postcode) return '';
+  const pc = postcode.toString().trim();
+  if (pc.length !== 5) return '';
+
+  const dict = {
+    // Barcelona Ciudad
+    "08001": "Barcelona", "08002": "Barcelona", "08003": "Barcelona", "08004": "Barcelona",
+    "08005": "Barcelona", "08006": "Barcelona", "08007": "Barcelona", "08008": "Barcelona",
+    "08009": "Barcelona", "08010": "Barcelona", "08011": "Barcelona", "08012": "Barcelona",
+    "08013": "Barcelona", "08014": "Barcelona", "08015": "Barcelona", "08016": "Barcelona",
+    "08017": "Barcelona", "08018": "Barcelona", "08019": "Barcelona", "08020": "Barcelona",
+    "08021": "Barcelona", "08022": "Barcelona", "08023": "Barcelona", "08024": "Barcelona",
+    "08025": "Barcelona", "08026": "Barcelona", "08027": "Barcelona", "08028": "Barcelona",
+    "08029": "Barcelona", "08030": "Barcelona", "08031": "Barcelona", "08032": "Barcelona",
+    "08033": "Barcelona", "08034": "Barcelona", "08035": "Barcelona", "08036": "Barcelona",
+    "08037": "Barcelona", "08038": "Barcelona", "08039": "Barcelona", "08040": "Barcelona",
+    "08041": "Barcelona", "08042": "Barcelona",
+    // Poblaciones de Barcelona y alrededores
+    "08100": "Mollet del Vallès", "08107": "Martorelles", "08110": "Montcada i Reixac",
+    "08120": "La Llagosta", "08130": "Santa Perpètua de Mogoda", "08140": "Calders",
+    "08150": "Parets del Vallès", "08160": "Montmeló", "08170": "Montornès del Vallès",
+    "08172": "Sant Cugat del Vallès", "08173": "Sant Cugat del Vallès", "08174": "Sant Cugat del Vallès",
+    "08184": "Palau-solità i Plegamans", "08185": "Lliçà de Vall", "08186": "Lliçà d'Amunt",
+    "08188": "Vallromanes", "08191": "Rubí", "08192": "Sant Quirze del Vallès",
+    "08193": "Bellaterra", "08195": "Sant Cugat del Vallès", "08197": "Sant Cugat del Vallès",
+    "08198": "Sant Cugat del Vallès", "08200": "Sabadell", "08201": "Sabadell",
+    "08202": "Sabadell", "08203": "Sabadell", "08204": "Sabadell", "08205": "Sabadell",
+    "08206": "Sabadell", "08207": "Sabadell", "08208": "Sabadell", "08210": "Barberà del Vallès",
+    "08211": "Castellar del Vallès", "08213": "Polinyà", "08220": "Terrassa",
+    "08221": "Terrassa", "08222": "Terrassa", "08223": "Terrassa", "08224": "Terrassa",
+    "08225": "Terrassa", "08226": "Terrassa", "08227": "Terrassa", "08228": "Terrassa",
+    "08230": "Matadepera", "08232": "Viladecavalls", "08233": "Vacarisses",
+    "08240": "Manresa", "08241": "Manresa", "08242": "Manresa", "08243": "Manresa",
+    "08270": "Navarcles", "08272": "Sant Fruitós de Bages", "08290": "Cerdanyola del Vallès",
+    "08291": "Ripollet", "08292": "Esparreguera", "08294": "El Pont de Vilomara",
+    "08297": "Castellbell i el Vilar", "08300": "Mataró", "08301": "Mataró",
+    "08302": "Mataró", "08303": "Mataró", "08304": "Mataró", "08310": "Argentona",
+    "08319": "Dosrius", "08320": "El Masnou", "08328": "Alella", "08329": "Teià",
+    "08330": "Premià de Mar", "08338": "Premià de Dalt", "08339": "Vilassar de Dalt",
+    "08340": "Vilassar de Mar", "08348": "Cabrils", "08349": "Cabrera de Mar",
+    "08350": "Arenys de Mar", "08358": "Arenys de Munt", "08360": "Canet de Mar",
+    "08370": "Calella", "08380": "Malgrat de Mar", "08389": "Palafolls",
+    "08390": "Santa Susanna", "08391": "Arenys de Mar", "08392": "Sant Andreu de Llavaneres",
+    "08393": "Caldes d'Estrac", "08394": "Sant Vicenç de Montalt", "08395": "Sant Pol de Mar",
+    "08396": "Sant Cebrià de Vallalta", "08397": "Pineda de Mar", "08398": "Santa Susanna",
+    "08400": "Granollers", "08401": "Granollers", "08402": "Granollers", "08403": "Granollers",
+    "08410": "Vilanova del Vallès", "08415": "Bigues i Riells", "08420": "Canovelles",
+    "08430": "La Roca del Vallès", "08440": "Cardedeu", "08450": "Llinars del Vallès",
+    "08458": "Sant Pere de Vilamajor", "08459": "Sant Antoni de Vilamajor", "08460": "Santa Maria de Palautordera",
+    "08470": "Sant Celoni", "08480": "L'Ametlla del Vallès", "08490": "Tordera",
+    "08500": "Vic", "08520": "Les Franqueses del Vallès", "08530": "La Garriga",
+    "08600": "Berga", "08620": "Sant Vicenç dels Horts", "08630": "Abrera",
+    "08635": "Sant Esteve Sesrovires", "08640": "Olesa de Montserrat", "08690": "Santa Coloma de Cervelló",
+    "08700": "Igualada", "08720": "Vilafranca del Penedès", "08730": "Santa Margarida i els Monjos",
+    "08732": "La Múnia", "08740": "Sant Andreu de la Barca", "08750": "Molins de Rei",
+    "08753": "Castellví de Rosanes", "08754": "El Papiol", "08755": "Castellbisbal",
+    "08756": "La Palma de Cervelló", "08757": "Corbera de Llobregat", "08758": "Cervelló",
+    "08759": "Vallirana", "08760": "Martorell", "08769": "Castellví de Rosanes",
+    "08770": "Sant Sadurní d'Anoia", "08780": "Pallejà", "08788": "Vilanova del Camí",
+    "08798": "Sant Cugat Sesgarrigues", "08800": "Vilanova i la Geltrú", "08810": "Sant Pere de Ribes",
+    "08811": "Canyelles", "08812": "Les Roquetes", "08820": "El Prat de Llobregat",
+    "08830": "Sant Boi de Llobregat", "08840": "Viladecans", "08850": "Gavà",
+    "08859": "Begues", "08860": "Castelldefels", "08870": "Sitges",
+    "08880": "Cubelles", "08900": "L'Hospitalet de Llobregat", "08901": "L'Hospitalet de Llobregat",
+    "08902": "L'Hospitalet de Llobregat", "08903": "L'Hospitalet de Llobregat", "08904": "L'Hospitalet de Llobregat",
+    "08905": "L'Hospitalet de Llobregat", "08906": "L'Hospitalet de Llobregat", "08907": "L'Hospitalet de Llobregat",
+    "08908": "L'Hospitalet de Llobregat", "08910": "Badalona", "08911": "Badalona",
+    "08912": "Badalona", "08913": "Badalona", "08914": "Badalona", "08915": "Badalona",
+    "08916": "Badalona", "08917": "Badalona", "08918": "Badalona", "08920": "Santa Coloma de Gramenet",
+    "08921": "Santa Coloma de Gramenet", "08922": "Santa Coloma de Gramenet", "08923": "Santa Coloma de Gramenet",
+    "08924": "Santa Coloma de Gramenet", "08930": "Sant Adrià de Besòs", "08940": "Cornellà de Llobregat",
+    "08950": "Esplugues de Llobregat", "08960": "Sant Just Desvern", "08970": "Sant Joan Despí",
+    "08980": "Sant Feliu de Llobregat"
+  };
+
+  if (dict[pc]) return dict[pc];
+
+  // Fallback por provincia
+  const provCode = pc.substring(0, 2);
+  const provinces = {
+    "01": "Álava", "02": "Albacete", "03": "Alicante", "04": "Almería", "05": "Ávila",
+    "06": "Badajoz", "07": "Baleares", "08": "Barcelona", "09": "Burgos", "10": "Cáceres",
+    "11": "Cádiz", "12": "Castellón", "13": "Ciudad Real", "14": "Córdoba", "15": "A Coruña",
+    "16": "Cuenca", "17": "Girona", "18": "Granada", "19": "Guadalajara", "20": "Gipuzkoa",
+    "21": "Huelva", "22": "Huesca", "23": "Jaén", "24": "León", "25": "Lleida",
+    "26": "La Rioja", "27": "Lugo", "28": "Madrid", "29": "Málaga", "30": "Murcia",
+    "31": "Navarra", "32": "Ourense", "33": "Asturias", "34": "Palencia", "35": "Las Palmas",
+    "36": "Pontevedra", "37": "Salamanca", "38": "S.C. Tenerife", "39": "Cantabria", "40": "Segovia",
+    "41": "Sevilla", "42": "Soria", "43": "Tarragona", "44": "Teruel", "45": "Toledo",
+    "46": "Valencia", "47": "Valladolid", "48": "Bizkaia", "49": "Zamora", "50": "Zaragoza",
+    "51": "Ceuta", "52": "Melilla"
+  };
+
+  return provinces[provCode] || '';
+};
+
 // Formatear dirección larga a formato corto: Calle, Número, Población
 const getShortAddressString = (addressStr) => {
   if (!addressStr) return '';
@@ -7308,7 +7406,12 @@ function App() {
                         </span>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {t.lat && t.lng ? '🟢 ' : '🔴 '}
-                          {getShortAddressString(t.address)}{t.postcode ? ` (CP ${t.postcode})` : ''}
+                          {(() => {
+                            const shortAddr = getShortAddressString(t.address);
+                            const town = getTownAndProvinceFromPostcode(t.postcode);
+                            const townSuffix = town && !shortAddr.toLowerCase().includes(town.toLowerCase()) ? ` - ${town}` : '';
+                            return `${shortAddr}${t.postcode ? ` (CP ${t.postcode}${townSuffix})` : ''}`;
+                          })()}
                         </span>
                         {activeTimelineSchedules[t.id] && (
                           <div style={{ 
@@ -8055,10 +8158,21 @@ function App() {
                                       </div>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }} title={`${getShortAddressString(t.address)}${t.postcode ? ` - CP ${t.postcode}` : ''}`}>
-                                    {t.lat && t.lng ? '🟢 ' : '🔴 '}
-                                    {getShortAddressString(t.address)}{t.postcode ? ` - CP ${t.postcode}` : ''}
-                                  </div>
+                                  {(() => {
+                                    const shortAddr = getShortAddressString(t.address);
+                                    const town = getTownAndProvinceFromPostcode(t.postcode);
+                                    const townSuffix = town && !shortAddr.toLowerCase().includes(town.toLowerCase()) ? ` - ${town}` : '';
+                                    const formattedLabel = `${shortAddr}${t.postcode ? ` - CP ${t.postcode}${townSuffix}` : ''}`;
+                                    return (
+                                      <div 
+                                        style={{ fontSize: '0.88rem', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }} 
+                                        title={formattedLabel}
+                                      >
+                                        {t.lat && t.lng ? '🟢 ' : '🔴 '}
+                                        {formattedLabel}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                                 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
@@ -8377,7 +8491,14 @@ function App() {
                               marginTop: '10px'
                             }}>
                               <div style={{ fontSize: '0.85rem', lineHeight: '1.3', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                <strong>{getShortAddressString(t.address)}{t.postcode ? ` - CP ${t.postcode}` : ''}</strong>
+                                <strong>
+                                  {(() => {
+                                    const shortAddr = getShortAddressString(t.address);
+                                    const town = getTownAndProvinceFromPostcode(t.postcode);
+                                    const townSuffix = town && !shortAddr.toLowerCase().includes(town.toLowerCase()) ? ` - ${town}` : '';
+                                    return `${shortAddr}${t.postcode ? ` - CP ${t.postcode}${townSuffix}` : ''}`;
+                                  })()}
+                                </strong>
                                 {t.lat && t.lng ? (
                                   <span style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: '700' }}>🟢 Dirección verificada en el mapa</span>
                                 ) : (
@@ -9038,7 +9159,14 @@ function App() {
           <>
             <div className="map-floating-info-row" style={{ marginTop: '4px' }}>
               <span style={{ fontSize: '1rem', flexShrink: 0 }}>📍</span>
-              <span className="map-floating-info-text">{getShortAddressString(ticketToShow.address)} {ticketToShow.postcode && `(CP ${ticketToShow.postcode})`}</span>
+              <span className="map-floating-info-text">
+                {(() => {
+                  const shortAddr = getShortAddressString(ticketToShow.address);
+                  const town = getTownAndProvinceFromPostcode(ticketToShow.postcode);
+                  const townSuffix = town && !shortAddr.toLowerCase().includes(town.toLowerCase()) ? ` - ${town}` : '';
+                  return `${shortAddr}${ticketToShow.postcode ? ` (CP ${ticketToShow.postcode}${townSuffix})` : ''}`;
+                })()}
+              </span>
             </div>
 
             {ticketToShow.phone && (
@@ -9333,7 +9461,14 @@ function App() {
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
                     <span style={{ flexShrink: 0 }}>📍</span>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span>{getShortAddressString(t.address)} {t.postcode && `(CP ${t.postcode})`}</span>
+                      <span>
+                        {(() => {
+                          const shortAddr = getShortAddressString(t.address);
+                          const town = getTownAndProvinceFromPostcode(t.postcode);
+                          const townSuffix = town && !shortAddr.toLowerCase().includes(town.toLowerCase()) ? ` - ${town}` : '';
+                          return `${shortAddr}${t.postcode ? ` (CP ${t.postcode}${townSuffix})` : ''}`;
+                        })() /* dynamic postcode mapping */ }
+                      </span>
                       {activeFurgo !== 'all' && timelineSchedules[t.id] && (
                         <div style={{ 
                           display: 'flex', 
@@ -9754,7 +9889,7 @@ function App() {
                               color: '#a5b4fc',
                               borderRadius: '4px'
                             }}>
-                              CP {ticket.postcode}
+                              CP {ticket.postcode}{getTownAndProvinceFromPostcode(ticket.postcode) ? ` - ${getTownAndProvinceFromPostcode(ticket.postcode)}` : ''}
                             </span>
                           )}
                         </td>
@@ -12859,7 +12994,7 @@ function App() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                              {t.postcode && (
                                <span className="badge badge-primary" style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.25)', border: '1px solid rgba(99, 102, 241, 0.5)', color: '#c7d2fe' }}>
-                                 CP {t.postcode}
+                                 CP {t.postcode}{getTownAndProvinceFromPostcode(t.postcode) ? ` - ${getTownAndProvinceFromPostcode(t.postcode)}` : ''}
                                </span>
                              )}
                              {t.lat && t.lng ? '🟢 ' : '🔴 '}
