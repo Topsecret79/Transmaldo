@@ -1750,15 +1750,11 @@ export function deletePlannedShift(furgoId, date) {
 export function reopenShift(furgoId, date) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
-  const filtered = shifts.filter(s => s.id !== shiftId);
-  saveShifts(filtered);
-  if (supabase) {
-    supabase.from('delivery_shifts').delete().eq('id', shiftId).then(({ error }) => {
-      if (error) console.error("Error deleting shift from Supabase:", error);
-    });
-    supabase.from('delivery_settings').delete().eq('key', `shift_meta_${shiftId}`).then(({ error }) => {
-      if (error) console.error("Error deleting shift meta from Supabase:", error);
-    });
+  const index = shifts.findIndex(s => s.id === shiftId);
+  if (index !== -1) {
+    shifts[index].status = 'open';
+    shifts[index].closedAt = null;
+    saveShifts(shifts);
   }
 }
 
