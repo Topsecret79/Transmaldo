@@ -10957,9 +10957,9 @@ function App() {
                                 fontSize: '0.72rem',
                                 padding: '4px 8px',
                                 borderRadius: '6px',
-                                background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.08)' : s.openedAt ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.04)',
-                                border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.15)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(255,255,255,0.08)',
-                                color: s.status === 'closed' ? '#f87171' : s.openedAt ? '#34d399' : '#e5e7eb',
+                                background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.12)' : s.openedAt ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.09)',
+                                border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.3)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255, 255, 255, 0.2)',
+                                color: s.status === 'closed' ? '#ff8a8a' : s.openedAt ? '#4ade80' : '#ffffff',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 gap: '1px'
@@ -10976,7 +10976,7 @@ function App() {
                                 🚚 {driverName}
                               </div>
                               {(s.matricula || s.helper) && (
-                                <div style={{ color: 'var(--text-muted)', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                <div style={{ color: '#e5e7eb', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                                   {s.matricula && <span>🚐 {s.matricula}</span>}
                                   {s.helper && <span>🤝 {s.helper}</span>}
                                 </div>
@@ -11077,9 +11077,9 @@ function App() {
                               fontSize: '0.74rem',
                               padding: '6px 8px',
                               borderRadius: '8px',
-                              background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.08)' : s.openedAt ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.04)',
-                              border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.15)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(255,255,255,0.08)',
-                              color: s.status === 'closed' ? '#f87171' : s.openedAt ? '#34d399' : '#e5e7eb',
+                              background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.12)' : s.openedAt ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.09)',
+                              border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.3)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(255, 255, 255, 0.2)',
+                              color: s.status === 'closed' ? '#ff8a8a' : s.openedAt ? '#4ade80' : '#ffffff',
                               display: 'flex',
                               flexDirection: 'column',
                               gap: '2px'
@@ -11088,8 +11088,8 @@ function App() {
                             <strong style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                               🚚 {driverName}
                             </strong>
-                            {s.matricula && <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', paddingLeft: '8px' }}>🚐 {s.matricula}</span>}
-                            {s.helper && <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', paddingLeft: '8px' }}>🤝 {s.helper}</span>}
+                            {s.matricula && <span style={{ color: '#e5e7eb', fontSize: '0.68rem', paddingLeft: '8px' }}>🚐 {s.matricula}</span>}
+                            {s.helper && <span style={{ color: '#e5e7eb', fontSize: '0.68rem', paddingLeft: '8px' }}>🤝 {s.helper}</span>}
                           </div>
                         );
                       })
