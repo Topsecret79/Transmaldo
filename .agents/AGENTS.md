@@ -23,3 +23,9 @@ Estas reglas definen el comportamiento esperado y las restricciones de diseño p
 
 ## 🎨 Interfaz y Accesibilidad
 * **Tema Oscuro**: Mantener un diseño premium con altos contrastes. Los botones críticos de acción (como `➕ Nueva Ruta / Fecha`) deben usar un fondo blanco sólido y texto en negro negrita para destacar claramente sobre el fondo oscuro.
+
+## 🔒 Autenticación y Seguridad
+* **Inicio de Sesión Mixto**: Los repartidores (choferes) se autentican mediante su nombre de usuario y PIN hash local/remoto clásica. Los administradores y coordinadores se autentican mediante su correo electrónico personal a través de Supabase Auth.
+* **Vinculación en Caliente**: Los administradores existentes sin correo asociado deben ser redirigidos en su primer inicio de sesión clásico a un diálogo para vincular su correo personal de forma no destructiva, conservando su histórico de tarifas y repartos.
+* **Tolerancia a Cambios de Esquema**: Si la base de datos remota carece de las columnas de seguridad (`email`, `auth_uid`, `permissions`), la aplicación debe capturar el error `42703`/`PGRST204` de forma silenciosa, realizar el upsert omitiendo dichas columnas, persistirlas localmente y mostrar una recomendación de migración SQL en el panel del Superadmin.
+
