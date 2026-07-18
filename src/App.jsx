@@ -2231,6 +2231,14 @@ function App() {
       setUsers(finalUsers);
       setShifts(finalShifts);
 
+      if (u) {
+        const freshUser = rawUsers.find(usr => usr.id === u.id);
+        if (freshUser && (freshUser.email !== u.email || freshUser.auth_uid !== u.auth_uid || freshUser.mustChangePassword !== u.mustChangePassword)) {
+          setCurrentUser(freshUser);
+          localStorage.setItem('delivery_session', JSON.stringify(freshUser));
+        }
+      }
+
       // Background migration for plain-text passwords to SHA-256
       (async () => {
         let needsMigration = false;
@@ -14951,7 +14959,7 @@ function App() {
     );
   };
 
-  if (!currentUser) {
+  if (!currentUser || emailLinkageUser) {
     return (
       <>
         {alertMsg.text && (
@@ -15509,6 +15517,33 @@ function App() {
           <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
         </div>
       </header>
+
+      {currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin' || currentUser.role === 'coordinador') && !currentUser.email && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          borderBottom: '1px solid rgba(239, 68, 68, 0.2)',
+          color: 'var(--text)',
+          padding: '10px 20px',
+          textAlign: 'center',
+          fontSize: '0.88rem',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '10px',
+          flexWrap: 'wrap',
+          animation: 'fadeIn 0.3s ease',
+          zIndex: 10
+        }}>
+          <span>⚠️ Tu cuenta administrativa no está vinculada a un correo electrónico seguro para acceder.</span>
+          <button 
+            onClick={() => setEmailLinkageUser(currentUser)} 
+            className="btn btn-primary btn-small" 
+            style={{ width: 'auto', padding: '4px 10px', fontSize: '0.8rem', margin: 0 }}
+          >
+            📧 Vincular Correo Ahora
+          </button>
+        </div>
+      )}
 
       {isAdminOrSuper ? renderAdminPortal() : renderDriverPortal()}
 
