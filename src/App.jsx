@@ -1655,7 +1655,8 @@ function App() {
             attributionControl: true,
             rotate: true,
             touchRotate: true,
-            rotateControl: false
+            rotateControl: false,
+            preferCanvas: true
           }).setView([41.3879, 2.16992], 12);
           mapInstanceRef.current = map;
 
