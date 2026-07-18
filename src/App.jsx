@@ -8225,16 +8225,16 @@ function App() {
                               style={{ 
                                 margin: 0, 
                                 padding: '8px 16px', 
-                                background: hasUnsavedShiftChanges() ? 'var(--primary)' : 'rgba(255,255,255,0.1)', 
-                                border: '1px solid var(--panel-border)',
-                                color: '#ffffff',
+                                background: hasUnsavedShiftChanges() ? 'var(--primary)' : 'rgba(255, 255, 255, 0.03)', 
+                                border: hasUnsavedShiftChanges() ? '1px solid var(--primary)' : '1px solid var(--panel-border)',
+                                color: hasUnsavedShiftChanges() ? '#ffffff' : 'var(--text-muted)',
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '6px',
                                 fontWeight: '700',
-                                boxShadow: hasUnsavedShiftChanges() ? '0 0 10px rgba(99, 102, 241, 0.4)' : 'none'
-                              }}
-                            >
+                                boxShadow: hasUnsavedShiftChanges() ? '0 0 10px rgba(99, 102, 241, 0.4)' : 'none',
+                                cursor: 'pointer'
+                              }}>
                               💾 Guardar Configuración del Turno
                             </button>
                           </div>
