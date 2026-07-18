@@ -2,6 +2,38 @@
 
 /* ================= VARIABLES DE TEMAS DISPONIBLES ================= */
 
+:root {
+  --shift-planned-bg: rgba(0, 0, 0, 0.05);
+  --shift-planned-border: rgba(0, 0, 0, 0.1);
+  --shift-planned-text: var(--text-main);
+  --shift-planned-detail: var(--text-muted);
+  
+  --shift-active-bg: rgba(16, 185, 129, 0.1);
+  --shift-active-border: rgba(16, 185, 129, 0.25);
+  --shift-active-text: #047857;
+  
+  --shift-closed-bg: rgba(239, 68, 68, 0.08);
+  --shift-closed-border: rgba(239, 68, 68, 0.2);
+  --shift-closed-text: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --shift-planned-bg: rgba(255, 255, 255, 0.09);
+    --shift-planned-border: rgba(255, 255, 255, 0.18);
+    --shift-planned-text: #ffffff;
+    --shift-planned-detail: #e5e7eb;
+    
+    --shift-active-bg: rgba(16, 185, 129, 0.15);
+    --shift-active-border: rgba(16, 185, 129, 0.35);
+    --shift-active-text: #4ade80;
+    
+    --shift-closed-bg: rgba(239, 68, 68, 0.15);
+    --shift-closed-border: rgba(239, 68, 68, 0.35);
+    --shift-closed-text: #ff8a8a;
+  }
+}
+
 /* 1. TEMA ESMERALDA (Por Defecto) */
 :root, body.theme-emerald {
   --primary: #059669;
