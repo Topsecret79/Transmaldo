@@ -10863,129 +10863,131 @@ function App() {
               background: 'rgba(255,255,255,0.01)',
               border: '1px solid var(--panel-border)',
               borderRadius: '12px',
-              overflow: 'hidden'
+              overflowX: 'auto'
             }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(7, 1fr)',
-                background: 'rgba(255, 255, 255, 0.03)',
-                borderBottom: '1px solid var(--panel-border)',
-                textAlign: 'center',
-                fontWeight: '700',
-                fontSize: '0.85rem',
-                color: 'var(--text-muted)'
-              }}>
-                {weekdays.map(wd => (
-                  <div key={wd} style={{ padding: '12px 6px' }}>{wd}</div>
-                ))}
-              </div>
+              <div style={{ minWidth: '720px' }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, 1fr)',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  borderBottom: '1px solid var(--panel-border)',
+                  textAlign: 'center',
+                  fontWeight: '700',
+                  fontSize: '0.85rem',
+                  color: 'var(--text-muted)'
+                }}>
+                  {weekdays.map(wd => (
+                    <div key={wd} style={{ padding: '12px 6px' }}>{wd}</div>
+                  ))}
+                </div>
 
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(7, 1fr)',
-                gridAutoRows: 'minmax(120px, auto)'
-              }}>
-                {calendarCells.map((dayNum, idx) => {
-                  const cellDateStr = getCellDateStr(dayNum);
-                  const cellShifts = cellDateStr ? shifts.filter(s => s.date === cellDateStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim()))) : [];
-                  const isToday = cellDateStr === new Date().toISOString().split('T')[0];
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, 1fr)',
+                  gridAutoRows: 'minmax(120px, auto)'
+                }}>
+                  {calendarCells.map((dayNum, idx) => {
+                    const cellDateStr = getCellDateStr(dayNum);
+                    const cellShifts = cellDateStr ? shifts.filter(s => s.date === cellDateStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim()))) : [];
+                    const isToday = cellDateStr === new Date().toISOString().split('T')[0];
 
-                  return (
-                    <div 
-                      key={idx} 
-                      onClick={() => {
-                        if (dayNum) {
-                          setSelectedCalendarDay(cellDateStr);
-                          setPlannedFurgoId('');
-                          setPlannedHelper('');
-                          setPlannedMatricula('');
-                          setPlannedShiftModalOpen(true);
-                        }
-                      }}
-                      style={{
-                        padding: '8px',
-                        borderRight: (idx % 7 === 6) ? 'none' : '1px solid var(--panel-border)',
-                        borderBottom: '1px solid var(--panel-border)',
-                        background: !dayNum ? 'transparent' : isToday ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
-                        cursor: dayNum ? 'pointer' : 'default',
-                        transition: 'background 0.2s ease',
-                        position: 'relative',
-                        minHeight: '120px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px'
-                      }}
-                      className={dayNum ? 'calendar-day-cell' : ''}
-                      onMouseEnter={(e) => {
-                        if (dayNum) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (dayNum) e.currentTarget.style.background = isToday ? 'rgba(99, 102, 241, 0.05)' : 'transparent';
-                      }}
-                    >
-                      {dayNum && (
-                        <div style={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
-                          alignItems: 'center', 
-                          marginBottom: '6px' 
-                        }}>
-                          <span style={{ 
-                            fontSize: '0.9rem', 
-                            fontWeight: '700', 
-                            color: isToday ? 'var(--primary)' : 'var(--text-muted)',
-                            background: isToday ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                            padding: isToday ? '2px 6px' : '0',
-                            borderRadius: '4px'
+                    return (
+                      <div 
+                        key={idx} 
+                        onClick={() => {
+                          if (dayNum) {
+                            setSelectedCalendarDay(cellDateStr);
+                            setPlannedFurgoId('');
+                            setPlannedHelper('');
+                            setPlannedMatricula('');
+                            setPlannedShiftModalOpen(true);
+                          }
+                        }}
+                        style={{
+                          padding: '8px',
+                          borderRight: (idx % 7 === 6) ? 'none' : '1px solid var(--panel-border)',
+                          borderBottom: '1px solid var(--panel-border)',
+                          background: !dayNum ? 'transparent' : isToday ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
+                          cursor: dayNum ? 'pointer' : 'default',
+                          transition: 'background 0.2s ease',
+                          position: 'relative',
+                          minHeight: '120px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px'
+                        }}
+                        className={dayNum ? 'calendar-day-cell' : ''}
+                        onMouseEnter={(e) => {
+                          if (dayNum) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (dayNum) e.currentTarget.style.background = isToday ? 'rgba(99, 102, 241, 0.05)' : 'transparent';
+                        }}
+                      >
+                        {dayNum && (
+                          <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center', 
+                            marginBottom: '6px' 
                           }}>
-                            {dayNum}
-                          </span>
-                          <span className="plus-indicator" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', opacity: 0 }}>
-                            ➕ Asignar
-                          </span>
-                        </div>
-                      )}
-
-                      {cellShifts.map(s => {
-                        const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
-                        
-                        return (
-                          <div 
-                            key={s.id} 
-                            style={{
-                              fontSize: '0.72rem',
-                              padding: '4px 8px',
-                              borderRadius: '6px',
-                              background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.08)' : s.openedAt ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.04)',
-                              border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.15)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(255,255,255,0.08)',
-                              color: s.status === 'closed' ? '#f87171' : s.openedAt ? '#34d399' : '#e5e7eb',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '1px'
-                            }}
-                          >
-                            <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                              <span style={{ 
-                                width: '5px', 
-                                height: '5px', 
-                                borderRadius: '50%', 
-                                background: s.status === 'closed' ? '#ef4444' : s.openedAt ? '#10b981' : '#9ca3af',
-                                display: 'inline-block' 
-                              }}></span>
-                              🚚 {driverName}
-                            </div>
-                            {(s.matricula || s.helper) && (
-                              <div style={{ color: 'var(--text-muted)', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                                {s.matricula && <span>🚐 {s.matricula}</span>}
-                                {s.helper && <span>🤝 {s.helper}</span>}
-                              </div>
-                            )}
+                            <span style={{ 
+                              fontSize: '0.9rem', 
+                              fontWeight: '700', 
+                              color: isToday ? 'var(--primary)' : 'var(--text-muted)',
+                              background: isToday ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                              padding: isToday ? '2px 6px' : '0',
+                              borderRadius: '4px'
+                            }}>
+                              {dayNum}
+                            </span>
+                            <span className="plus-indicator" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', opacity: 0 }}>
+                              ➕ Asignar
+                            </span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                        )}
+
+                        {cellShifts.map(s => {
+                          const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
+                          
+                          return (
+                            <div 
+                              key={s.id} 
+                              style={{
+                                fontSize: '0.72rem',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.08)' : s.openedAt ? 'rgba(16, 185, 129, 0.08)' : 'rgba(255, 255, 255, 0.04)',
+                                border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.15)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(255,255,255,0.08)',
+                                color: s.status === 'closed' ? '#f87171' : s.openedAt ? '#34d399' : '#e5e7eb',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '1px'
+                              }}
+                            >
+                              <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <span style={{ 
+                                  width: '5px', 
+                                  height: '5px', 
+                                  borderRadius: '50%', 
+                                  background: s.status === 'closed' ? '#ef4444' : s.openedAt ? '#10b981' : '#9ca3af',
+                                  display: 'inline-block' 
+                                }}></span>
+                                🚚 {driverName}
+                              </div>
+                              {(s.matricula || s.helper) && (
+                                <div style={{ color: 'var(--text-muted)', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                  {s.matricula && <span>🚐 {s.matricula}</span>}
+                                  {s.helper && <span>🤝 {s.helper}</span>}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
@@ -11191,12 +11193,25 @@ function App() {
                                     triggerAlert('Chofer actualizado');
                                   }}
                                   disabled={s.status === 'closed'}
-                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.75rem', 
+                                    height: '24px', 
+                                    width: 'auto', 
+                                    margin: 0,
+                                    color: '#ffffff',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px'
+                                  }}
                                 >
-                                  <option value="">Por asignar</option>
-                                  <option value="custom_input">✍️ Escribir...</option>
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
+                                  <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                  {s.customDriver && !employeesList.some(emp => emp.name === s.customDriver) && (
+                                    <option value={s.customDriver} style={{ color: '#000000', background: '#ffffff' }}>{s.customDriver}</option>
+                                  )}
                                   {employeesList.filter(emp => emp.active !== false && (emp.role === 'chofer' || emp.role === 'ambos')).map(emp => (
-                                    <option key={emp.id} value={emp.name}>{emp.name}</option>
+                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
                               </div>
@@ -11218,11 +11233,24 @@ function App() {
                                     triggerAlert('Ayudante actualizado');
                                   }}
                                   disabled={s.status === 'closed'}
-                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.75rem', 
+                                    height: '24px', 
+                                    width: 'auto', 
+                                    margin: 0,
+                                    color: '#ffffff',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px'
+                                  }}
                                 >
-                                  <option value="">Sin ayudante</option>
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
+                                  {s.helper && !employeesList.some(emp => emp.name === s.helper) && (
+                                    <option value={s.helper} style={{ color: '#000000', background: '#ffffff' }}>{s.helper}</option>
+                                  )}
                                   {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
-                                    <option key={emp.id} value={emp.name}>{emp.name}</option>
+                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
                               </div>
@@ -11244,11 +11272,24 @@ function App() {
                                     triggerAlert('Matrícula actualizada');
                                   }}
                                   disabled={s.status === 'closed'}
-                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.75rem', 
+                                    height: '24px', 
+                                    width: 'auto', 
+                                    margin: 0,
+                                    color: '#ffffff',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px'
+                                  }}
                                 >
-                                  <option value="">Sin matrícula</option>
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin matrícula</option>
+                                  {s.matricula && !platesList.includes(s.matricula) && (
+                                    <option value={s.matricula} style={{ color: '#000000', background: '#ffffff' }}>{s.matricula}</option>
+                                  )}
                                   {platesList.map(plate => (
-                                    <option key={plate} value={plate}>{plate}</option>
+                                    <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
                                   ))}
                                 </select>
                               </div>
@@ -11304,11 +11345,11 @@ function App() {
                       className="form-input"
                       value={plannedFurgoId}
                       onChange={(e) => setPlannedFurgoId(e.target.value)}
-                      style={{ margin: 0 }}
+                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                     >
-                      <option value="">Por asignar / Sin furgoneta</option>
+                      <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar / Sin furgoneta</option>
                       {activeRepartidores.map(d => (
-                        <option key={d.id} value={d.id}>{d.label}</option>
+                        <option key={d.id} value={d.id} style={{ color: '#000000', background: '#ffffff' }}>{d.label}</option>
                       ))}
                     </select>
                   </div>
@@ -11322,12 +11363,12 @@ function App() {
                         setPlannedDriverName(e.target.value);
                         setCustomDriverNameInput('');
                       }}
-                      style={{ margin: 0 }}
+                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                     >
-                      <option value="">Por asignar</option>
-                      <option value="custom_input">✍️ Escribir otro...</option>
+                      <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
+                      <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir otro...</option>
                       {employeesList.filter(e => e.active !== false && (e.role === 'chofer' || e.role === 'ambos')).map(emp => (
-                        <option key={emp.id} value={emp.name}>{emp.name}</option>
+                        <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                       ))}
                     </select>
                     {plannedDriverName === 'custom_input' && (
@@ -11351,11 +11392,11 @@ function App() {
                       className="form-input"
                       value={plannedHelper}
                       onChange={(e) => setPlannedHelper(e.target.value)}
-                      style={{ margin: 0 }}
+                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                     >
-                      <option value="">Sin ayudante</option>
+                      <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
                       {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
-                        <option key={emp.id} value={emp.name}>{emp.name}</option>
+                        <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                       ))}
                     </select>
                   </div>
@@ -11366,11 +11407,11 @@ function App() {
                       className="form-input"
                       value={plannedMatricula}
                       onChange={(e) => setPlannedMatricula(e.target.value)}
-                      style={{ margin: 0 }}
+                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                     >
-                      <option value="">Selecciona matrícula (Opcional)...</option>
+                      <option value="" style={{ color: '#000000', background: '#ffffff' }}>Selecciona matrícula (Opcional)...</option>
                       {platesList.map(plate => (
-                        <option key={plate} value={plate}>{plate}</option>
+                        <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
                       ))}
                     </select>
                   </div>
@@ -11733,12 +11774,25 @@ function App() {
                                     triggerAlert('Chofer actualizado');
                                   }}
                                   disabled={s.status === 'closed'}
-                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.75rem', 
+                                    height: '24px', 
+                                    width: 'auto', 
+                                    margin: 0,
+                                    color: '#ffffff',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px'
+                                  }}
                                 >
-                                  <option value="">Por asignar</option>
-                                  <option value="custom_input">✍️ Escribir...</option>
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
+                                  <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                  {s.customDriver && !employeesList.some(emp => emp.name === s.customDriver) && (
+                                    <option value={s.customDriver} style={{ color: '#000000', background: '#ffffff' }}>{s.customDriver}</option>
+                                  )}
                                   {employeesList.filter(emp => emp.active !== false && (emp.role === 'chofer' || emp.role === 'ambos')).map(emp => (
-                                    <option key={emp.id} value={emp.name}>{emp.name}</option>
+                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
 
@@ -11758,11 +11812,24 @@ function App() {
                                     triggerAlert('Ayudante actualizado');
                                   }}
                                   disabled={s.status === 'closed'}
-                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.75rem', 
+                                    height: '24px', 
+                                    width: 'auto', 
+                                    margin: 0,
+                                    color: '#ffffff',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px'
+                                  }}
                                 >
-                                  <option value="">Sin ayudante</option>
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
+                                  {s.helper && !employeesList.some(emp => emp.name === s.helper) && (
+                                    <option value={s.helper} style={{ color: '#000000', background: '#ffffff' }}>{s.helper}</option>
+                                  )}
                                   {employeesList.filter(emp => emp.active !== false && (emp.role === 'ayudante' || emp.role === 'ambos')).map(emp => (
-                                    <option key={emp.id} value={emp.name}>{emp.name}</option>
+                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
 
@@ -11782,11 +11849,24 @@ function App() {
                                     triggerAlert('Matrícula actualizada');
                                   }}
                                   disabled={s.status === 'closed'}
-                                  style={{ padding: '2px 6px', fontSize: '0.75rem', height: '24px', width: 'auto', margin: 0 }}
+                                  style={{ 
+                                    padding: '2px 6px', 
+                                    fontSize: '0.75rem', 
+                                    height: '24px', 
+                                    width: 'auto', 
+                                    margin: 0,
+                                    color: '#ffffff',
+                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    border: '1px solid var(--panel-border)',
+                                    borderRadius: '4px'
+                                  }}
                                 >
-                                  <option value="">Sin matrícula</option>
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin matrícula</option>
+                                  {s.matricula && !platesList.includes(s.matricula) && (
+                                    <option value={s.matricula} style={{ color: '#000000', background: '#ffffff' }}>{s.matricula}</option>
+                                  )}
                                   {platesList.map(plate => (
-                                    <option key={plate} value={plate}>{plate}</option>
+                                    <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
                                   ))}
                                 </select>
                               </div>
@@ -11835,11 +11915,11 @@ function App() {
                         className="form-input"
                         value={plannedFurgoId}
                         onChange={(e) => setPlannedFurgoId(e.target.value)}
-                        style={{ margin: 0 }}
+                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                       >
-                        <option value="">Por asignar / Sin furgoneta</option>
+                        <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar / Sin furgoneta</option>
                         {activeRepartidores.map(d => (
-                          <option key={d.id} value={d.id}>{d.label}</option>
+                          <option key={d.id} value={d.id} style={{ color: '#000000', background: '#ffffff' }}>{d.label}</option>
                         ))}
                       </select>
                     </div>
@@ -11853,12 +11933,12 @@ function App() {
                           setPlannedDriverName(e.target.value);
                           setCustomDriverNameInput('');
                         }}
-                        style={{ margin: 0 }}
+                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                       >
-                        <option value="">Por asignar</option>
-                        <option value="custom_input">✍️ Escribir otro...</option>
+                        <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
+                        <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir otro...</option>
                         {employeesList.filter(e => e.active !== false && (e.role === 'chofer' || e.role === 'ambos')).map(emp => (
-                          <option key={emp.id} value={emp.name}>{emp.name}</option>
+                          <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                         ))}
                       </select>
                       {plannedDriverName === 'custom_input' && (
@@ -11882,11 +11962,11 @@ function App() {
                         className="form-input"
                         value={plannedHelper}
                         onChange={(e) => setPlannedHelper(e.target.value)}
-                        style={{ margin: 0 }}
+                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                       >
-                        <option value="">Sin ayudante</option>
+                        <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
                         {employeesList.filter(e => e.active !== false && (e.role === 'ayudante' || e.role === 'ambos')).map(emp => (
-                          <option key={emp.id} value={emp.name}>{emp.name}</option>
+                          <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                         ))}
                       </select>
                     </div>
@@ -11897,11 +11977,11 @@ function App() {
                         className="form-input"
                         value={plannedMatricula}
                         onChange={(e) => setPlannedMatricula(e.target.value)}
-                        style={{ margin: 0 }}
+                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
                       >
-                        <option value="">Selecciona matrícula (Opcional)...</option>
+                        <option value="" style={{ color: '#000000', background: '#ffffff' }}>Selecciona matrícula (Opcional)...</option>
                         {platesList.map(plate => (
-                          <option key={plate} value={plate}>{plate}</option>
+                          <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
                         ))}
                       </select>
                     </div>
