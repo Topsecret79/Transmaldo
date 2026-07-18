@@ -1577,51 +1577,52 @@ export function getShifts() {
 }
 
 // Guardar turnos
-export function saveShifts(shifts) {
+export async function saveShifts(shifts) {
   localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
   if (supabase) {
-    (async () => {
-      try {
-        const basicShifts = shifts.map(s => ({
-          id: s.id,
-          furgo_id: s.furgoId,
-          date: s.date,
-          status: s.status,
-          opened_at: s.openedAt || null,
-          closed_at: s.closedAt || null,
-          created_by: s.createdBy || 'admin'
-        }));
-        const { error } = await supabase.from('delivery_shifts').upsert(basicShifts);
-        if (error) {
-          console.error("Error saving basic shifts to Supabase:", error);
-        }
-
-        // Save metadata for each shift in settings
-        for (const s of shifts) {
-          const meta = {
-            helper: s.helper || '',
-            helper2: s.helper2 || '',
-            matricula: s.matricula || '',
-            customDriver: s.customDriver || '',
-            observations: s.observations || '',
-            routeName: s.routeName || '',
-            kms: s.kms || null,
-            startKms: s.startKms || null,
-            endKms: s.endKms || null,
-            summary: s.summary || null
-          };
-          const { error: metaErr } = await supabase.from('delivery_settings').upsert({
-            key: `shift_meta_${s.id}`,
-            value: JSON.stringify(meta)
-          });
-          if (metaErr) {
-            console.error(`Error saving shift meta ${s.id} to Supabase:`, metaErr);
-          }
-        }
-      } catch (e) {
-        console.error("Error saving shifts or meta to Supabase:", e);
+    isSaving = true;
+    try {
+      const basicShifts = shifts.map(s => ({
+        id: s.id,
+        furgo_id: s.furgoId,
+        date: s.date,
+        status: s.status,
+        opened_at: s.openedAt || null,
+        closed_at: s.closedAt || null,
+        created_by: s.createdBy || 'admin'
+      }));
+      const { error } = await supabase.from('delivery_shifts').upsert(basicShifts);
+      if (error) {
+        console.error("Error saving basic shifts to Supabase:", error);
       }
-    })();
+
+      // Save metadata for each shift in settings
+      for (const s of shifts) {
+        const meta = {
+          helper: s.helper || '',
+          helper2: s.helper2 || '',
+          matricula: s.matricula || '',
+          customDriver: s.customDriver || '',
+          observations: s.observations || '',
+          routeName: s.routeName || '',
+          kms: s.kms || null,
+          startKms: s.startKms || null,
+          endKms: s.endKms || null,
+          summary: s.summary || null
+        };
+        const { error: metaErr } = await supabase.from('delivery_settings').upsert({
+          key: `shift_meta_${s.id}`,
+          value: JSON.stringify(meta)
+        });
+        if (metaErr) {
+          console.error(`Error saving shift meta ${s.id} to Supabase:`, metaErr);
+        }
+      }
+    } catch (e) {
+      console.error("Error saving shifts or meta to Supabase:", e);
+    } finally {
+      isSaving = false;
+    }
   }
 }
 
