@@ -11179,6 +11179,36 @@ function App() {
                               }}>
                                 {s.status === 'closed' ? 'Cerrado' : s.openedAt ? 'Activo' : 'Planificado'}
                               </span>
+                              {s.status === 'closed' && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm(`¿Estás seguro de que deseas reabrir el turno del día ${s.date} para esta furgoneta?`)) {
+                                      reopenShift(s.furgoId, s.date);
+                                      setTimeout(() => {
+                                        loadData();
+                                        triggerAlert('Turno reabierto correctamente');
+                                      }, 100);
+                                    }
+                                  }}
+                                  style={{
+                                    background: 'rgba(16, 185, 129, 0.15)',
+                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                    color: '#34d399',
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.68rem',
+                                    cursor: 'pointer',
+                                    marginLeft: '8px',
+                                    fontWeight: '600',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    height: '20px'
+                                  }}
+                                >
+                                  🔓 Reabrir
+                                </button>
+                              )}
                             </div>
 
                             <div style={{ display: 'flex', gap: '15px', marginTop: '8px', flexWrap: 'wrap' }}>
@@ -11816,6 +11846,36 @@ function App() {
                                 }}>
                                   {s.status === 'closed' ? 'Cerrado' : s.openedAt ? 'Activo' : 'Planificado'}
                                 </span>
+                                {s.status === 'closed' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (window.confirm(`¿Estás seguro de que deseas reabrir el turno del día ${s.date} para esta furgoneta?`)) {
+                                        reopenShift(s.furgoId, s.date);
+                                        setTimeout(() => {
+                                          loadData();
+                                          triggerAlert('Turno reabierto correctamente');
+                                        }, 100);
+                                      }
+                                    }}
+                                    style={{
+                                      background: 'rgba(16, 185, 129, 0.15)',
+                                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                                      color: '#34d399',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.68rem',
+                                      cursor: 'pointer',
+                                      marginLeft: '6px',
+                                      fontWeight: '600',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      height: '18px'
+                                    }}
+                                  >
+                                    🔓 Reabrir
+                                  </button>
+                                )}
                               </div>
                               
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
