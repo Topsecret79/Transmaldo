@@ -1174,8 +1174,36 @@ function App() {
       setTarget([]);
       return;
     }
+    
+    const countryCode = searchCountryCode || 'es';
+    const cityBias = searchCityBias || 'Barcelona';
+
+    if (countryCode === 'es') {
+      try {
+        let cartoQuery = queryText.trim();
+        if (!cartoQuery.includes(',') && !/\b\d{5}\b/.test(cartoQuery) && cityBias && !cartoQuery.toLowerCase().includes(cityBias.toLowerCase())) {
+          cartoQuery += `, ${cityBias}`;
+        }
+        const cartoUrl = `https://www.cartociudad.es/geocoder/api/geocoder/candidates?q=${encodeURIComponent(cartoQuery)}&limit=5`;
+        const response = await fetch(cartoUrl);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            const formatted = data.map(item => ({
+              lat: item.lat.toString(),
+              lon: item.lng.toString(),
+              display_name: `${item.address}, ${item.province}, España`
+            }));
+            setTarget(formatted);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("CartoCiudad route suggestions failed, falling back to Nominatim:", err);
+      }
+    }
+
     try {
-      const countryCode = searchCountryCode || 'es';
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(queryText.trim())}`;
       const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
       if (response.ok) {
@@ -7613,6 +7641,20 @@ function App() {
                       >
                         📍 Usar GPS
                       </button>
+                      {routeStartAddr && routeStartAddr.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => handleNavigate(routeStartAddr)}
+                          style={{
+                            background: 'transparent', border: 'none', color: '#10b981',
+                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                            fontWeight: 'bold'
+                          }}
+                          title="Navegar a esta dirección"
+                        >
+                          🗺️ Navegar
+                        </button>
+                      )}
                     </div>
                   </span>
                   <input 
@@ -7655,6 +7697,20 @@ function App() {
                       >
                         📍 Usar GPS
                       </button>
+                      {routeEndAddr && routeEndAddr.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => handleNavigate(routeEndAddr)}
+                          style={{
+                            background: 'transparent', border: 'none', color: '#10b981',
+                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                            fontWeight: 'bold'
+                          }}
+                          title="Navegar a esta dirección"
+                        >
+                          🗺️ Navegar
+                        </button>
+                      )}
                     </div>
                   </span>
                   <input 
@@ -12525,6 +12581,20 @@ function App() {
                         >
                           📍 Usar GPS
                         </button>
+                        {routeStartAddr && routeStartAddr.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate(routeStartAddr)}
+                            style={{
+                              background: 'transparent', border: 'none', color: '#10b981',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: 'bold'
+                            }}
+                            title="Navegar a esta dirección"
+                          >
+                            🗺️ Navegar
+                          </button>
+                        )}
                       </div>
                     </span>
                     <input 
@@ -12567,6 +12637,20 @@ function App() {
                         >
                           📍 Usar GPS
                         </button>
+                        {routeEndAddr && routeEndAddr.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate(routeEndAddr)}
+                            style={{
+                              background: 'transparent', border: 'none', color: '#10b981',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: 'bold'
+                            }}
+                            title="Navegar a esta dirección"
+                          >
+                            🗺️ Navegar
+                          </button>
+                        )}
                       </div>
                     </span>
                     <input 
@@ -13219,6 +13303,20 @@ function App() {
                         >
                           📍 Usar GPS
                         </button>
+                        {routeStartAddr && routeStartAddr.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate(routeStartAddr)}
+                            style={{
+                              background: 'transparent', border: 'none', color: '#10b981',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: 'bold'
+                            }}
+                            title="Navegar a esta dirección"
+                          >
+                            🗺️ Navegar
+                          </button>
+                        )}
                       </div>
                     </span>
                     <input 
@@ -13261,6 +13359,20 @@ function App() {
                         >
                           📍 Usar GPS
                         </button>
+                        {routeEndAddr && routeEndAddr.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate(routeEndAddr)}
+                            style={{
+                              background: 'transparent', border: 'none', color: '#10b981',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: 'bold'
+                            }}
+                            title="Navegar a esta dirección"
+                          >
+                            🗺️ Navegar
+                          </button>
+                        )}
                       </div>
                     </span>
                     <input 
@@ -13935,20 +14047,36 @@ function App() {
                   <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span className="input-label">Ubicación de Salida / Punto de Partida</span>
-                      {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
-                        <button 
-                          type="button" 
-                          onClick={handleStartStartVoiceInput}
-                          className={`btn btn-small ${isListeningStart ? 'btn-danger' : 'btn-secondary'}`}
-                          style={{ 
-                            padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
-                            background: isListeningStart ? '#ef4444' : '', borderColor: isListeningStart ? '#ef4444' : '', color: '#fff',
-                            animation: isListeningStart ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
-                          }}
-                        >
-                          🎙️ {isListeningStart ? 'Escuchando...' : 'Dictar'}
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                          <button 
+                            type="button" 
+                            onClick={handleStartStartVoiceInput}
+                            className={`btn btn-small ${isListeningStart ? 'btn-danger' : 'btn-secondary'}`}
+                            style={{ 
+                              padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
+                              background: isListeningStart ? '#ef4444' : '', borderColor: isListeningStart ? '#ef4444' : '', color: '#fff',
+                              animation: isListeningStart ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                            }}
+                          >
+                            🎙️ {isListeningStart ? 'Escuchando...' : 'Dictar'}
+                          </button>
+                        )}
+                        {routeStartAddr && routeStartAddr.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate(routeStartAddr)}
+                            style={{
+                              background: 'transparent', border: 'none', color: '#10b981',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: 'bold'
+                            }}
+                            title="Navegar a esta dirección"
+                          >
+                            🗺️ Navegar
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <input 
                       type="text" 
@@ -13965,20 +14093,36 @@ function App() {
                   <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span className="input-label">Ubicación de Llegada / Fin de Ruta</span>
-                      {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
-                        <button 
-                          type="button" 
-                          onClick={handleStartEndVoiceInput}
-                          className={`btn btn-small ${isListeningEnd ? 'btn-danger' : 'btn-secondary'}`}
-                          style={{ 
-                            padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
-                            background: isListeningEnd ? '#ef4444' : '', borderColor: isListeningEnd ? '#ef4444' : '', color: '#fff',
-                            animation: isListeningEnd ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
-                          }}
-                        >
-                          🎙️ {isListeningEnd ? 'Escuchando...' : 'Dictar'}
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                          <button 
+                            type="button" 
+                            onClick={handleStartEndVoiceInput}
+                            className={`btn btn-small ${isListeningEnd ? 'btn-danger' : 'btn-secondary'}`}
+                            style={{ 
+                              padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
+                              background: isListeningEnd ? '#ef4444' : '', borderColor: isListeningEnd ? '#ef4444' : '', color: '#fff',
+                              animation: isListeningEnd ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                            }}
+                          >
+                            🎙️ {isListeningEnd ? 'Escuchando...' : 'Dictar'}
+                          </button>
+                        )}
+                        {routeEndAddr && routeEndAddr.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate(routeEndAddr)}
+                            style={{
+                              background: 'transparent', border: 'none', color: '#10b981',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: 'bold'
+                            }}
+                            title="Navegar a esta dirección"
+                          >
+                            🗺️ Navegar
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <input 
                       type="text" 
