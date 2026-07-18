@@ -690,10 +690,7 @@ function App() {
     (loggedInUserObj.role === 'admin' ? showGeneralSearch : loggedInUserObj.canSearch)
   );
   const [shifts, setShifts] = useState([]);
-  const [driverCustomDriver, setDriverCustomDriver] = useState('');
-  const [driverMatricula, setDriverMatricula] = useState('');
-  const [driverHelper, setDriverHelper] = useState('');
-  const [driverHelper2, setDriverHelper2] = useState('');
+
   const [allowDriverSupportTransfer, setAllowDriverSupportTransfer] = useState(getAllowDriverSupportTransfer());
   const [helpersList, setHelpersList] = useState(() => getHelpersList());
   const [newHelperName, setNewHelperName] = useState('');
@@ -956,17 +953,7 @@ function App() {
     localStorage.setItem('delivery_active_routes', JSON.stringify(activeRoutes));
   }, [activeRoutes]);
 
-  useEffect(() => {
-    if (currentUser && currentUser.role === 'repartidor') {
-      const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
-      const shiftId = `${currentUser.id}_${activeDate}`;
-      const s = shifts.find(item => item.id === shiftId);
-      setDriverCustomDriver(s?.customDriver || currentUser.label || '');
-      setDriverMatricula(s?.matricula || '');
-      setDriverHelper(s?.helper || '');
-      setDriverHelper2(s?.helper2 || '');
-    }
-  }, [shifts, shiftSummaryDate, currentUser]);
+
 
   useEffect(() => {
     if (currentRouteId !== null) {
@@ -1073,6 +1060,24 @@ function App() {
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [shiftSummaryDate, setShiftSummaryDate] = useState(new Date().toISOString().split('T')[0]);
   const [shiftSummaryFurgoId, setShiftSummaryFurgoId] = useState('');
+
+  // States and useEffect for driver shift self-configuration (declared after shiftSummaryDate initialization)
+  const [driverCustomDriver, setDriverCustomDriver] = useState('');
+  const [driverMatricula, setDriverMatricula] = useState('');
+  const [driverHelper, setDriverHelper] = useState('');
+  const [driverHelper2, setDriverHelper2] = useState('');
+
+  useEffect(() => {
+    if (currentUser && currentUser.role === 'repartidor') {
+      const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+      const shiftId = `${currentUser.id}_${activeDate}`;
+      const s = shifts.find(item => item.id === shiftId);
+      setDriverCustomDriver(s?.customDriver || currentUser.label || '');
+      setDriverMatricula(s?.matricula || '');
+      setDriverHelper(s?.helper || '');
+      setDriverHelper2(s?.helper2 || '');
+    }
+  }, [shifts, shiftSummaryDate, currentUser]);
 
   // Cambiar fecha de ruta
   const [showMoveRouteModal, setShowMoveRouteModal] = useState(false);
