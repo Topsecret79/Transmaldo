@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import MapboxGLWorker from 'mapbox-gl/dist/mapbox-gl-csp-worker?worker';
 import { Capacitor } from '@capacitor/core';
+
+mapboxgl.workerClass = MapboxGLWorker;
 import { Geolocation as CapGeolocation } from '@capacitor/geolocation';
 import Fuse from 'fuse.js';
 import changelogData from './changelog.json';
