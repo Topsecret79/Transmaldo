@@ -2320,6 +2320,21 @@ export function parseTicketNotes(notesText) {
     cleanNotes = cleanNotes.replace(/\[Ruta Original:\s*[^\]]+\]\s*/g, '');
   }
 
+  // 1.5. Detectar y extraer tags combinados de servicio y franja horaria
+  if (cleanNotes.match(/\[CUELGUE_MA?Ñ?NANA\]/i) || cleanNotes.toLowerCase().includes('[cuelgue_mañana]') || cleanNotes.toLowerCase().includes('[cuelgue_manana]')) {
+    timeSlot = 'morning';
+    cleanNotes = cleanNotes.replace(/\[CUELGUE_MA?Ñ?NANA\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[CUELGUE_TARDE\]/i) || cleanNotes.toLowerCase().includes('[cuelgue_tarde]')) {
+    timeSlot = 'afternoon';
+    cleanNotes = cleanNotes.replace(/\[CUELGUE_TARDE\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[PUESTA_MARCHA_MA?Ñ?NANA\]/i) || cleanNotes.toLowerCase().includes('[puesta_marcha_mañana]') || cleanNotes.toLowerCase().includes('[puesta_marcha_manana]')) {
+    timeSlot = 'morning';
+    cleanNotes = cleanNotes.replace(/\[PUESTA_MARCHA_MA?Ñ?NANA\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[PUESTA_MARCHA_TARDE\]/i) || cleanNotes.toLowerCase().includes('[puesta_marcha_tarde]')) {
+    timeSlot = 'afternoon';
+    cleanNotes = cleanNotes.replace(/\[PUESTA_MARCHA_TARDE\]/gi, '').trim();
+  }
+
   // 2. Extraer [Horario: ...]
   const slotMatch = cleanNotes.match(/\[Horario:\s*([^\]]+)\]/);
   if (slotMatch) {

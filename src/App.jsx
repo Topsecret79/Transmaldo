@@ -630,10 +630,27 @@ function App() {
     // 1. Prioridad: Etiquetas o palabras clave en las notas
     if (t.notes) {
       const notesLower = t.notes.toLowerCase();
-      if (notesLower.includes('[cuelgue]') || notesLower.includes('cuelgue') || notesLower.includes('colgar') || notesLower.includes('soporte')) {
+      if (
+        notesLower.includes('[cuelgue]') || 
+        notesLower.includes('[cuelgue_manana]') || 
+        notesLower.includes('[cuelgue_mañana]') || 
+        notesLower.includes('[cuelgue_tarde]') || 
+        notesLower.includes('cuelgue') || 
+        notesLower.includes('colgar') || 
+        notesLower.includes('soporte')
+      ) {
         return 'cuelgue';
       }
-      if (notesLower.includes('[puesta_marcha]') || notesLower.includes('puesta en marcha') || notesLower.includes('puesta_en_marcha') || notesLower.includes('instalar') || notesLower.includes('instalacion')) {
+      if (
+        notesLower.includes('[puesta_marcha]') || 
+        notesLower.includes('[puesta_marcha_manana]') || 
+        notesLower.includes('[puesta_marcha_mañana]') || 
+        notesLower.includes('[puesta_marcha_tarde]') || 
+        notesLower.includes('puesta en marcha') || 
+        notesLower.includes('puesta_en_marcha') || 
+        notesLower.includes('instalar') || 
+        notesLower.includes('instalacion')
+      ) {
         return 'puesta_marcha';
       }
       if (notesLower.includes('[tarde]') || notesLower.includes('servicio de tarde') || notesLower.includes('por la tarde') || notesLower.includes('tarde')) {
@@ -1864,8 +1881,13 @@ function App() {
             allBounds.push([lngNum, latNum]);
             const statusColor = getTicketColor(t);
             const textColor = (['#fbbf24','#34d399'].includes(statusColor)) ? '#000' : '#fff';
+            
+            // Opción 3: Bordes de color según franja horaria
+            const parsedNotesObj = parseTicketNotes(t.notes);
+            const markerBorderColor = parsedNotesObj.timeSlot === 'morning' ? '#fbbf24' : (parsedNotesObj.timeSlot === 'afternoon' ? '#2563eb' : '#ffffff');
+            
             const el = document.createElement('div');
-            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;transition:transform 0.15s ease;';
+            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;transition:transform 0.15s ease;';
             el.textContent = seqIndex + 1;
             el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
             el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
@@ -1874,7 +1896,29 @@ function App() {
             const cAddr = getShortAddressString(t.address);
             const cName = t.customerName || 'Cliente';
             const posBlock = (!isClosed || isAdminOrSuper) ? '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#9ca3af;font-weight:600;">Posición:</span><select onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder(\'' + t.id + '\', this.value)" style="background:var(--primary);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;">' + optHtml + '</select></div>' : '<div style="font-size:0.74rem;color:#9ca3af;font-weight:700;margin-top:3px;">Parada #' + (seqIndex + 1) + '</div>';
-            const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + posBlock + '</div>';
+            
+            // Construir insignias para el Popup informativo
+            const sType = getTicketServiceType(t);
+            let badgeHtml = '';
+            if (sType !== 'entrega') {
+              const bg = sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.15)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(249, 115, 22, 0.15)';
+              const fg = sType === 'cuelgue' ? '#c084fc' : sType === 'puesta_marcha' ? '#f472b6' : '#fb923c';
+              const border = sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.25)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.25)' : 'rgba(249, 115, 22, 0.25)';
+              const labelText = sType === 'cuelgue' ? '📺 Cuelgue' : sType === 'puesta_marcha' ? '⚙️ Puesta en Marcha' : '🌙 Servicio Tarde';
+              badgeHtml += '<span style="font-size:0.65rem;padding:1px 5px;background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-weight:bold;border-radius:4px;display:inline-block;margin-right:4px;">' + labelText + '</span>';
+            }
+            if (parsedNotesObj.timeSlot !== 'any') {
+              const bg = parsedNotesObj.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(56, 189, 248, 0.15)';
+              const fg = parsedNotesObj.timeSlot === 'morning' ? '#fbbf24' : '#38bdf8';
+              const border = parsedNotesObj.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.25)' : 'rgba(56, 189, 248, 0.25)';
+              const labelText = parsedNotesObj.timeSlot === 'morning' ? '☀️ Mañana' : '🌙 Tarde';
+              badgeHtml += '<span style="font-size:0.65rem;padding:1px 5px;background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-weight:bold;border-radius:4px;display:inline-block;">' + labelText + '</span>';
+            }
+            if (badgeHtml) {
+              badgeHtml = '<div style="margin-top:3px;margin-bottom:3px;display:flex;flex-wrap:wrap;gap:4px;">' + badgeHtml + '</div>';
+            }
+            
+            const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + badgeHtml + posBlock + '</div>';
             const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
             const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
             el.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
@@ -3468,9 +3512,21 @@ function App() {
 
     let finalNotes = notes.trim();
     if (activeServiceType === 'cuelgue') {
-      finalNotes = `[CUELGUE] ${finalNotes}`.trim();
+      if (timeSlot === 'morning') {
+        finalNotes = `[CUELGUE_MAÑANA] ${finalNotes}`.trim();
+      } else if (timeSlot === 'afternoon') {
+        finalNotes = `[CUELGUE_TARDE] ${finalNotes}`.trim();
+      } else {
+        finalNotes = `[CUELGUE] ${finalNotes}`.trim();
+      }
     } else if (activeServiceType === 'puesta_marcha') {
-      finalNotes = `[PUESTA_MARCHA] ${finalNotes}`.trim();
+      if (timeSlot === 'morning') {
+        finalNotes = `[PUESTA_MARCHA_MAÑANA] ${finalNotes}`.trim();
+      } else if (timeSlot === 'afternoon') {
+        finalNotes = `[PUESTA_MARCHA_TARDE] ${finalNotes}`.trim();
+      } else {
+        finalNotes = `[PUESTA_MARCHA] ${finalNotes}`.trim();
+      }
     } else if (activeServiceType === 'tarde') {
       finalNotes = `[TARDE] ${finalNotes}`.trim();
     }
@@ -9668,23 +9724,60 @@ function App() {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: '26px',
-                      height: '26px',
-                      borderRadius: '50%',
-                      background: statusColor,
-                      color: '#000',
-                      fontWeight: '800',
-                      fontSize: '0.85rem',
-                      boxShadow: `0 0 8px ${statusColor}40`
-                    }}>
-                      {index + 1}
-                    </span>
-                    <strong style={{ fontSize: '0.95rem', color: '#000' }}>{t.customerName || 'Cliente sin nombre'}</strong>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '50%',
+                        background: statusColor,
+                        color: '#000',
+                        fontWeight: '800',
+                        fontSize: '0.85rem',
+                        boxShadow: `0 0 8px ${statusColor}40`
+                      }}>
+                        {index + 1}
+                      </span>
+                      <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>{t.customerName || 'Cliente sin nombre'}</strong>
+                    </div>
+                    {/* Renderizar insignias de servicio y franja horaria para el mapa */}
+                    {(() => {
+                      const parsed = parseTicketNotes(t.notes);
+                      const sType = getTicketServiceType(t);
+                      return (
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginLeft: '34px', marginTop: '2px' }}>
+                          {sType !== 'entrega' && (
+                            <span className="badge" style={{
+                              fontSize: '0.62rem',
+                              padding: '1px 5px',
+                              background: sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.15)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(249, 115, 22, 0.15)',
+                              color: sType === 'cuelgue' ? '#a855f7' : sType === 'puesta_marcha' ? '#ec4899' : '#f97316',
+                              border: sType === 'cuelgue' ? '1px solid rgba(168, 85, 247, 0.25)' : sType === 'puesta_marcha' ? '1px solid rgba(236, 72, 153, 0.25)' : '1px solid rgba(249, 115, 22, 0.25)',
+                              fontWeight: 'bold',
+                              borderRadius: '4px'
+                            }}>
+                              {sType === 'cuelgue' ? '📺 Cuelgue' : sType === 'puesta_marcha' ? '⚙️ Puesta en Marcha' : '🌙 Servicio Tarde'}
+                            </span>
+                          )}
+                          {parsed.timeSlot !== 'any' && (
+                            <span className="badge" style={{
+                              fontSize: '0.62rem',
+                              padding: '1px 5px',
+                              background: parsed.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                              color: parsed.timeSlot === 'morning' ? '#fbbf24' : '#38bdf8',
+                              border: parsed.timeSlot === 'morning' ? '1px solid rgba(251, 191, 36, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
+                              fontWeight: 'bold',
+                              borderRadius: '4px'
+                            }}>
+                              {parsed.timeSlot === 'morning' ? '☀️ Mañana' : '🌙 Tarde'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <span style={{
                     fontSize: '0.72rem',
