@@ -523,27 +523,58 @@ export async function syncFromCloud() {
         localStorage.setItem('delivery_mapbox_access_token', mapboxTokenSetting.value);
       }
 
+      // Resolver ID de administrador gestor para aislar configuraciones
+      let adminId = 'admin';
+      if (sessionUser) {
+        if (sessionUser.role === 'admin' || sessionUser.role === 'superadmin') {
+          adminId = sessionUser.id;
+        } else if (sessionUser.role === 'repartidor') {
+          const dbUser = users ? users.find(u => u.id === sessionUser.id) : null;
+          adminId = dbUser ? (dbUser.created_by || 'admin') : (sessionUser.createdBy || 'admin');
+        }
+      }
+
       // Allow Driver Support Transfer
-      const transferSetting = settings.find(s => s.key === 'allow_driver_support_transfer');
+      const transferKey = `allow_driver_support_transfer_${adminId}`;
+      let transferSetting = settings.find(s => s.key === transferKey);
+      if (!transferSetting) {
+        transferSetting = settings.find(s => s.key === 'allow_driver_support_transfer');
+      }
       if (transferSetting) {
+        localStorage.setItem(`delivery_allow_driver_support_transfer_${adminId}`, transferSetting.value);
         localStorage.setItem('delivery_allow_driver_support_transfer', transferSetting.value);
       }
 
       // Helpers List
-      const helpersSetting = settings.find(s => s.key === 'delivery_helpers_list');
+      const helpersKey = `delivery_helpers_list_${adminId}`;
+      let helpersSetting = settings.find(s => s.key === helpersKey);
+      if (!helpersSetting) {
+        helpersSetting = settings.find(s => s.key === 'delivery_helpers_list');
+      }
       if (helpersSetting) {
+        localStorage.setItem(`delivery_helpers_list_${adminId}`, helpersSetting.value);
         localStorage.setItem('delivery_helpers_list', helpersSetting.value);
       }
 
       // Plates List
-      const platesSetting = settings.find(s => s.key === 'delivery_plates_list');
+      const platesKey = `delivery_plates_list_${adminId}`;
+      let platesSetting = settings.find(s => s.key === platesKey);
+      if (!platesSetting) {
+        platesSetting = settings.find(s => s.key === 'delivery_plates_list');
+      }
       if (platesSetting) {
+        localStorage.setItem(`delivery_plates_list_${adminId}`, platesSetting.value);
         localStorage.setItem('delivery_plates_list', platesSetting.value);
       }
 
       // Employees List
-      const empSetting = settings.find(s => s.key === 'delivery_employees_list');
+      const empKey = `delivery_employees_list_${adminId}`;
+      let empSetting = settings.find(s => s.key === empKey);
+      if (!empSetting) {
+        empSetting = settings.find(s => s.key === 'delivery_employees_list');
+      }
       if (empSetting) {
+        localStorage.setItem(`delivery_employees_list_${adminId}`, empSetting.value);
         localStorage.setItem('delivery_employees_list', empSetting.value);
       }
 
@@ -2426,18 +2457,42 @@ export function saveRouteStartTime(furgoId, date, time) {
   }
 }
 
+// Helper para obtener el ID del administrador activo en la sesión actual
+export function getActiveAdminId() {
+  try {
+    const sessionStr = localStorage.getItem('delivery_session');
+    if (sessionStr) {
+      const user = JSON.parse(sessionStr);
+      if (user) {
+        if (user.role === 'admin' || user.role === 'superadmin') {
+          return user.id;
+        } else if (user.role === 'repartidor') {
+          return user.createdBy || 'admin';
+        }
+      }
+    }
+  } catch (e) {}
+  return 'admin';
+}
+
 // Obtener si los repartidores pueden hacer transferencias de apoyo
 export function getAllowDriverSupportTransfer() {
+  const adminId = getActiveAdminId();
+  const val = localStorage.getItem(`delivery_allow_driver_support_transfer_${adminId}`);
+  if (val !== null) return val === 'true';
   return localStorage.getItem('delivery_allow_driver_support_transfer') === 'true';
 }
 
 // Guardar si los repartidores pueden hacer transferencias de apoyo
 export function saveAllowDriverSupportTransfer(value) {
-  localStorage.setItem('delivery_allow_driver_support_transfer', value ? 'true' : 'false');
+  const adminId = getActiveAdminId();
+  const valStr = value ? 'true' : 'false';
+  localStorage.setItem(`delivery_allow_driver_support_transfer_${adminId}`, valStr);
+  localStorage.setItem('delivery_allow_driver_support_transfer', valStr);
   if (supabase) {
     supabase.from('delivery_settings').upsert({
-      key: 'allow_driver_support_transfer',
-      value: value ? 'true' : 'false'
+      key: `allow_driver_support_transfer_${adminId}`,
+      value: valStr
     }).then(({ error }) => {
       if (error) console.error("Error saving allow_driver_support_transfer to Supabase:", error);
     });
@@ -2550,7 +2605,11 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
 
 // Obtener la lista de ayudantes configurados
 export function getHelpersList() {
-  const helpersStr = localStorage.getItem('delivery_helpers_list');
+  const adminId = getActiveAdminId();
+  let helpersStr = localStorage.getItem(`delivery_helpers_list_${adminId}`);
+  if (!helpersStr) {
+    helpersStr = localStorage.getItem('delivery_helpers_list');
+  }
   try {
     const list = helpersStr ? JSON.parse(helpersStr) : [];
     return list.map(item => {
@@ -2566,15 +2625,17 @@ export function getHelpersList() {
 
 // Guardar la lista de ayudantes configurados
 export function saveHelpersList(helpers) {
+  const adminId = getActiveAdminId();
   const formatted = helpers.map(item => ({
     name: item.name.trim(),
     dailyRate: parseFloat(item.dailyRate) || 0
   }));
   const helpersStr = JSON.stringify(formatted);
+  localStorage.setItem(`delivery_helpers_list_${adminId}`, helpersStr);
   localStorage.setItem('delivery_helpers_list', helpersStr);
   if (supabase) {
     supabase.from('delivery_settings').upsert({
-      key: 'delivery_helpers_list',
+      key: `delivery_helpers_list_${adminId}`,
       value: helpersStr
     }).then(({ error }) => {
       if (error) console.error("Error saving helpers list to Supabase:", error);
@@ -2584,7 +2645,11 @@ export function saveHelpersList(helpers) {
 
 // Obtener la lista de matriculas configuradas
 export function getPlatesList() {
-  const platesStr = localStorage.getItem('delivery_plates_list');
+  const adminId = getActiveAdminId();
+  let platesStr = localStorage.getItem(`delivery_plates_list_${adminId}`);
+  if (!platesStr) {
+    platesStr = localStorage.getItem('delivery_plates_list');
+  }
   try {
     return platesStr ? JSON.parse(platesStr) : [];
   } catch (e) {
@@ -2594,11 +2659,13 @@ export function getPlatesList() {
 
 // Guardar la lista de matriculas configuradas
 export function savePlatesList(plates) {
+  const adminId = getActiveAdminId();
   const platesStr = JSON.stringify(plates);
+  localStorage.setItem(`delivery_plates_list_${adminId}`, platesStr);
   localStorage.setItem('delivery_plates_list', platesStr);
   if (supabase) {
     supabase.from('delivery_settings').upsert({
-      key: 'delivery_plates_list',
+      key: `delivery_plates_list_${adminId}`,
       value: platesStr
     }).then(({ error }) => {
       if (error) console.error("Error saving plates list to Supabase:", error);
@@ -2627,7 +2694,11 @@ export function saveDriverDailyRate(driverId, rate) {
 
 // Obtener la lista de empleados configurados
 export function getEmployeesList() {
-  const empStr = localStorage.getItem('delivery_employees_list');
+  const adminId = getActiveAdminId();
+  let empStr = localStorage.getItem(`delivery_employees_list_${adminId}`);
+  if (!empStr) {
+    empStr = localStorage.getItem('delivery_employees_list');
+  }
   try {
     if (empStr) {
       return JSON.parse(empStr);
@@ -2641,7 +2712,7 @@ export function getEmployeesList() {
       dailyRate: h.dailyRate
     }));
     if (migrated.length > 0) {
-      localStorage.setItem('delivery_employees_list', JSON.stringify(migrated));
+      localStorage.setItem(`delivery_employees_list_${adminId}`, JSON.stringify(migrated));
     }
     return migrated;
   } catch (e) {
@@ -2651,6 +2722,7 @@ export function getEmployeesList() {
 
 // Guardar la lista de empleados configurados
 export function saveEmployeesList(employees) {
+  const adminId = getActiveAdminId();
   const formatted = employees.map(item => ({
     id: item.id || `emp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
     name: item.name.trim(),
@@ -2658,10 +2730,11 @@ export function saveEmployeesList(employees) {
     dailyRate: parseFloat(item.dailyRate) || 0
   }));
   const empStr = JSON.stringify(formatted);
+  localStorage.setItem(`delivery_employees_list_${adminId}`, empStr);
   localStorage.setItem('delivery_employees_list', empStr);
   if (supabase) {
     supabase.from('delivery_settings').upsert({
-      key: 'delivery_employees_list',
+      key: `delivery_employees_list_${adminId}`,
       value: empStr
     }).then(({ error }) => {
       if (error) console.error("Error saving employees list to Supabase:", error);
