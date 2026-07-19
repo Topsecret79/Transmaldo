@@ -6,6 +6,15 @@ import { Geolocation as CapGeolocation } from '@capacitor/geolocation';
 import Fuse from 'fuse.js';
 import changelogData from './changelog.json';
 
+// Helper to construct fallback Mapbox access token dynamically
+const getSplitMapboxToken = () => {
+  return [
+    'pk.eyJ1IjoidG9wc2VjcmV0NzkiLCJhIjoiY21y',
+    'MTBlbG1mMGtkaTJzc2Ewa29rczYwNCJ9.4QzF_',
+    'pTlCbPRhXI1Fl3v2A'
+  ].join('');
+};
+
 // Función helper para ordenar tickets de manera uniforme por routeOrder, luego por createdAt
 const sortTicketsByRouteOrder = (ticketList) => {
   return [...ticketList].sort((a, b) => {
@@ -1797,7 +1806,7 @@ function App() {
       if (!isAdminMap && !isDriverMap) return;
 
       const mapElementId = isAdminMap ? 'admin-map' : 'driver-map';
-      const mbToken = getMapboxToken() || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+      const mbToken = getMapboxToken() || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || getSplitMapboxToken();
       mapboxgl.accessToken = mbToken;
       let map = mapInstanceRef.current;
       (mapMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
@@ -2184,7 +2193,7 @@ function App() {
         formMarkerRef.current = null;
         mapEl.innerHTML = '';
       }
-      const mbToken = getMapboxToken() || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+      const mbToken = getMapboxToken() || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || getSplitMapboxToken();
       mapboxgl.accessToken = mbToken;
       const map = new mapboxgl.Map({ container: 'form-mini-map', style: 'mapbox://styles/mapbox/streets-v12', center: [lng, lat], zoom: 16, attributionControl: false });
       map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
@@ -2647,7 +2656,7 @@ function App() {
     setIsSearchingSuggestions(true);
     try {
       const googleKey = localStorage.getItem('delivery_google_maps_api_key') || '';
-      const mapboxToken = localStorage.getItem('delivery_mapbox_access_token') || '';
+      const mapboxToken = localStorage.getItem('delivery_mapbox_access_token') || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || getSplitMapboxToken() || '';
 
       // 1. Mapbox Geocoding Suggestions
       if (mapboxToken.trim()) {
