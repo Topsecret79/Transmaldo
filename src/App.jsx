@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation as CapGeolocation } from '@capacitor/geolocation';
 import Fuse from 'fuse.js';
 import changelogData from './changelog.json';
-
-// Asegurar Leaflet en el objeto global para compatibilidad
-if (typeof window !== 'undefined') {
-  window.L = L;
-}
 
 // Función helper para ordenar tickets de manera uniforme por routeOrder, luego por createdAt
 const sortTicketsByRouteOrder = (ticketList) => {
@@ -270,11 +265,26 @@ const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr, endC
   return timelineSchedules;
 };
 
+// Cache in-memory for road routes to avoid aggressive OSRM re-fetching
+const roadRouteCache = {};
+
 // Obtener ruta por carreteras reales desde OSRM
 const fetchRoadRoute = async (points) => {
   if (!points || points.length < 2) return null;
+  
+  // Build a cache key by rounding coordinates to 5 decimal places (~1.1 meter precision)
+  const coordsString = points.map(p => {
+    const lng = parseFloat(p.lng);
+    const lat = parseFloat(p.lat);
+    return isNaN(lng) || isNaN(lat) ? '' : `${lng.toFixed(5)},${lat.toFixed(5)}`;
+  }).filter(Boolean).join(';');
+  
+  if (!coordsString) return null;
+  if (roadRouteCache[coordsString]) {
+    return roadRouteCache[coordsString];
+  }
+  
   try {
-    const coordsString = points.map(p => `${p.lng},${p.lat}`).join(';');
     const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
     const response = await fetch(url);
     if (!response.ok) return null;
@@ -282,11 +292,14 @@ const fetchRoadRoute = async (points) => {
     if (data && data.routes && data.routes.length > 0) {
       const route = data.routes[0];
       const routeCoords = route.geometry.coordinates;
-      return {
+      const result = {
         geometry: routeCoords.map(c => [c[1], c[0]]),
         distance: route.distance, // en metros
         duration: route.duration  // en segundos
       };
+      // Store in cache
+      roadRouteCache[coordsString] = result;
+      return result;
     }
   } catch (e) {
     console.error("OSRM Routing failed:", e);
@@ -1154,12 +1167,13 @@ function App() {
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
   const mapInstanceRef = useRef(null);
-  const mapLayerGroupRef = useRef(null);
-  const mapDriversLayerGroupRef = useRef(null);
+  const mapMarkersRef = useRef([]);          // Mapbox GL delivery stop markers
+  const mapDriverMarkersRef = useRef([]);    // Mapbox GL live GPS driver markers
+  const mapRouteSourceIds = useRef([]);      // Mapbox GL route source IDs for cleanup
   const lastFittedRef = useRef('');
   const [duplicateWarning, setDuplicateWarning] = useState(null);
   const [routeStartAddr, setRouteStartAddr] = useState(getRouteStartAddr());
-  const [rotateLoaded, setRotateLoaded] = useState(false);
+  const [rotateLoaded] = useState(true);    // Mapbox GL has native rotation — no plugin needed
   const [mapRotationState, setMapRotationState] = useState(0);
   const [mapControlsPos, setMapControlsPos] = useState(() => {
     try {
@@ -1723,10 +1737,8 @@ function App() {
     }
   }, [currentUser, ticketDate, users]);
 
-  // Inicialización y actualización del Mapa Leaflet (Admin o Repartidor)
+  // ─── MAPA PRINCIPAL (Mapbox GL JS) — Admin y Repartidor ───────────────────
   useEffect(() => {
-    if (!rotateLoaded) return;
-
     window.handleChangeMapStopOrder = (ticketId, targetValue) => {
       const ticketToMove = tickets.find(tk => tk && tk.id === ticketId);
       if (ticketToMove) {
@@ -1774,7 +1786,7 @@ function App() {
             }
           })
           .catch(err => {
-            console.warn("Background driver locations polling failed:", err);
+            console.warn("Background driver locations polling failed");
           });
       }
     }, 15000);
@@ -1782,403 +1794,143 @@ function App() {
     const timer = setTimeout(() => {
       const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');
       const isDriverMap = activeTab === 'driver_map' && document.getElementById('driver-map');
+      if (!isAdminMap && !isDriverMap) return;
 
-      if ((isAdminMap || isDriverMap) && window.L) {
-        const mapElementId = isAdminMap ? 'admin-map' : 'driver-map';
-
-        let map = mapInstanceRef.current;
-
-        // 1. Inicializar nuevo mapa si no existe
-        if (map === null) {
-          map = window.L.map(mapElementId, {
-            zoomControl: true,
-            attributionControl: true,
-            rotate: true,
-            touchRotate: true,
-            rotateControl: false,
-            preferCanvas: true
-          }).setView([41.3879, 2.16992], 12);
-          mapInstanceRef.current = map;
-
-          map.on('rotate', () => {
-            if (typeof map.getBearing === 'function') {
-              setMapRotationState(Math.round(map.getBearing()));
-            }
-          });
-
-          // Deseleccionar pin al hacer clic en el fondo del mapa
-          map.on('click', (e) => {
-            if (e.originalEvent.target.closest('.leaflet-marker-icon')) return;
-            setSelectedMapTicket(null);
-          });
-
-          // Cargar capas de mapa (Google, Claro Minimalista, Oscuro Premium, Calles Moderno, Satélite)
-          const googleStreets = window.L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=es', {
-            attribution: '&copy; Google Maps',
-            maxZoom: 22
-          });
-
-          const googleHybrid = window.L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=es', {
-            attribution: '&copy; Google Maps',
-            maxZoom: 22
-          });
-
-          const googleTraffic = window.L.tileLayer('https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}&hl=es', {
-            attribution: '&copy; Google Maps',
-            maxZoom: 22
-          });
-
-          const positron = window.L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 20
-          });
-
-          const darkMatter = window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 20
-          });
-
-          const voyager = window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 20
-          });
-
-          const satellite = window.L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-            maxZoom: 19
-          });
-
-          // Activar Google Calles por defecto
-          googleStreets.addTo(map);
-
-          const baseMaps = {
-            "Google Calles 🗺️": googleStreets,
-            "Google Satélite Híbrido 🛰️": googleHybrid,
-            "Google Tráfico en Vivo 🚗": googleTraffic,
-            "Oscuro Premium ⚫": darkMatter,
-            "Claro Minimalista ⚪": positron,
-            "Calles Moderno 🗺️": voyager,
-            "Satélite Real 🛰️": satellite
-          };
-          window.L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
-        }
-
-        // 2. Inicializar o limpiar el LayerGroup de marcadores y polilíneas
-        if (!mapLayerGroupRef.current) {
-          mapLayerGroupRef.current = window.L.layerGroup().addTo(map);
-        } else {
-          mapLayerGroupRef.current.clearLayers();
-        }
-
-        if (!mapDriversLayerGroupRef.current) {
-          mapDriversLayerGroupRef.current = window.L.layerGroup().addTo(map);
-        } else {
-          mapDriversLayerGroupRef.current.clearLayers();
-        }
-
-        // 3. Filtrar y ordenar los tickets geocodificados
+      const mapElementId = isAdminMap ? 'admin-map' : 'driver-map';
+      const mbToken = getMapboxToken() || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+      mapboxgl.accessToken = mbToken;
+      let map = mapInstanceRef.current;
+      (mapMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
+      mapMarkersRef.current = [];
+      (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
+      mapDriverMarkersRef.current = [];
+      if (!map) {
+        map = new mapboxgl.Map({ container: mapElementId, style: 'mapbox://styles/mapbox/streets-v12', center: [2.16992, 41.3879], zoom: 12, attributionControl: true });
+        map.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: false }), 'top-right');
+        map.addControl(new mapboxgl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
+        map.on('rotate', () => { setMapRotationState(Math.round(map.getBearing())); });
+        map.on('click', (e) => { if (!e.originalEvent.target.closest('.mapboxgl-marker')) setSelectedMapTicket(null); });
+        mapInstanceRef.current = map;
+      }
+      const renderMapContent = () => {
+        (mapRouteSourceIds.current || []).forEach(srcId => {
+          try { if (map.getLayer(srcId + '-line')) map.removeLayer(srcId + '-line'); } catch(e){}
+          try { if (map.getSource(srcId)) map.removeSource(srcId); } catch(e){}
+        });
+        mapRouteSourceIds.current = [];
+        (mapMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
+        mapMarkersRef.current = [];
+        (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
+        mapDriverMarkersRef.current = [];
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
-        
         const dayTickets = tickets.filter(t => {
-          if (!t) return false;
-          if (t.date !== targetDate) return false;
-          if (isAdminMap) {
-            if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
-          } else {
-            // Driver map: only show tickets for the logged in driver
-            if (t.furgoId !== currentUser?.id) return false;
-          }
-          const latNum = parseFloat(t.lat);
-          const lngNum = parseFloat(t.lng);
-          return t.lat !== undefined && t.lat !== null && !isNaN(latNum) && t.lng !== undefined && t.lng !== null && !isNaN(lngNum);
+          if (!t || t.date !== targetDate) return false;
+          if (isAdminMap) { if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false; }
+          else { if (t.furgoId !== currentUser?.id) return false; }
+          const la = parseFloat(t.lat), lo = parseFloat(t.lng);
+          return t.lat != null && t.lng != null && !isNaN(la) && !isNaN(lo);
         });
-
-        // Ordenar por hora de creación o por routeOrder para visualizar la secuencia lógica
         const sortedDayTickets = sortTicketsByRouteOrder(dayTickets);
-
-        // Agrupar tickets por repartidor
         const ticketsByDriver = {};
-        sortedDayTickets.forEach(t => {
-          if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = [];
-          ticketsByDriver[t.furgoId].push(t);
-        });
-
-        const bounds = [];
+        sortedDayTickets.forEach(t => { if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = []; ticketsByDriver[t.furgoId].push(t); });
+        const allBounds = [];
         const COLORS = ['#a78bfa', '#38bdf8', '#34d399', '#f472b6', '#fbbf24', '#f43f5e'];
-
-        // 4. Dibujar marcadores de paradas y líneas de ruta (polilíneas)
         Object.keys(ticketsByDriver).forEach((fid, idx) => {
           const driverTickets = ticketsByDriver[fid];
           const driverColor = COLORS[idx % COLORS.length];
-          const furgoLabel = users.find(u => u.id === fid)?.label || fid;
-
+          const isClosed = getShiftStatus(fid, targetDate) === 'closed';
           driverTickets.forEach((t, seqIndex) => {
-            const latNum = parseFloat(t.lat);
-            const lngNum = parseFloat(t.lng);
-            const latLng = [latNum, lngNum];
-            bounds.push(latLng);
-
+            const latNum = parseFloat(t.lat), lngNum = parseFloat(t.lng);
+            allBounds.push([lngNum, latNum]);
             const statusColor = getTicketColor(t);
-            const textColor = (statusColor === '#a855f7' || statusColor === '#ec4899' || statusColor === '#ef4444') ? '#fff' : '#000';
-
-            const markerHtml = `
-              <div style="
-                width: 24px; 
-                height: 24px; 
-                border-radius: 50%; 
-                background-color: ${statusColor}; 
-                color: ${textColor}; 
-                font-weight: 800; 
-                font-size: 11px; 
-                display: flex; 
-                align-items: center; 
-                justify-content: center; 
-                border: 2px solid #fff;
-                box-shadow: 0 0 10px rgba(0,0,0,0.5);
-                transform: rotate(${-mapRotationState}deg);
-                transition: transform 0.25s ease-out;
-              ">
-                ${seqIndex + 1}
-              </div>
-            `;
-
-            const markerIcon = window.L.divIcon({
-              html: markerHtml,
-              className: '',
-              iconSize: [24, 24],
-              iconAnchor: [12, 12]
-            });
-
-            const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
-            const dayTicketsCount = driverTickets.length;
-            let optionsHtml = '';
-            for (let i = 1; i <= dayTicketsCount; i++) {
-              optionsHtml += `<option value="${i}" ${i === (seqIndex + 1) ? 'selected' : ''}>Parada #${i}</option>`;
-            }
-
-            const popupContent = `
-              <div style="
-                font-family: 'Inter', sans-serif; 
-                font-size: 0.88rem; 
-                color: #fff; 
-                padding: 4px;
-                min-width: 170px;
-                display: flex;
-                flex-direction: column;
-                gap: 5px;
-              ">
-                <strong style="color: #a78bfa; font-size: 0.92rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">
-                  ${t.customerName || 'Cliente'}
-                </strong>
-                <div style="font-size: 0.76rem; color: #d1d5db; line-height: 1.2;">
-                  📍 ${getShortAddressString(t.address)}
-                </div>
-                
-                ${(!isClosed || isAdminOrSuper) ? `
-                  <div style="
-                    margin-top: 6px; 
-                    display: flex; 
-                    align-items: center; 
-                    justify-content: space-between; 
-                    gap: 6px;
-                    border-top: 1px solid rgba(255,255,255,0.1);
-                    padding-top: 6px;
-                  ">
-                    <span style="font-size: 0.76rem; color: #9ca3af; font-weight: 600;">Posición:</span>
-                    <select 
-                      onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder('${t.id}', this.value)"
-                      style="
-                        background: var(--primary);
-                        border: 1px solid rgba(255,255,255,0.2);
-                        color: #fff;
-                        border-radius: 4px;
-                        padding: 2px 4px;
-                        font-size: 0.76rem;
-                        font-weight: 700;
-                        cursor: pointer;
-                        outline: none;
-                        height: 24px;
-                      "
-                    >
-                      ${optionsHtml}
-                    </select>
-                  </div>
-                ` : `
-                  <div style="font-size: 0.76rem; color: #9ca3af; font-weight: 700; margin-top: 4px;">
-                    Parada #${seqIndex + 1}
-                  </div>
-                `}
-              </div>
-            `;
-
-            window.L.marker(latLng, { icon: markerIcon })
-              .addTo(mapLayerGroupRef.current)
-              .bindPopup(popupContent, { maxWidth: 220 })
-              .on('click', () => {
-                handleSelectMapTicket(t);
-              });
+            const textColor = (['#fbbf24','#34d399'].includes(statusColor)) ? '#000' : '#fff';
+            const el = document.createElement('div');
+            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;transition:transform 0.15s ease;';
+            el.textContent = seqIndex + 1;
+            el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
+            el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
+            let optHtml = '';
+            for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
+            const cAddr = getShortAddressString(t.address);
+            const cName = t.customerName || 'Cliente';
+            const posBlock = (!isClosed || isAdminOrSuper) ? '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#9ca3af;font-weight:600;">Posición:</span><select onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder(\'' + t.id + '\', this.value)" style="background:var(--primary);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;">' + optHtml + '</select></div>' : '<div style="font-size:0.74rem;color:#9ca3af;font-weight:700;margin-top:3px;">Parada #' + (seqIndex + 1) + '</div>';
+            const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + posBlock + '</div>';
+            const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
+            const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
+            el.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
+            mapMarkersRef.current.push(marker);
           });
-
-          // Trazar línea de ruta conectando las paradas en orden (siguiendo carreteras reales)
           if (driverTickets.length > 1) {
-            const routeCoords = driverTickets.map(t => {
-              const latNum = parseFloat(t.lat);
-              const lngNum = parseFloat(t.lng);
-              return [latNum, lngNum];
-            });
-
-            // Cargar trazado de carreteras reales asíncronamente desde OSRM
-            fetchRoadRoute(routeCoords.map(c => ({ lat: c[0], lng: c[1] })))
+            const coords = driverTickets.map(t => ({ lat: parseFloat(t.lat), lng: parseFloat(t.lng) }));
+            const srcId = 'route-' + fid + '-' + targetDate;
+            fetchRoadRoute(coords)
               .then(roadData => {
-                if (roadData && roadData.geometry && roadData.geometry.length > 0) {
-                  window.L.polyline(roadData.geometry, {
-                    color: driverColor,
-                    weight: 4,
-                    opacity: 0.85
-                  }).addTo(mapLayerGroupRef.current);
-                  
-                  // Guardar estadísticas de ruta
-                  setRouteStats(prev => ({
-                    ...prev,
-                    [fid]: {
-                      distance: roadData.distance,
-                      duration: roadData.duration
-                    }
-                  }));
-                } else {
-                  // Fallback inmediato si no hay geometría OSRM
-                  window.L.polyline(routeCoords, {
-                    color: driverColor,
-                    weight: 3,
-                    opacity: 0.75,
-                    dashArray: '6, 6'
-                  }).addTo(mapLayerGroupRef.current);
-                }
+                const geoCoords = (roadData?.geometry?.length > 0) ? roadData.geometry.map(([lat, lng]) => [lng, lat]) : coords.map(c => [c.lng, c.lat]);
+                if (!map || !map.isStyleLoaded()) return;
+                if (!map.getSource(srcId)) {
+                  map.addSource(srcId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: geoCoords } } });
+                  map.addLayer({ id: srcId + '-line', type: 'line', source: srcId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': driverColor, 'line-width': 4, 'line-opacity': 0.85 } });
+                  mapRouteSourceIds.current.push(srcId);
+                } else { map.getSource(srcId).setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: geoCoords } }); }
+                setRouteStats(prev => ({ ...prev, [fid]: { distance: roadData?.distance, duration: roadData?.duration } }));
               })
-              .catch(err => {
-                console.error("OSRM route path failed, using fallback:", err);
-                // Fallback inmediato si falla la API
-                window.L.polyline(routeCoords, {
-                  color: driverColor,
-                  weight: 3,
-                  opacity: 0.75,
-                  dashArray: '6, 6'
-                }).addTo(mapLayerGroupRef.current);
+              .catch(() => {
+                const geoCoords = coords.map(c => [c.lng, c.lat]);
+                const fbId = srcId + '-fb';
+                if (!map || !map.isStyleLoaded() || map.getSource(fbId)) return;
+                map.addSource(fbId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: geoCoords } } });
+                map.addLayer({ id: fbId + '-line', type: 'line', source: fbId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': driverColor, 'line-width': 3, 'line-opacity': 0.7, 'line-dasharray': [2, 2] } });
+                mapRouteSourceIds.current.push(fbId);
               });
           }
         });
-
-        // 5. Dibujar repartidores en tiempo real y registrar listener ligero
         window.updateLiveDriversOnMapFn = () => {
-          if (!mapDriversLayerGroupRef.current || !mapInstanceRef.current) return;
-          mapDriversLayerGroupRef.current.clearLayers();
-
+          (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
+          mapDriverMarkersRef.current = [];
           const liveLocations = getDriverLocations();
           Object.entries(liveLocations).forEach(([fid, loc]) => {
-            if (!loc || loc.lat === undefined || loc.lng === undefined) return;
-            const latNum = parseFloat(loc.lat);
-            const lngNum = parseFloat(loc.lng);
+            if (!loc || loc.lat == null || loc.lng == null) return;
+            const latNum = parseFloat(loc.lat), lngNum = parseFloat(loc.lng);
             if (isNaN(latNum) || isNaN(lngNum)) return;
-
-            if (isAdminMap) {
-              if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return;
-              if (!activeRepartidores.map(r => r.id).includes(fid)) return;
-            } else {
-              // Driver map: only show their own location
-              if (fid !== currentUser?.id) return;
-            }
-
+            if (isAdminMap) { if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return; if (!activeRepartidores.map(r => r.id).includes(fid)) return; }
+            else { if (fid !== currentUser?.id) return; }
             const updatedAtStr = loc.updatedAt || loc.timestamp;
             if (!updatedAtStr) return;
             const locTime = new Date(updatedAtStr).getTime();
-            if (isNaN(locTime)) return;
-            const timeDiff = Date.now() - locTime;
-            if (timeDiff > 48 * 60 * 60 * 1000) return; // Filtro de inactividad de 48 horas
-
-            const latLng = [latNum, lngNum];
-            bounds.push(latLng);
+            if (isNaN(locTime) || Date.now() - locTime > 48 * 3600 * 1000) return;
             const furgoLabel = users.find(u => u.id === fid)?.label || fid;
-
-            const liveHtml = `
-              <div style="
-                width: 32px;
-                height: 32px;
-                border-radius: 50%;
-                background: rgba(139, 92, 246, 0.2);
-                border: 2px solid #a78bfa;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 0 15px #a78bfa;
-                animation: gpsPulse 2s infinite ease-in-out;
-                font-size: 16px;
-                transform: rotate(${-mapRotationState}deg);
-                transition: transform 0.25s ease-out;
-              ">
-                🚚
-              </div>
-            `;
-
-            const liveIcon = window.L.divIcon({
-              html: liveHtml,
-              className: '',
-              iconSize: [32, 32],
-              iconAnchor: [16, 16]
-            });
-
-            const popupContent = `
-              <div style="font-family: 'Inter', sans-serif; font-size: 0.85rem; color: #fff; padding: 4px;">
-                <strong style="color: #a78bfa; font-size: 0.95rem;">🚚 ${furgoLabel} (En Vivo)</strong>
-                <div style="margin-top: 5px;">Última señal: <strong>${new Date(locTime).toLocaleTimeString()}</strong></div>
-                <div style="margin-top: 2px; font-size: 0.75rem; color: #9ca3af;">GPS: ${latNum.toFixed(5)}, ${lngNum.toFixed(5)}</div>
-              </div>
-            `;
-
-            window.L.marker(latLng, { icon: liveIcon })
-              .addTo(mapDriversLayerGroupRef.current)
-              .bindPopup(popupContent);
+            const dEl = document.createElement('div');
+            dEl.style.cssText = 'width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.2);border:2px solid #a78bfa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px #a78bfa;animation:gpsPulse 2s infinite ease-in-out;font-size:17px;cursor:pointer;';
+            dEl.textContent = '🚚';
+            const dPopupHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.83rem;color:#fff;padding:4px;"><strong style="color:#a78bfa;">🚚 ' + furgoLabel + ' (En Vivo)</strong><div style="margin-top:4px;">Última señal: <strong>' + new Date(locTime).toLocaleTimeString() + '</strong></div><div style="margin-top:2px;font-size:0.73rem;color:#9ca3af;">GPS: ' + latNum.toFixed(5) + ', ' + lngNum.toFixed(5) + '</div></div>';
+            const dPopup = new mapboxgl.Popup({ offset: 18, className: 'mapbox-custom-popup' }).setHTML(dPopupHtml);
+            const dMarker = new mapboxgl.Marker({ element: dEl }).setLngLat([lngNum, latNum]).setPopup(dPopup).addTo(map);
+            mapDriverMarkersRef.current.push(dMarker);
           });
         };
-
-        if (typeof window.updateLiveDriversOnMapFn === 'function') {
-          window.updateLiveDriversOnMapFn();
-        }
-
-        // 6. Auto-ajustar el zoom del mapa para mostrar todos los puntos (solo al iniciar o cambiar filtros)
-        const currentFilterKey = `${activeTab}_${targetDate}_${mapFilterFurgo}_${shiftSummaryDate}`;
-        if (bounds.length > 0 && lastFittedRef.current !== currentFilterKey) {
-          map.fitBounds(bounds, { padding: [50, 50] });
+        window.updateLiveDriversOnMapFn();
+        const currentFilterKey = activeTab + '_' + targetDate + '_' + mapFilterFurgo + '_' + shiftSummaryDate;
+        if (allBounds.length > 0 && lastFittedRef.current !== currentFilterKey) {
+          if (allBounds.length === 1) { map.flyTo({ center: allBounds[0], zoom: 15 }); }
+          else {
+            const lngs = allBounds.map(b => b[0]), lats = allBounds.map(b => b[1]);
+            map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 55 });
+          }
           lastFittedRef.current = currentFilterKey;
         }
-
-        // Forzar recalculo de dimensiones para corregir pantallas grises o en blanco
-        map.invalidateSize();
-      }
+        map.resize();
+      };
+      if (map.isStyleLoaded()) { renderMapContent(); }
+      else { map.once('style.load', renderMapContent); }
     }, 100);
-
     return () => {
       clearTimeout(timer);
       clearInterval(fallbackPollInterval);
       delete window.handleChangeMapStopOrder;
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
-      const isAdminMap = document.getElementById('admin-map');
-      const isDriverMap = document.getElementById('driver-map');
-      if (!isAdminMap && !isDriverMap && mapInstanceRef.current !== null) {
-        try {
-          mapInstanceRef.current.remove();
-        } catch (e) {
-          console.error("Error removing map instance:", e);
-        }
-        mapInstanceRef.current = null;
-        mapLayerGroupRef.current = null;
-        mapDriversLayerGroupRef.current = null;
-      }
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser, rotateLoaded]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser]);
 
 
 
@@ -2424,84 +2176,43 @@ function App() {
 
   useEffect(() => {
     const mapEl = document.getElementById('form-mini-map');
-    if (mapEl && window.L && addressVerification.status === 'success' && addressVerification.coords) {
+    if (mapEl && addressVerification.status === 'success' && addressVerification.coords) {
       const { lat, lng } = addressVerification.coords;
-      const latLng = [lat, lng];
-
-      // Siempre limpiar la instancia previa si existe para evitar contenedores huérfanos
       if (formMapRef.current) {
-        try {
-          formMapRef.current.remove();
-        } catch (e) {
-          console.error("Error cleaning up previous form map:", e);
-        }
+        try { formMapRef.current.remove(); } catch (e) {}
         formMapRef.current = null;
         formMarkerRef.current = null;
+        mapEl.innerHTML = '';
       }
-
-      const map = window.L.map('form-mini-map', {
-        zoomControl: false,
-        attributionControl: false
-      }).setView(latLng, 16);
-
-      window.L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=es', {
-        maxZoom: 22
-      }).addTo(map);
-
-      const marker = window.L.marker(latLng, {
-        draggable: true
-      }).addTo(map);
-
+      const mbToken = getMapboxToken() || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+      mapboxgl.accessToken = mbToken;
+      const map = new mapboxgl.Map({ container: 'form-mini-map', style: 'mapbox://styles/mapbox/streets-v12', center: [lng, lat], zoom: 16, attributionControl: false });
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
+      const markerEl = document.createElement('div');
+      markerEl.style.cssText = 'width:28px;height:28px;border-radius:50%;background:#6366f1;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:grab;';
+      const marker = new mapboxgl.Marker({ element: markerEl, draggable: true }).setLngLat([lng, lat]).addTo(map);
       marker.on('dragend', () => {
-        const newPos = marker.getLatLng();
-        setAddressVerification(prev => ({
-          ...prev,
-          coords: {
-            ...prev.coords,
-            lat: parseFloat(newPos.lat.toFixed(6)),
-            lng: parseFloat(newPos.lng.toFixed(6))
-          }
-        }));
+        const pos = marker.getLngLat();
+        setAddressVerification(prev => ({ ...prev, coords: { ...prev.coords, lat: parseFloat(pos.lat.toFixed(6)), lng: parseFloat(pos.lng.toFixed(6)) } }));
       });
-
       map.on('click', (e) => {
-        const newPos = e.latlng;
-        marker.setLatLng(newPos);
-        setAddressVerification(prev => ({
-          ...prev,
-          coords: {
-            ...prev.coords,
-            lat: parseFloat(newPos.lat.toFixed(6)),
-            lng: parseFloat(newPos.lng.toFixed(6))
-          }
-        }));
+        const { lng: newLng, lat: newLat } = e.lngLat;
+        marker.setLngLat([newLng, newLat]);
+        setAddressVerification(prev => ({ ...prev, coords: { ...prev.coords, lat: parseFloat(newLat.toFixed(6)), lng: parseFloat(newLng.toFixed(6)) } }));
       });
-
-      window.L.control.zoom({ position: 'bottomright' }).addTo(map);
-
       formMapRef.current = map;
       formMarkerRef.current = marker;
-
-      // Invalidad tamaño con un leve retraso para renderizados móviles
-      setTimeout(() => {
-        if (formMapRef.current) {
-          formMapRef.current.invalidateSize();
-        }
-      }, 100);
+      setTimeout(() => { if (formMapRef.current) formMapRef.current.resize(); }, 100);
     }
-
     return () => {
       if (formMapRef.current) {
-        try {
-          formMapRef.current.remove();
-        } catch (e) {
-          console.error("Cleanup form map failed:", e);
-        }
+        try { formMapRef.current.remove(); } catch (e) {}
         formMapRef.current = null;
         formMarkerRef.current = null;
       }
     };
   }, [addressVerification.status, addressVerification.coords]);
+
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -8100,7 +7811,7 @@ function App() {
                                 }
                                 setDriverCustomDriver(newDriver);
                               }}
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Por asignar</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
@@ -8129,7 +7840,7 @@ function App() {
                                 }
                                 setDriverMatricula(newPlate);
                               }}
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar matrícula...</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
@@ -8158,7 +7869,7 @@ function App() {
                                 }
                                 setDriverHelper(newHelper);
                               }}
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Sin ayudante</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
@@ -8187,7 +7898,7 @@ function App() {
                                 }
                                 setDriverHelper2(newHelper2);
                               }}
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: '#ffffff', color: '#000000', border: '1px solid var(--panel-border)' }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
                               <option value="" style={{ color: '#000', background: '#fff' }}>Sin segundo ayudante</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
@@ -9403,8 +9114,16 @@ function App() {
               return !isNaN(latNum) && !isNaN(lngNum);
             });
             if (dayTickets.length > 0) {
-              const bounds = dayTickets.map(t => [parseFloat(t.lat), parseFloat(t.lng)]);
-              map.fitBounds(bounds, { padding: [50, 50] });
+              if (dayTickets.length === 1) {
+                map.flyTo({ center: [parseFloat(dayTickets[0].lng), parseFloat(dayTickets[0].lat)], zoom: 15 });
+              } else {
+                const lngs = dayTickets.map(t => parseFloat(t.lng));
+                const lats = dayTickets.map(t => parseFloat(t.lat));
+                map.fitBounds([
+                  [Math.min(...lngs), Math.min(...lats)],
+                  [Math.max(...lngs), Math.max(...lats)]
+                ], { padding: 50 });
+              }
             } else {
               triggerAlert('No hay paradas de ruta para centrar');
             }
@@ -9427,7 +9146,7 @@ function App() {
                 const latNum = parseFloat(loc.lat);
                 const lngNum = parseFloat(loc.lng);
                 if (!isNaN(latNum) && !isNaN(lngNum)) {
-                  map.setView([latNum, lngNum], 16);
+                  map.flyTo({ center: [lngNum, latNum], zoom: 16 });
                 } else {
                   triggerAlert('Coordenadas del repartidor no válidas');
                 }
@@ -11414,7 +11133,7 @@ function App() {
                 borderRadius: '12px',
                 padding: '20px'
               }}>
-                <h3 style={{ margin: '0 0 15px 0', fontSize: '1.05rem', fontWeight: '700', color: '#fff', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
+                <h3 style={{ margin: '0 0 15px 0', fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
                   Turnos Planificados ({dayShifts.length})
                 </h3>
 
@@ -11442,7 +11161,7 @@ function App() {
                           }}
                         >
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: '700', fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '5px' }}>
                               🚚 {driverName}
                               <span style={{ 
                                 fontSize: '0.65rem', 
@@ -11516,8 +11235,8 @@ function App() {
                                     height: '24px', 
                                     width: 'auto', 
                                     margin: 0,
-                                    color: '#ffffff',
-                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    color: 'var(--text-main)',
+                                    background: 'var(--input-bg)',
                                     border: '1px solid var(--panel-border)',
                                     borderRadius: '4px'
                                   }}
@@ -11563,8 +11282,8 @@ function App() {
                                       height: '24px', 
                                       width: 'auto', 
                                       margin: 0,
-                                      color: '#ffffff',
-                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      color: 'var(--text-main)',
+                                      background: 'var(--input-bg)',
                                       border: '1px solid var(--panel-border)',
                                       borderRadius: '4px'
                                     }}
@@ -11610,8 +11329,8 @@ function App() {
                                       height: '24px', 
                                       width: 'auto', 
                                       margin: 0,
-                                      color: '#ffffff',
-                                      background: 'rgba(255, 255, 255, 0.05)',
+                                      color: 'var(--text-main)',
+                                      background: 'var(--input-bg)',
                                       border: '1px solid var(--panel-border)',
                                       borderRadius: '4px'
                                     }}
@@ -11650,8 +11369,8 @@ function App() {
                                     height: '24px', 
                                     width: 'auto', 
                                     margin: 0,
-                                    color: '#ffffff',
-                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    color: 'var(--text-main)',
+                                    background: 'var(--input-bg)',
                                     border: '1px solid var(--panel-border)',
                                     borderRadius: '4px'
                                   }}
@@ -11717,7 +11436,7 @@ function App() {
                       className="form-input"
                       value={plannedFurgoId}
                       onChange={(e) => setPlannedFurgoId(e.target.value)}
-                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                      style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar / Sin furgoneta</option>
                       {activeRepartidores.map(d => (
@@ -11735,7 +11454,7 @@ function App() {
                         setPlannedDriverName(e.target.value);
                         setCustomDriverNameInput('');
                       }}
-                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                      style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
                       <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir otro...</option>
@@ -11764,7 +11483,7 @@ function App() {
                       className="form-input"
                       value={plannedHelper}
                       onChange={(e) => setPlannedHelper(e.target.value)}
-                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                      style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
                       {employeesList.filter(e => e.active !== false).map(emp => (
@@ -11779,7 +11498,7 @@ function App() {
                       className="form-input"
                       value={plannedHelper2}
                       onChange={(e) => setPlannedHelper2(e.target.value)}
-                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                      style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin segundo ayudante</option>
                       {employeesList.filter(e => e.active !== false).map(emp => (
@@ -11794,7 +11513,7 @@ function App() {
                       className="form-input"
                       value={plannedMatricula}
                       onChange={(e) => setPlannedMatricula(e.target.value)}
-                      style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                      style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Selecciona matrícula (Opcional)...</option>
                       {platesList.map(plate => (
@@ -11952,7 +11671,7 @@ function App() {
 
                       return (
                         <tr key={editKey} style={{ borderBottom: '1px solid var(--panel-border)' }}>
-                          <td style={{ padding: '12px 16px', fontSize: '0.9rem', fontWeight: '700', color: '#fff' }}>
+                          <td style={{ padding: '12px 16px', fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-main)' }}>
                             {item.role === 'chofer' ? '🚚' : '🤝'} {item.name}
                           </td>
                           <td style={{ padding: '12px 16px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -12044,7 +11763,7 @@ function App() {
                           border: '1px solid var(--panel-border)', 
                           borderRadius: '6px',
                           fontSize: '0.85rem',
-                          color: '#fff'
+                          color: 'var(--text-main)'
                         }}
                       >
                         <div>
@@ -12097,7 +11816,7 @@ function App() {
                 </div>
 
                 <div style={{ marginBottom: '24px' }}>
-                  <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: '700', color: '#fff' }}>
+                  <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: '700', color: 'var(--text-main)' }}>
                     Turnos Asignados ({dateShifts.length})
                   </h4>
 
@@ -12125,7 +11844,7 @@ function App() {
                             }}
                           >
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <div style={{ fontWeight: '700', fontSize: '0.85rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 🚚 {driverName}
                                 <span style={{ 
                                   fontSize: '0.7rem', 
@@ -12198,8 +11917,8 @@ function App() {
                                     height: '24px', 
                                     width: 'auto', 
                                     margin: 0,
-                                    color: '#ffffff',
-                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    color: 'var(--text-main)',
+                                    background: 'var(--input-bg)',
                                     border: '1px solid var(--panel-border)',
                                     borderRadius: '4px'
                                   }}
@@ -12243,8 +11962,8 @@ function App() {
                                     height: '24px', 
                                     width: 'auto', 
                                     margin: 0,
-                                    color: '#ffffff',
-                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    color: 'var(--text-main)',
+                                    background: 'var(--input-bg)',
                                     border: '1px solid var(--panel-border)',
                                     borderRadius: '4px'
                                   }}
@@ -12288,8 +12007,8 @@ function App() {
                                     height: '24px', 
                                     width: 'auto', 
                                     margin: 0,
-                                    color: '#ffffff',
-                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    color: 'var(--text-main)',
+                                    background: 'var(--input-bg)',
                                     border: '1px solid var(--panel-border)',
                                     borderRadius: '4px'
                                   }}
@@ -12326,8 +12045,8 @@ function App() {
                                     height: '24px', 
                                     width: 'auto', 
                                     margin: 0,
-                                    color: '#ffffff',
-                                    background: 'rgba(255, 255, 255, 0.05)',
+                                    color: 'var(--text-main)',
+                                    background: 'var(--input-bg)',
                                     border: '1px solid var(--panel-border)',
                                     borderRadius: '4px'
                                   }}
@@ -12386,7 +12105,7 @@ function App() {
                         className="form-input"
                         value={plannedFurgoId}
                         onChange={(e) => setPlannedFurgoId(e.target.value)}
-                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                        style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar / Sin furgoneta</option>
                         {activeRepartidores.map(d => (
@@ -12404,7 +12123,7 @@ function App() {
                           setPlannedDriverName(e.target.value);
                           setCustomDriverNameInput('');
                         }}
-                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                        style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
                         <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir otro...</option>
@@ -12433,7 +12152,7 @@ function App() {
                         className="form-input"
                         value={plannedHelper}
                         onChange={(e) => setPlannedHelper(e.target.value)}
-                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                        style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
                         {employeesList.filter(e => e.active !== false).map(emp => (
@@ -12448,7 +12167,7 @@ function App() {
                         className="form-input"
                         value={plannedHelper2}
                         onChange={(e) => setPlannedHelper2(e.target.value)}
-                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                        style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin segundo ayudante</option>
                         {employeesList.filter(e => e.active !== false).map(emp => (
@@ -12463,7 +12182,7 @@ function App() {
                         className="form-input"
                         value={plannedMatricula}
                         onChange={(e) => setPlannedMatricula(e.target.value)}
-                        style={{ margin: 0, color: '#ffffff', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--panel-border)' }}
+                        style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Selecciona matrícula (Opcional)...</option>
                         {platesList.map(plate => (
