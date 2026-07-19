@@ -728,6 +728,29 @@ function App() {
   const showVanPricing = hasPermission(loggedInUserObj, 'van_pricing');
   const showSecurity = hasPermission(loggedInUserObj, 'security');
 
+  // Para repartidores: comprobar si el administrador que los gestiona tiene activos
+  // los módulos de Calendario y Personal. Si no los tiene, los campos de
+  // Chofer/Matrícula/Ayudantes no deben aparecer en la pantalla del repartidor.
+  const adminAllowsShiftFields = (() => {
+    if (!loggedInUserObj) return false;
+    // Superadmin y admin siempre los ven (sus propios permisos aplican)
+    if (loggedInUserObj.role === 'superadmin' || loggedInUserObj.role === 'admin') {
+      return showShiftCalendar && showStaff;
+    }
+    // Repartidor: buscar el admin que lo creó y comprobar sus permisos
+    if (loggedInUserObj.role === 'repartidor') {
+      const parentAdminId = loggedInUserObj.createdBy;
+      if (!parentAdminId || parentAdminId === 'admin') {
+        // Si no hay admin padre definido, mostrar los campos por compatibilidad
+        return true;
+      }
+      const parentAdmin = users.find(u => u.id === parentAdminId);
+      if (!parentAdmin) return true; // Si no se encuentra, mostrar por compatibilidad
+      return hasPermission(parentAdmin, 'shift_calendar') && hasPermission(parentAdmin, 'staff');
+    }
+    return false;
+  })();
+
   const hasSearchPermission = loggedInUserObj && (
     loggedInUserObj.role === 'superadmin' || 
     (loggedInUserObj.role === 'admin' ? showGeneralSearch : loggedInUserObj.canSearch)
@@ -7821,7 +7844,7 @@ function App() {
                                 return;
                               }
                               
-                              if (!driverCustomDriver || !driverCustomDriver.trim() || !driverMatricula || !driverMatricula.trim()) {
+                              if (adminAllowsShiftFields && (!driverCustomDriver || !driverCustomDriver.trim() || !driverMatricula || !driverMatricula.trim())) {
                                 triggerAlert('El Chofer y la Matrícula del vehículo son campos obligatorios para poder finalizar el turno.', 'error');
                                 return;
                               }
@@ -7859,7 +7882,8 @@ function App() {
                         </div>
 
                         {/* Configuración de Turno Interactiva para el Repartidor */}
-                        <div className="glass-panel" style={{ 
+                        {/* Solo se muestra si el admin gestor tiene activos shift_calendar Y staff */}
+                        {adminAllowsShiftFields && <div className="glass-panel" style={{ 
                           width: '100%', 
                           display: 'grid', 
                           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
@@ -8014,7 +8038,7 @@ function App() {
                               💾 Guardar Configuración del Turno
                             </button>
                           </div>
-                        </div>
+                        </div>}
                       </div>
                     );
                   }
