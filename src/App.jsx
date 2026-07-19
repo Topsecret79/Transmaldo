@@ -1809,6 +1809,14 @@ function App() {
       const mbToken = getMapboxToken() || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || getSplitMapboxToken();
       mapboxgl.accessToken = mbToken;
       let map = mapInstanceRef.current;
+      if (map) {
+        const container = map.getContainer();
+        if (!container || !document.body.contains(container)) {
+          try { map.remove(); } catch(e){}
+          map = null;
+          mapInstanceRef.current = null;
+        }
+      }
       (mapMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
       mapMarkersRef.current = [];
       (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
