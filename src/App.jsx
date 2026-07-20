@@ -799,6 +799,8 @@ function App() {
   const [shifts, setShifts] = useState([]);
 
   const [allowDriverSupportTransfer, setAllowDriverSupportTransfer] = useState(getAllowDriverSupportTransfer());
+  const [usersSubTab, setUsersSubTab] = useState('general'); // 'general', 'accounts', 'plates', 'connections'
+  const [usersSearchQuery, setUsersSearchQuery] = useState('');
   const [helpersList, setHelpersList] = useState(() => getHelpersList());
   const [newHelperName, setNewHelperName] = useState('');
   const [newHelperRate, setNewHelperRate] = useState('');
@@ -14534,6 +14536,846 @@ function App() {
       });
     });
 
+  const renderUsersSection = () => {
+    return (
+      <div className="glass-panel" style={{ textAlign: 'left' }}>
+        <h2>Configuración General y Furgonetas</h2>
+        {localStorage.getItem('delivery_supabase_needs_permissions_col') === 'true' && (
+          <div className="glass-panel" style={{
+            background: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid #f87171',
+            padding: '15px',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            color: '#fca5a5',
+            fontSize: '0.85rem'
+          }}>
+            <strong style={{ color: '#ef4444', display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>
+              ⚠️ Acción requerida en Supabase
+            </strong>
+            Para guardar y sincronizar los permisos de los coordinadores en la nube, debes añadir la columna de permisos a tu tabla de usuarios. 
+            Por favor, abre el **SQL Editor** en tu panel de Supabase y ejecuta la siguiente consulta:
+            <code style={{
+              display: 'block',
+              background: 'rgba(0,0,0,0.3)',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              marginTop: '10px',
+              fontFamily: 'monospace',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              ALTER TABLE delivery_users ADD COLUMN permissions text;
+            </code>
+          </div>
+        )}
+        
+        {/* Menú de Sub-pestañas */}
+        <div style={{ 
+          display: 'flex', 
+          flexWrap: 'wrap',
+          gap: '10px', 
+          marginBottom: '25px', 
+          borderBottom: '1px solid rgba(255,255,255,0.1)', 
+          paddingBottom: '12px' 
+        }}>
+          {[
+            { id: 'general', label: '⚙️ General' },
+            { id: 'accounts', label: '👤 Usuarios y Permisos' },
+            { id: 'plates', label: '🚐 Matrículas' },
+            { id: 'connections', label: '🔌 Conexión y Rutas' }
+          ].map(tab => (
+            <button 
+              key={tab.id}
+              onClick={() => setUsersSubTab(tab.id)}
+              className="action-btn"
+              style={{
+                padding: '8px 16px',
+                fontSize: '0.82rem',
+                borderRadius: '6px',
+                border: '1px solid rgba(255,255,255,0.1)',
+                cursor: 'pointer',
+                fontWeight: '600',
+                background: usersSubTab === tab.id ? 'var(--primary)' : 'rgba(255,255,255,0.02)',
+                color: usersSubTab === tab.id ? '#fff' : 'var(--text-muted)',
+                transition: 'all 0.2s ease-in-out'
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 1. SUB-TAB: GENERAL */}
+        {usersSubTab === 'general' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Ajuste de Nombre de la Aplicación */}
+            {showSecurity && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <div className="block-title">🏷️ Nombre Personalizado de la Aplicación</div>
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!appNameInput.trim()) {
+                        triggerAlert('El nombre de la aplicación no puede estar vacío', 'error');
+                        return;
+                      }
+                      saveAppName(appNameInput, currentUser?.id);
+                      setAppName(appNameInput.trim());
+                      triggerAlert('Nombre de la aplicación actualizado con éxito');
+                    }} style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '15px' }}>
+                      <div className="input-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <span className="input-label">Nombre de tu App / Negocio</span>
+                        <input type="text" className="form-input" value={appNameInput} onChange={(e) => setAppNameInput(e.target.value)} required />
+                      </div>
+                      <button type="submit" className="btn btn-primary" style={{ width: 'auto', height: '45px' }}>Guardar</button>
+                    </form>
+                  </div>
+                </div>
+
+                <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
+                  <div className="block-title">🎨 Personalización del Tema Visual</div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Elige el estilo visual y fondo para la aplicación:</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '10px' }}>
+                    <button 
+                      onClick={() => { setAppTheme('theme-emerald'); triggerAlert('Tema Esmeralda / Naturaleza seleccionado'); }}
+                      className={`btn ${appTheme === 'theme-emerald' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '8px', fontSize: '0.8rem' }}
+                    >
+                      🌲 Esmeralda
+                    </button>
+                    <button 
+                      onClick={() => { setAppTheme('theme-neon'); triggerAlert('Tema Neón Aurora seleccionado'); }}
+                      className={`btn ${appTheme === 'theme-neon' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '8px', fontSize: '0.8rem' }}
+                    >
+                      🔮 Neón Aurora
+                    </button>
+                    <button 
+                      onClick={() => { setAppTheme('theme-corporate' ); triggerAlert('Tema Corporativo Moderno seleccionado'); }}
+                      className={`btn ${appTheme === 'theme-corporate' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '8px', fontSize: '0.8rem' }}
+                    >
+                      💼 Corporativo
+                    </button>
+                    <button 
+                      onClick={() => { setAppTheme('theme-cyberpunk' ); triggerAlert('Tema Atardecer Cyberpunk seleccionado'); }}
+                      className={`btn ${appTheme === 'theme-cyberpunk' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '8px', fontSize: '0.8rem' }}
+                    >
+                      🌇 Cyberpunk
+                    </button>
+                    <button 
+                      onClick={() => { setAppTheme('theme-sakura' ); triggerAlert('Tema Sakura Rose seleccionado'); }}
+                      className={`btn ${appTheme === 'theme-sakura' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '8px', fontSize: '0.8rem' }}
+                    >
+                      🌸 Sakura Rose
+                    </button>
+                    <button 
+                      onClick={() => { setAppTheme('theme-arctic' ); triggerAlert('Tema Océano Ártico seleccionado'); }}
+                      className={`btn ${appTheme === 'theme-arctic' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ padding: '8px', fontSize: '0.8rem' }}
+                    >
+                      ❄️ Ártico
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Control de Transferencias de Apoyo */}
+            {showSecurity && (
+              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', textAlign: 'left' }}>
+                <div className="block-title">🤝 Auxilio / Apoyo entre Choferes</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Activa o desactiva la posibilidad de que los propios choferes se transfieran paradas de apoyo directamente desde sus paneles.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <input 
+                    type="checkbox" 
+                    id="allow_driver_support_transfer" 
+                    checked={allowDriverSupportTransfer} 
+                    onChange={(e) => {
+                      const val = e.target.checked;
+                      setAllowDriverSupportTransfer(val);
+                      saveAllowDriverSupportTransfer(val);
+                      triggerAlert(val ? 'Permiso de transferencia de apoyo activado' : 'Permiso de transferencia de apoyo desactivado');
+                    }} 
+                    style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="allow_driver_support_transfer" style={{ fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer', userSelect: 'none' }}>
+                    Permitir a los repartidores transferir clientes de apoyo entre ellos
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2. SUB-TAB: USUARIOS Y PERMISOS */}
+        {usersSubTab === 'accounts' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Buscador de usuarios */}
+            <div className="glass-panel" style={{ padding: '15px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--panel-border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>🔍 Buscar Usuario:</span>
+              <input 
+                type="text" 
+                className="form-input" 
+                placeholder="Nombre, usuario o rol..." 
+                value={usersSearchQuery}
+                onChange={(e) => setUsersSearchQuery(e.target.value)}
+                style={{ flex: 1, margin: 0, padding: '8px 12px', fontSize: '0.85rem' }}
+              />
+              {usersSearchQuery && (
+                <button className="btn btn-secondary" onClick={() => setUsersSearchQuery('')} style={{ margin: 0, padding: '8px 12px', fontSize: '0.85rem', width: 'auto' }}>
+                  Limpiar
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+              {/* Crear nuevo usuario */}
+              {showStaff && (
+                <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
+                  <div className="block-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Plus size={18} color="var(--primary)" /> Crear Nuevo Usuario
+                  </div>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!newUsername.trim() || !newLabel.trim() || !newPassword.trim()) {
+                      triggerAlert('Por favor rellena todos los campos', 'error');
+                      return;
+                    }
+                    const roleToUse = (currentUser.role === 'superadmin' || currentUser.role === 'admin') ? newRole : 'repartidor';
+                    const isUserAdmin = roleToUse === 'admin';
+                    
+                    let authUid = null;
+                    const emailVal = isUserAdmin && newEmailState.trim() ? newEmailState.trim().toLowerCase() : null;
+                    
+                    if (isUserAdmin && emailVal) {
+                      const supabaseClient = getSupabaseClient();
+                      if (supabaseClient) {
+                        try {
+                          const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
+                            email: emailVal,
+                            password: newPassword.trim(),
+                            options: {
+                              emailRedirectTo: window.location.origin + window.location.pathname,
+                              data: {
+                                role: roleToUse,
+                                label: newLabel.trim()
+                              }
+                            }
+                          });
+                          if (authErr) {
+                            triggerAlert(`Nota de registro: ${authErr.message}. El perfil necesitará vincularse en su primer login.`, 'warning');
+                          } else if (authData && authData.user) {
+                            authUid = authData.user.id;
+                          }
+                        } catch (err) {
+                          console.error("Auth signUp error during user creation:", err);
+                        }
+                      }
+                    }
+
+                    const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id, emailVal, authUid);
+                    if (res.success) {
+                      if (roleToUse === 'admin') {
+                        await initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
+                      }
+                      triggerAlert(`Usuario "${newLabel}" creado correctamente`);
+                      setNewUsername('');
+                      setNewLabel('');
+                      setNewPassword('');
+                      setNewRole('repartidor');
+                      setNewEmailState('');
+                      setNewAdminPricingOption('copy_default');
+                      loadData();
+                    } else {
+                      triggerAlert(res.error, 'error');
+                    }
+                  }} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
+                    <div className="input-group">
+                      <span className="input-label">Usuario (para Login clásico)</span>
+                      <input type="text" className="form-input" placeholder="Ej. furgo4" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} required />
+                    </div>
+                    <div className="input-group">
+                      <span className="input-label">Nombre Visible / Identificador</span>
+                      <input type="text" className="form-input" placeholder="Ej. Furgoneta 4 o Administrador Norte" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} required />
+                    </div>
+                    <div className="input-group">
+                      <span className="input-label">Contraseña / PIN</span>
+                      <input type="text" className="form-input" placeholder="Ej. 4444" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+                    </div>
+                    {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && (
+                      <div className="input-group">
+                        <span className="input-label">Rol del Usuario</span>
+                        <select 
+                          className="form-input" 
+                          value={newRole} 
+                          onChange={(e) => setNewRole(e.target.value)}
+                          required
+                          style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
+                        >
+                          <option value="repartidor">Repartidor (Furgoneta)</option>
+                          <option value="admin">Administrador</option>
+                        </select>
+                      </div>
+                    )}
+                    {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && newRole === 'admin' && (
+                      <>
+                        <div className="input-group">
+                          <span className="input-label">Correo Electrónico (Opcional)</span>
+                          <input 
+                            type="email" 
+                            className="form-input" 
+                            placeholder="ejemplo@correo.com" 
+                            value={newEmailState} 
+                            onChange={(e) => setNewEmailState(e.target.value)} 
+                          />
+                        </div>
+                        <div className="input-group">
+                          <span className="input-label">Configuración Inicial de Tarifas</span>
+                          <select 
+                            className="form-input" 
+                            value={newAdminPricingOption} 
+                            onChange={(e) => setNewAdminPricingOption(e.target.value)}
+                            required
+                            style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
+                          >
+                            <option value="copy_default">Copiar precios de tarifas por defecto</option>
+                            <option value="zero">Iniciar precios a 0,00 €</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+                    <button type="submit" className="btn btn-primary" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                      <Plus size={16} /> Crear Nuevo Usuario
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Lista y edición jerárquica de usuarios */}
+              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
+                <div className="block-title">Usuarios del Sistema</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '15px' }}>
+                  {/* Agrupamos por Administradores vs Repartidores */}
+                  {(() => {
+                    const query = usersSearchQuery.toLowerCase().trim();
+                    const filtered = visibleUsers.filter(u => 
+                      !query || 
+                      u.username.toLowerCase().includes(query) || 
+                      u.label.toLowerCase().includes(query) || 
+                      u.role.toLowerCase().includes(query)
+                    );
+
+                    const admins = filtered.filter(u => u.role === 'admin' || u.role === 'superadmin');
+                    const drivers = filtered.filter(u => u.role === 'repartidor');
+
+                    const renderUserCard = (u) => (
+                      <div key={u.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <strong style={{ fontSize: '0.9rem', color: u.role === 'repartidor' ? '#60a5fa' : 'var(--primary)' }}>
+                              {u.role === 'repartidor' ? '🚐' : '👤'} {u.label} ({u.username})
+                            </strong>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              Rol: <span style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>{u.role}</span>
+                              {u.role === 'repartidor' && (() => {
+                                const parent = users.find(x => x.id === u.createdBy);
+                                return parent ? ` | Creado por: ${parent.label}` : '';
+                              })()}
+                            </div>
+                          </div>
+                          {u.id !== 'admin' && u.id !== currentUser.id && (
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente a ${u.label}?`)) {
+                                  deleteUser(u.id);
+                                  triggerAlert('Usuario eliminado correctamente');
+                                  loadData();
+                                }
+                              }} 
+                              className="btn btn-danger btn-small" 
+                              style={{ padding: '4px 8px', margin: 0, width: 'auto', display: 'flex', gap: '4px', alignItems: 'center', fontSize: '0.7rem' }}
+                            >
+                              <Trash2 size={11} /> Eliminar
+                            </button>
+                          )}
+                        </div>
+
+                        <form 
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const labelVal = e.target.elements.user_label.value;
+                            const passwordVal = e.target.elements.user_password.value;
+                            handleUpdateUser(u.id, labelVal, passwordVal);
+                          }} 
+                          style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: 0 }}
+                        >
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <div className="input-group" style={{ marginBottom: 0 }}>
+                              <span className="input-label" style={{ fontSize: '0.7rem' }}>Nombre Visible</span>
+                              <input 
+                                type="text" 
+                                name="user_label"
+                                className="form-input" 
+                                defaultValue={u.label} 
+                                style={{ padding: '4px 8px', fontSize: '0.8rem', height: '28px' }} 
+                                required
+                              />
+                            </div>
+                            <div className="input-group" style={{ marginBottom: 0 }}>
+                              <span className="input-label" style={{ fontSize: '0.7rem' }}>Contraseña / PIN</span>
+                              <input 
+                                type="text" 
+                                name="user_password"
+                                className="form-input" 
+                                defaultValue={u.password} 
+                                style={{ padding: '4px 8px', fontSize: '0.8rem', height: '28px' }} 
+                                required
+                              />
+                            </div>
+                          </div>
+
+                          {currentUser.role === 'superadmin' && u.role === 'admin' && u.id !== 'admin' && (
+                            <div style={{
+                              width: '100%',
+                              background: 'rgba(255,255,255,0.01)',
+                              border: '1px solid rgba(255,255,255,0.05)',
+                              borderRadius: '6px',
+                              padding: '10px',
+                              marginTop: '5px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px'
+                            }}>
+                              <span style={{ fontSize: '0.76rem', fontWeight: 'bold', color: 'var(--primary)', display: 'block' }}>
+                                🛡️ Permisos de Módulos (Coordinador)
+                              </span>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '6px' }}>
+                                {[
+                                  { id: 'report_day', label: '📋 Informe del Día' },
+                                  { id: 'deliveries_period', label: '📊 Repartos Período' },
+                                  { id: 'map_control', label: '🗺️ Mapa de Control' },
+                                  { id: 'shift_calendar', label: '📅 Cal. Turnos' },
+                                  { id: 'general_search', label: '🔍 Buscador Gral' },
+                                  { id: 'staff', label: '👤 Personal' },
+                                  { id: 'van_pricing', label: '💰 Tarifas ECI' },
+                                  { id: 'security', label: '⚙️ Seguridad' },
+                                  { id: 'fleet_control', label: '🚗 Flota' }
+                                ].map(mod => {
+                                  let isAllowed = true;
+                                  if (u.permissions) {
+                                    let pObj = u.permissions;
+                                    if (typeof pObj === 'string') {
+                                      try { pObj = JSON.parse(pObj); } catch(e) { pObj = {}; }
+                                    }
+                                    isAllowed = pObj[mod.id] !== false;
+                                  }
+                                  return (
+                                    <label key={mod.id} style={{ fontSize: '0.72rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', margin: 0 }}>
+                                      <input 
+                                        type="checkbox" 
+                                        checked={isAllowed} 
+                                        onChange={(e) => handleUpdateUserPermissions(u.id, mod.id, e.target.checked)} 
+                                      />
+                                      {mod.label}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center', marginTop: '5px' }}>
+                            {currentUser.role === 'superadmin' && u.id !== 'admin' && u.role === 'repartidor' && (
+                              <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', marginRight: 'auto', margin: 0 }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={!!u.canSearch} 
+                                  onChange={() => {
+                                    toggleUserSearchPermission(u.id);
+                                    triggerAlert(`Permiso de buscador modificado para ${u.label}`);
+                                    loadData();
+                                  }} 
+                                />
+                                Buscador General
+                              </label>
+                            )}
+                            <button 
+                              type="submit" 
+                              className="btn btn-secondary btn-small"
+                              style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', height: '28px' }}
+                            >
+                              💾 Guardar
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    );
+
+                    return (
+                      <>
+                        {admins.length > 0 && (
+                          <div>
+                            <h4 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Coordinadores / Administradores ({admins.length})</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {admins.map(renderUserCard)}
+                            </div>
+                          </div>
+                        )}
+
+                        {drivers.length > 0 && (
+                          <div style={{ marginTop: '20px' }}>
+                            <h4 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Choferes / Repartidores ({drivers.length})</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {drivers.map(renderUserCard)}
+                            </div>
+                          </div>
+                        )}
+
+                        {filtered.length === 0 && (
+                          <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '15px' }}>
+                            Ningún usuario coincide con la búsqueda.
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 3. SUB-TAB: MATRÍCULAS */}
+        {usersSubTab === 'plates' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {showStaff && (
+              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', textAlign: 'left' }}>
+                <div className="block-title">🚐 Gestión de Matrículas (Vehículos)</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Registra la lista de matrículas de las furgonetas para llevar un control de qué vehículo se utilizó en cada jornada.
+                </p>
+                
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={newPlateVal} 
+                    onChange={(e) => setNewPlateVal(e.target.value)} 
+                    placeholder="Ej: 1234ABC..." 
+                    style={{ maxWidth: '300px', margin: 0 }} 
+                  />
+                  <button 
+                    type="button" 
+                    onClick={handleAddPlate} 
+                    className="btn btn-primary" 
+                    style={{ margin: 0, whiteSpace: 'nowrap' }}
+                  >
+                    ➕ Añadir Matrícula
+                  </button>
+                </div>
+
+                {platesList.length === 0 ? (
+                  <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    No hay matrículas registradas.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {platesList.map(plate => (
+                      <span 
+                        key={plate} 
+                        className="badge badge-secondary" 
+                        style={{ 
+                          fontSize: '0.82rem', 
+                          padding: '6px 12px', 
+                          borderRadius: '20px', 
+                          display: 'inline-flex', 
+                          alignItems: 'center', 
+                          gap: '8px', 
+                          background: 'rgba(255,255,255,0.05)', 
+                          border: '1px solid var(--panel-border)' 
+                        }}
+                      >
+                        🚐 {plate}
+                        <button 
+                          type="button" 
+                          onClick={() => handleRemovePlate(plate)}
+                          style={{ 
+                            background: 'none', 
+                            border: 'none', 
+                            color: '#f87171', 
+                            cursor: 'pointer', 
+                            fontWeight: 'bold', 
+                            fontSize: '0.85rem',
+                            padding: 0,
+                            lineHeight: 1
+                          }}
+                          title="Eliminar matrícula"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 4. SUB-TAB: CONEXIONES Y RUTAS */}
+        {usersSubTab === 'connections' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Puntos de Inicio/Fin Predeterminados */}
+            {showSecurity && (
+              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', textAlign: 'left' }}>
+                <div className="block-title">📍 Direcciones de Inicio y Fin de Ruta Predeterminadas</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Define las ubicaciones iniciales y finales para la optimización de las rutas de tus choferes. Esto se sincronizará con la base de datos para todo tu equipo.
+                </p>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                  <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="input-label">Ubicación de Salida / Punto de Partida</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                          <button 
+                            type="button" 
+                            onClick={handleStartStartVoiceInput}
+                            className={`btn btn-small ${isListeningStart ? 'btn-danger' : 'btn-secondary'}`}
+                            style={{ 
+                              padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
+                              background: isListeningStart ? '#ef4444' : '', borderColor: isListeningStart ? '#ef4444' : '', color: '#fff',
+                              animation: isListeningStart ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                            }}
+                          >
+                            🎙️ {isListeningStart ? 'Escuchando...' : 'Dictar'}
+                          </button>
+                        )}
+                        {routeStartAddr && routeStartAddr.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate(routeStartAddr)}
+                            style={{
+                              background: 'transparent', border: 'none', color: '#10b981',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: 'bold'
+                            }}
+                            title="Navegar a esta dirección"
+                          >
+                            🗺️ Navegar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej: Calle Gran Via, Sabadell, Barcelona" 
+                      value={routeStartAddr}
+                      onChange={(e) => {
+                        setRouteStartAddr(e.target.value);
+                        handleFetchRouteSuggestions(e.target.value, 'start');
+                      }}
+                    />
+                    {renderRouteSuggestions('start')}
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span className="input-label">Ubicación de Llegada / Fin de Ruta</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                          <button 
+                            type="button" 
+                            onClick={handleStartEndVoiceInput}
+                            className={`btn btn-small ${isListeningEnd ? 'btn-danger' : 'btn-secondary'}`}
+                            style={{ 
+                              padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
+                              background: isListeningEnd ? '#ef4444' : '', borderColor: isListeningEnd ? '#ef4444' : '', color: '#fff',
+                              animation: isListeningEnd ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
+                            }}
+                          >
+                            🎙️ {isListeningEnd ? 'Escuchando...' : 'Dictar'}
+                          </button>
+                        )}
+                        {routeEndAddr && routeEndAddr.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigate(routeEndAddr)}
+                            style={{
+                              background: 'transparent', border: 'none', color: '#10b981',
+                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
+                              fontWeight: 'bold'
+                            }}
+                            title="Navegar a esta dirección"
+                          >
+                            🗺️ Navegar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej: Calle Gran Via, Sabadell, Barcelona" 
+                      value={routeEndAddr}
+                      onChange={(e) => {
+                        setRouteEndAddr(e.target.value);
+                        handleFetchRouteSuggestions(e.target.value, 'end');
+                      }}
+                    />
+                    {renderRouteSuggestions('end')}
+                  </div>
+                </div>
+                
+                <button 
+                  type="button" 
+                  className="btn btn-primary" 
+                  onClick={() => {
+                    if (!routeStartAddr.trim() || !routeEndAddr.trim()) {
+                      triggerAlert('Las direcciones no pueden estar vacías', 'error');
+                      return;
+                    }
+                    saveRouteStartAddr(routeStartAddr, currentUser?.id);
+                    saveRouteEndAddr(routeEndAddr, currentUser?.id);
+                    triggerAlert('Puntos de ruta predeterminados guardados y sincronizados');
+                  }}
+                  style={{ width: 'auto', marginTop: '20px', height: '42px' }}
+                >
+                  Guardar Puntos Predeterminados
+                </button>
+              </div>
+            )}
+
+            {/* API Keys de Proveedores de Mapas */}
+            {showSecurity && (
+              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', textAlign: 'left' }}>
+                <div className="block-title">🗺️ Motores de Geolocalización Premium (Google Maps / Mapbox)</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Si deseas una precisión perfecta en la geolocalización de toda España, puedes ingresar tu token de Mapbox o clave de Google Maps. Si se dejan en blanco, se usará el geolocalizador gratuito OpenStreetMap.
+                </p>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Mapbox Access Token</span>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="pk.eyJ1Ijoi..." 
+                      value={mapboxTokenInput}
+                      onChange={(e) => setMapboxTokenInput(e.target.value)}
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Google Maps API Key</span>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="AIzaSy..." 
+                      value={googleKeyInput}
+                      onChange={(e) => setGoogleKeyInput(e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <button 
+                  type="button" 
+                  className="btn btn-primary" 
+                  onClick={() => {
+                    saveGoogleMapsKey(googleKeyInput);
+                    saveMapboxToken(mapboxTokenInput);
+                    triggerAlert('Configuración de mapas guardada y sincronizada correctamente');
+                  }}
+                  style={{ width: 'auto', marginTop: '20px', height: '42px' }}
+                >
+                  Guardar API Keys de Mapas
+                </button>
+              </div>
+            )}
+
+            {/* Conexión a Supabase */}
+            {showSecurity && (
+              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
+                <div className="block-title">☁️ Conexión de Base de Datos Cloud (Supabase)</div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Conecta tu aplicación a la nube para sincronizar tus furgonetas, rutas y paradas en tiempo real. 
+                  Si está configurado, la aplicación sincronizará automáticamente.
+                </p>
+                
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const urlInput = e.target.elements.supabase_url.value.trim();
+                  const keyInput = e.target.elements.supabase_key.value.trim();
+                  
+                  localStorage.setItem('supabase_url', urlInput);
+                  localStorage.setItem('supabase_key', keyInput);
+                  
+                  reinitSupabase();
+                  loadData();
+                  triggerAlert('Ajustes de base de datos guardados y sincronizados', 'success');
+                }} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Supabase URL</span>
+                      <input 
+                        type="text" 
+                        name="supabase_url"
+                        className="form-input" 
+                        placeholder="https://xxxxxx.supabase.co" 
+                        defaultValue={localStorage.getItem('supabase_url') === 'none' ? '' : (localStorage.getItem('supabase_url') || '')} 
+                      />
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Supabase Anon Key</span>
+                      <input 
+                        type="password" 
+                        name="supabase_key"
+                        className="form-input" 
+                        placeholder="Clave API pública anon" 
+                        defaultValue={localStorage.getItem('supabase_key') === 'none' ? '' : (localStorage.getItem('supabase_key') || '')} 
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button type="submit" className="btn btn-primary" style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}>
+                      Conectar y Sincronizar
+                    </button>
+                    {((localStorage.getItem('supabase_url') && localStorage.getItem('supabase_url') !== 'none') || (localStorage.getItem('supabase_key') && localStorage.getItem('supabase_key') !== 'none')) && (
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary" 
+                        onClick={() => {
+                          if (window.confirm('¿Seguro que quieres desconectarte de la nube y volver al modo 100% local?')) {
+                            localStorage.setItem('supabase_url', 'none');
+                            localStorage.setItem('supabase_key', 'none');
+                            reinitSupabase();
+                            loadData();
+                            triggerAlert('Desconectado de la nube. Modo local activado.', 'warning');
+                          }
+                        }}
+                        style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}
+                      >
+                        Desconectar / Usar Local
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
     return (
       <div>
         <div className="tab-container">
@@ -16097,737 +16939,7 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'users' && (
-          <div className="glass-panel" style={{ textAlign: 'left' }}>
-            <h2>Configuración General y Furgonetas</h2>
-            {localStorage.getItem('delivery_supabase_needs_permissions_col') === 'true' && (
-              <div className="glass-panel" style={{
-                background: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid #f87171',
-                padding: '15px',
-                borderRadius: '8px',
-                marginBottom: '20px',
-                color: '#fca5a5',
-                fontSize: '0.85rem'
-              }}>
-                <strong style={{ color: '#ef4444', display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>
-                  ⚠️ Acción requerida en Supabase
-                </strong>
-                Para guardar y sincronizar los permisos de los coordinadores en la nube, debes añadir la columna de permisos a tu tabla de usuarios. 
-                Por favor, abre el **SQL Editor** en tu panel de Supabase y ejecuta la siguiente consulta:
-                <code style={{
-                  display: 'block',
-                  background: 'rgba(0,0,0,0.3)',
-                  padding: '8px 12px',
-                  borderRadius: '4px',
-                  marginTop: '10px',
-                  fontFamily: 'monospace',
-                  color: '#fff',
-                  border: '1px solid rgba(255,255,255,0.1)'
-                }}>
-                  ALTER TABLE delivery_users ADD COLUMN permissions text;
-                </code>
-              </div>
-            )}
-            <p style={{ marginBottom: '20px' }}>Personaliza el nombre de tu aplicación y gestiona las cuentas de tus repartidores.</p>
-
-            {/* Ajuste de Nombre de la Aplicación */}
-            {showSecurity && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px', marginBottom: '30px' }}>
-                <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <div>
-                    <div className="block-title">🏷️ Nombre Personalizado de la Aplicación</div>
-                    <form onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!appNameInput.trim()) {
-                        triggerAlert('El nombre de la aplicación no puede estar vacío', 'error');
-                        return;
-                      }
-                      saveAppName(appNameInput, currentUser?.id);
-                      setAppName(appNameInput.trim());
-                      triggerAlert('Nombre de la aplicación actualizado con éxito');
-                    }} style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '15px' }}>
-                      <div className="input-group" style={{ marginBottom: 0, flex: 1 }}>
-                        <span className="input-label">Nombre de tu App / Negocio</span>
-                        <input type="text" className="form-input" value={appNameInput} onChange={(e) => setAppNameInput(e.target.value)} required />
-                      </div>
-                      <button type="submit" className="btn btn-primary" style={{ width: 'auto', height: '45px' }}>Guardar</button>
-                    </form>
-                  </div>
-                </div>
-
-                <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
-                  <div className="block-title">🎨 Personalización del Tema Visual</div>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Elige el estilo visual y fondo para la aplicación:</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '10px' }}>
-                    <button 
-                      onClick={() => { setAppTheme('theme-emerald'); triggerAlert('Tema Esmeralda / Naturaleza seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-emerald' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      🌲 Esmeralda
-                    </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-neon'); triggerAlert('Tema Neón Aurora seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-neon' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      🔮 Neón Aurora
-                    </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-corporate' ); triggerAlert('Tema Corporativo Moderno seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-corporate' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      💼 Corporativo
-                    </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-cyberpunk' ); triggerAlert('Tema Atardecer Cyberpunk seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-cyberpunk' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      🌇 Cyberpunk
-                    </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-sakura' ); triggerAlert('Tema Sakura Rose seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-sakura' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      🌸 Sakura Rose
-                    </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-arctic' ); triggerAlert('Tema Océano Ártico seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-arctic' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      ❄️ Ártico
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Control de Transferencias de Apoyo */}
-            {showSecurity && (
-              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
-                <div className="block-title">🤝 Auxilio / Apoyo entre Choferes</div>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                  Activa o desactiva la posibilidad de que los propios choferes se transfieran paradas de apoyo directamente desde sus paneles.
-                </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <input 
-                    type="checkbox" 
-                    id="allow_driver_support_transfer" 
-                    checked={allowDriverSupportTransfer} 
-                    onChange={(e) => {
-                      const val = e.target.checked;
-                      setAllowDriverSupportTransfer(val);
-                      saveAllowDriverSupportTransfer(val);
-                      triggerAlert(val ? 'Permiso de transferencia de apoyo activado' : 'Permiso de transferencia de apoyo desactivado');
-                    }} 
-                    style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                  />
-                  <label htmlFor="allow_driver_support_transfer" style={{ fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer', userSelect: 'none' }}>
-                    Permitir a los repartidores transferir clientes de apoyo entre ellos
-                  </label>
-                </div>
-              </div>
-            )}
-            
-
-
-            {/* Gestión de Matrículas */}
-            {showStaff && (
-              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
-                <div className="block-title">🚐 Gestión de Matrículas (Vehículos)</div>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                  Registra la lista de matrículas de las furgonetas para llevar un control de qué vehículo se utilizó en cada jornada.
-                </p>
-                
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    value={newPlateVal}
-                    onChange={(e) => setNewPlateVal(e.target.value)}
-                    placeholder="Ej: 1234ABC..."
-                    style={{ maxWidth: '300px', margin: 0 }}
-                  />
-                  <button 
-                    type="button" 
-                    onClick={handleAddPlate}
-                    className="btn btn-primary"
-                    style={{ margin: 0, whiteSpace: 'nowrap' }}
-                  >
-                    ➕ Añadir Matrícula
-                  </button>
-                </div>
-
-                {platesList.length === 0 ? (
-                  <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    No hay matrículas registradas.
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {platesList.map(plate => (
-                      <span 
-                        key={plate} 
-                        className="badge badge-secondary" 
-                        style={{ 
-                          fontSize: '0.82rem', 
-                          padding: '6px 12px', 
-                          borderRadius: '20px', 
-                          display: 'inline-flex', 
-                          alignItems: 'center', 
-                          gap: '8px', 
-                          background: 'rgba(255,255,255,0.05)', 
-                          border: '1px solid var(--panel-border)' 
-                        }}
-                      >
-                        🚐 {plate}
-                        <button 
-                          type="button" 
-                          onClick={() => handleRemovePlate(plate)}
-                          style={{ 
-                            background: 'none', 
-                            border: 'none', 
-                            color: '#f87171', 
-                            cursor: 'pointer', 
-                            fontWeight: 'bold', 
-                            fontSize: '0.85rem',
-                            padding: 0,
-                            lineHeight: 1
-                          }}
-                          title="Eliminar matrícula"
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Puntos de Inicio y Fin de Ruta Predeterminados */}
-            {showSecurity && (
-              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
-                <div className="block-title">📍 Direcciones de Inicio y Fin de Ruta Predeterminadas</div>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                  Define las ubicaciones iniciales y finales para la optimización de las rutas de tus choferes. Esto se sincronizará con la base de datos para todo tu equipo.
-                </p>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
-                  <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="input-label">Ubicación de Salida / Punto de Partida</span>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
-                          <button 
-                            type="button" 
-                            onClick={handleStartStartVoiceInput}
-                            className={`btn btn-small ${isListeningStart ? 'btn-danger' : 'btn-secondary'}`}
-                            style={{ 
-                              padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
-                              background: isListeningStart ? '#ef4444' : '', borderColor: isListeningStart ? '#ef4444' : '', color: '#fff',
-                              animation: isListeningStart ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
-                            }}
-                          >
-                            🎙️ {isListeningStart ? 'Escuchando...' : 'Dictar'}
-                          </button>
-                        )}
-                        {routeStartAddr && routeStartAddr.trim() && (
-                          <button
-                            type="button"
-                            onClick={() => handleNavigate(routeStartAddr)}
-                            style={{
-                              background: 'transparent', border: 'none', color: '#10b981',
-                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                              fontWeight: 'bold'
-                            }}
-                            title="Navegar a esta dirección"
-                          >
-                            🗺️ Navegar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Ej: Calle Gran Via, Sabadell, Barcelona" 
-                      value={routeStartAddr}
-                      onChange={(e) => {
-                        setRouteStartAddr(e.target.value);
-                        handleFetchRouteSuggestions(e.target.value, 'start');
-                      }}
-                    />
-                    {renderRouteSuggestions('start')}
-                  </div>
-                  <div className="input-group" style={{ marginBottom: 0, position: 'relative' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span className="input-label">Ubicación de Llegada / Fin de Ruta</span>
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {!!(window.SpeechRecognition || window.webkitSpeechRecognition) && (
-                          <button 
-                            type="button" 
-                            onClick={handleStartEndVoiceInput}
-                            className={`btn btn-small ${isListeningEnd ? 'btn-danger' : 'btn-secondary'}`}
-                            style={{ 
-                              padding: '2px 8px', fontSize: '0.7rem', height: '24px', display: 'flex', alignItems: 'center', gap: '3px',
-                              background: isListeningEnd ? '#ef4444' : '', borderColor: isListeningEnd ? '#ef4444' : '', color: '#fff',
-                              animation: isListeningEnd ? 'gpsPulse 1.5s infinite ease-in-out' : 'none'
-                            }}
-                          >
-                            🎙️ {isListeningEnd ? 'Escuchando...' : 'Dictar'}
-                          </button>
-                        )}
-                        {routeEndAddr && routeEndAddr.trim() && (
-                          <button
-                            type="button"
-                            onClick={() => handleNavigate(routeEndAddr)}
-                            style={{
-                              background: 'transparent', border: 'none', color: '#10b981',
-                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                              fontWeight: 'bold'
-                            }}
-                            title="Navegar a esta dirección"
-                          >
-                            🗺️ Navegar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Ej: Calle Gran Via, Sabadell, Barcelona" 
-                      value={routeEndAddr}
-                      onChange={(e) => {
-                        setRouteEndAddr(e.target.value);
-                        handleFetchRouteSuggestions(e.target.value, 'end');
-                      }}
-                    />
-                    {renderRouteSuggestions('end')}
-                  </div>
-                </div>
-                
-                <button 
-                  type="button" 
-                  className="btn btn-primary" 
-                  onClick={() => {
-                    if (!routeStartAddr.trim() || !routeEndAddr.trim()) {
-                      triggerAlert('Las direcciones no pueden estar vacías', 'error');
-                      return;
-                    }
-                    saveRouteStartAddr(routeStartAddr, currentUser?.id);
-                    saveRouteEndAddr(routeEndAddr, currentUser?.id);
-                    triggerAlert('Puntos de ruta predeterminados guardados y sincronizados');
-                  }}
-                  style={{ width: 'auto', marginTop: '20px', height: '42px' }}
-                >
-                  Guardar Puntos Predeterminados
-                </button>
-              </div>
-            )}
-
-            {/* API Keys de Proveedores de Mapas */}
-            {showSecurity && (
-              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px', textAlign: 'left' }}>
-                <div className="block-title">🗺️ Motores de Geolocalización Premium (Google Maps / Mapbox)</div>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                  Si deseas una precisión perfecta en la geolocalización de toda España (incluyendo abreviaturas de calles y lenguas regionales), puedes ingresar tu token de Mapbox o clave de Google Maps. Si se dejan en blanco, la aplicación usará el geolocalizador gratuito OpenStreetMap de forma automática.
-                </p>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">Mapbox Access Token (Recomendado - 100k búsquedas gratis)</span>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="pk.eyJ1Ijoi..." 
-                      value={mapboxTokenInput}
-                      onChange={(e) => setMapboxTokenInput(e.target.value)}
-                    />
-                  </div>
-                  <div className="input-group" style={{ marginBottom: 0 }}>
-                    <span className="input-label">Google Maps API Key</span>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="AIzaSy..." 
-                      value={googleKeyInput}
-                      onChange={(e) => setGoogleKeyInput(e.target.value)}
-                    />
-                  </div>
-                </div>
-                
-                <button 
-                  type="button" 
-                  className="btn btn-primary" 
-                  onClick={() => {
-                    saveGoogleMapsKey(googleKeyInput);
-                    saveMapboxToken(mapboxTokenInput);
-                    triggerAlert('Configuración de mapas guardada y sincronizada correctamente');
-                  }}
-                  style={{ width: 'auto', marginTop: '20px', height: '42px' }}
-                >
-                  Guardar API Keys de Mapas
-                </button>
-              </div>
-            )}
-
-            {/* Conexión a Supabase */}
-            {showSecurity && (
-              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', marginBottom: '30px' }}>
-                <div className="block-title">☁️ Conexión de Base de Datos Cloud (Supabase)</div>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-                  Conecta tu aplicación a la nube para sincronizar tus furgonetas, rutas y paradas en tiempo real. 
-                  Si está configurado, la aplicación sincronizará automáticamente; de lo contrario, funcionará de manera local offline.
-                </p>
-                
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const urlInput = e.target.elements.supabase_url.value.trim();
-                  const keyInput = e.target.elements.supabase_key.value.trim();
-                  
-                  localStorage.setItem('supabase_url', urlInput);
-                  localStorage.setItem('supabase_key', keyInput);
-                  
-                  reinitSupabase();
-                  loadData();
-                  triggerAlert('Ajustes de base de datos guardados y sincronizados', 'success');
-                }} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '15px' }}>
-                    <div className="input-group" style={{ marginBottom: 0 }}>
-                      <span className="input-label">Supabase URL</span>
-                      <input 
-                        type="text" 
-                        name="supabase_url"
-                        className="form-input" 
-                        placeholder="https://xxxxxx.supabase.co" 
-                        defaultValue={localStorage.getItem('supabase_url') === 'none' ? '' : (localStorage.getItem('supabase_url') || '')} 
-                      />
-                    </div>
-                    <div className="input-group" style={{ marginBottom: 0 }}>
-                      <span className="input-label">Supabase Anon Key</span>
-                      <input 
-                        type="password" 
-                        name="supabase_key"
-                        className="form-input" 
-                        placeholder="Clave API pública anon" 
-                        defaultValue={localStorage.getItem('supabase_key') === 'none' ? '' : (localStorage.getItem('supabase_key') || '')} 
-                      />
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button type="submit" className="btn btn-primary" style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}>
-                      Conectar y Sincronizar
-                    </button>
-                    {((localStorage.getItem('supabase_url') && localStorage.getItem('supabase_url') !== 'none') || (localStorage.getItem('supabase_key') && localStorage.getItem('supabase_key') !== 'none')) && (
-                      <button 
-                        type="button" 
-                        className="btn btn-secondary" 
-                        onClick={() => {
-                          if (window.confirm('¿Seguro que quieres desconectarte de la nube y volver al modo 100% local?')) {
-                            localStorage.setItem('supabase_url', 'none');
-                            localStorage.setItem('supabase_key', 'none');
-                            reinitSupabase();
-                            loadData();
-                            triggerAlert('Desconectado de la nube. Modo local activado.', 'warning');
-                          }
-                        }}
-                        style={{ width: 'auto', padding: '0 20px', height: '42px', margin: 0 }}
-                      >
-                        Desconectar / Usar Local
-                      </button>
-                    )}
-                  </div>
-                </form>
-              </div>
-            )}
-            
-            {showStaff && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px', marginTop: '20px' }}>
-                {/* Crear nuevo usuario */}
-                <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
-                <div className="block-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Plus size={18} color="var(--primary)" /> Crear Nuevo Usuario
-                </div>
-                <form onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!newUsername.trim() || !newLabel.trim() || !newPassword.trim()) {
-                    triggerAlert('Por favor rellena todos los campos', 'error');
-                    return;
-                  }
-                  const roleToUse = (currentUser.role === 'superadmin' || currentUser.role === 'admin') ? newRole : 'repartidor';
-                  const isUserAdmin = roleToUse === 'admin';
-                  
-                  let authUid = null;
-                  const emailVal = isUserAdmin && newEmailState.trim() ? newEmailState.trim().toLowerCase() : null;
-                  
-                  if (isUserAdmin && emailVal) {
-                    const supabaseClient = getSupabaseClient();
-                    if (supabaseClient) {
-                      try {
-                        const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
-                          email: emailVal,
-                          password: newPassword.trim(),
-                          options: {
-                            emailRedirectTo: window.location.origin + window.location.pathname,
-                            data: {
-                              role: roleToUse,
-                              label: newLabel.trim()
-                            }
-                          }
-                        });
-                        if (authErr) {
-                          triggerAlert(`Nota de registro: ${authErr.message}. El perfil necesitará vincularse en su primer login.`, 'warning');
-                        } else if (authData && authData.user) {
-                          authUid = authData.user.id;
-                        }
-                      } catch (err) {
-                        console.error("Auth signUp error during user creation:", err);
-                      }
-                    }
-                  }
-
-                  const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id, emailVal, authUid);
-                  if (res.success) {
-                    if (roleToUse === 'admin') {
-                      await initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
-                    }
-                    triggerAlert(`Usuario "${newLabel}" creado correctamente`);
-                    setNewUsername('');
-                    setNewLabel('');
-                    setNewPassword('');
-                    setNewRole('repartidor');
-                    setNewEmailState('');
-                    setNewAdminPricingOption('copy_default');
-                    loadData();
-                  } else {
-                    triggerAlert(res.error, 'error');
-                  }
-                }} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-                  <div className="input-group">
-                    <span className="input-label">Usuario (para Login clásico)</span>
-                    <input type="text" className="form-input" placeholder="Ej. furgo4" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} required />
-                  </div>
-                  <div className="input-group">
-                    <span className="input-label">Nombre Visible / Identificador</span>
-                    <input type="text" className="form-input" placeholder="Ej. Furgoneta 4 o Administrador Norte" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} required />
-                  </div>
-                  <div className="input-group">
-                    <span className="input-label">Contraseña / PIN</span>
-                    <input type="text" className="form-input" placeholder="Ej. 4444" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
-                  </div>
-                  {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && (
-                    <div className="input-group">
-                      <span className="input-label">Rol del Usuario</span>
-                      <select 
-                        className="form-input" 
-                        value={newRole} 
-                        onChange={(e) => setNewRole(e.target.value)}
-                        required
-                        style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
-                      >
-                        <option value="repartidor">Repartidor (Furgoneta)</option>
-                        <option value="admin">Administrador</option>
-                      </select>
-                    </div>
-                  )}
-                  {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && newRole === 'admin' && (
-                    <>
-                      <div className="input-group">
-                        <span className="input-label">Correo Electrónico (Opcional - Para Login Seguro)</span>
-                        <input 
-                          type="email" 
-                          className="form-input" 
-                          placeholder="ejemplo@correo.com" 
-                          value={newEmailState} 
-                          onChange={(e) => setNewEmailState(e.target.value)} 
-                        />
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          Si se deja vacío, el nuevo administrador podrá vincular su correo personal la primera vez que inicie sesión.
-                        </span>
-                      </div>
-                      <div className="input-group">
-                        <span className="input-label">Configuración Inicial de Tarifas</span>
-                        <select 
-                          className="form-input" 
-                          value={newAdminPricingOption} 
-                          onChange={(e) => setNewAdminPricingOption(e.target.value)}
-                          required
-                          style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
-                        >
-                          <option value="copy_default">Copiar precios de tarifas por defecto</option>
-                          <option value="zero">Iniciar precios a 0,00 €</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-                  <button type="submit" className="btn btn-primary" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                    <Plus size={16} /> Crear Nuevo Usuario
-                  </button>
-                </form>
-              </div>
-
-              {/* Lista y edición */}
-              <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
-                <div className="block-title">Usuarios y Furgonetas Activas</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-                  {visibleUsers.map(u => (
-                    <div key={u.id} style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '15px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--primary)' }}>
-                          👤 {u.username} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({u.role === 'superadmin' ? 'Super Admin' : u.role === 'admin' ? 'Administrador' : 'Repartidor'})</span>
-                          {u.role === 'admin' && (
-                            u.email ? (
-                              <span style={{ fontSize: '0.72rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' }} title={u.email}>
-                                📧 {u.email}
-                              </span>
-                            ) : (
-                              <span style={{ fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', padding: '2px 6px', borderRadius: '4px', marginLeft: '8px' }}>
-                                ⚠️ Correo sin vincular
-                              </span>
-                            )
-                          )}
-                        </span>
-                        {u.id !== 'admin' && u.id !== currentUser.id && (
-                          <button 
-                            type="button" 
-                            onClick={() => {
-                              if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente a ${u.label}?`)) {
-                                deleteUser(u.id);
-                                triggerAlert('Usuario eliminado correctamente');
-                                loadData();
-                              }
-                            }} 
-                            className="btn btn-danger btn-small" 
-                            style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px', margin: 0, width: 'auto' }}
-                          >
-                            <Trash2 size={12} /> Eliminar
-                          </button>
-                        )}
-                      </div>
-
-                      <form 
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const labelVal = e.target.elements.user_label.value;
-                          const passwordVal = e.target.elements.user_password.value;
-                          handleUpdateUser(u.id, labelVal, passwordVal);
-                        }} 
-                        style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', margin: 0 }}
-                      >
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
-                          <div className="input-group" style={{ marginBottom: 0 }}>
-                            <span className="input-label" style={{ fontSize: '0.75rem' }}>Nombre / Identificador</span>
-                            <input 
-                              type="text" 
-                              name="user_label"
-                              className="form-input" 
-                              defaultValue={u.label} 
-                              style={{ padding: '6px 10px', fontSize: '0.85rem' }} 
-                              required
-                            />
-                          </div>
-                          <div className="input-group" style={{ marginBottom: 0 }}>
-                            <span className="input-label" style={{ fontSize: '0.75rem' }}>Contraseña / PIN</span>
-                            <input 
-                              type="text" 
-                              name="user_password"
-                              className="form-input" 
-                              defaultValue={u.password} 
-                              style={{ padding: '6px 10px', fontSize: '0.85rem' }} 
-                              required
-                            />
-                          </div>
-                        </div>
-
-                        {currentUser.role === 'superadmin' && u.role === 'admin' && u.id !== 'admin' && (
-                          <div style={{
-                            width: '100%',
-                            background: 'rgba(255,255,255,0.02)',
-                            border: '1px solid rgba(255,255,255,0.05)',
-                            borderRadius: '8px',
-                            padding: '12px',
-                            marginTop: '5px',
-                            marginBottom: '10px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '8px'
-                          }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--primary)', marginBottom: '4px', display: 'block' }}>
-                              🛡️ Permisos de Módulos (Coordinador)
-                            </span>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' }}>
-                              {[
-                                { id: 'report_day', label: '📋 Informe del Día' },
-                                { id: 'deliveries_period', label: '📊 Repartos del Período' },
-                                { id: 'map_control', label: '🗺️ Mapa de Control' },
-                                { id: 'shift_calendar', label: '📅 Calendario de Turnos' },
-                                { id: 'general_search', label: '🔍 Buscador General' },
-                                { id: 'staff', label: '👤 Personal (Admins/Choferes)' },
-                                { id: 'van_pricing', label: '💰 Precios Corte Inglés' },
-                                { id: 'security', label: '⚙️ Seguridad / Sistema' },
-                                { id: 'fleet_control', label: '🚗 Control de Flota' }
-                              ].map(mod => {
-                                let isAllowed = true;
-                                if (u.permissions) {
-                                  let pObj = u.permissions;
-                                  if (typeof pObj === 'string') {
-                                    try { pObj = JSON.parse(pObj); } catch(e) { pObj = {}; }
-                                  }
-                                  isAllowed = pObj[mod.id] !== false;
-                                }
-                                return (
-                                  <label key={mod.id} style={{ fontSize: '0.78rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', margin: 0 }}>
-                                    <input 
-                                      type="checkbox" 
-                                      checked={isAllowed} 
-                                      onChange={(e) => handleUpdateUserPermissions(u.id, mod.id, e.target.checked)} 
-                                    />
-                                    {mod.label}
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center', marginTop: '5px', width: '100%' }}>
-                          {currentUser.role === 'superadmin' && u.id !== 'admin' && u.role === 'repartidor' && (
-                            <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginRight: 'auto' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={!!u.canSearch} 
-                                onChange={() => {
-                                  toggleUserSearchPermission(u.id);
-                                  triggerAlert(`Permiso de buscador modificado para ${u.label}`);
-                                  loadData();
-                                }} 
-                              />
-                              Buscador General
-                            </label>
-                          )}
-                          <button 
-                            type="submit" 
-                            className="btn btn-secondary btn-small"
-                            style={{ margin: 0, padding: '6px 12px', fontSize: '0.8rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            💾 Guardar Cambios
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          </div>
-        )}
+        {activeTab === 'users' && renderUsersSection()}
 
         {activeTab === 'search' && renderSearchSection()}
         {activeTab === 'fleet' && renderFleetSection()}
