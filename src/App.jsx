@@ -832,7 +832,7 @@ function App() {
   const [fleetDailyLogs, setFleetDailyLogs] = useState(() => getFleetDailyLogs() || []);
   const [fleetSubTab, setFleetSubTab] = useState('dashboard'); // 'dashboard', 'vehicles', 'daily', 'fuel', 'maintenance'
   const [dailyForm, setDailyForm] = useState({ plate: '', date: new Date().toISOString().split('T')[0], kmStart: '', kmEnd: '', kmL: '', notes: '' });
-  const [dailyFilterPlate, setDailyFilterPlate] = useState('all');
+  const [selectedFleetVehicleFilter, setSelectedFleetVehicleFilter] = useState('all');
   const [editingVehicleId, setEditingVehicleId] = useState(null);
   const [vehicleForm, setVehicleForm] = useState({ plate: '', brand: '', model: '', year: new Date().getFullYear().toString(), currentKm: '0', itvExpiry: '', insuranceExpiry: '', status: 'active' });
   const [fuelForm, setFuelForm] = useState({ plate: '', date: new Date().toISOString().split('T')[0], driver: '', liters: '', costPerLiter: '', totalCost: '', gasStation: '', notes: '' });
@@ -10555,12 +10555,25 @@ function App() {
     const activeDrivers = users.filter(usr => usr && usr.role === 'repartidor');
     const todayStr = new Date().toISOString().split('T')[0];
 
+    // Filtrado de registros según el vehículo seleccionado
+    const filteredFuelLogs = selectedFleetVehicleFilter === 'all' 
+      ? fleetFuelLogs 
+      : fleetFuelLogs.filter(item => item.plate === selectedFleetVehicleFilter);
+
+    const filteredMaintLogs = selectedFleetVehicleFilter === 'all' 
+      ? fleetMaintenanceLogs 
+      : fleetMaintenanceLogs.filter(item => item.plate === selectedFleetVehicleFilter);
+
+    const filteredDailyLogs = selectedFleetVehicleFilter === 'all' 
+      ? fleetDailyLogs 
+      : fleetDailyLogs.filter(item => item.plate === selectedFleetVehicleFilter);
+
     // Cálculos de resumen
     const totalVehicles = fleetVehicles.length;
     const activeVehicles = fleetVehicles.filter(v => v.status === 'active').length;
-    const totalFuelCost = fleetFuelLogs.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
-    const totalMaintCost = fleetMaintenanceLogs.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
-    const totalKmTraveled = fleetDailyLogs.reduce((sum, item) => sum + (Number(item.kmTraveled) || 0), 0);
+    const totalFuelCost = filteredFuelLogs.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
+    const totalMaintCost = filteredMaintLogs.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+    const totalKmTraveled = filteredDailyLogs.reduce((sum, item) => sum + (Number(item.kmTraveled) || 0), 0);
 
     // Vencimientos y alertas
     const alerts = [];
@@ -10878,6 +10891,52 @@ function App() {
         {/* 1. DASHBOARD */}
         {fleetSubTab === 'dashboard' && (
           <div>
+            {/* Selector de Vehículo Individual */}
+            <div className="glass-panel" style={{ 
+              padding: '15px 20px', 
+              borderRadius: '12px', 
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '15px',
+              border: '1px solid var(--panel-border)',
+              background: 'var(--panel-bg)'
+            }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                  📊 Control de Gastos por Vehículo
+                </h4>
+                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Selecciona un vehículo para ver su desglose individual de kilómetros, combustible y taller.
+                </p>
+              </div>
+              <div>
+                <select
+                  value={selectedFleetVehicleFilter}
+                  onChange={(e) => setSelectedFleetVehicleFilter(e.target.value)}
+                  className="form-input"
+                  style={{ 
+                    width: '240px', 
+                    margin: 0, 
+                    padding: '8px 12px', 
+                    borderRadius: '8px',
+                    background: 'var(--input-bg)',
+                    color: 'var(--text-main)',
+                    border: '1px solid var(--panel-border)'
+                  }}
+                >
+                  <option value="all">🚗 Todos los vehículos (Total)</option>
+                  {fleetVehicles.map(v => (
+                    <option key={v.id} value={v.plate} style={{ color: '#000000', background: '#ffffff' }}>
+                      🚐 {v.plate} ({v.brand} {v.model})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '15px', marginBottom: '25px' }}>
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(67, 97, 238, 0.1), rgba(67, 97, 238, 0.05))', border: '1px solid rgba(67, 97, 238, 0.2)', padding: '15px', borderRadius: '10px' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vehículos Activos</span>
@@ -10959,7 +11018,7 @@ function App() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
               <div>
                 <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>📅 Últimos Kilómetros Diarios</h3>
-                {fleetDailyLogs.length === 0 ? (
+                {filteredDailyLogs.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay registros de kilómetros.</p>
                 ) : (
                   <div style={{ overflowX: 'auto' }}>
@@ -10975,7 +11034,7 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {fleetDailyLogs.slice(0, 5).map(log => (
+                        {filteredDailyLogs.slice(0, 5).map(log => (
                           <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                             <td style={{ padding: '6px' }}>{log.date}</td>
                             <td style={{ padding: '6px', fontWeight: 'bold' }}>{log.plate}</td>
@@ -11007,7 +11066,7 @@ function App() {
 
               <div>
                 <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>⛽ Últimos Repostajes</h3>
-                {fleetFuelLogs.length === 0 ? (
+                {filteredFuelLogs.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay repostajes registrados.</p>
                 ) : (
                   <div style={{ overflowX: 'auto' }}>
@@ -11021,7 +11080,7 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {fleetFuelLogs.slice(0, 5).map(log => (
+                        {filteredFuelLogs.slice(0, 5).map(log => (
                           <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                             <td style={{ padding: '6px' }}>{log.date}</td>
                             <td style={{ padding: '6px', fontWeight: 'bold' }}>{log.plate}</td>
@@ -11037,7 +11096,7 @@ function App() {
 
               <div>
                 <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>🔧 Últimos Mantenimientos</h3>
-                {fleetMaintenanceLogs.length === 0 ? (
+                {filteredMaintLogs.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay mantenimientos registrados.</p>
                 ) : (
                   <div style={{ overflowX: 'auto' }}>
@@ -11051,7 +11110,7 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {fleetMaintenanceLogs.slice(0, 5).map(log => (
+                        {filteredMaintLogs.slice(0, 5).map(log => (
                           <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                             <td style={{ padding: '6px' }}>{log.date}</td>
                             <td style={{ padding: '6px', fontWeight: 'bold' }}>{log.plate}</td>
