@@ -10572,6 +10572,13 @@ function App() {
     const totalVehicles = fleetVehicles.length;
     const activeVehicles = fleetVehicles.filter(v => v.status === 'active').length;
     const totalFuelCost = filteredFuelLogs.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
+    const totalEstimatedFuelCost = filteredDailyLogs.reduce((sum, log) => {
+      const avgKmL = parseFloat(log.kmL) || 0;
+      if (avgKmL > 0) {
+        return sum + (Number(log.kmTraveled) / avgKmL) * fuelPrice;
+      }
+      return sum;
+    }, 0);
     const totalMaintCost = filteredMaintLogs.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
     const totalKmTraveled = filteredDailyLogs.reduce((sum, item) => sum + (Number(item.kmTraveled) || 0), 0);
 
@@ -10936,9 +10943,14 @@ function App() {
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '15px', borderRadius: '10px' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gastos en Combustible</span>
                 <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--danger)', display: 'block', margin: '5px 0' }}>
-                  {totalFuelCost.toFixed(2)}€
+                  {totalFuelCost > 0 ? `${totalFuelCost.toFixed(2)}€` : `${totalEstimatedFuelCost.toFixed(2)}€`}
                 </span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Inversión total acumulada en gasoil</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {totalFuelCost > 0 
+                    ? `Repostado real (Consumo est: ${totalEstimatedFuelCost.toFixed(2)}€)` 
+                    : `Consumo estimado (Sin repostajes registrados)`
+                  }
+                </span>
               </div>
 
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05))', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '15px', borderRadius: '10px' }}>
@@ -10952,9 +10964,9 @@ function App() {
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05))', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '15px', borderRadius: '10px' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gasto Combinado</span>
                 <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--warning)', display: 'block', margin: '5px 0' }}>
-                  {(totalFuelCost + totalMaintCost).toFixed(2)}€
+                  {((totalFuelCost > 0 ? totalFuelCost : totalEstimatedFuelCost) + totalMaintCost).toFixed(2)}€
                 </span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Coste total operativo de la flota</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Coste total operativo (combustible + mantenimiento)</span>
               </div>
             </div>
 
