@@ -10947,6 +10947,7 @@ function App() {
                           <th style={{ padding: '6px', textAlign: 'right' }}>Inicio</th>
                           <th style={{ padding: '6px', textAlign: 'right' }}>Fin</th>
                           <th style={{ padding: '6px', textAlign: 'right' }}>Recorrido</th>
+                          <th style={{ padding: '6px', textAlign: 'right' }}>Coste (€)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -10957,6 +10958,7 @@ function App() {
                             <td style={{ padding: '6px', textAlign: 'right' }}>{Number(log.kmStart).toLocaleString()}</td>
                             <td style={{ padding: '6px', textAlign: 'right' }}>{Number(log.kmEnd).toLocaleString()}</td>
                             <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#60a5fa' }}>+{Number(log.kmTraveled).toLocaleString()} km</td>
+                            <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>{(Number(log.kmTraveled) * kmPrice).toFixed(2)} €</td>
                           </tr>
                         ))}
                       </tbody>
@@ -11315,6 +11317,7 @@ function App() {
                         <th style={{ padding: '10px', textAlign: 'right' }}>Km Fin</th>
                         <th style={{ padding: '10px', textAlign: 'right' }}>Km Recorridos</th>
                         <th style={{ padding: '10px', textAlign: 'right' }}>Km/L Promedio</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>Coste (€)</th>
                         <th style={{ padding: '10px' }}>Notas</th>
                         <th style={{ padding: '10px', textAlign: 'center' }}>Acciones</th>
                       </tr>
@@ -11328,6 +11331,7 @@ function App() {
                           <td style={{ padding: '10px', textAlign: 'right' }}>{Number(log.kmEnd).toLocaleString()}</td>
                           <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#60a5fa' }}>+{Number(log.kmTraveled).toLocaleString()} km</td>
                           <td style={{ padding: '10px', textAlign: 'right' }}>{log.kmL ? `${log.kmL} km/L` : '-'}</td>
+                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>{(Number(log.kmTraveled) * kmPrice).toFixed(2)} €</td>
                           <td style={{ padding: '10px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{log.notes || '-'}</td>
                           <td style={{ padding: '10px', textAlign: 'center' }}>
                             <button
