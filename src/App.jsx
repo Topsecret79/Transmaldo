@@ -420,7 +420,13 @@ import {
   hashPassword,
   isSHA256,
   hasPermission,
-  saveDriverShiftMeta
+  saveDriverShiftMeta,
+  getFleetVehicles,
+  saveFleetVehicles,
+  getFleetFuelLogs,
+  saveFleetFuelLogs,
+  getFleetMaintenanceLogs,
+  saveFleetMaintenanceLogs
 } from './db';
 
 
@@ -727,6 +733,7 @@ function App() {
   const showStaff = hasPermission(loggedInUserObj, 'staff');
   const showVanPricing = hasPermission(loggedInUserObj, 'van_pricing');
   const showSecurity = hasPermission(loggedInUserObj, 'security');
+  const showFleetControl = hasPermission(loggedInUserObj, 'fleet_control');
 
   // Para repartidores: comprobar si el administrador que los gestiona tiene activos
   // los módulos de Calendario y Personal. Si no los tiene, los campos de
@@ -781,6 +788,16 @@ function App() {
   const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useState(null);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [editEmpName, setEditEmpName] = useState('');
+
+  // Estados del módulo de Control de Flota
+  const [fleetVehicles, setFleetVehicles] = useState(() => getFleetVehicles() || []);
+  const [fleetFuelLogs, setFleetFuelLogs] = useState(() => getFleetFuelLogs() || []);
+  const [fleetMaintenanceLogs, setFleetMaintenanceLogs] = useState(() => getFleetMaintenanceLogs() || []);
+  const [fleetSubTab, setFleetSubTab] = useState('dashboard'); // 'dashboard', 'vehicles', 'fuel', 'maintenance'
+  const [editingVehicleId, setEditingVehicleId] = useState(null);
+  const [vehicleForm, setVehicleForm] = useState({ plate: '', brand: '', model: '', year: new Date().getFullYear().toString(), currentKm: '0', itvExpiry: '', insuranceExpiry: '', status: 'active' });
+  const [fuelForm, setFuelForm] = useState({ plate: '', date: new Date().toISOString().split('T')[0], driver: '', liters: '', costPerLiter: '', totalCost: '', gasStation: '', notes: '' });
+  const [maintForm, setMaintForm] = useState({ plate: '', type: 'Cambio de Aceite', date: new Date().toISOString().split('T')[0], kmAtService: '', cost: '', provider: '', invoiceNumber: '', notes: '' });
   const [editEmpRole, setEditEmpRole] = useState('chofer');
   const [editEmpRate, setEditEmpRate] = useState('');
   const [empSearchQuery, setEmpSearchQuery] = useState('');
@@ -999,7 +1016,8 @@ function App() {
       { tab: 'search', allowed: hasSearchPermission },
       { tab: 'employees', allowed: showStaff },
       { tab: 'tariffs', allowed: showVanPricing },
-      { tab: 'users', allowed: showStaff || showSecurity }
+      { tab: 'users', allowed: showStaff || showSecurity },
+      { tab: 'fleet', allowed: showFleetControl }
     ];
 
     const currentTabCheck = adminTabAccess.find(t => t.tab === activeTab);
@@ -1013,7 +1031,7 @@ function App() {
         setActiveTab('changelog');
       }
     }
-  }, [activeTab, loggedInUserObj, showReportDay, showDeliveriesPeriod, showMapControl, showShiftCalendar, hasSearchPermission, showStaff, showVanPricing, showSecurity]);
+  }, [activeTab, loggedInUserObj, showReportDay, showDeliveriesPeriod, showMapControl, showShiftCalendar, hasSearchPermission, showStaff, showVanPricing, showSecurity, showFleetControl]);
 
   useEffect(() => {
     localStorage.setItem('delivery_active_routes', JSON.stringify(activeRoutes));
@@ -2202,6 +2220,9 @@ function App() {
     setHelpersList(getHelpersList() || []);
     setPlatesList(getPlatesList() || []);
     setEmployeesList(getEmployeesList() || []);
+    setFleetVehicles(getFleetVehicles() || []);
+    setFleetFuelLogs(getFleetFuelLogs() || []);
+    setFleetMaintenanceLogs(getFleetMaintenanceLogs() || []);
   };
 
   const loadDataRef = useRef(loadData);
@@ -10339,6 +10360,941 @@ function App() {
     );
   };
 
+  const renderFleetSection = () => {
+    const activeDrivers = users.filter(usr => usr && usr.role === 'repartidor');
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Cálculos de resumen
+    const totalVehicles = fleetVehicles.length;
+    const activeVehicles = fleetVehicles.filter(v => v.status === 'active').length;
+    const totalFuelCost = fleetFuelLogs.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
+    const totalMaintCost = fleetMaintenanceLogs.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+
+    // Vencimientos y alertas
+    const alerts = [];
+    const now = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(now.getDate() + 30);
+
+    fleetVehicles.forEach(v => {
+      if (v.itvExpiry) {
+        const exp = new Date(v.itvExpiry);
+        if (exp < now) {
+          alerts.push({ id: `itv-exp-${v.id}`, type: 'error', text: `ITV de ${v.plate} EXPIRADA el ${v.itvExpiry}` });
+        } else if (exp <= thirtyDaysFromNow) {
+          alerts.push({ id: `itv-soon-${v.id}`, type: 'warning', text: `ITV de ${v.plate} expira pronto (${v.itvExpiry})` });
+        }
+      }
+      if (v.insuranceExpiry) {
+        const exp = new Date(v.insuranceExpiry);
+        if (exp < now) {
+          alerts.push({ id: `ins-exp-${v.id}`, type: 'error', text: `Seguro de ${v.plate} EXPIRADO el ${v.insuranceExpiry}` });
+        } else if (exp <= thirtyDaysFromNow) {
+          alerts.push({ id: `ins-soon-${v.id}`, type: 'warning', text: `Seguro de ${v.plate} expira pronto (${v.insuranceExpiry})` });
+        }
+      }
+    });
+
+    // Guardar Vehículo
+    const handleSaveVehicle = (e) => {
+      e.preventDefault();
+      if (!vehicleForm.plate.trim() || !vehicleForm.brand.trim() || !vehicleForm.model.trim()) {
+        setAlertMsg({ text: 'Por favor, rellena matrícula, marca y modelo', type: 'error' });
+        return;
+      }
+      const plateUpper = vehicleForm.plate.trim().toUpperCase();
+      let updatedVehicles;
+
+      if (editingVehicleId) {
+        updatedVehicles = fleetVehicles.map(v => v.id === editingVehicleId ? { ...v, ...vehicleForm, plate: plateUpper } : v);
+        setAlertMsg({ text: 'Vehículo actualizado con éxito', type: 'success' });
+      } else {
+        if (fleetVehicles.some(v => v.plate === plateUpper)) {
+          setAlertMsg({ text: 'Ya existe un vehículo con esta matrícula', type: 'error' });
+          return;
+        }
+        const newV = {
+          id: 'veh_' + Date.now(),
+          ...vehicleForm,
+          plate: plateUpper
+        };
+        updatedVehicles = [...fleetVehicles, newV];
+        setAlertMsg({ text: 'Vehículo registrado con éxito', type: 'success' });
+      }
+
+      setFleetVehicles(updatedVehicles);
+      saveFleetVehicles(updatedVehicles);
+
+      // Integración con platesList global
+      if (!platesList.some(p => p.plate === plateUpper)) {
+        const updatedPlates = [...platesList, { plate: plateUpper, description: `${vehicleForm.brand} ${vehicleForm.model}` }];
+        setPlatesList(updatedPlates);
+        savePlatesList(updatedPlates);
+      }
+
+      setEditingVehicleId(null);
+      setVehicleForm({ plate: '', brand: '', model: '', year: new Date().getFullYear().toString(), currentKm: '0', itvExpiry: '', insuranceExpiry: '', status: 'active' });
+      reinitSupabase();
+    };
+
+    const handleStartEditVehicle = (v) => {
+      setEditingVehicleId(v.id);
+      setVehicleForm({
+        plate: v.plate,
+        brand: v.brand,
+        model: v.model,
+        year: v.year || '',
+        currentKm: v.currentKm || '0',
+        itvExpiry: v.itvExpiry || '',
+        insuranceExpiry: v.insuranceExpiry || '',
+        status: v.status || 'active'
+      });
+      const el = document.getElementById('vehicle-form-container');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const handleDeleteVehicle = (id) => {
+      if (window.confirm('¿Estás seguro de que deseas eliminar este vehículo?')) {
+        const updated = fleetVehicles.filter(v => v.id !== id);
+        setFleetVehicles(updated);
+        saveFleetVehicles(updated);
+        reinitSupabase();
+        setAlertMsg({ text: 'Vehículo eliminado con éxito', type: 'success' });
+      }
+    };
+
+    const handleSaveFuelLog = (e) => {
+      e.preventDefault();
+      if (!fuelForm.plate || !fuelForm.date || !fuelForm.liters || !fuelForm.totalCost) {
+        setAlertMsg({ text: 'Por favor, rellena todos los campos requeridos', type: 'error' });
+        return;
+      }
+      const calculatedPrice = Number(fuelForm.costPerLiter) || (Number(fuelForm.totalCost) / Number(fuelForm.liters)) || 0;
+      const newLog = {
+        id: 'fuel_' + Date.now(),
+        ...fuelForm,
+        liters: Number(fuelForm.liters),
+        costPerLiter: Number(calculatedPrice.toFixed(3)),
+        totalCost: Number(fuelForm.totalCost)
+      };
+
+      const updated = [newLog, ...fleetFuelLogs];
+      setFleetFuelLogs(updated);
+      saveFleetFuelLogs(updated);
+
+      setFuelForm({ plate: '', date: todayStr, driver: '', liters: '', costPerLiter: '', totalCost: '', gasStation: '', notes: '' });
+      reinitSupabase();
+      setAlertMsg({ text: 'Repostaje registrado con éxito', type: 'success' });
+    };
+
+    const handleDeleteFuelLog = (id) => {
+      if (window.confirm('¿Estás seguro de que deseas eliminar este registro de repostaje?')) {
+        const updated = fleetFuelLogs.filter(log => log.id !== id);
+        setFleetFuelLogs(updated);
+        saveFleetFuelLogs(updated);
+        reinitSupabase();
+        setAlertMsg({ text: 'Registro de repostaje eliminado con éxito', type: 'success' });
+      }
+    };
+
+    const handleSaveMaintLog = (e) => {
+      e.preventDefault();
+      if (!maintForm.plate || !maintForm.type || !maintForm.date || !maintForm.cost) {
+        setAlertMsg({ text: 'Por favor, rellena todos los campos requeridos', type: 'error' });
+        return;
+      }
+      const newLog = {
+        id: 'maint_' + Date.now(),
+        ...maintForm,
+        cost: Number(maintForm.cost),
+        kmAtService: Number(maintForm.kmAtService) || 0
+      };
+
+      const updated = [newLog, ...fleetMaintenanceLogs];
+      setFleetMaintenanceLogs(updated);
+      saveFleetMaintenanceLogs(updated);
+
+      const vehicle = fleetVehicles.find(v => v.plate === maintForm.plate);
+      if (vehicle && Number(maintForm.kmAtService) > (Number(vehicle.currentKm) || 0)) {
+        const updatedVehicles = fleetVehicles.map(v => 
+          v.plate === maintForm.plate ? { ...v, currentKm: maintForm.kmAtService.toString() } : v
+        );
+        setFleetVehicles(updatedVehicles);
+        saveFleetVehicles(updatedVehicles);
+      }
+
+      setMaintForm({ plate: '', type: 'Cambio de Aceite', date: todayStr, kmAtService: '', cost: '', provider: '', invoiceNumber: '', notes: '' });
+      reinitSupabase();
+      setAlertMsg({ text: 'Mantenimiento registrado con éxito', type: 'success' });
+    };
+
+    const handleDeleteMaintLog = (id) => {
+      if (window.confirm('¿Estás seguro de que deseas eliminar este registro de mantenimiento?')) {
+        const updated = fleetMaintenanceLogs.filter(log => log.id !== id);
+        setFleetMaintenanceLogs(updated);
+        saveFleetMaintenanceLogs(updated);
+        reinitSupabase();
+        setAlertMsg({ text: 'Registro de mantenimiento eliminado con éxito', type: 'success' });
+      }
+    };
+
+    return (
+      <div className="glass-panel" style={{ textAlign: 'left' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>🚗 Control y Gestión de Flota</h2>
+            <p style={{ margin: '5px 0 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              Gestión centralizada de vehículos, gastos de combustible (gasoil) y mantenimiento del taller.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => { reinitSupabase(); setAlertMsg({ text: 'Sincronizando con la nube...', type: 'success' }); }}
+              className="action-btn"
+              style={{ padding: '8px 12px', fontSize: '0.8rem', background: 'rgba(255, 255, 255, 0.05)', display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              🔄 Sincronizar
+            </button>
+          </div>
+        </div>
+
+        {/* Sub-navegación */}
+        <div style={{
+          display: 'flex',
+          gap: '5px',
+          marginBottom: '25px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          paddingBottom: '10px',
+          overflowX: 'auto',
+          whiteSpace: 'nowrap'
+        }}>
+          {[
+            { id: 'dashboard', label: '📊 Resumen', icon: '📈' },
+            { id: 'vehicles', label: '🚐 Vehículos', icon: '🚙' },
+            { id: 'fuel', label: '⛽ Gasoil / Repostajes', icon: '⛽' },
+            { id: 'maintenance', label: '🔧 Taller / Mantenimiento', icon: '⚙️' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setFleetSubTab(tab.id)}
+              style={{
+                background: fleetSubTab === tab.id ? 'var(--primary)' : 'transparent',
+                color: fleetSubTab === tab.id ? '#fff' : 'var(--text-muted)',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+                outline: 'none'
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 1. DASHBOARD */}
+        {fleetSubTab === 'dashboard' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '15px', marginBottom: '25px' }}>
+              <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(67, 97, 238, 0.1), rgba(67, 97, 238, 0.05))', border: '1px solid rgba(67, 97, 238, 0.2)', padding: '15px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vehículos Activos</span>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--primary)', display: 'block', margin: '5px 0' }}>
+                  {activeVehicles} <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>/ {totalVehicles} totales</span>
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Furgonetas registradas en el sistema</span>
+              </div>
+
+              <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '15px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gastos en Combustible</span>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: '#f87171', display: 'block', margin: '5px 0' }}>
+                  {totalFuelCost.toFixed(2)}€
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Inversión total acumulada en gasoil</span>
+              </div>
+
+              <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05))', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '15px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gastos de Mantenimiento</span>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: '#34d399', display: 'block', margin: '5px 0' }}>
+                  {totalMaintCost.toFixed(2)}€
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Taller, ITV, seguros y reparaciones</span>
+              </div>
+
+              <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05))', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '15px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gasto Combinado</span>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: '#fbbf24', display: 'block', margin: '5px 0' }}>
+                  {(totalFuelCost + totalMaintCost).toFixed(2)}€
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Coste total operativo de la flota</span>
+              </div>
+            </div>
+
+            {/* Alertas */}
+            <div style={{ marginBottom: '25px' }}>
+              <h3 style={{ fontSize: '1rem', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                🔔 Alertas de Vencimiento de Documentación
+              </h3>
+              {alerts.length === 0 ? (
+                <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#a7f3d0', padding: '12px', borderRadius: '8px', fontSize: '0.85rem' }}>
+                  ✅ Toda la documentación (ITV y seguros) está al día. No hay vencimientos próximos en los siguientes 30 días.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {alerts.map(al => (
+                    <div
+                      key={al.id}
+                      style={{
+                        background: al.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        border: al.type === 'error' ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
+                        color: al.type === 'error' ? '#fca5a5' : '#fde047',
+                        padding: '10px 15px',
+                        borderRadius: '6px',
+                        fontSize: '0.82rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <span>{al.type === 'error' ? '❌' : '⚠️'}</span>
+                      <span>{al.text}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Tablas */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>⛽ Últimos Repostajes</h3>
+                {fleetFuelLogs.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay repostajes registrados.</p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                          <th style={{ padding: '6px', textAlign: 'left' }}>Fecha</th>
+                          <th style={{ padding: '6px', textAlign: 'left' }}>Vehículo</th>
+                          <th style={{ padding: '6px', textAlign: 'right' }}>Litros</th>
+                          <th style={{ padding: '6px', textAlign: 'right' }}>Coste (€)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fleetFuelLogs.slice(0, 5).map(log => (
+                          <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <td style={{ padding: '6px' }}>{log.date}</td>
+                            <td style={{ padding: '6px', fontWeight: 'bold' }}>{log.plate}</td>
+                            <td style={{ padding: '6px', textAlign: 'right' }}>{Number(log.liters).toFixed(1)}L</td>
+                            <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>{Number(log.totalCost).toFixed(2)}€</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>🔧 Últimos Mantenimientos</h3>
+                {fleetMaintenanceLogs.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay mantenimientos registrados.</p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                          <th style={{ padding: '6px', textAlign: 'left' }}>Fecha</th>
+                          <th style={{ padding: '6px', textAlign: 'left' }}>Vehículo</th>
+                          <th style={{ padding: '6px', textAlign: 'left' }}>Servicio</th>
+                          <th style={{ padding: '6px', textAlign: 'right' }}>Coste (€)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fleetMaintenanceLogs.slice(0, 5).map(log => (
+                          <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <td style={{ padding: '6px' }}>{log.date}</td>
+                            <td style={{ padding: '6px', fontWeight: 'bold' }}>{log.plate}</td>
+                            <td style={{ padding: '6px' }}>{log.type}</td>
+                            <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>{Number(log.cost).toFixed(2)}€</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 2. VEHÍCULOS */}
+        {fleetSubTab === 'vehicles' && (
+          <div>
+            <div id="vehicle-form-container" className="glass-panel" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+              <h3 style={{ margin: '0 0 15px 0', fontSize: '0.95rem', color: 'var(--primary)' }}>
+                {editingVehicleId ? '✏️ Editar Vehículo' : '➕ Registrar Nuevo Vehículo'}
+              </h3>
+              <form onSubmit={handleSaveVehicle}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '15px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Matrícula *</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: 1234ABC"
+                      required
+                      value={vehicleForm.plate}
+                      onChange={e => setVehicleForm({ ...vehicleForm, plate: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Marca *</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Renault"
+                      required
+                      value={vehicleForm.brand}
+                      onChange={e => setVehicleForm({ ...vehicleForm, brand: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Modelo *</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Master"
+                      required
+                      value={vehicleForm.model}
+                      onChange={e => setVehicleForm({ ...vehicleForm, model: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Año de Fabricación</label>
+                    <input
+                      type="number"
+                      placeholder="Ej: 2021"
+                      value={vehicleForm.year}
+                      onChange={e => setVehicleForm({ ...vehicleForm, year: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Kilometraje Actual</label>
+                    <input
+                      type="number"
+                      placeholder="Ej: 85000"
+                      value={vehicleForm.currentKm}
+                      onChange={e => setVehicleForm({ ...vehicleForm, currentKm: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Vencimiento ITV</label>
+                    <input
+                      type="date"
+                      value={vehicleForm.itvExpiry}
+                      onChange={e => setVehicleForm({ ...vehicleForm, itvExpiry: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Vencimiento Seguro</label>
+                    <input
+                      type="date"
+                      value={vehicleForm.insuranceExpiry}
+                      onChange={e => setVehicleForm({ ...vehicleForm, insuranceExpiry: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Estado</label>
+                    <select
+                      value={vehicleForm.status}
+                      onChange={e => setVehicleForm({ ...vehicleForm, status: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      <option value="active">Activo</option>
+                      <option value="inactive">Inactivo / En Taller</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  {editingVehicleId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingVehicleId(null);
+                        setVehicleForm({ plate: '', brand: '', model: '', year: new Date().getFullYear().toString(), currentKm: '0', itvExpiry: '', insuranceExpiry: '', status: 'active' });
+                      }}
+                      className="action-btn"
+                      style={{ padding: '8px 15px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.1)' }}
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    className="action-btn"
+                    style={{ padding: '8px 15px', fontSize: '0.8rem', background: 'var(--primary)' }}
+                  >
+                    {editingVehicleId ? 'Actualizar Vehículo' : 'Registrar Vehículo'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>🚐 Parque de Furgonetas ({totalVehicles})</h3>
+            {fleetVehicles.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay vehículos registrados aún.</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+                {fleetVehicles.map(v => {
+                  const isItvExp = v.itvExpiry && new Date(v.itvExpiry) < now;
+                  const isInsExp = v.insuranceExpiry && new Date(v.insuranceExpiry) < now;
+
+                  return (
+                    <div key={v.id} className="glass-panel" style={{ padding: '12px', border: '1px solid rgba(255,255,255,0.05)', background: v.status === 'active' ? 'rgba(255,255,255,0.02)' : 'rgba(239, 68, 68, 0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '1rem', fontWeight: 'bold', background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                          {v.plate}
+                        </span>
+                        <span style={{
+                          fontSize: '0.7rem',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontWeight: 'bold',
+                          background: v.status === 'active' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                          color: v.status === 'active' ? '#34d399' : '#f87171'
+                        }}>
+                          {v.status === 'active' ? 'Activo' : 'Inactivo / Taller'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', marginBottom: '10px' }}>
+                        <div><strong>Marca/Modelo:</strong> {v.brand} {v.model} ({v.year || 'N/A'})</div>
+                        <div><strong>Kilometraje:</strong> {Number(v.currentKm || 0).toLocaleString()} km</div>
+                        <div style={{ color: isItvExp ? '#f87171' : 'inherit' }}>
+                          <strong>Vencimiento ITV:</strong> {v.itvExpiry || 'No especificado'} {isItvExp && '⚠️'}
+                        </div>
+                        <div style={{ color: isInsExp ? '#f87171' : 'inherit' }}>
+                          <strong>Seguro:</strong> {v.insuranceExpiry || 'No especificado'} {isInsExp && '⚠️'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
+                        <button
+                          onClick={() => handleStartEditVehicle(v)}
+                          className="action-btn"
+                          style={{ padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(255,255,255,0.05)' }}
+                        >
+                          ✏️ Editar
+                        </button>
+                        <button
+                          onClick={() => handleDeleteVehicle(v.id)}
+                          className="action-btn"
+                          style={{ padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171' }}
+                        >
+                          🗑️ Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 3. GASOIL */}
+        {fleetSubTab === 'fuel' && (
+          <div>
+            <div className="glass-panel" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+              <h3 style={{ margin: '0 0 15px 0', fontSize: '0.95rem', color: 'var(--primary)' }}>➕ Registrar Repostaje de Gasoil</h3>
+              <form onSubmit={handleSaveFuelLog}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '15px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Vehículo (Matrícula) *</label>
+                    <select
+                      value={fuelForm.plate}
+                      required
+                      onChange={e => setFuelForm({ ...fuelForm, plate: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {fleetVehicles.map(v => (
+                        <option key={v.id} value={v.plate}>{v.plate} ({v.brand} {v.model})</option>
+                      ))}
+                      {fleetVehicles.length === 0 && platesList.map((p, idx) => (
+                        <option key={idx} value={p.plate}>{p.plate}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Fecha *</label>
+                    <input
+                      type="date"
+                      required
+                      value={fuelForm.date}
+                      onChange={e => setFuelForm({ ...fuelForm, date: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Chofer / Repartidor</label>
+                    <select
+                      value={fuelForm.driver}
+                      onChange={e => setFuelForm({ ...fuelForm, driver: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      <option value="">-- Seleccionar Chofer --</option>
+                      {activeDrivers.map(d => (
+                        <option key={d.id} value={d.name}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Litros repostados *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Ej: 52.4"
+                      required
+                      value={fuelForm.liters}
+                      onChange={e => {
+                        const l = e.target.value;
+                        const cpl = fuelForm.costPerLiter;
+                        const tc = l && cpl ? (Number(l) * Number(cpl)).toFixed(2) : fuelForm.totalCost;
+                        setFuelForm({ ...fuelForm, liters: l, totalCost: tc });
+                      }}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Precio por Litro (€)</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      placeholder="Ej: 1.549"
+                      value={fuelForm.costPerLiter}
+                      onChange={e => {
+                        const cpl = e.target.value;
+                        const l = fuelForm.liters;
+                        const tc = l && cpl ? (Number(l) * Number(cpl)).toFixed(2) : fuelForm.totalCost;
+                        setFuelForm({ ...fuelForm, costPerLiter: cpl, totalCost: tc });
+                      }}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Importe Total (€) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Ej: 81.17"
+                      required
+                      value={fuelForm.totalCost}
+                      onChange={e => {
+                        const tc = e.target.value;
+                        const l = fuelForm.liters;
+                        const cpl = tc && l ? (Number(tc) / Number(l)).toFixed(3) : fuelForm.costPerLiter;
+                        setFuelForm({ ...fuelForm, totalCost: tc, costPerLiter: cpl });
+                      }}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Gasolinera / Estación</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Repsol Barcelona"
+                      value={fuelForm.gasStation}
+                      onChange={e => setFuelForm({ ...fuelForm, gasStation: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Notas u Observaciones</label>
+                  <textarea
+                    placeholder="Detalles adicionales sobre el ticket o repostaje..."
+                    value={fuelForm.notes}
+                    onChange={e => setFuelForm({ ...fuelForm, notes: e.target.value })}
+                    style={{ width: '100%', padding: '8px', fontSize: '0.8rem', height: '50px', resize: 'vertical' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="submit"
+                    className="action-btn"
+                    style={{ padding: '8px 15px', fontSize: '0.8rem', background: 'var(--primary)' }}
+                  >
+                    Registrar Repostaje
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>⛽ Historial de Consumos de Gasoil</h3>
+            {fleetFuelLogs.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay registros de combustible cargados.</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="excel-table" style={{ width: '100%', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Vehículo</th>
+                      <th>Chofer</th>
+                      <th style={{ textAlign: 'right' }}>Litros</th>
+                      <th style={{ textAlign: 'right' }}>Precio/L</th>
+                      <th style={{ textAlign: 'right' }}>Total (€)</th>
+                      <th>Gasolinera</th>
+                      <th>Notas</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fleetFuelLogs.map(log => (
+                      <tr key={log.id}>
+                        <td>{log.date}</td>
+                        <td style={{ fontWeight: 'bold' }}>{log.plate}</td>
+                        <td>{log.driver || '-'}</td>
+                        <td style={{ textAlign: 'right' }}>{Number(log.liters).toFixed(2)} L</td>
+                        <td style={{ textAlign: 'right' }}>{Number(log.costPerLiter).toFixed(3)} €</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#f87171' }}>{Number(log.totalCost).toFixed(2)} €</td>
+                        <td>{log.gasStation || '-'}</td>
+                        <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.notes}>{log.notes || '-'}</td>
+                        <td>
+                          <button
+                            onClick={() => handleDeleteFuelLog(log.id)}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              color: '#f87171',
+                              cursor: 'pointer',
+                              padding: '2px 4px',
+                              fontSize: '0.8rem'
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 4. TALLER / MANTENIMIENTO */}
+        {fleetSubTab === 'maintenance' && (
+          <div>
+            <div className="glass-panel" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+              <h3 style={{ margin: '0 0 15px 0', fontSize: '0.95rem', color: 'var(--primary)' }}>➕ Registrar Servicio en Taller o Mantenimiento</h3>
+              <form onSubmit={handleSaveMaintLog}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '15px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Vehículo (Matrícula) *</label>
+                    <select
+                      value={maintForm.plate}
+                      required
+                      onChange={e => setMaintForm({ ...maintForm, plate: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {fleetVehicles.map(v => (
+                        <option key={v.id} value={v.plate}>{v.plate} ({v.brand} {v.model})</option>
+                      ))}
+                      {fleetVehicles.length === 0 && platesList.map((p, idx) => (
+                        <option key={idx} value={p.plate}>{p.plate}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Tipo de Servicio *</label>
+                    <select
+                      value={maintForm.type}
+                      required
+                      onChange={e => setMaintForm({ ...maintForm, type: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      <option value="Cambio de Aceite">Cambio de Aceite</option>
+                      <option value="Filtros">Filtros</option>
+                      <option value="Neumáticos">Neumáticos</option>
+                      <option value="Pastillas / Discos de Freno">Frenos</option>
+                      <option value="Embrague">Embrague</option>
+                      <option value="ITV">Paso de ITV</option>
+                      <option value="Reparación Mecánica">Reparación Mecánica</option>
+                      <option value="Chapa y Pintura">Chapa y Pintura</option>
+                      <option value="Revisión General / Mantenimiento">Revisión General</option>
+                      <option value="Seguro Anual">Seguro Anual</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Fecha *</label>
+                    <input
+                      type="date"
+                      required
+                      value={maintForm.date}
+                      onChange={e => setMaintForm({ ...maintForm, date: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Kilometraje en el Servicio</label>
+                    <input
+                      type="number"
+                      placeholder="Ej: 85200"
+                      value={maintForm.kmAtService}
+                      onChange={e => setMaintForm({ ...maintForm, kmAtService: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Coste Total con IVA (€) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Ej: 145.20"
+                      required
+                      value={maintForm.cost}
+                      onChange={e => setMaintForm({ ...maintForm, cost: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Taller / Proveedor</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Talleres Martínez"
+                      value={maintForm.provider}
+                      onChange={e => setMaintForm({ ...maintForm, provider: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Número de Factura</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: FAC-2026-045"
+                      value={maintForm.invoiceNumber}
+                      onChange={e => setMaintForm({ ...maintForm, invoiceNumber: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Notas o Reparación detallada</label>
+                  <textarea
+                    placeholder="Detalles sobre lo que se le hizo a la furgoneta..."
+                    value={maintForm.notes}
+                    onChange={e => setMaintForm({ ...maintForm, notes: e.target.value })}
+                    style={{ width: '100%', padding: '8px', fontSize: '0.8rem', height: '50px', resize: 'vertical' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="submit"
+                    className="action-btn"
+                    style={{ padding: '8px 15px', fontSize: '0.8rem', background: 'var(--primary)' }}
+                  >
+                    Registrar Mantenimiento
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>🔧 Historial de Mantenimientos y Taller</h3>
+            {fleetMaintenanceLogs.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay registros de taller o ITV.</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="excel-table" style={{ width: '100%', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Vehículo</th>
+                      <th>Tipo de Servicio</th>
+                      <th style={{ textAlign: 'right' }}>Kilómetros</th>
+                      <th style={{ textAlign: 'right' }}>Coste (€)</th>
+                      <th>Proveedor</th>
+                      <th>Nº Factura</th>
+                      <th>Notas</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fleetMaintenanceLogs.map(log => (
+                      <tr key={log.id}>
+                        <td>{log.date}</td>
+                        <td style={{ fontWeight: 'bold' }}>{log.plate}</td>
+                        <td>{log.type}</td>
+                        <td style={{ textAlign: 'right' }}>{log.kmAtService ? Number(log.kmAtService).toLocaleString() + ' km' : '-'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#34d399' }}>{Number(log.cost).toFixed(2)} €</td>
+                        <td>{log.provider || '-'}</td>
+                        <td>{log.invoiceNumber || '-'}</td>
+                        <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.notes}>{log.notes || '-'}</td>
+                        <td>
+                          <button
+                            onClick={() => handleDeleteMaintLog(log.id)}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              color: '#f87171',
+                              cursor: 'pointer',
+                              padding: '2px 4px',
+                              fontSize: '0.8rem'
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderChangelog = () => {
     const query = changelogSearch.trim().toLowerCase();
     const filteredChangelog = changelogData.filter(item => {
@@ -13141,6 +14097,9 @@ function App() {
           {(showStaff || showSecurity) && (
             <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}>Furgonetas y Seguridad</button>
           )}
+          {showFleetControl && (
+            <button className={`tab-btn ${activeTab === 'fleet' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('fleet'); }}>🚗 Control de Flota</button>
+          )}
           <button className={`tab-btn ${activeTab === 'changelog' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('changelog'); }}>🚀 Actualizaciones</button>
         </div>
 
@@ -15336,7 +16295,8 @@ function App() {
                                 { id: 'general_search', label: '🔍 Buscador General' },
                                 { id: 'staff', label: '👤 Personal (Admins/Choferes)' },
                                 { id: 'van_pricing', label: '💰 Precios Corte Inglés' },
-                                { id: 'security', label: '⚙️ Seguridad / Sistema' }
+                                { id: 'security', label: '⚙️ Seguridad / Sistema' },
+                                { id: 'fleet_control', label: '🚗 Control de Flota' }
                               ].map(mod => {
                                 let isAllowed = true;
                                 if (u.permissions) {
@@ -15395,6 +16355,7 @@ function App() {
         )}
 
         {activeTab === 'search' && renderSearchSection()}
+        {activeTab === 'fleet' && renderFleetSection()}
         {activeTab === 'changelog' && renderChangelog()}
         {renderDrilldownModal()}
       </div>

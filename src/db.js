@@ -578,6 +578,30 @@ export async function syncFromCloud() {
         localStorage.setItem('delivery_employees_list', empSetting.value);
       }
 
+      // Fleet Vehicles
+      const vehiclesKey = `fleet_vehicles_${adminId}`;
+      let vehiclesSetting = settings.find(s => s.key === vehiclesKey);
+      if (vehiclesSetting) {
+        localStorage.setItem(`delivery_fleet_vehicles_${adminId}`, vehiclesSetting.value);
+        localStorage.setItem('delivery_fleet_vehicles', vehiclesSetting.value);
+      }
+
+      // Fleet Fuel Logs
+      const fuelKey = `fleet_fuel_logs_${adminId}`;
+      let fuelSetting = settings.find(s => s.key === fuelKey);
+      if (fuelSetting) {
+        localStorage.setItem(`delivery_fleet_fuel_logs_${adminId}`, fuelSetting.value);
+        localStorage.setItem('delivery_fleet_fuel_logs', fuelSetting.value);
+      }
+
+      // Fleet Maintenance Logs
+      const maintKey = `fleet_maintenance_logs_${adminId}`;
+      let maintSetting = settings.find(s => s.key === maintKey);
+      if (maintSetting) {
+        localStorage.setItem(`delivery_fleet_maintenance_logs_${adminId}`, maintSetting.value);
+        localStorage.setItem('delivery_fleet_maintenance_logs', maintSetting.value);
+      }
+
       // Km Price
       if (userId) {
         const kmPriceKey = `km_price_${userId}`;
@@ -2854,3 +2878,83 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
 
   return localShifts;
 }
+
+// ==========================================
+// MÓDULO DE CONTROL DE FLOTA (NATIVO & AISLADO)
+// ==========================================
+
+export function getFleetVehicles() {
+  const adminId = getActiveAdminId();
+  const data = localStorage.getItem(`delivery_fleet_vehicles_${adminId}`);
+  try {
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveFleetVehicles(vehicles) {
+  const adminId = getActiveAdminId();
+  const valStr = JSON.stringify(vehicles);
+  localStorage.setItem(`delivery_fleet_vehicles_${adminId}`, valStr);
+  localStorage.setItem('delivery_fleet_vehicles', valStr); // fallback local
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: `fleet_vehicles_${adminId}`,
+      value: valStr
+    }).then(({ error }) => {
+      if (error) console.error("Error saving fleet vehicles to Supabase:", error);
+    });
+  }
+}
+
+export function getFleetFuelLogs() {
+  const adminId = getActiveAdminId();
+  const data = localStorage.getItem(`delivery_fleet_fuel_logs_${adminId}`);
+  try {
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveFleetFuelLogs(logs) {
+  const adminId = getActiveAdminId();
+  const valStr = JSON.stringify(logs);
+  localStorage.setItem(`delivery_fleet_fuel_logs_${adminId}`, valStr);
+  localStorage.setItem('delivery_fleet_fuel_logs', valStr); // fallback local
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: `fleet_fuel_logs_${adminId}`,
+      value: valStr
+    }).then(({ error }) => {
+      if (error) console.error("Error saving fleet fuel logs to Supabase:", error);
+    });
+  }
+}
+
+export function getFleetMaintenanceLogs() {
+  const adminId = getActiveAdminId();
+  const data = localStorage.getItem(`delivery_fleet_maintenance_logs_${adminId}`);
+  try {
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveFleetMaintenanceLogs(logs) {
+  const adminId = getActiveAdminId();
+  const valStr = JSON.stringify(logs);
+  localStorage.setItem(`delivery_fleet_maintenance_logs_${adminId}`, valStr);
+  localStorage.setItem('delivery_fleet_maintenance_logs', valStr); // fallback local
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: `fleet_maintenance_logs_${adminId}`,
+      value: valStr
+    }).then(({ error }) => {
+      if (error) console.error("Error saving fleet maintenance logs to Supabase:", error);
+    });
+  }
+}
+
