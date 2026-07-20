@@ -10836,7 +10836,32 @@ function App() {
               Gestión centralizada de vehículos, gastos de combustible (gasoil) y mantenimiento del taller.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: '600', color: 'var(--text-muted)' }}>Vehículo:</span>
+              <select
+                value={selectedFleetVehicleFilter}
+                onChange={(e) => setSelectedFleetVehicleFilter(e.target.value)}
+                className="form-input"
+                style={{ 
+                  width: '180px', 
+                  margin: 0, 
+                  padding: '5px 10px', 
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  background: 'var(--input-bg)',
+                  color: 'var(--text-main)',
+                  border: '1px solid var(--panel-border)'
+                }}
+              >
+                <option value="all">🚗 Todos los vehículos</option>
+                {fleetVehicles.map(v => (
+                  <option key={v.id} value={v.plate} style={{ color: '#000000', background: '#ffffff' }}>
+                    🚐 {v.plate}
+                  </option>
+                ))}
+              </select>
+            </div>
             <button
               onClick={() => { reinitSupabase(); setAlertMsg({ text: 'Sincronizando con la nube...', type: 'success' }); }}
               className="action-btn"
@@ -10891,52 +10916,6 @@ function App() {
         {/* 1. DASHBOARD */}
         {fleetSubTab === 'dashboard' && (
           <div>
-            {/* Selector de Vehículo Individual */}
-            <div className="glass-panel" style={{ 
-              padding: '15px 20px', 
-              borderRadius: '12px', 
-              marginBottom: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '15px',
-              border: '1px solid var(--panel-border)',
-              background: 'var(--panel-bg)'
-            }}>
-              <div>
-                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '700', color: 'var(--text-main)' }}>
-                  📊 Control de Gastos por Vehículo
-                </h4>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Selecciona un vehículo para ver su desglose individual de kilómetros, combustible y taller.
-                </p>
-              </div>
-              <div>
-                <select
-                  value={selectedFleetVehicleFilter}
-                  onChange={(e) => setSelectedFleetVehicleFilter(e.target.value)}
-                  className="form-input"
-                  style={{ 
-                    width: '240px', 
-                    margin: 0, 
-                    padding: '8px 12px', 
-                    borderRadius: '8px',
-                    background: 'var(--input-bg)',
-                    color: 'var(--text-main)',
-                    border: '1px solid var(--panel-border)'
-                  }}
-                >
-                  <option value="all">🚗 Todos los vehículos (Total)</option>
-                  {fleetVehicles.map(v => (
-                    <option key={v.id} value={v.plate} style={{ color: '#000000', background: '#ffffff' }}>
-                      🚐 {v.plate} ({v.brand} {v.model})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '15px', marginBottom: '25px' }}>
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(67, 97, 238, 0.1), rgba(67, 97, 238, 0.05))', border: '1px solid rgba(67, 97, 238, 0.2)', padding: '15px', borderRadius: '10px' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Vehículos Activos</span>
@@ -11401,7 +11380,7 @@ function App() {
 
             <div className="glass-panel" style={{ padding: '15px', borderRadius: '8px' }}>
               <h3 style={{ margin: '0 0 15px 0', fontSize: '0.95rem' }}>📋 Historial de Kilómetros Diarios</h3>
-              {fleetDailyLogs.length === 0 ? (
+              {filteredDailyLogs.length === 0 ? (
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>No hay registros de kilómetros diarios.</p>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
@@ -11420,7 +11399,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {fleetDailyLogs.map(log => (
+                      {filteredDailyLogs.map(log => (
                         <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '10px' }}>{log.date}</td>
                           <td style={{ padding: '10px', fontWeight: 'bold' }}>{log.plate}</td>
@@ -11601,7 +11580,7 @@ function App() {
             </div>
 
             <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>⛽ Historial de Consumos de Gasoil</h3>
-            {fleetFuelLogs.length === 0 ? (
+            {filteredFuelLogs.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay registros de combustible cargados.</p>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -11620,7 +11599,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {fleetFuelLogs.map(log => (
+                    {filteredFuelLogs.map(log => (
                       <tr key={log.id}>
                         <td>{log.date}</td>
                         <td style={{ fontWeight: 'bold' }}>{log.plate}</td>
@@ -11782,7 +11761,7 @@ function App() {
             </div>
 
             <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>🔧 Historial de Mantenimientos y Taller</h3>
-            {fleetMaintenanceLogs.length === 0 ? (
+            {filteredMaintLogs.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay registros de taller o ITV.</p>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -11801,7 +11780,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {fleetMaintenanceLogs.map(log => (
+                    {filteredMaintLogs.map(log => (
                       <tr key={log.id}>
                         <td>{log.date}</td>
                         <td style={{ fontWeight: 'bold' }}>{log.plate}</td>
