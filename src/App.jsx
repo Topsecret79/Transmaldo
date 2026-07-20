@@ -2247,12 +2247,13 @@ function App() {
       console.error("Error loading data in App.jsx:", err);
     }
     
-    setModulePrice(getModulePrice(u?.id) || 3.81);
-    setKmPrice(getKmPrice(u?.id) || 0.43);
-    setFuelPrice(getFuelPrice(u?.id) || 1.65);
-    setAppName(getAppName(u?.id) || 'My Delivery Team');
+    const targetUserId = (u && u.role === 'repartidor') ? (u.createdBy || 'admin') : (u?.id);
+    setModulePrice(getModulePrice(targetUserId) || 3.81);
+    setKmPrice(getKmPrice(targetUserId) || 0.43);
+    setFuelPrice(getFuelPrice(targetUserId) || 1.65);
+    setAppName(getAppName(targetUserId) || 'My Delivery Team');
     if (activeTab !== 'users') {
-      setAppNameInput(getAppName(u?.id) || 'My Delivery Team');
+      setAppNameInput(getAppName(targetUserId) || 'My Delivery Team');
     }
     setGoogleKeyInput(getGoogleMapsKey());
     setMapboxTokenInput(getMapboxToken());
@@ -4614,13 +4615,15 @@ function App() {
 
   const handleUpdateKmPrice = (newPrice) => {
     const val = parseFloat(newPrice) || 0;
-    saveKmPrice(val, currentUser?.id);
+    const targetId = (currentUser && currentUser.role === 'repartidor') ? (currentUser.createdBy || 'admin') : (currentUser?.id);
+    saveKmPrice(val, targetId);
     setKmPrice(val);
   };
 
   const handleUpdateFuelPrice = (newPrice) => {
     const val = parseFloat(newPrice) || 0;
-    saveFuelPrice(val, currentUser?.id);
+    const targetId = (currentUser && currentUser.role === 'repartidor') ? (currentUser.createdBy || 'admin') : (currentUser?.id);
+    saveFuelPrice(val, targetId);
     setFuelPrice(val);
   };
 
@@ -4866,13 +4869,14 @@ function App() {
         if (driverHasFuel) {
           const liters = Number(driverFuelLiters);
           const cost = Number(driverFuelCost);
+          const calculatedPrice = Number((cost / liters).toFixed(3));
           const newFuelLog = {
             id: `fuel_${Date.now()}`,
             plate: driverMatricula || 'DESCONOCIDO',
             date: date,
             driver: driverCustomDriver || currentUser.label || 'Chofer',
             liters: liters,
-            costPerLiter: Number((cost / liters).toFixed(3)),
+            costPerLiter: calculatedPrice,
             totalCost: cost,
             gasStation: driverFuelStation || '',
             notes: 'Registrado por chofer al cerrar turno'
@@ -4880,6 +4884,10 @@ function App() {
           const currentFuelLogs = getFleetFuelLogs() || [];
           const updatedFuelLogs = [newFuelLog, ...currentFuelLogs];
           saveFleetFuelLogs(updatedFuelLogs);
+
+          if (calculatedPrice > 0) {
+            handleUpdateFuelPrice(calculatedPrice);
+          }
         }
       }
 
@@ -10666,9 +10674,13 @@ function App() {
       setFleetFuelLogs(updated);
       saveFleetFuelLogs(updated);
 
+      if (calculatedPrice > 0) {
+        handleUpdateFuelPrice(calculatedPrice);
+      }
+
       setFuelForm({ plate: '', date: todayStr, driver: '', liters: '', costPerLiter: '', totalCost: '', gasStation: '', notes: '' });
       reinitSupabase();
-      setAlertMsg({ text: 'Repostaje registrado con éxito', type: 'success' });
+      setAlertMsg({ text: `Repostaje registrado con éxito y precio de combustible actualizado a ${calculatedPrice.toFixed(3)} €/L`, type: 'success' });
     };
 
     const handleDeleteFuelLog = (id) => {
