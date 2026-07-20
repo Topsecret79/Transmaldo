@@ -34,3 +34,24 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
   * $\text{Coste (€)} = \left(\frac{\text{Km Recorridos}}{\text{Km/L Promedio}}\right) \times \text{Precio de Gasoil}$.
   * Si el valor `kmL` del día no está definido o es 0, no se debe computar un coste por defecto, sino que se muestra un guion (`-`) con un tooltip aclaratorio para incentivar al chofer a introducir este dato de rendimiento.
 
+## 👑 Vista Jerárquica de Usuarios y Permisos
+* **Regla**: Para evitar la saturación visual, la pestaña de *Usuarios y Permisos* debe seguir una estructura jerárquica clara:
+  * **Mi Cuenta (Tú)**: Muestra únicamente los datos del administrador/coordinador autenticado en la parte superior.
+  * **Coordinadores y sus Choferes**: Lista de manera independiente al resto de coordinadores de la organización, anidando e indentando directamente debajo de cada uno de ellos a los repartidores que crearon.
+  * **Mis Choferes Directos**: Agrupa en una sección propia a los choferes que dependen y fueron creados directamente por el administrador autenticado.
+
+## 🔄 Actualización Dinámica de Precio de Combustible (Gasoil)
+* **Regla**: No se debe depender exclusivamente de la edición manual del precio del litro de gasoil en los ajustes.
+  * **Acción**: Al registrar cualquier repostaje (desde el diario de chofer al cerrar turno o desde el panel de Flota por un administrador), se debe calcular automáticamente:
+    $$\text{Precio por Litro} = \frac{\text{Total Dinero (€)}}{\text{Litros}}$$
+  * **Actualización**: Si este cálculo da un valor válido (> 0), se debe invocar a `handleUpdateFuelPrice` para actualizar la configuración de combustible (`fuelPrice`) asignada al ID del administrador de la cuenta (o su creador, si lo hace un chofer).
+
+---
+
+## 📅 Historial de Cambios y Commits Recientes
+
+### Sesión del 20 de Julio de 2026
+* **Commit `2d244c1`**: `feat: show current logged admin separately at top and nest other admins with their drivers in hierarchical view`
+  * Aísla el perfil del administrador autenticado e implementa la vista jerárquica en árbol de coordinadores y repartidores.
+* **Commit `587ad44`**: `feat: automatically update global fuel price configuration on each refueling event`
+  * Introduce el cálculo dinámico y la auto-actualización del precio del gasoil global compartido en base a los repostajes reales ingresados en el sistema.
