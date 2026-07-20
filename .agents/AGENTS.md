@@ -46,6 +46,10 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
     $$\text{Precio por Litro} = \frac{\text{Total Dinero (€)}}{\text{Litros}}$$
   * **Actualización**: Si este cálculo da un valor válido (> 0), se debe invocar a `handleUpdateFuelPrice` para actualizar la configuración de combustible (`fuelPrice`) asignada al ID del administrador de la cuenta (o su creador, si lo hace un chofer).
 
+## 📊 Filtrado de Gastos por Vehículo en Dashboard de Flota
+* **Regla**: El panel principal del módulo de Flota (Dashboard) debe contener un selector desplegable que permita filtrar de forma reactiva los indicadores clave (KPIs) y las tablas de historial (kilómetros diarios, repostajes y mantenimientos).
+  * **Comportamiento**: Al seleccionar un vehículo específico, los cálculos y listados deben actualizarse dinámicamente sumando solo sus datos. Al seleccionar "Todos los vehículos", se muestra el consolidado total de la flota.
+
 ---
 
 ## 📅 Historial de Cambios y Commits Recientes
@@ -55,3 +59,8 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
   * Aísla el perfil del administrador autenticado e implementa la vista jerárquica en árbol de coordinadores y repartidores.
 * **Commit `587ad44`**: `feat: automatically update global fuel price configuration on each refueling event`
   * Introduce el cálculo dinámico y la auto-actualización del precio del gasoil global compartido en base a los repostajes reales ingresados en el sistema.
+* **Commit `0c697fb`**: `style: replace hardcoded light text colors with dynamic CSS variables for theme accessibility`
+  * Sustituye colores claros estáticos por variables dinámicas de CSS (`var(--danger)`, `var(--success)`, `var(--warning)`, `var(--primary)`) para garantizar una legibilidad excelente sobre fondos claros.
+* **Commit `46fbaf2`**: `feat: add individual vehicle selector and filtering for fleet statistics and logs`
+  * Implementa la selección interactiva y filtrado individual por vehículo de kilómetros, repostajes y mantenimientos en el panel de control de flota.
+
