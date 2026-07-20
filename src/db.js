@@ -602,6 +602,14 @@ export async function syncFromCloud() {
         localStorage.setItem('delivery_fleet_maintenance_logs', maintSetting.value);
       }
 
+      // Fleet Daily Logs
+      const dailyKey = `fleet_daily_logs_${adminId}`;
+      let dailySetting = settings.find(s => s.key === dailyKey);
+      if (dailySetting) {
+        localStorage.setItem(`delivery_fleet_daily_logs_${adminId}`, dailySetting.value);
+        localStorage.setItem('delivery_fleet_daily_logs', dailySetting.value);
+      }
+
       // Km Price
       if (userId) {
         const kmPriceKey = `km_price_${userId}`;
@@ -2957,4 +2965,30 @@ export function saveFleetMaintenanceLogs(logs) {
     });
   }
 }
+
+export function getFleetDailyLogs() {
+  const adminId = getActiveAdminId();
+  const data = localStorage.getItem(`delivery_fleet_daily_logs_${adminId}`);
+  try {
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveFleetDailyLogs(logs) {
+  const adminId = getActiveAdminId();
+  const valStr = JSON.stringify(logs);
+  localStorage.setItem(`delivery_fleet_daily_logs_${adminId}`, valStr);
+  localStorage.setItem('delivery_fleet_daily_logs', valStr); // fallback local
+  if (supabase) {
+    supabase.from('delivery_settings').upsert({
+      key: `fleet_daily_logs_${adminId}`,
+      value: valStr
+    }).then(({ error }) => {
+      if (error) console.error("Error saving fleet daily logs to Supabase:", error);
+    });
+  }
+}
+
 

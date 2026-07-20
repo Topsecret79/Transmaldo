@@ -426,7 +426,9 @@ import {
   getFleetFuelLogs,
   saveFleetFuelLogs,
   getFleetMaintenanceLogs,
-  saveFleetMaintenanceLogs
+  saveFleetMaintenanceLogs,
+  getFleetDailyLogs,
+  saveFleetDailyLogs
 } from './db';
 
 
@@ -758,6 +760,35 @@ function App() {
     return false;
   })();
 
+  // Para repartidores: comprobar si el administrador que los gestiona tiene activo
+  // el módulo de Control de Flota.
+  const adminAllowsFleetInput = (() => {
+    if (!loggedInUserObj) return false;
+    if (loggedInUserObj.role === 'superadmin' || loggedInUserObj.role === 'admin') {
+      return showFleetControl;
+    }
+    if (loggedInUserObj.role === 'repartidor') {
+      const parentAdminId = loggedInUserObj.createdBy;
+      if (!parentAdminId || parentAdminId === 'admin') {
+        const defaultAdmin = users.find(u => u.id === 'admin');
+        return defaultAdmin ? hasPermission(defaultAdmin, 'fleet_control') : false;
+      }
+      const parentAdmin = users.find(u => u.id === parentAdminId);
+      if (!parentAdmin) return false;
+      return hasPermission(parentAdmin, 'fleet_control');
+    }
+    return false;
+  })();
+
+  // Estados para que el chofer alimente kilómetros y repostajes
+  const [driverKmStart, setDriverKmStart] = useState('');
+  const [driverKmEnd, setDriverKmEnd] = useState('');
+  const [driverKmL, setDriverKmL] = useState('');
+  const [driverHasFuel, setDriverHasFuel] = useState(false);
+  const [driverFuelLiters, setDriverFuelLiters] = useState('');
+  const [driverFuelCost, setDriverFuelCost] = useState('');
+  const [driverFuelStation, setDriverFuelStation] = useState('');
+
   const hasSearchPermission = loggedInUserObj && (
     loggedInUserObj.role === 'superadmin' || 
     (loggedInUserObj.role === 'admin' ? showGeneralSearch : loggedInUserObj.canSearch)
@@ -793,7 +824,10 @@ function App() {
   const [fleetVehicles, setFleetVehicles] = useState(() => getFleetVehicles() || []);
   const [fleetFuelLogs, setFleetFuelLogs] = useState(() => getFleetFuelLogs() || []);
   const [fleetMaintenanceLogs, setFleetMaintenanceLogs] = useState(() => getFleetMaintenanceLogs() || []);
-  const [fleetSubTab, setFleetSubTab] = useState('dashboard'); // 'dashboard', 'vehicles', 'fuel', 'maintenance'
+  const [fleetDailyLogs, setFleetDailyLogs] = useState(() => getFleetDailyLogs() || []);
+  const [fleetSubTab, setFleetSubTab] = useState('dashboard'); // 'dashboard', 'vehicles', 'daily', 'fuel', 'maintenance'
+  const [dailyForm, setDailyForm] = useState({ plate: '', date: new Date().toISOString().split('T')[0], kmStart: '', kmEnd: '', kmL: '', notes: '' });
+  const [dailyFilterPlate, setDailyFilterPlate] = useState('all');
   const [editingVehicleId, setEditingVehicleId] = useState(null);
   const [vehicleForm, setVehicleForm] = useState({ plate: '', brand: '', model: '', year: new Date().getFullYear().toString(), currentKm: '0', itvExpiry: '', insuranceExpiry: '', status: 'active' });
   const [fuelForm, setFuelForm] = useState({ plate: '', date: new Date().toISOString().split('T')[0], driver: '', liters: '', costPerLiter: '', totalCost: '', gasStation: '', notes: '' });
@@ -2223,6 +2257,7 @@ function App() {
     setFleetVehicles(getFleetVehicles() || []);
     setFleetFuelLogs(getFleetFuelLogs() || []);
     setFleetMaintenanceLogs(getFleetMaintenanceLogs() || []);
+    setFleetDailyLogs(getFleetDailyLogs() || []);
   };
 
   const loadDataRef = useRef(loadData);
@@ -4743,6 +4778,33 @@ function App() {
     const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date);
     const pendingTickets = dayTickets.filter(t => t.status === 'pending' || !t.status);
     
+    // Validar datos de flota si está activo y es chofer
+    if (adminAllowsFleetInput && currentUser && currentUser.role === 'repartidor') {
+      const start = Number(driverKmStart);
+      const end = Number(driverKmEnd);
+      if (isNaN(start) || start <= 0) {
+        triggerAlert('Por favor introduce un Kilometraje de Inicio válido.', 'error');
+        return;
+      }
+      if (isNaN(end) || end < start) {
+        triggerAlert('El Kilometraje de Fin no puede ser menor que el de Inicio.', 'error');
+        return;
+      }
+
+      if (driverHasFuel) {
+        const liters = Number(driverFuelLiters);
+        const cost = Number(driverFuelCost);
+        if (isNaN(liters) || liters <= 0) {
+          triggerAlert('Por favor introduce los litros del repostaje.', 'error');
+          return;
+        }
+        if (isNaN(cost) || cost <= 0) {
+          triggerAlert('Por favor introduce el coste total del repostaje.', 'error');
+          return;
+        }
+      }
+    }
+
     let confirmMsg = `¿Estás seguro de que deseas finalizar tu turno del día ${date}? Una vez cerrado, no podrás agregar ni editar más repartos.`;
     
     if (pendingTickets.length > 0) {
@@ -4751,7 +4813,64 @@ function App() {
 
     if (window.confirm(confirmMsg)) {
       const summary = getShiftSummary(furgoId, date);
-      const kms = parseFloat(shiftKmsInput) || 0;
+      let kms = parseFloat(shiftKmsInput) || 0;
+      
+      // Si está activo el control de flota, guardar en el diario e impactar en kms
+      if (adminAllowsFleetInput && currentUser && currentUser.role === 'repartidor') {
+        const start = Number(driverKmStart);
+        const end = Number(driverKmEnd);
+        const traveled = end - start;
+        kms = traveled; // Forzar que los kms de facturación coincidan con el recorrido real
+        
+        // 1. Guardar en diario de kilómetros
+        const newDailyLog = {
+          id: `daily_${Date.now()}`,
+          plate: driverMatricula || 'DESCONOCIDO',
+          date: date,
+          kmStart: start,
+          kmEnd: end,
+          kmTraveled: traveled,
+          kmL: driverKmL ? Number(driverKmL) : null,
+          notes: `Registrado por chofer: ${driverCustomDriver || currentUser.label}`
+        };
+        const currentDailyLogs = getFleetDailyLogs() || [];
+        const updatedDailyLogs = [newDailyLog, ...currentDailyLogs];
+        saveFleetDailyLogs(updatedDailyLogs);
+
+        // 2. Actualizar kilometraje actual del vehículo
+        const currentVehicles = getFleetVehicles() || [];
+        const vehIndex = currentVehicles.findIndex(v => v.plate === driverMatricula);
+        if (vehIndex !== -1) {
+          if (end > Number(currentVehicles[vehIndex].currentKm)) {
+            currentVehicles[vehIndex] = {
+              ...currentVehicles[vehIndex],
+              currentKm: end.toString()
+            };
+            saveFleetVehicles(currentVehicles);
+          }
+        }
+
+        // 3. Guardar repostaje si existe
+        if (driverHasFuel) {
+          const liters = Number(driverFuelLiters);
+          const cost = Number(driverFuelCost);
+          const newFuelLog = {
+            id: `fuel_${Date.now()}`,
+            plate: driverMatricula || 'DESCONOCIDO',
+            date: date,
+            driver: driverCustomDriver || currentUser.label || 'Chofer',
+            liters: liters,
+            costPerLiter: Number((cost / liters).toFixed(3)),
+            totalCost: cost,
+            gasStation: driverFuelStation || '',
+            notes: 'Registrado por chofer al cerrar turno'
+          };
+          const currentFuelLogs = getFleetFuelLogs() || [];
+          const updatedFuelLogs = [newFuelLog, ...currentFuelLogs];
+          saveFleetFuelLogs(updatedFuelLogs);
+        }
+      }
+
       saveRouteKms(furgoId, date, kms);
       closeShift(furgoId, date, summary);
 
@@ -4776,7 +4895,7 @@ function App() {
         return remaining;
       });
 
-      triggerAlert('Turno cerrado y resumen diario generado con éxito');
+      triggerAlert('Turno cerrado y resumen de flota actualizado con éxito ✓');
       setShowShiftModal(false);
       loadData();
     }
@@ -7830,6 +7949,23 @@ function App() {
                           onClick={() => {
                             const existingKms = getRouteKms(currentUser.id, targetDate);
                             setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
+                            if (adminAllowsFleetInput && driverMatricula) {
+                              const sortedLogs = [...fleetDailyLogs].filter(log => log.plate === driverMatricula).sort((a, b) => b.date.localeCompare(a.date));
+                              let startKm = 0;
+                              if (sortedLogs.length > 0) {
+                                startKm = Number(sortedLogs[0].kmEnd) || 0;
+                              } else {
+                                const matchingVeh = fleetVehicles.find(v => v.plate === driverMatricula);
+                                  if (matchingVeh) startKm = Number(matchingVeh.currentKm) || 0;
+                              }
+                              setDriverKmStart(startKm.toString());
+                              setDriverKmEnd(existingKms > 0 ? (startKm + existingKms).toString() : startKm.toString());
+                              setDriverKmL('');
+                              setDriverHasFuel(false);
+                              setDriverFuelLiters('');
+                              setDriverFuelCost('');
+                              setDriverFuelStation('');
+                            }
                             setShiftSummaryDate(targetDate);
                             setShiftSummaryFurgoId(currentUser.id);
                             setShowShiftModal(true);
@@ -7877,6 +8013,23 @@ function App() {
                               
                               const existingKms = getRouteKms(currentUser.id, targetDate);
                               setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
+                              if (adminAllowsFleetInput && driverMatricula) {
+                                const sortedLogs = [...fleetDailyLogs].filter(log => log.plate === driverMatricula).sort((a, b) => b.date.localeCompare(a.date));
+                                let startKm = 0;
+                                if (sortedLogs.length > 0) {
+                                  startKm = Number(sortedLogs[0].kmEnd) || 0;
+                                } else {
+                                  const matchingVeh = fleetVehicles.find(v => v.plate === driverMatricula);
+                                  if (matchingVeh) startKm = Number(matchingVeh.currentKm) || 0;
+                                }
+                                setDriverKmStart(startKm.toString());
+                                setDriverKmEnd(existingKms > 0 ? (startKm + existingKms).toString() : startKm.toString());
+                                setDriverKmL('');
+                                setDriverHasFuel(false);
+                                setDriverFuelLiters('');
+                                setDriverFuelCost('');
+                                setDriverFuelStation('');
+                              }
                               setShiftSummaryDate(targetDate);
                               setShiftSummaryFurgoId(currentUser.id);
                               setShowShiftModal(true);
@@ -7890,7 +8043,25 @@ function App() {
                           <button 
                             type="button" 
                             onClick={() => {
-                              setShiftKmsInput('');
+                              const existingKms = getRouteKms(currentUser.id, targetDate);
+                              setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
+                              if (adminAllowsFleetInput && driverMatricula) {
+                                const sortedLogs = [...fleetDailyLogs].filter(log => log.plate === driverMatricula).sort((a, b) => b.date.localeCompare(a.date));
+                                let startKm = 0;
+                                if (sortedLogs.length > 0) {
+                                  startKm = Number(sortedLogs[0].kmEnd) || 0;
+                                } else {
+                                  const matchingVeh = fleetVehicles.find(v => v.plate === driverMatricula);
+                                  if (matchingVeh) startKm = Number(matchingVeh.currentKm) || 0;
+                                }
+                                setDriverKmStart(startKm.toString());
+                                setDriverKmEnd(existingKms > 0 ? (startKm + existingKms).toString() : startKm.toString());
+                                setDriverKmL('');
+                                setDriverHasFuel(false);
+                                setDriverFuelLiters('');
+                                setDriverFuelCost('');
+                                setDriverFuelStation('');
+                              }
                               setShiftSummaryDate(targetDate);
                               setShiftSummaryFurgoId(currentUser.id);
                               setShowShiftModal(true);
@@ -10369,6 +10540,7 @@ function App() {
     const activeVehicles = fleetVehicles.filter(v => v.status === 'active').length;
     const totalFuelCost = fleetFuelLogs.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
     const totalMaintCost = fleetMaintenanceLogs.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+    const totalKmTraveled = fleetDailyLogs.reduce((sum, item) => sum + (Number(item.kmTraveled) || 0), 0);
 
     // Vencimientos y alertas
     const alerts = [];
@@ -10538,6 +10710,86 @@ function App() {
       }
     };
 
+    const handlePlateChange = (plate) => {
+      if (!plate) {
+        setDailyForm(prev => ({ ...prev, plate, kmStart: '' }));
+        return;
+      }
+      const vehicleLogs = fleetDailyLogs.filter(log => log.plate === plate);
+      let suggestedStart = '';
+      if (vehicleLogs.length > 0) {
+        const sortedLogs = [...vehicleLogs].sort((a, b) => b.date.localeCompare(a.date));
+        suggestedStart = sortedLogs[0].kmEnd;
+      } else {
+        const vehicle = fleetVehicles.find(v => v.plate === plate);
+        if (vehicle) {
+          suggestedStart = vehicle.currentKm || '0';
+        }
+      }
+      setDailyForm(prev => ({
+        ...prev,
+        plate,
+        kmStart: suggestedStart.toString()
+      }));
+    };
+
+    const handleSaveDailyLog = (e) => {
+      e.preventDefault();
+      const { plate, date, kmStart, kmEnd, kmL, notes } = dailyForm;
+      if (!plate || !date || kmStart === '' || kmEnd === '') {
+        setAlertMsg({ text: 'Por favor, rellena todos los campos requeridos', type: 'error' });
+        return;
+      }
+      const start = Number(kmStart);
+      const end = Number(kmEnd);
+      if (isNaN(start) || isNaN(end)) {
+        setAlertMsg({ text: 'Los kilómetros deben ser numéricos', type: 'error' });
+        return;
+      }
+      if (end < start) {
+        setAlertMsg({ text: 'Los kilómetros finales no pueden ser menores que los iniciales', type: 'error' });
+        return;
+      }
+      const traveled = end - start;
+      const newLog = {
+        id: 'daily_' + Date.now(),
+        plate,
+        date,
+        kmStart: start,
+        kmEnd: end,
+        kmTraveled: traveled,
+        kmL: kmL ? Number(kmL) : null,
+        notes: notes || ''
+      };
+
+      const updated = [newLog, ...fleetDailyLogs];
+      setFleetDailyLogs(updated);
+      saveFleetDailyLogs(updated);
+
+      const vehicle = fleetVehicles.find(v => v.plate === plate);
+      if (vehicle && end > (Number(vehicle.currentKm) || 0)) {
+        const updatedVehicles = fleetVehicles.map(v =>
+          v.plate === plate ? { ...v, currentKm: end.toString() } : v
+        );
+        setFleetVehicles(updatedVehicles);
+        saveFleetVehicles(updatedVehicles);
+      }
+
+      setDailyForm({ plate: '', date: todayStr, kmStart: '', kmEnd: '', kmL: '', notes: '' });
+      reinitSupabase();
+      setAlertMsg({ text: 'Kilómetros diarios registrados con éxito', type: 'success' });
+    };
+
+    const handleDeleteDailyLog = (id) => {
+      if (window.confirm('¿Estás seguro de que deseas eliminar este registro de kilómetros diarios?')) {
+        const updated = fleetDailyLogs.filter(log => log.id !== id);
+        setFleetDailyLogs(updated);
+        saveFleetDailyLogs(updated);
+        reinitSupabase();
+        setAlertMsg({ text: 'Registro de kilómetros diarios eliminado con éxito', type: 'success' });
+      }
+    };
+
     return (
       <div className="glass-panel" style={{ textAlign: 'left' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
@@ -10571,6 +10823,7 @@ function App() {
           {[
             { id: 'dashboard', label: '📊 Resumen', icon: '📈' },
             { id: 'vehicles', label: '🚐 Vehículos', icon: '🚙' },
+            { id: 'daily', label: '📅 Diario Km', icon: '📅' },
             { id: 'fuel', label: '⛽ Gasoil / Repostajes', icon: '⛽' },
             { id: 'maintenance', label: '🔧 Taller / Mantenimiento', icon: '⚙️' }
           ].map(tab => (
@@ -10608,6 +10861,14 @@ function App() {
                   {activeVehicles} <span style={{ fontSize: '0.9rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>/ {totalVehicles} totales</span>
                 </span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Furgonetas registradas en el sistema</span>
+              </div>
+
+              <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05))', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '15px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kilómetros Recorridos</span>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: '#60a5fa', display: 'block', margin: '5px 0' }}>
+                  {totalKmTraveled.toLocaleString()} km
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Distancia total acumulada por la flota</span>
               </div>
 
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '15px', borderRadius: '10px' }}>
@@ -10672,6 +10933,38 @@ function App() {
 
             {/* Tablas */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+              <div>
+                <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>📅 Últimos Kilómetros Diarios</h3>
+                {fleetDailyLogs.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>No hay registros de kilómetros.</p>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)' }}>
+                          <th style={{ padding: '6px', textAlign: 'left' }}>Fecha</th>
+                          <th style={{ padding: '6px', textAlign: 'left' }}>Vehículo</th>
+                          <th style={{ padding: '6px', textAlign: 'right' }}>Inicio</th>
+                          <th style={{ padding: '6px', textAlign: 'right' }}>Fin</th>
+                          <th style={{ padding: '6px', textAlign: 'right' }}>Recorrido</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fleetDailyLogs.slice(0, 5).map(log => (
+                          <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                            <td style={{ padding: '6px' }}>{log.date}</td>
+                            <td style={{ padding: '6px', fontWeight: 'bold' }}>{log.plate}</td>
+                            <td style={{ padding: '6px', textAlign: 'right' }}>{Number(log.kmStart).toLocaleString()}</td>
+                            <td style={{ padding: '6px', textAlign: 'right' }}>{Number(log.kmEnd).toLocaleString()}</td>
+                            <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#60a5fa' }}>+{Number(log.kmTraveled).toLocaleString()} km</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <h3 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>⛽ Últimos Repostajes</h3>
                 {fleetFuelLogs.length === 0 ? (
@@ -10920,7 +11213,142 @@ function App() {
           </div>
         )}
 
-        {/* 3. GASOIL */}
+        {/* 3. DIARIO KM */}
+        {fleetSubTab === 'daily' && (
+          <div>
+            <div className="glass-panel" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+              <h3 style={{ margin: '0 0 15px 0', fontSize: '0.95rem', color: 'var(--primary)' }}>➕ Registrar Kilómetros Diarios</h3>
+              <form onSubmit={handleSaveDailyLog}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '15px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Vehículo (Matrícula) *</label>
+                    <select
+                      value={dailyForm.plate}
+                      required
+                      onChange={e => handlePlateChange(e.target.value)}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      <option value="">-- Seleccionar --</option>
+                      {fleetVehicles.map(v => (
+                        <option key={v.id} value={v.plate}>{v.plate} - {v.brand} {v.model}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Fecha *</label>
+                    <input
+                      type="date"
+                      value={dailyForm.date}
+                      required
+                      onChange={e => setDailyForm({ ...dailyForm, date: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Km Inicio *</label>
+                    <input
+                      type="number"
+                      placeholder="Ej: 120500"
+                      value={dailyForm.kmStart}
+                      required
+                      onChange={e => setDailyForm({ ...dailyForm, kmStart: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Km Fin *</label>
+                    <input
+                      type="number"
+                      placeholder="Ej: 120680"
+                      value={dailyForm.kmEnd}
+                      required
+                      onChange={e => setDailyForm({ ...dailyForm, kmEnd: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Km/L Promedio (Opcional)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="Ej: 12.5"
+                      value={dailyForm.kmL}
+                      onChange={e => setDailyForm({ ...dailyForm, kmL: e.target.value })}
+                      style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '15px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '4px', color: 'var(--text-muted)' }}>Notas u Observaciones (Ruta, Conductor...)</label>
+                  <textarea
+                    rows="2"
+                    placeholder="Detalles sobre el trayecto del día..."
+                    value={dailyForm.notes}
+                    onChange={e => setDailyForm({ ...dailyForm, notes: e.target.value })}
+                    style={{ width: '100%', padding: '8px', fontSize: '0.8rem', background: '#333', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', resize: 'vertical' }}
+                  />
+                </div>
+
+                <button type="submit" className="action-btn" style={{ padding: '8px 16px', background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  💾 Guardar Registro Diario
+                </button>
+              </form>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '15px', borderRadius: '8px' }}>
+              <h3 style={{ margin: '0 0 15px 0', fontSize: '0.95rem' }}>📋 Historial de Kilómetros Diarios</h3>
+              {fleetDailyLogs.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic' }}>No hay registros de kilómetros diarios.</p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                        <th style={{ padding: '10px' }}>Fecha</th>
+                        <th style={{ padding: '10px' }}>Vehículo (Matrícula)</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>Km Inicio</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>Km Fin</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>Km Recorridos</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>Km/L Promedio</th>
+                        <th style={{ padding: '10px' }}>Notas</th>
+                        <th style={{ padding: '10px', textAlign: 'center' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fleetDailyLogs.map(log => (
+                        <tr key={log.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '10px' }}>{log.date}</td>
+                          <td style={{ padding: '10px', fontWeight: 'bold' }}>{log.plate}</td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>{Number(log.kmStart).toLocaleString()}</td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>{Number(log.kmEnd).toLocaleString()}</td>
+                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#60a5fa' }}>+{Number(log.kmTraveled).toLocaleString()} km</td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>{log.kmL ? `${log.kmL} km/L` : '-'}</td>
+                          <td style={{ padding: '10px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{log.notes || '-'}</td>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            <button
+                              onClick={() => handleDeleteDailyLog(log.id)}
+                              className="action-btn"
+                              style={{ padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171' }}
+                            >
+                              🗑️ Eliminar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 4. GASOIL */}
         {fleetSubTab === 'fuel' && (
           <div>
             <div className="glass-panel" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
@@ -17091,27 +17519,132 @@ function App() {
                         );
                       })()
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-                        <span style={{ fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>🏁 Kilómetros de la Ruta:</span>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <input 
-                            type="number" 
-                            step="0.1" 
-                            className="form-input" 
-                            placeholder="Introduce kms recorridos" 
-                            value={shiftKmsInput} 
-                            onChange={(e) => setShiftKmsInput(e.target.value)} 
-                            style={{ flex: 1, padding: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', height: '36px', margin: 0 }} 
-                          />
-                          <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>km</span>
-                        </div>
-                        {isAdminOrSuper && (
-                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                            <span>Tarifa: {kmPrice.toFixed(2)} €/km</span>
-                            <span>Importe: <strong style={{ color: '#fff' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
+                      adminAllowsFleetInput && !isAdminOrSuper ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                          <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>🚐 Control de Vehículo ({driverMatricula})</span>
+                          
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <div>
+                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Inicio *</label>
+                              <input 
+                                type="number" 
+                                className="form-input" 
+                                value={driverKmStart} 
+                                onChange={(e) => setDriverKmStart(e.target.value)} 
+                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }} 
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Fin *</label>
+                              <input 
+                                type="number" 
+                                className="form-input" 
+                                placeholder="Lectura final" 
+                                value={driverKmEnd} 
+                                onChange={(e) => setDriverKmEnd(e.target.value)} 
+                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px', border: '1px solid var(--primary)' }} 
+                              />
+                            </div>
                           </div>
-                        )}
-                      </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <div>
+                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km/L Promedio</label>
+                              <input 
+                                type="number" 
+                                step="0.1" 
+                                placeholder="Ej: 13.2" 
+                                className="form-input" 
+                                value={driverKmL} 
+                                onChange={(e) => setDriverKmL(e.target.value)} 
+                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }} 
+                              />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Recorrido Estimado:</span>
+                              <strong style={{ fontSize: '0.9rem', color: '#60a5fa' }}>
+                                {Number(driverKmEnd) - Number(driverKmStart) > 0 ? `+${Number(driverKmEnd) - Number(driverKmStart)} km` : '0 km'}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <div style={{ borderTop: '1px dashed var(--panel-border)', marginTop: '5px', paddingTop: '8px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={driverHasFuel} 
+                                onChange={(e) => setDriverHasFuel(e.target.checked)} 
+                                style={{ cursor: 'pointer' }}
+                              />
+                              ⛽ ¿Has repostado combustible?
+                            </label>
+                          </div>
+
+                          {driverHasFuel && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                <div>
+                                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Litros *</label>
+                                  <input 
+                                    type="number" 
+                                    step="0.01" 
+                                    placeholder="Ej: 45.5" 
+                                    className="form-input" 
+                                    value={driverFuelLiters} 
+                                    onChange={(e) => setDriverFuelLiters(e.target.value)} 
+                                    style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Coste Total (€) *</label>
+                                  <input 
+                                    type="number" 
+                                    step="0.01" 
+                                    placeholder="Ej: 75.20" 
+                                    className="form-input" 
+                                    value={driverFuelCost} 
+                                    onChange={(e) => setDriverFuelCost(e.target.value)} 
+                                    style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Gasolinera / Estación</label>
+                                <input 
+                                  type="text" 
+                                  placeholder="Ej: BP Sabadell" 
+                                  className="form-input" 
+                                  value={driverFuelStation} 
+                                  onChange={(e) => setDriverFuelStation(e.target.value)} 
+                                  style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                          <span style={{ fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>🏁 Kilómetros de la Ruta:</span>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input 
+                              type="number" 
+                              step="0.1" 
+                              className="form-input" 
+                              placeholder="Introduce kms recorridos" 
+                              value={shiftKmsInput} 
+                              onChange={(e) => setShiftKmsInput(e.target.value)} 
+                              style={{ flex: 1, padding: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', height: '36px', margin: 0 }} 
+                            />
+                            <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>km</span>
+                          </div>
+                          {isAdminOrSuper && (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                              <span>Tarifa: {kmPrice.toFixed(2)} €/km</span>
+                              <span>Importe: <strong style={{ color: '#fff' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
+                            </div>
+                          )}
+                        </div>
+                      )
                     )}
                     
                     {isAdminOrSuper && (() => {
