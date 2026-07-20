@@ -6350,9 +6350,9 @@ function App() {
                   disabled={isClosed} 
                   style={{
                     borderColor: addressVerification.status === 'success' 
-                      ? '#34d399' 
+                      ? 'var(--success)' 
                       : addressVerification.status === 'error' 
-                        ? '#f87171' 
+                        ? 'var(--danger)' 
                         : addressVerification.status === 'verifying' 
                           ? '#c084fc' 
                           : 'var(--input-border)',
@@ -6373,7 +6373,7 @@ function App() {
                     background: 'rgba(239, 68, 68, 0.15)',
                     border: '1px solid #ef4444',
                     borderRadius: '8px',
-                    color: '#fca5a5',
+                    color: 'var(--text-main)',
                     fontSize: '0.82rem',
                     display: 'flex',
                     flexDirection: 'column',
@@ -6454,7 +6454,7 @@ function App() {
                 {addressVerification.message && (
                   <div style={{ 
                     fontSize: '0.78rem', marginTop: '6px', 
-                    color: addressVerification.status === 'success' ? '#34d399' : addressVerification.status === 'warning' ? '#fbbf24' : addressVerification.status === 'verifying' ? '#a78bfa' : '#f87171',
+                    color: addressVerification.status === 'success' ? 'var(--success)' : addressVerification.status === 'warning' ? 'var(--warning)' : addressVerification.status === 'verifying' ? 'var(--primary)' : 'var(--danger)',
                     fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px'
                   }}>
                     {addressVerification.message}
@@ -7006,7 +7006,7 @@ function App() {
 
                     {/* SECCIÓN URGENTE */}
                     <div style={{ borderTop: '1px dashed var(--panel-border)', paddingTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>⚡ Servicio Urgente Especial</div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px' }}>⚡ Servicio Urgente Especial</div>
                       <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
                         Si este reparto es un servicio urgente especial que sale en cualquier momento, selecciona la tarifa correspondiente:
                       </p>
@@ -7950,17 +7950,17 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700' }}>🔒 Turno Cerrado</span>
                         {currentShift?.helper && (
-                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary)', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
                             🤝 Ayudante: {currentShift.helper}
                           </span>
                         )}
                         {currentShift?.helper2 && (
-                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: '#a5b4fc', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary)', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
                             🤝 Ayudante 2: {currentShift.helper2}
                           </span>
                         )}
                         {currentShift?.matricula && (
-                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(244, 63, 94, 0.08)', color: '#fda4af', border: '1px solid rgba(244, 63, 94, 0.25)', fontWeight: '700' }}>
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(244, 63, 94, 0.08)', color: 'var(--danger)', border: '1px solid rgba(244, 63, 94, 0.25)', fontWeight: '700' }}>
                             🚐 Vehículo: {currentShift.matricula}
                           </span>
                         )}
@@ -8836,7 +8836,7 @@ function App() {
                                          padding: '2px 8px', 
                                          background: 'rgba(245, 158, 11, 0.15)', 
                                          border: '1px solid rgba(245, 158, 11, 0.3)', 
-                                         color: '#fbbf24',
+                                         color: 'var(--warning)',
                                          borderRadius: '6px',
                                          fontWeight: 'bold',
                                          display: 'inline-flex',
@@ -8854,7 +8854,7 @@ function App() {
                                              padding: '3px 8px',
                                              background: 'rgba(239, 68, 68, 0.12)',
                                              border: '1px solid rgba(239, 68, 68, 0.35)',
-                                             color: '#f87171',
+                                             color: 'var(--danger)',
                                              borderRadius: '4px',
                                              cursor: 'pointer',
                                              fontWeight: '700',
@@ -8931,7 +8931,7 @@ function App() {
                                   padding: '2px 6px',
                                   borderRadius: '4px',
                                   background: timelineSchedules[t.id].timeSlot === 'Mañana' ? 'rgba(251, 191, 36, 0.15)' : timelineSchedules[t.id].timeSlot === 'Tarde' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                                  color: timelineSchedules[t.id].timeSlot === 'Mañana' ? '#fbbf24' : timelineSchedules[t.id].timeSlot === 'Tarde' ? '#38bdf8' : 'var(--text-muted)',
+                                  color: timelineSchedules[t.id].timeSlot === 'Mañana' ? 'var(--warning)' : timelineSchedules[t.id].timeSlot === 'Tarde' ? 'var(--primary)' : 'var(--text-muted)',
                                   border: timelineSchedules[t.id].timeSlot === 'Mañana' ? '1px solid rgba(251, 191, 36, 0.25)' : timelineSchedules[t.id].timeSlot === 'Tarde' ? '1px solid rgba(56, 189, 248, 0.25)' : '1px solid var(--panel-border)',
                                   fontWeight: 'bold'
                                 }}>
@@ -8988,7 +8988,7 @@ function App() {
                                     )}
                                     {parsed.driverObservations && (
                                       <div style={{ 
-                                        color: '#34d399', 
+                                        color: 'var(--success)', 
                                         padding: '6px 10px', 
                                         background: 'rgba(16, 185, 129, 0.08)', 
                                         borderRadius: '6px', 
@@ -9026,9 +9026,9 @@ function App() {
                                   })()}
                                 </strong>
                                 {t.lat && t.lng ? (
-                                  <span style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: '700' }}>🟢 Dirección verificada en el mapa</span>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: '700' }}>🟢 Dirección verificada en el mapa</span>
                                 ) : (
-                                  <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: '700' }}>🔴 Dirección sin ubicar en el mapa</span>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: '700' }}>🔴 Dirección sin ubicar en el mapa</span>
                                 )}
                                 {timelineSchedules[t.id] && (
                                   <div style={{ 
@@ -9267,7 +9267,7 @@ function App() {
                                         padding: '6px 8px',
                                         border: '1px solid rgba(248, 113, 113, 0.15)',
                                         background: 'rgba(248, 113, 113, 0.03)',
-                                        color: '#f87171',
+                                        color: 'var(--danger)',
                                         fontSize: '0.72rem',
                                         borderRadius: '6px',
                                         cursor: 'pointer',
@@ -9723,7 +9723,7 @@ function App() {
                 );
               })}
               {ticketToShow.codAmount && parseFloat(ticketToShow.codAmount) > 0 && (
-                <span className="map-floating-task-badge" style={{ background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)', color: '#fbbf24', fontWeight: '700' }}>
+                <span className="map-floating-task-badge" style={{ background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)', color: 'var(--warning)', fontWeight: '700' }}>
                   💵 Reembolso: {parseFloat(ticketToShow.codAmount).toFixed(2)} €
                 </span>
               )}
@@ -10003,7 +10003,7 @@ function App() {
                               fontSize: '0.62rem',
                               padding: '1px 5px',
                               background: parsed.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                              color: parsed.timeSlot === 'morning' ? '#fbbf24' : '#38bdf8',
+                              color: parsed.timeSlot === 'morning' ? 'var(--warning)' : 'var(--primary)',
                               border: parsed.timeSlot === 'morning' ? '1px solid rgba(251, 191, 36, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
                               fontWeight: 'bold',
                               borderRadius: '4px'
@@ -10119,7 +10119,7 @@ function App() {
                         fontSize: '0.7rem',
                         background: 'rgba(251, 191, 36, 0.15)',
                         border: '1px solid rgba(251, 191, 36, 0.3)',
-                        color: '#fbbf24',
+                        color: 'var(--warning)',
                         padding: '2px 8px',
                         borderRadius: '6px',
                         fontWeight: '700'
@@ -10457,7 +10457,7 @@ function App() {
                               display: 'inline-block',
                               background: 'rgba(99, 102, 241, 0.15)',
                               border: '1px solid rgba(99, 102, 241, 0.3)',
-                              color: '#a5b4fc',
+                              color: 'var(--primary)',
                               borderRadius: '4px'
                             }}>
                               CP {ticket.postcode}{getTownAndProvinceFromPostcode(ticket.postcode) ? ` - ${getTownAndProvinceFromPostcode(ticket.postcode)}` : ''}
@@ -10499,7 +10499,7 @@ function App() {
                                 {parsed.driverObservations && (
                                   <div style={{ 
                                     fontSize: '0.78rem', 
-                                    color: '#34d399', 
+                                    color: 'var(--success)', 
                                     background: 'rgba(16, 185, 129, 0.08)',
                                     border: '1px solid rgba(16, 185, 129, 0.25)',
                                     borderRadius: '4px',
@@ -10512,7 +10512,7 @@ function App() {
                                 {ticket.failureReason && (
                                   <div style={{ 
                                     fontSize: '0.78rem', 
-                                    color: '#f87171', 
+                                    color: 'var(--danger)', 
                                     background: 'rgba(239, 68, 68, 0.08)',
                                     border: '1px solid rgba(239, 68, 68, 0.25)',
                                     borderRadius: '4px',
@@ -10889,7 +10889,7 @@ function App() {
 
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05))', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '15px', borderRadius: '10px' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kilómetros Recorridos</span>
-                <span style={{ fontSize: '2rem', fontWeight: '800', color: '#60a5fa', display: 'block', margin: '5px 0' }}>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--info)', display: 'block', margin: '5px 0' }}>
                   {totalKmTraveled.toLocaleString()} km
                 </span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Distancia total acumulada por la flota</span>
@@ -10897,7 +10897,7 @@ function App() {
 
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05))', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '15px', borderRadius: '10px' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gastos en Combustible</span>
-                <span style={{ fontSize: '2rem', fontWeight: '800', color: '#f87171', display: 'block', margin: '5px 0' }}>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--danger)', display: 'block', margin: '5px 0' }}>
                   {totalFuelCost.toFixed(2)}€
                 </span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Inversión total acumulada en gasoil</span>
@@ -10905,7 +10905,7 @@ function App() {
 
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05))', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '15px', borderRadius: '10px' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gastos de Mantenimiento</span>
-                <span style={{ fontSize: '2rem', fontWeight: '800', color: '#34d399', display: 'block', margin: '5px 0' }}>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--success)', display: 'block', margin: '5px 0' }}>
                   {totalMaintCost.toFixed(2)}€
                 </span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Taller, ITV, seguros y reparaciones</span>
@@ -10913,7 +10913,7 @@ function App() {
 
               <div className="glass-panel" style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.05))', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '15px', borderRadius: '10px' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gasto Combinado</span>
-                <span style={{ fontSize: '2rem', fontWeight: '800', color: '#fbbf24', display: 'block', margin: '5px 0' }}>
+                <span style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--warning)', display: 'block', margin: '5px 0' }}>
                   {(totalFuelCost + totalMaintCost).toFixed(2)}€
                 </span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Coste total operativo de la flota</span>
@@ -10926,7 +10926,7 @@ function App() {
                 🔔 Alertas de Vencimiento de Documentación
               </h3>
               {alerts.length === 0 ? (
-                <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#a7f3d0', padding: '12px', borderRadius: '8px', fontSize: '0.85rem' }}>
+                <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', color: 'var(--success)', padding: '12px', borderRadius: '8px', fontSize: '0.85rem' }}>
                   ✅ Toda la documentación (ITV y seguros) está al día. No hay vencimientos próximos en los siguientes 30 días.
                 </div>
               ) : (
@@ -10937,7 +10937,7 @@ function App() {
                       style={{
                         background: al.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                         border: al.type === 'error' ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
-                        color: al.type === 'error' ? '#fca5a5' : '#fde047',
+                        color: al.type === 'error' ? 'var(--danger)' : 'var(--warning)',
                         padding: '10px 15px',
                         borderRadius: '6px',
                         fontSize: '0.82rem',
@@ -11214,7 +11214,7 @@ function App() {
                           borderRadius: '4px',
                           fontWeight: 'bold',
                           background: v.status === 'active' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                          color: v.status === 'active' ? '#34d399' : '#f87171'
+                          color: v.status === 'active' ? 'var(--success)' : 'var(--danger)'
                         }}>
                           {v.status === 'active' ? 'Activo' : 'Inactivo / Taller'}
                         </span>
@@ -11222,10 +11222,10 @@ function App() {
                       <div style={{ fontSize: '0.8rem', marginBottom: '10px' }}>
                         <div><strong>Marca/Modelo:</strong> {v.brand} {v.model} ({v.year || 'N/A'})</div>
                         <div><strong>Kilometraje:</strong> {Number(v.currentKm || 0).toLocaleString()} km</div>
-                        <div style={{ color: isItvExp ? '#f87171' : 'inherit' }}>
+                        <div style={{ color: isItvExp ? 'var(--danger)' : 'inherit' }}>
                           <strong>Vencimiento ITV:</strong> {v.itvExpiry || 'No especificado'} {isItvExp && '⚠️'}
                         </div>
-                        <div style={{ color: isInsExp ? '#f87171' : 'inherit' }}>
+                        <div style={{ color: isInsExp ? 'var(--danger)' : 'inherit' }}>
                           <strong>Seguro:</strong> {v.insuranceExpiry || 'No especificado'} {isInsExp && '⚠️'}
                         </div>
                       </div>
@@ -11240,7 +11240,7 @@ function App() {
                         <button
                           onClick={() => handleDeleteVehicle(v.id)}
                           className="action-btn"
-                          style={{ padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171' }}
+                          style={{ padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--danger)' }}
                         >
                           🗑️ Eliminar
                         </button>
@@ -11389,7 +11389,7 @@ function App() {
                             <button
                               onClick={() => handleDeleteDailyLog(log.id)}
                               className="action-btn"
-                              style={{ padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171' }}
+                              style={{ padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--danger)' }}
                             >
                               🗑️ Eliminar
                             </button>
@@ -11568,7 +11568,7 @@ function App() {
                         <td>{log.driver || '-'}</td>
                         <td style={{ textAlign: 'right' }}>{Number(log.liters).toFixed(2)} L</td>
                         <td style={{ textAlign: 'right' }}>{Number(log.costPerLiter).toFixed(3)} €</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#f87171' }}>{Number(log.totalCost).toFixed(2)} €</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--danger)' }}>{Number(log.totalCost).toFixed(2)} €</td>
                         <td>{log.gasStation || '-'}</td>
                         <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.notes}>{log.notes || '-'}</td>
                         <td>
@@ -11577,7 +11577,7 @@ function App() {
                             style={{
                               border: 'none',
                               background: 'transparent',
-                              color: '#f87171',
+                              color: 'var(--danger)',
                               cursor: 'pointer',
                               padding: '2px 4px',
                               fontSize: '0.8rem'
@@ -11748,7 +11748,7 @@ function App() {
                         <td style={{ fontWeight: 'bold' }}>{log.plate}</td>
                         <td>{log.type}</td>
                         <td style={{ textAlign: 'right' }}>{log.kmAtService ? Number(log.kmAtService).toLocaleString() + ' km' : '-'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: '#34d399' }}>{Number(log.cost).toFixed(2)} €</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--success)' }}>{Number(log.cost).toFixed(2)} €</td>
                         <td>{log.provider || '-'}</td>
                         <td>{log.invoiceNumber || '-'}</td>
                         <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.notes}>{log.notes || '-'}</td>
@@ -11758,7 +11758,7 @@ function App() {
                             style={{
                               border: 'none',
                               background: 'transparent',
-                              color: '#f87171',
+                              color: 'var(--danger)',
                               cursor: 'pointer',
                               padding: '2px 4px',
                               fontSize: '0.8rem'
@@ -12198,7 +12198,7 @@ function App() {
                                   padding: '2px 6px', 
                                   borderRadius: '4px',
                                   background: emp.role === 'chofer' ? 'rgba(99, 102, 241, 0.15)' : emp.role === 'ayudante' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                                  color: emp.role === 'chofer' ? 'var(--primary)' : emp.role === 'ayudante' ? '#34d399' : '#fbbf24',
+                                  color: emp.role === 'chofer' ? 'var(--primary)' : emp.role === 'ayudante' ? 'var(--success)' : 'var(--warning)',
                                   fontWeight: '700'
                                 }}>
                                   {emp.role === 'chofer' ? 'Chofer' : emp.role === 'ayudante' ? 'Ayudante' : 'Chofer/Ayudante'}
@@ -12209,7 +12209,7 @@ function App() {
                                   padding: '2px 6px',
                                   borderRadius: '4px',
                                   background: emp.active === false ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                                  color: emp.active === false ? '#f87171' : '#34d399',
+                                  color: emp.active === false ? 'var(--danger)' : 'var(--success)',
                                   fontWeight: '700'
                                 }}>
                                   {emp.active === false ? 'De Baja' : 'Activo'}
@@ -12240,7 +12240,7 @@ function App() {
                                 margin: 0, 
                                 padding: '6px 12px', 
                                 fontSize: '0.78rem',
-                                color: emp.active === false ? '#34d399' : '#f87171',
+                                color: emp.active === false ? 'var(--success)' : 'var(--danger)',
                                 border: emp.active === false ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
                                 background: 'transparent'
                               }}
@@ -12745,7 +12745,7 @@ function App() {
                                 padding: '2px 5px', 
                                 borderRadius: '4px',
                                 background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.15)' : s.openedAt ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
-                                color: s.status === 'closed' ? '#f87171' : s.openedAt ? '#34d399' : '#9ca3af'
+                                color: s.status === 'closed' ? 'var(--danger)' : s.openedAt ? 'var(--success)' : 'var(--text-muted)'
                               }}>
                                 {s.status === 'closed' ? 'Cerrado' : s.openedAt ? 'Activo' : 'Planificado'}
                               </span>
@@ -12764,7 +12764,7 @@ function App() {
                                   style={{
                                     background: 'rgba(16, 185, 129, 0.15)',
                                     border: '1px solid rgba(16, 185, 129, 0.3)',
-                                    color: '#34d399',
+                                    color: 'var(--success)',
                                     padding: '2px 8px',
                                     borderRadius: '4px',
                                     fontSize: '0.68rem',
@@ -12978,7 +12978,7 @@ function App() {
                             style={{ 
                               background: 'rgba(239, 68, 68, 0.1)', 
                               border: '1px solid rgba(239, 68, 68, 0.2)', 
-                              color: '#f87171',
+                              color: 'var(--danger)',
                               padding: '6px 8px',
                               borderRadius: '6px',
                               cursor: 'pointer',
@@ -13428,7 +13428,7 @@ function App() {
                                   padding: '1px 5px', 
                                   borderRadius: '4px',
                                   background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.15)' : s.openedAt ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
-                                  color: s.status === 'closed' ? '#f87171' : s.openedAt ? '#34d399' : '#9ca3af'
+                                  color: s.status === 'closed' ? 'var(--danger)' : s.openedAt ? 'var(--success)' : 'var(--text-muted)'
                                 }}>
                                   {s.status === 'closed' ? 'Cerrado' : s.openedAt ? 'Activo' : 'Planificado'}
                                 </span>
@@ -13447,7 +13447,7 @@ function App() {
                                     style={{
                                       background: 'rgba(16, 185, 129, 0.15)',
                                       border: '1px solid rgba(16, 185, 129, 0.3)',
-                                      color: '#34d399',
+                                      color: 'var(--success)',
                                       padding: '2px 6px',
                                       borderRadius: '4px',
                                       fontSize: '0.68rem',
@@ -13653,7 +13653,7 @@ function App() {
                               style={{ 
                                 background: 'rgba(239, 68, 68, 0.1)', 
                                 border: '1px solid rgba(239, 68, 68, 0.2)', 
-                                color: '#f87171',
+                                color: 'var(--danger)',
                                 padding: '6px 8px',
                                 borderRadius: '6px',
                                 cursor: 'pointer',
@@ -14050,7 +14050,7 @@ function App() {
                                           alignItems: 'center',
                                           fontWeight: '600',
                                           background: task.noCharge ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)',
-                                          color: task.noCharge ? '#f87171' : '#34d399',
+                                          color: task.noCharge ? 'var(--danger)' : 'var(--success)',
                                           border: task.noCharge ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(16, 185, 129, 0.25)',
                                           transition: 'all 0.15s ease'
                                         }}
@@ -14063,7 +14063,7 @@ function App() {
                                 </td>
                                 <td style={{ padding: '9px 16px' }}>
                                   {detail && (
-                                    <span style={{ fontSize: '0.75rem', padding: '2px 7px', background: 'rgba(251,191,36,0.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '5px', fontWeight: '600' }}>
+                                    <span style={{ fontSize: '0.75rem', padding: '2px 7px', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)', border: '1px solid var(--panel-border)', borderRadius: '5px', fontWeight: '600' }}>
                                       {ticket.status === 'success' ? '📺 ' : ''}{detail}
                                     </span>
                                   )}
@@ -14555,11 +14555,11 @@ function App() {
         {localStorage.getItem('delivery_supabase_needs_permissions_col') === 'true' && (
           <div className="glass-panel" style={{
             background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid #f87171',
+            border: '1px solid var(--danger)',
             padding: '15px',
             borderRadius: '8px',
             marginBottom: '20px',
-            color: '#fca5a5',
+            color: 'var(--text-main)',
             fontSize: '0.85rem'
           }}>
             <strong style={{ color: '#ef4444', display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>
@@ -15179,7 +15179,7 @@ function App() {
                           style={{ 
                             background: 'none', 
                             border: 'none', 
-                            color: '#f87171', 
+                            color: 'var(--danger)', 
                             cursor: 'pointer', 
                             fontWeight: 'bold', 
                             fontSize: '0.85rem',
@@ -16032,7 +16032,7 @@ function App() {
                                       fontSize: '0.65rem',
                                       padding: '1px 5px',
                                       background: parsed.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                                      color: parsed.timeSlot === 'morning' ? '#fbbf24' : '#38bdf8',
+                                      color: parsed.timeSlot === 'morning' ? 'var(--warning)' : 'var(--primary)',
                                       border: parsed.timeSlot === 'morning' ? '1px solid rgba(251, 191, 36, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
                                       fontWeight: 'bold',
                                       borderRadius: '4px'
@@ -16065,7 +16065,7 @@ function App() {
                                     borderRadius: '6px', 
                                     padding: '4px 8px', 
                                     fontSize: '0.78rem', 
-                                    color: '#34d399',
+                                    color: 'var(--success)',
                                     marginTop: '4px',
                                     fontStyle: 'normal',
                                     whiteSpace: 'normal',
@@ -16082,7 +16082,7 @@ function App() {
                                     borderRadius: '6px', 
                                     padding: '4px 8px', 
                                     fontSize: '0.78rem', 
-                                    color: '#f87171',
+                                    color: 'var(--danger)',
                                     marginTop: '4px',
                                     fontStyle: 'normal',
                                     whiteSpace: 'normal',
@@ -16622,7 +16622,7 @@ function App() {
             
             {selectedTariffOwner !== 'base' && tariffs.filter(t => t.createdBy === selectedTariffOwner || t.id.endsWith('_' + selectedTariffOwner)).length === 0 && (
               <div className="glass-panel" style={{ padding: '20px', textAlign: 'center', border: '1px solid rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', marginBottom: '20px' }}>
-                <p style={{ color: '#f87171', fontWeight: '600', marginBottom: '15px' }}>
+                <p style={{ color: 'var(--danger)', fontWeight: '600', marginBottom: '15px' }}>
                   ⚠️ Este administrador no tiene tarifas inicializadas en el sistema.
                 </p>
                 <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -16819,7 +16819,7 @@ function App() {
                                   <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
                                     <span>{t.name}</span>
                                     {currentUser?.role === 'superadmin' && (
-                                      <span style={{ fontSize: '0.72rem', fontWeight: '500', padding: '1px 6px', borderRadius: '4px', background: !t.createdBy || t.createdBy === 'admin' ? 'rgba(52, 211, 153, 0.15)' : 'rgba(168, 85, 247, 0.15)', color: !t.createdBy || t.createdBy === 'admin' ? '#34d399' : '#e9d5ff', border: !t.createdBy || t.createdBy === 'admin' ? '1px solid rgba(52, 211, 153, 0.25)' : '1px solid rgba(168, 85, 247, 0.25)' }}>
+                                      <span style={{ fontSize: '0.72rem', fontWeight: '500', padding: '1px 6px', borderRadius: '4px', background: !t.createdBy || t.createdBy === 'admin' ? 'rgba(52, 211, 153, 0.15)' : 'rgba(168, 85, 247, 0.15)', color: !t.createdBy || t.createdBy === 'admin' ? 'var(--success)' : 'var(--primary)', border: !t.createdBy || t.createdBy === 'admin' ? '1px solid rgba(52, 211, 153, 0.25)' : '1px solid rgba(168, 85, 247, 0.25)' }}>
                                         {!t.createdBy || t.createdBy === 'admin' ? 'Original / Base' : `Admin: ${users.find(u => u.id === t.createdBy)?.label || t.createdBy}`}
                                       </span>
                                     )}
@@ -17528,11 +17528,11 @@ function App() {
                 width: '8px', 
                 height: '8px', 
                 borderRadius: '50%', 
-                backgroundColor: gpsStatus === 'active' ? '#34d399' : gpsStatus === 'error' ? '#f87171' : '#9ca3af',
-                boxShadow: gpsStatus === 'active' ? '0 0 8px #34d399' : 'none',
+                backgroundColor: gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af',
+                boxShadow: gpsStatus === 'active' ? '0 0 8px var(--success)' : 'none',
                 display: 'inline-block'
               }}></span>
-              <span style={{ fontSize: '0.78rem', fontWeight: '600', color: gpsStatus === 'active' ? '#34d399' : gpsStatus === 'error' ? '#f87171' : '#9ca3af' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: '600', color: gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af' }}>
                 {gpsStatus === 'active' ? 'GPS' : gpsStatus === 'error' ? 'GPS Offline' : 'GPS Apagado'}
               </span>
             </div>
@@ -17647,9 +17647,9 @@ function App() {
                     <div><strong>Furgoneta:</strong> {furgoLabel}</div>
                     <div><strong>Fecha:</strong> {targetDate}</div>
                     {routeNameText && <div><strong>Ruta:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📍 {routeNameText}</span></div>}
-                    {existingShift?.matricula && <div><strong>Vehículo (Matrícula):</strong> <span style={{ color: '#fda4af', fontWeight: '600' }}>🚐 {existingShift.matricula}</span></div>}
-                    {existingShift?.helper && <div><strong>Ayudante:</strong> <span style={{ color: '#a5b4fc', fontWeight: '600' }}>🤝 {existingShift.helper}</span></div>}
-                    {existingShift?.helper2 && <div><strong>Ayudante 2:</strong> <span style={{ color: '#a5b4fc', fontWeight: '600' }}>🤝 {existingShift.helper2}</span></div>}
+                    {existingShift?.matricula && <div><strong>Vehículo (Matrícula):</strong> <span style={{ color: 'var(--danger)', fontWeight: '600' }}>🚐 {existingShift.matricula}</span></div>}
+                    {existingShift?.helper && <div><strong>Ayudante:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>🤝 {existingShift.helper}</span></div>}
+                    {existingShift?.helper2 && <div><strong>Ayudante 2:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>🤝 {existingShift.helper2}</span></div>}
                     <div style={{ borderBottom: '1px dashed var(--panel-border)', margin: '5px 0' }}></div>
                     
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
@@ -17951,7 +17951,7 @@ function App() {
                                       {label} (x{task.quantity})
                                     </span>
                                     {extra && (
-                                      <span style={{ fontSize: '0.7rem', padding: '2px 7px', background: 'rgba(251, 191, 36, 0.1)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.25)', borderRadius: '6px', fontWeight: '600' }}>
+                                      <span style={{ fontSize: '0.7rem', padding: '2px 7px', background: 'rgba(251, 191, 36, 0.1)', color: 'var(--warning)', border: '1px solid rgba(251, 191, 36, 0.25)', borderRadius: '6px', fontWeight: '600' }}>
                                         📺 {extra}
                                       </span>
                                     )}
@@ -18006,7 +18006,7 @@ function App() {
         <div className="modal-overlay" style={{ zIndex: 1200 }}>
           <div className="modal-content glass-panel" style={{ maxWidth: '400px', padding: '25px', textAlign: 'left' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px', marginBottom: '15px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: obsModalStatus === 'success' ? '#10b981' : '#f87171' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: obsModalStatus === 'success' ? 'var(--success)' : 'var(--danger)' }}>
                 {obsModalStatus === 'success' ? '🟢 Registrar Entregado' : '🔴 Registrar Fallido'}
               </h3>
               <button onClick={() => { setObsModalTicketId(null); }} className="btn btn-secondary btn-small" style={{ padding: '4px', width: 'auto' }}><X size={16} /></button>
