@@ -398,6 +398,8 @@ import {
   getSupabaseClient,
   getKmPrice,
   saveKmPrice,
+  getFuelPrice,
+  saveFuelPrice,
   getRouteKms,
   saveRouteKms,
   getRouteStartTime,
@@ -722,6 +724,7 @@ function App() {
   const [tariffs, setTariffs] = useState([]);
   const [modulePrice, setModulePrice] = useState(3.81);
   const [kmPrice, setKmPrice] = useState(0.43);
+  const [fuelPrice, setFuelPrice] = useState(1.65);
   const [shiftKmsInput, setShiftKmsInput] = useState('');
   const [shiftFilterDate, setShiftFilterDate] = useState('');
   const [shiftFilterFurgo, setShiftFilterFurgo] = useState('all');
@@ -2244,6 +2247,7 @@ function App() {
     
     setModulePrice(getModulePrice(u?.id) || 3.81);
     setKmPrice(getKmPrice(u?.id) || 0.43);
+    setFuelPrice(getFuelPrice(u?.id) || 1.65);
     setAppName(getAppName(u?.id) || 'My Delivery Team');
     if (activeTab !== 'users') {
       setAppNameInput(getAppName(u?.id) || 'My Delivery Team');
@@ -4610,6 +4614,12 @@ function App() {
     const val = parseFloat(newPrice) || 0;
     saveKmPrice(val, currentUser?.id);
     setKmPrice(val);
+  };
+
+  const handleUpdateFuelPrice = (newPrice) => {
+    const val = parseFloat(newPrice) || 0;
+    saveFuelPrice(val, currentUser?.id);
+    setFuelPrice(val);
   };
 
   const recalculateAllTickets = (activeTariffs, activeModulePrice) => {
@@ -10958,7 +10968,21 @@ function App() {
                             <td style={{ padding: '6px', textAlign: 'right' }}>{Number(log.kmStart).toLocaleString()}</td>
                             <td style={{ padding: '6px', textAlign: 'right' }}>{Number(log.kmEnd).toLocaleString()}</td>
                             <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#60a5fa' }}>+{Number(log.kmTraveled).toLocaleString()} km</td>
-                            <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>{(Number(log.kmTraveled) * kmPrice).toFixed(2)} €</td>
+                            <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>
+                              {(() => {
+                                const avgKmL = parseFloat(log.kmL) || 0;
+                                if (avgKmL > 0) {
+                                  const liters = Number(log.kmTraveled) / avgKmL;
+                                  const cost = liters * fuelPrice;
+                                  return (
+                                    <span title={`${liters.toFixed(2)} L consumidos a ${fuelPrice.toFixed(2)} €/L`}>
+                                      {cost.toFixed(2)} €
+                                    </span>
+                                  );
+                                }
+                                return <span style={{ color: 'var(--text-muted)' }} title="Ingrese Km/L promedio para calcular">-</span>;
+                              })()}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -11331,7 +11355,21 @@ function App() {
                           <td style={{ padding: '10px', textAlign: 'right' }}>{Number(log.kmEnd).toLocaleString()}</td>
                           <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#60a5fa' }}>+{Number(log.kmTraveled).toLocaleString()} km</td>
                           <td style={{ padding: '10px', textAlign: 'right' }}>{log.kmL ? `${log.kmL} km/L` : '-'}</td>
-                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>{(Number(log.kmTraveled) * kmPrice).toFixed(2)} €</td>
+                          <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#10b981' }}>
+                            {(() => {
+                              const avgKmL = parseFloat(log.kmL) || 0;
+                              if (avgKmL > 0) {
+                                const liters = Number(log.kmTraveled) / avgKmL;
+                                const cost = liters * fuelPrice;
+                                return (
+                                  <span title={`${liters.toFixed(2)} L consumidos a ${fuelPrice.toFixed(2)} €/L`}>
+                                    {cost.toFixed(2)} €
+                                  </span>
+                                );
+                              }
+                              return <span style={{ color: 'var(--text-muted)' }} title="Ingrese Km/L promedio para calcular">-</span>;
+                            })()}
+                          </td>
                           <td style={{ padding: '10px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{log.notes || '-'}</td>
                           <td style={{ padding: '10px', textAlign: 'center' }}>
                             <button
@@ -15996,6 +16034,11 @@ function App() {
                     <div className="block-title">Precio por Kilómetro (€/km)</div>
                     <input type="number" step="0.01" className="form-input" value={kmPrice} onChange={(e) => handleUpdateKmPrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '10px' }}>Actualmente, cada km recorrido equivale a {kmPrice.toFixed(2)} €.</p>
+                  </div>
+                  <div className="block-section" style={{ marginBottom: 0 }}>
+                    <div className="block-title">Precio Combustible (Gasoil €/L)</div>
+                    <input type="number" step="0.001" className="form-input" value={fuelPrice} onChange={(e) => handleUpdateFuelPrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '10px' }}>Para calcular el coste del combustible consumido: {fuelPrice.toFixed(3)} €/L.</p>
                   </div>
                 </div>
 

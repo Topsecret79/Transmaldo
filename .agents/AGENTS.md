@@ -28,3 +28,9 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 * **Regla**: El módulo de Control de Flota (vehículos, repostajes, mantenimientos y diario de kilómetros) debe ser multi-tenant, guardándose con el sufijo del administrador activo (`_adminId`).
 * **Acceso Condicional para Choferes**: Las opciones de diario de kilómetros (`driverKmStart`, `driverKmEnd`, `driverKmL`) y el registro de repostajes de combustible (`driverFuelLiters`, `driverFuelCost`, `driverFuelStation`) para el rol `repartidor` en el cierre de turno se deben habilitar **únicamente** si el administrador que gestiona al chofer (`createdBy`) tiene activo el permiso `fleet_control`.
 * **Automatización**: Al confirmar el cierre del turno, si el chofer ingresa lecturas de kilómetros finales superiores a las configuradas actualmente para el vehículo, el kilometraje del vehículo debe actualizarse automáticamente tanto localmente como en la base de datos de Supabase.
+
+## ⛽ Cálculo Dinámico de Coste de Combustible Diario
+* **Regla**: El coste del diario de kilómetros de vehículos de la flota se calcula dinámicamente utilizando el precio del combustible del administrador (`fuelPrice`) y el promedio de eficiencia del trayecto registrado en `kmL`:
+  * $\text{Coste (€)} = \left(\frac{\text{Km Recorridos}}{\text{Km/L Promedio}}\right) \times \text{Precio de Gasoil}$.
+  * Si el valor `kmL` del día no está definido o es 0, no se debe computar un coste por defecto, sino que se muestra un guion (`-`) con un tooltip aclaratorio para incentivar al chofer a introducir este dato de rendimiento.
+

@@ -1996,6 +1996,32 @@ export function saveKmPrice(price, userId) {
   }
 }
 
+// Obtener precio de combustible (gasoil) por litro
+export function getFuelPrice(userId) {
+  if (userId) {
+    const custom = localStorage.getItem(`delivery_fuel_price_${userId}`);
+    if (custom) return parseFloat(custom) || 1.65;
+  }
+  const globalPrice = localStorage.getItem('delivery_fuel_price');
+  return globalPrice !== null ? (parseFloat(globalPrice) || 1.65) : 1.65;
+}
+
+// Guardar precio de combustible (gasoil) por litro
+export function saveFuelPrice(price, userId) {
+  const pStr = price.toString();
+  if (userId) {
+    localStorage.setItem(`delivery_fuel_price_${userId}`, pStr);
+  }
+  localStorage.setItem('delivery_fuel_price', pStr);
+  if (supabase) {
+    const key = userId ? `fuel_price_${userId}` : 'fuel_price';
+    supabase.from('delivery_settings').upsert({ key, value: pStr }).then(({ error }) => {
+      if (error) console.error("Error saving fuel price to Supabase:", error);
+    });
+  }
+}
+
+
 // Obtener kms de una ruta
 export function getRouteKms(furgoId, date) {
   const key = `delivery_route_kms_${furgoId}_${date}`;
