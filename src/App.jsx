@@ -14865,6 +14865,8 @@ function App() {
                   {/* Agrupamos por Administradores vs Repartidores */}
                   {(() => {
                     const query = usersSearchQuery.toLowerCase().trim();
+                    
+                    // Filtrar usuarios visibles según la query de búsqueda
                     const filtered = visibleUsers.filter(u => 
                       !query || 
                       u.username.toLowerCase().includes(query) || 
@@ -14872,11 +14874,37 @@ function App() {
                       u.role.toLowerCase().includes(query)
                     );
 
-                    const admins = filtered.filter(u => u.role === 'admin' || u.role === 'superadmin');
-                    const drivers = filtered.filter(u => u.role === 'repartidor');
+                    // El usuario actual siempre está en la cabecera (Mi Cuenta)
+                    const myAccount = users.find(u => u.id === currentUser.id);
 
-                    const renderUserCard = (u) => (
-                      <div key={u.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                    // Coordinadores: otros usuarios administradores/superadmins (excluyendo al usuario actual)
+                    const coordinators = filtered.filter(u => 
+                      u.id !== currentUser.id && 
+                      (u.role === 'admin' || u.role === 'superadmin')
+                    );
+
+                    // Choferes directos: repartidores creados directamente por el usuario actual (o sin creador asignado si somos superadmin)
+                    const directDrivers = filtered.filter(u => 
+                      u.role === 'repartidor' && 
+                      (u.createdBy === currentUser.id || (currentUser.role === 'superadmin' && (!u.createdBy || u.createdBy === 'admin')))
+                    );
+
+                    // Función helper para renderizar la tarjeta de usuario
+                    const renderUserCard = (u, isNested = false) => (
+                      <div 
+                        key={u.id} 
+                        style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '10px', 
+                          padding: '12px', 
+                          background: isNested ? 'rgba(255,255,255,0.015)' : 'rgba(255,255,255,0.03)', 
+                          borderRadius: '8px', 
+                          border: '1px solid var(--panel-border)',
+                          marginLeft: isNested ? '20px' : '0',
+                          borderLeft: isNested ? '3px solid var(--primary)' : '1px solid var(--panel-border)'
+                        }}
+                      >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
                             <strong style={{ fontSize: '0.9rem', color: u.role === 'repartidor' ? '#60a5fa' : 'var(--primary)' }}>
@@ -15020,21 +15048,50 @@ function App() {
                     );
 
                     return (
-                      <>
-                        {admins.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                        {/* 1. SECCIÓN: MI CUENTA (EL ADMINISTRADOR LOGUEADO) */}
+                        {myAccount && !query && (
+                          <div style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '20px' }}>
+                            <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>👑 Mi Cuenta (Tú)</h4>
+                            {renderUserCard(myAccount, false)}
+                          </div>
+                        )}
+
+                        {/* 2. SECCIÓN: COORDINADORES Y SUS CHOFERES ASOCIADOS */}
+                        {coordinators.length > 0 && (
                           <div>
-                            <h4 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Coordinadores / Administradores ({admins.length})</h4>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                              {admins.map(renderUserCard)}
+                            <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>👥 Coordinadores y sus Choferes ({coordinators.length})</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                              {coordinators.map(coord => {
+                                const coordDrivers = filtered.filter(u => u.role === 'repartidor' && u.createdBy === coord.id);
+                                return (
+                                  <div key={coord.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px', background: 'rgba(255,255,255,0.01)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                    {renderUserCard(coord, false)}
+                                    {coordDrivers.length > 0 ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '5px' }}>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                          🚐 Choferes asignados a {coord.label}:
+                                        </span>
+                                        {coordDrivers.map(dr => renderUserCard(dr, true))}
+                                      </div>
+                                    ) : (
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '20px', fontStyle: 'italic' }}>
+                                        Sin choferes asignados.
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
 
-                        {drivers.length > 0 && (
-                          <div style={{ marginTop: '20px' }}>
-                            <h4 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Choferes / Repartidores ({drivers.length})</h4>
+                        {/* 3. SECCIÓN: MIS CHOFERES DIRECTOS (O SIN COORDINADOR ASOCIADO) */}
+                        {directDrivers.length > 0 && (
+                          <div>
+                            <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🚐 Mis Choferes Directos ({directDrivers.length})</h4>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                              {drivers.map(renderUserCard)}
+                              {directDrivers.map(dr => renderUserCard(dr, false))}
                             </div>
                           </div>
                         )}
@@ -15044,7 +15101,7 @@ function App() {
                             Ningún usuario coincide con la búsqueda.
                           </p>
                         )}
-                      </>
+                      </div>
                     );
                   })()}
                 </div>
