@@ -5251,6 +5251,24 @@ function App() {
 
   const handleConfirmCloseShift = (furgoId, date) => {
     const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date);
+    
+    // Condicional de bloqueo: No permitir cerrar turno si existen paradas de ruta rápida incompletas (sin nombre real de cliente o sin mercancía/servicios)
+    const incompleteTickets = dayTickets.filter(t => {
+      const isPlaceholderName = t.customerName && t.customerName.startsWith('Parada #');
+      const hasNoTasks = !t.tasks || t.tasks.length === 0;
+      return isPlaceholderName || hasNoTasks;
+    });
+
+    if (incompleteTickets.length > 0) {
+      const incompleteNames = incompleteTickets.map(t => t.customerName).slice(0, 4).join(', ');
+      const extraCount = incompleteTickets.length > 4 ? ` y ${incompleteTickets.length - 4} más` : '';
+      triggerAlert(
+        `⛔ No se puede cerrar el turno: Existen ${incompleteTickets.length} parada(s) con información incompleta (${incompleteNames}${extraCount}). Completa el cliente y servicios/mercancía antes de liquidar el vale.`,
+        'error'
+      );
+      return false;
+    }
+
     const pendingTickets = dayTickets.filter(t => t.status === 'pending' || !t.status);
     
     // Validar datos de flota si está activo y es chofer
@@ -5259,11 +5277,11 @@ function App() {
       const end = Number(driverKmEnd);
       if (isNaN(start) || start <= 0) {
         triggerAlert('Por favor introduce un Kilometraje de Inicio válido.', 'error');
-        return;
+        return false;
       }
       if (isNaN(end) || end < start) {
         triggerAlert('El Kilometraje de Fin no puede ser menor que el de Inicio.', 'error');
-        return;
+        return false;
       }
 
       if (driverHasFuel) {
@@ -5271,11 +5289,11 @@ function App() {
         const cost = Number(driverFuelCost);
         if (isNaN(liters) || liters <= 0) {
           triggerAlert('Por favor introduce los litros del repostaje.', 'error');
-          return;
+          return false;
         }
         if (isNaN(cost) || cost <= 0) {
           triggerAlert('Por favor introduce el coste total del repostaje.', 'error');
-          return;
+          return false;
         }
       }
     }
@@ -5353,32 +5371,12 @@ function App() {
 
       saveRouteKms(furgoId, date, kms);
       closeShift(furgoId, date, summary);
-
-      // Remove from activeRoutes
-      setActiveRoutes(prev => {
-        const remaining = prev.filter(r => !(r.furgoId === furgoId && r.date === date));
-        const targetRouteId = prev.find(r => r.furgoId === furgoId && r.date === date)?.id;
-        if (currentRouteId === targetRouteId) {
-          const nextRoute = remaining[remaining.length - 1];
-          if (nextRoute) {
-            setCurrentRouteId(nextRoute.id);
-            setTicketDate(nextRoute.date);
-            setTicketRoute(nextRoute.furgoId);
-            setRouteName(nextRoute.name);
-          } else {
-            setCurrentRouteId(null);
-            setTicketDate(new Date().toISOString().split('T')[0]);
-            setTicketRoute('');
-            setRouteName('');
-          }
-        }
-        return remaining;
-      });
-
       triggerAlert('Turno cerrado y resumen de flota actualizado con éxito ✓');
       setShowShiftModal(false);
       loadData();
+      return true;
     }
+    return false;
   };
 
   const saveExcelToDisk = async (wb, filename) => {
@@ -6637,10 +6635,8 @@ function App() {
                 type="button"
                 className="btn btn-secondary btn-small"
                 onClick={() => {
-                  if (window.confirm(`⚠️ ¡ATENCIÓN! Al Finalizar y Cerrar Turno, se bloqueará permanentemente el registro de entregas para esta furgoneta el día ${activeRouteContext.date}.\n\n¿Estás seguro de que deseas cerrar el turno de este chofer?`)) {
-                    const summary = getShiftSummary(activeRouteContext.furgoId, activeRouteContext.date);
-                    closeShift(activeRouteContext.furgoId, activeRouteContext.date, summary);
-
+                  const success = handleConfirmCloseShift(activeRouteContext.furgoId, activeRouteContext.date);
+                  if (success) {
                     const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
                     setActiveRoutes(remaining);
                     const nextRoute = remaining[remaining.length - 1];
@@ -6655,7 +6651,6 @@ function App() {
                       setTicketRoute('');
                       setRouteName('');
                     }
-                    triggerAlert('Turno cerrado y resumen generado con éxito');
                   }
                 }}
                 style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444' }}
