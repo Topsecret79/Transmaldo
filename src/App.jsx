@@ -6742,7 +6742,6 @@ function App() {
                           <option value="cercania">🟢 Cercanía</option>
                           <option value="media">🟡 Media Distancia</option>
                           <option value="lejania">🟠 Lejanía</option>
-                          <option value="gran_lejania">🔴 Gran Lejanía</option>
                         </select>
                       </div>
                     )}
@@ -6762,7 +6761,6 @@ function App() {
                       <option value="cercania">🟢 Cercanía Express</option>
                       <option value="media">🟡 Media Distancia Express</option>
                       <option value="lejania">🟠 Lejanía Express</option>
-                      <option value="gran_lejania">🔴 Gran Lejanía Express</option>
                     </select>
                   </div>
                 )}
@@ -18078,25 +18076,40 @@ function App() {
                     <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem' }}>
                       🛏️ Tarifas Configurar Dormity ({dormityTariffs.length})
                     </h3>
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-small"
-                      onClick={async () => {
-                        const name = prompt('Nombre del nuevo servicio Dormity:');
-                        if (!name || !name.trim()) return;
-                        const valStr = prompt('Precio en € (ej: 150):', '100');
-                        if (valStr === null) return;
-                        const val = Number(valStr) || 0;
-                        const newId = `DORMITY_CUSTOM_${Date.now()}`;
-                        const updated = [...dormityTariffs, { id: newId, name: name.trim(), block: 'Servicios Dormity', type: 'fixed', value: val }];
-                        await saveDormityTariffs(updated);
-                        setDormityTariffs(updated);
-                        triggerAlert('Servicio Dormity añadido');
-                      }}
-                      style={{ width: 'auto', padding: '6px 14px' }}
-                    >
-                      <Plus size={14} /> Añadir Tarifa Dormity
-                    </button>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-success btn-small"
+                        onClick={async () => {
+                          const cleaned = dormityTariffs.map(item => ({ ...item, value: Number(item.value) || 0 }));
+                          await saveDormityTariffs(cleaned);
+                          setDormityTariffs(cleaned);
+                          triggerAlert('¡Todas las tarifas de Dormity han sido guardadas con éxito!');
+                        }}
+                        style={{ width: 'auto', padding: '6px 14px' }}
+                      >
+                        💾 Guardar Precios
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-small"
+                        onClick={async () => {
+                          const name = prompt('Nombre del nuevo servicio Dormity:');
+                          if (!name || !name.trim()) return;
+                          const valStr = prompt('Precio en € (ej: 150):', '100');
+                          if (valStr === null) return;
+                          const val = Number(valStr) || 0;
+                          const newId = `DORMITY_CUSTOM_${Date.now()}`;
+                          const updated = [...dormityTariffs, { id: newId, name: name.trim(), block: 'Servicios Dormity', type: 'fixed', value: val }];
+                          await saveDormityTariffs(updated);
+                          setDormityTariffs(updated);
+                          triggerAlert('Servicio Dormity añadido');
+                        }}
+                        style={{ width: 'auto', padding: '6px 14px' }}
+                      >
+                        <Plus size={14} /> Añadir Tarifa Dormity
+                      </button>
+                    </div>
                   </div>
 
                   <div style={{ overflowX: 'auto', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--panel-border)', borderRadius: '10px' }}>
@@ -18153,17 +18166,20 @@ function App() {
                                 type="number"
                                 step="0.01"
                                 className="form-input"
-                                value={t.value}
+                                value={t.value === undefined || t.value === null ? '' : t.value}
                                 onChange={(e) => {
-                                  const newVal = parseFloat(e.target.value) || 0;
+                                  const rawVal = e.target.value;
+                                  const newVal = rawVal === '' ? '' : rawVal;
                                   const next = dormityTariffs.map(item => item.id === t.id ? { ...item, value: newVal } : item);
                                   setDormityTariffs(next);
                                 }}
                                 onBlur={async () => {
-                                  await saveDormityTariffs(dormityTariffs);
-                                  triggerAlert('Precio guardado');
+                                  const cleaned = dormityTariffs.map(item => item.id === t.id ? { ...item, value: Number(item.value) || 0 } : item);
+                                  setDormityTariffs(cleaned);
+                                  await saveDormityTariffs(cleaned);
+                                  triggerAlert(`Precio de ${t.name} guardado: ${Number(t.value) || 0} €`);
                                 }}
-                                style={{ width: '110px', padding: '4px 8px', fontSize: '0.85rem', height: '32px', fontWeight: 'bold', color: 'var(--primary)' }}
+                                style={{ width: '120px', padding: '4px 8px', fontSize: '0.88rem', height: '34px', fontWeight: 'bold', color: 'var(--primary)', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--panel-border)' }}
                               />
                             </td>
                             <td style={{ padding: '10px 16px', textAlign: 'right' }}>
