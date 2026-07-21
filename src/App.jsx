@@ -15086,7 +15086,6 @@ function App() {
           });
 
           const recordedKms = existingShift ? getRouteKms(furgoId, reportDate) : 0;
-          const kmsTotal = recordedKms * kmPrice;
 
           allRows.push(['', '', 'TOTAL FURGONETA:', furgoTotalQty, '', furgoTotal.toFixed(2) + ' €']);
           if (recordedKms > 0) {
