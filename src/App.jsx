@@ -7100,8 +7100,6 @@ function App() {
                       <>
                         <option value="cuelgue">📺 Cuelgue TV / Instalación Cuelgue (Morado)</option>
                         <option value="puesta_marcha">⚙️ Puesta en Marcha (Rosa / Naranja)</option>
-                        <option value="preferencial">⭐ Servicio Preferencial (Naranja)</option>
-                        <option value="vip">👑 Servicio VIP (Rosa / Magenta)</option>
                       </>
                     ) : (
                       <>
