@@ -800,24 +800,24 @@ export function initDB() {
   let currentDormity = [];
   try {
     currentDormity = (JSON.parse(localStorage.getItem('delivery_dormity_tariffs')) || [])
-      .filter(t => t && !t.id.includes('GRAN_LEJANIA') && t.id !== 'DORMITY_TOLEDO_EXTRA');
+      .filter(t => t && t.id && !t.id.includes('GRAN_LEJANIA') && t.id !== 'DORMITY_TOLEDO_EXTRA' && !t.id.startsWith('DORMITY_TOLEDO_EXTRA'));
   } catch (e) {}
 
   if (!currentDormity || currentDormity.length === 0) {
     localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(DEFAULT_DORMITY_TARIFFS));
   } else {
-    let updatedDormity = [...currentDormity];
-    let added = false;
-    updatedDormity = updatedDormity.map(t => {
-      if (t && t.id && t.id.includes('SERVDIA_EXPRESS') && t.name === 'Tienda Express') {
+    let updatedDormity = currentDormity.map(t => {
+      if (t && t.id && (t.id === 'DORMITY_SERVDIA_EXPRESS' || t.id.startsWith('DORMITY_SERVDIA_EXPRESS_'))) {
         return { ...t, name: 'Tienda' };
+      }
+      if (t && t.id && (t.id === 'DORMITY_TOLEDO' || t.id.startsWith('DORMITY_TOLEDO_'))) {
+        return { ...t, name: 'Ruta Toledo' };
       }
       return t;
     });
     DEFAULT_DORMITY_TARIFFS.forEach(defItem => {
       if (!updatedDormity.some(t => t.id === defItem.id || (t.id && t.id.startsWith(defItem.id)))) {
         updatedDormity.push(defItem);
-        added = true;
       }
     });
     localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(updatedDormity));
@@ -1392,6 +1392,16 @@ export function getDormityTariffs() {
   initDB();
   const rawTariffs = JSON.parse(localStorage.getItem('delivery_dormity_tariffs')) || DEFAULT_DORMITY_TARIFFS;
   
+  const sanitizedRaw = (rawTariffs || []).filter(t => t && t.id && !t.id.includes('GRAN_LEJANIA') && t.id !== 'DORMITY_TOLEDO_EXTRA' && !t.id.startsWith('DORMITY_TOLEDO_EXTRA')).map(t => {
+    if (t.id === 'DORMITY_TOLEDO' || t.id.startsWith('DORMITY_TOLEDO_')) {
+      return { ...t, name: 'Ruta Toledo' };
+    }
+    if (t.id === 'DORMITY_SERVDIA_EXPRESS' || t.id.startsWith('DORMITY_SERVDIA_EXPRESS_')) {
+      return { ...t, name: 'Tienda' };
+    }
+    return t;
+  });
+
   let targetAdminId = 'admin';
   let isSuperAdmin = false;
   try {
@@ -1411,13 +1421,13 @@ export function getDormityTariffs() {
   } catch (e) {}
   
   if (isSuperAdmin) {
-    return rawTariffs;
+    return sanitizedRaw.length > 0 ? sanitizedRaw : DEFAULT_DORMITY_TARIFFS;
   }
   
   const adminSuffix = `_${targetAdminId}`;
   const tariffMap = {};
   
-  rawTariffs.forEach(t => {
+  sanitizedRaw.forEach(t => {
     if (t && (t.createdBy === targetAdminId || (t.id && t.id.endsWith(adminSuffix)))) {
       let baseId = t.id;
       if (t.id.endsWith(adminSuffix)) {
@@ -1431,7 +1441,7 @@ export function getDormityTariffs() {
     }
   });
   
-  rawTariffs.forEach(t => {
+  sanitizedRaw.forEach(t => {
     if (t && !t.createdBy && !(t.id && t.id.endsWith(adminSuffix))) {
       if (!tariffMap[t.id]) {
         tariffMap[t.id] = t;
