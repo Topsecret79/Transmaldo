@@ -729,6 +729,20 @@ const DEFAULT_TARIFFS = [
   { id: 'MCAD', name: 'Micro Cadena', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 }
 ];
 
+export const DEFAULT_DORMITY_TARIFFS = [
+  { id: 'DORMITY_TIENDAS', name: 'Tiendas Estándar', block: 'Tiendas', type: 'fixed', value: 209.00, provider: 'dormity' },
+  { id: 'DORMITY_EXPRESS', name: 'Servicio Express', block: 'Express', type: 'fixed', value: 150.00, provider: 'dormity' },
+  { id: 'DORMITY_MADRID', name: 'Tiendas Madrid (hasta 8 pedidos)', block: 'Rutas Especiales', type: 'fixed', value: 700.00, provider: 'dormity' },
+  { id: 'DORMITY_MADRID_EXTRA', name: 'Pedido Adicional Madrid (>8 peds)', block: 'Rutas Especiales', type: 'fixed', value: 70.00, provider: 'dormity' },
+  { id: 'DORMITY_TOLEDO', name: 'Tiendas Toledo', block: 'Rutas Especiales', type: 'fixed', value: 700.00, provider: 'dormity' },
+  { id: 'DORMITY_CERCANIA_STD', name: 'Cercanía 0-50 km (Estándar)', block: 'Distancias', type: 'fixed', value: 230.00, provider: 'dormity', minKm: 0, maxKm: 50 },
+  { id: 'DORMITY_CERCANIA_EXP', name: 'Cercanía 0-50 km (Express)', block: 'Distancias', type: 'fixed', value: 150.00, provider: 'dormity', minKm: 0, maxKm: 50 },
+  { id: 'DORMITY_MEDIA_STD', name: 'Media Distancia 50-100 km (Estándar)', block: 'Distancias', type: 'fixed', value: 280.00, provider: 'dormity', minKm: 50, maxKm: 100 },
+  { id: 'DORMITY_MEDIA_EXP', name: 'Media Distancia 50-100 km (Express)', block: 'Distancias', type: 'fixed', value: 180.00, provider: 'dormity', minKm: 50, maxKm: 100 },
+  { id: 'DORMITY_LEJANIA_STD', name: 'Lejanía >100 km (Estándar)', block: 'Distancias', type: 'fixed', value: 340.00, provider: 'dormity', minKm: 100, maxKm: 9999 },
+  { id: 'DORMITY_LEJANIA_EXP', name: 'Lejanía >100 km (Express)', block: 'Distancias', type: 'fixed', value: 220.00, provider: 'dormity', minKm: 100, maxKm: 9999 }
+];
+
 export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74, 75, 77, 83, 85, 98, 100, 115];
 
 // Inicialización de la base de datos
@@ -758,6 +772,9 @@ export function initDB() {
   }
   if (!localStorage.getItem('delivery_tariffs')) {
     localStorage.setItem('delivery_tariffs', JSON.stringify(DEFAULT_TARIFFS));
+  }
+  if (!localStorage.getItem('delivery_dormity_tariffs')) {
+    localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(DEFAULT_DORMITY_TARIFFS));
   } else {
     // Migration to split Delivery and Pickup under Paquetería and add Soundbar items
     try {
@@ -1304,6 +1321,148 @@ export async function saveTickets(tickets) {
   }
 }
 
+export function getDormityTariffs() {
+  initDB();
+  const rawTariffs = JSON.parse(localStorage.getItem('delivery_dormity_tariffs')) || DEFAULT_DORMITY_TARIFFS;
+  
+  let targetAdminId = 'admin';
+  let isSuperAdmin = false;
+  try {
+    const savedUser = localStorage.getItem('delivery_session');
+    if (savedUser) {
+      const u = JSON.parse(savedUser);
+      if (u) {
+        if (u.role === 'admin') {
+          targetAdminId = u.id;
+        } else if (u.role === 'repartidor') {
+          targetAdminId = u.createdBy || 'admin';
+        } else if (u.role === 'superadmin') {
+          isSuperAdmin = true;
+        }
+      }
+    }
+  } catch (e) {}
+  
+  if (isSuperAdmin) {
+    return rawTariffs;
+  }
+  
+  const adminSuffix = `_${targetAdminId}`;
+  const tariffMap = {};
+  
+  rawTariffs.forEach(t => {
+    if (t && (t.createdBy === targetAdminId || (t.id && t.id.endsWith(adminSuffix)))) {
+      let baseId = t.id;
+      if (t.id.endsWith(adminSuffix)) {
+        baseId = t.id.slice(0, -adminSuffix.length);
+      }
+      tariffMap[baseId] = {
+        ...t,
+        id: baseId,
+        createdBy: targetAdminId
+      };
+    }
+  });
+  
+  rawTariffs.forEach(t => {
+    if (t && !t.createdBy && !(t.id && t.id.endsWith(adminSuffix))) {
+      if (!tariffMap[t.id]) {
+        tariffMap[t.id] = t;
+      }
+    }
+  });
+  
+  return Object.values(tariffMap);
+}
+
+export async function saveDormityTariffs(tariffs) {
+  isSaving = true;
+  try {
+    let activeAdminId = null;
+    let isSuperAdmin = false;
+    try {
+      const savedUser = localStorage.getItem('delivery_session');
+      if (savedUser) {
+        const u = JSON.parse(savedUser);
+        if (u) {
+          if (u.role === 'admin') activeAdminId = u.id;
+          else if (u.role === 'repartidor') activeAdminId = u.createdBy || 'admin';
+          else if (u.role === 'superadmin') isSuperAdmin = true;
+        }
+      }
+    } catch (e) {}
+
+    const formatted = tariffs.map(t => {
+      let finalId = t.id;
+      let createdBy = t.createdBy || activeAdminId;
+      if (!isSuperAdmin && activeAdminId && !t.id.endsWith(`_${activeAdminId}`)) {
+        finalId = `${t.id}_${activeAdminId}`;
+      }
+      return {
+        ...t,
+        id: finalId,
+        createdBy: createdBy || 'admin'
+      };
+    });
+
+    const existingRaw = JSON.parse(localStorage.getItem('delivery_dormity_tariffs')) || DEFAULT_DORMITY_TARIFFS;
+    const mergedMap = {};
+    existingRaw.forEach(t => { if (t && t.id) mergedMap[t.id] = t; });
+    formatted.forEach(t => { if (t && t.id) mergedMap[t.id] = t; });
+
+    const mergedList = Object.values(mergedMap);
+    localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(mergedList));
+    
+    if (supabase) {
+      const dbFormatted = formatted.map(t => ({
+        id: t.id,
+        name: t.name,
+        block: t.block || 'General',
+        type: t.type || 'fixed',
+        value: Number(t.value) || 0,
+        provider: 'dormity',
+        createdBy: t.createdBy || 'admin'
+      }));
+      const { error } = await supabase.from('delivery_tariffs').upsert(dbFormatted);
+      if (error) console.error("Error saving dormity tariffs to Supabase:", error);
+    }
+  } catch (err) {
+    console.error("Error in saveDormityTariffs:", err);
+  } finally {
+    setTimeout(() => { isSaving = false; }, 1500);
+  }
+}
+
+export function calculateDormityTaskPrice(tariffId, distanceKm = 0, extraOrders = 0, dormityTariffs = null) {
+  const tariffs = dormityTariffs || getDormityTariffs();
+  const tariff = tariffs.find(t => t.id === tariffId || t.id.startsWith(tariffId + '_'));
+  if (!tariff) return 0;
+
+  if (tariffId === 'DORMITY_MADRID') {
+    const basePrice = Number(tariff.value) || 700;
+    const extraCount = Math.max(0, extraOrders);
+    const extraTariff = tariffs.find(t => t.id === 'DORMITY_MADRID_EXTRA' || t.id.startsWith('DORMITY_MADRID_EXTRA_'));
+    const extraUnitPrice = extraTariff ? Number(extraTariff.value) : 70;
+    return basePrice + (extraCount * extraUnitPrice);
+  }
+
+  return Number(tariff.value) || 0;
+}
+
+export function getUserAllowedProviders(user) {
+  if (!user) return ['eci', 'dormity'];
+  if (user.allowedProviders && Array.isArray(user.allowedProviders) && user.allowedProviders.length > 0) {
+    return user.allowedProviders;
+  }
+  if (user.role === 'repartidor' && user.createdBy) {
+    const creator = getUsers().find(u => u.id === user.createdBy);
+    if (creator && creator.allowedProviders && Array.isArray(creator.allowedProviders) && creator.allowedProviders.length > 0) {
+      return creator.allowedProviders;
+    }
+  }
+  return ['eci', 'dormity'];
+}
+
 // Calcular precio de una tarifa individual
 export function calculateTaskPrice(tariffId, tariffs = null, modulePrice = null) {
   const activeTariffs = tariffs || getTariffs();
@@ -1338,27 +1497,40 @@ export function calculateTaskPrice(tariffId, tariffs = null, modulePrice = null)
 export function addTicket(ticketData) {
   const tickets = getTickets();
   const tariffs = getTariffs();
+  const dormityTariffs = getDormityTariffs();
   const modulePrice = getModulePrice();
 
   let totalCalculado = 0;
   const detailedTasks = ticketData.tasks.map(task => {
-    const catalogTariff = tariffs.find(t => t.id === task.tariffId);
-    const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_') && !catalogTariff;
-    const basePrice = isCustom 
-      ? (task.price || task.unitPrice || 0) 
-      : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+    let basePrice = 0;
+    let name = task.name;
+
+    if (task.tariffId && task.tariffId.startsWith('DORMITY_')) {
+      const dormityT = dormityTariffs.find(t => t.id === task.tariffId || t.id.startsWith(task.tariffId + '_'));
+      basePrice = calculateDormityTaskPrice(task.tariffId, task.distanceKm || 0, task.extraOrders || 0, dormityTariffs);
+      if (task.unitPrice !== undefined && task.unitPrice !== null && task.unitPrice > 0) {
+        basePrice = task.unitPrice;
+      }
+      name = dormityT ? dormityT.name : (task.name || 'Servicio Dormity');
+    } else {
+      const catalogTariff = tariffs.find(t => t.id === task.tariffId);
+      const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_') && !catalogTariff;
+      basePrice = isCustom 
+        ? (task.price || task.unitPrice || 0) 
+        : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+      const tariff = tariffs.find(t => t.id === task.tariffId);
+      name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
+      if (task.brand && task.inches) {
+        const isComb = task.tariffId.includes('COMB') || task.action === 'combinado';
+        const isRec = task.action === 'recogida';
+        const typeStr = isComb ? 'Ent+Rec' : (isRec ? 'Recogida' : (task.tariffId.includes('ENT') ? 'Entrega' : ''));
+        name = `${task.brand} ${task.inches}" (${typeStr || name})`;
+      }
+    }
+
     const price = task.noCharge ? 0 : basePrice;
     const subtotal = price * task.quantity;
     totalCalculado += subtotal;
-    const tariff = tariffs.find(t => t.id === task.tariffId);
-
-    let name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
-    if (task.brand && task.inches) {
-      const isComb = task.tariffId.includes('COMB') || task.action === 'combinado';
-      const isRec = task.action === 'recogida';
-      const typeStr = isComb ? 'Ent+Rec' : (isRec ? 'Recogida' : (task.tariffId.includes('ENT') ? 'Entrega' : ''));
-      name = `${task.brand} ${task.inches}" (${typeStr || name})`;
-    }
 
     return {
       tariffId: task.tariffId,
@@ -1369,13 +1541,17 @@ export function addTicket(ticketData) {
       brand: task.brand || null,
       inches: task.inches || null,
       action: task.action || null,
-      noCharge: !!task.noCharge
+      noCharge: !!task.noCharge,
+      distanceKm: task.distanceKm || null,
+      extraOrders: task.extraOrders || null
     };
   });
 
   const users = getUsers();
   const activeShift = (JSON.parse(localStorage.getItem('delivery_shifts')) || [])
     .find(s => s.furgoId === ticketData.furgoId && s.date === (ticketData.date || new Date().toISOString().split('T')[0]));
+
+  const inferredProvider = ticketData.provider || (ticketData.tasks && ticketData.tasks.some(t => t.tariffId && t.tariffId.startsWith('DORMITY_')) ? 'dormity' : 'eci');
 
   const newTicket = {
     id: Date.now().toString(),
@@ -1389,6 +1565,7 @@ export function addTicket(ticketData) {
     postcode: ticketData.postcode || '',
     notes: ticketData.notes || '',
     codAmount: ticketData.codAmount || 0,
+    provider: inferredProvider,
     tasks: detailedTasks,
     totalPrice: totalCalculado,
     status: ticketData.status || 'pending',
@@ -1409,27 +1586,40 @@ export function addTicket(ticketData) {
 export function updateTicket(updatedTicket) {
   const tickets = getTickets();
   const tariffs = getTariffs();
+  const dormityTariffs = getDormityTariffs();
   const modulePrice = getModulePrice();
 
   let totalCalculado = 0;
   const detailedTasks = updatedTicket.tasks.map(task => {
-    const catalogTariff = tariffs.find(t => t.id === task.tariffId);
-    const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_') && !catalogTariff;
-    const basePrice = isCustom 
-      ? (task.price || task.unitPrice || 0) 
-      : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+    let basePrice = 0;
+    let name = task.name;
+
+    if (task.tariffId && task.tariffId.startsWith('DORMITY_')) {
+      const dormityT = dormityTariffs.find(t => t.id === task.tariffId || t.id.startsWith(task.tariffId + '_'));
+      basePrice = calculateDormityTaskPrice(task.tariffId, task.distanceKm || 0, task.extraOrders || 0, dormityTariffs);
+      if (task.unitPrice !== undefined && task.unitPrice !== null && task.unitPrice > 0) {
+        basePrice = task.unitPrice;
+      }
+      name = dormityT ? dormityT.name : (task.name || 'Servicio Dormity');
+    } else {
+      const catalogTariff = tariffs.find(t => t.id === task.tariffId);
+      const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_') && !catalogTariff;
+      basePrice = isCustom 
+        ? (task.price || task.unitPrice || 0) 
+        : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+      const tariff = tariffs.find(t => t.id === task.tariffId);
+      name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
+      if (task.brand && task.inches) {
+        const isComb = task.tariffId.includes('COMB') || task.action === 'combinado';
+        const isRec = task.action === 'recogida';
+        const typeStr = isComb ? 'Ent+Rec' : (isRec ? 'Recogida' : (task.tariffId.includes('ENT') ? 'Entrega' : ''));
+        name = `${task.brand} ${task.inches}" (${typeStr || name})`;
+      }
+    }
+
     const price = task.noCharge ? 0 : basePrice;
     const subtotal = price * task.quantity;
     totalCalculado += subtotal;
-    const tariff = tariffs.find(t => t.id === task.tariffId);
-
-    let name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
-    if (task.brand && task.inches) {
-      const isComb = task.tariffId.includes('COMB') || task.action === 'combinado';
-      const isRec = task.action === 'recogida';
-      const typeStr = isComb ? 'Ent+Rec' : (isRec ? 'Recogida' : (task.tariffId.includes('ENT') ? 'Entrega' : ''));
-      name = `${task.brand} ${task.inches}" (${typeStr || name})`;
-    }
 
     return {
       tariffId: task.tariffId,
@@ -1440,7 +1630,9 @@ export function updateTicket(updatedTicket) {
       brand: task.brand || null,
       inches: task.inches || null,
       action: task.action || null,
-      noCharge: !!task.noCharge
+      noCharge: !!task.noCharge,
+      distanceKm: task.distanceKm || null,
+      extraOrders: task.extraOrders || null
     };
   });
 
@@ -1449,6 +1641,8 @@ export function updateTicket(updatedTicket) {
     const users = getUsers();
     const activeShift = (JSON.parse(localStorage.getItem('delivery_shifts')) || [])
       .find(s => s.furgoId === updatedTicket.furgoId && s.date === updatedTicket.date);
+
+    const inferredProvider = updatedTicket.provider || tickets[index].provider || (updatedTicket.tasks && updatedTicket.tasks.some(t => t.tariffId && t.tariffId.startsWith('DORMITY_')) ? 'dormity' : 'eci');
 
     tickets[index] = {
       ...tickets[index],
@@ -1462,6 +1656,7 @@ export function updateTicket(updatedTicket) {
       postcode: updatedTicket.postcode !== undefined ? updatedTicket.postcode : tickets[index].postcode || '',
       notes: updatedTicket.notes || '',
       codAmount: updatedTicket.codAmount || 0,
+      provider: inferredProvider,
       tasks: detailedTasks,
       totalPrice: totalCalculado,
       status: updatedTicket.status || tickets[index].status || 'pending',
@@ -1867,7 +2062,7 @@ export function resetMonthlyShifts() {
 }
 
 // Crear nuevo usuario dinámicamente
-export async function addUser(username, label, password, role = 'repartidor', createdBy = null, email = null, auth_uid = null) {
+export async function addUser(username, label, password, role = 'repartidor', createdBy = null, email = null, auth_uid = null, allowedProviders = ['eci', 'dormity']) {
   const users = getUsers();
   if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
     return { success: false, error: 'El usuario ya existe' };
@@ -1884,11 +2079,23 @@ export async function addUser(username, label, password, role = 'repartidor', cr
     createdBy,
     mustChangePassword: true,
     email: email || null,
-    auth_uid: auth_uid || null
+    auth_uid: auth_uid || null,
+    allowedProviders: allowedProviders && Array.isArray(allowedProviders) && allowedProviders.length > 0 ? allowedProviders : ['eci', 'dormity']
   };
   users.push(newUser);
   await saveUsers(users);
   return { success: true, user: newUser };
+}
+
+export async function updateUserAllowedProviders(userId, allowedProviders) {
+  const users = getUsers();
+  const index = users.findIndex(u => u.id === userId);
+  if (index !== -1) {
+    users[index].allowedProviders = allowedProviders && Array.isArray(allowedProviders) && allowedProviders.length > 0 ? allowedProviders : ['eci', 'dormity'];
+    await saveUsers(users);
+    return true;
+  }
+  return false;
 }
 
 // Inicializar tarifas de un administrador (copiar por defecto o a 0)

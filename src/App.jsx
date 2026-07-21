@@ -372,6 +372,12 @@ import {
   getShift,
   saveShiftRoute,
   addUser,
+  updateUserAllowedProviders,
+  getUserAllowedProviders,
+  getDormityTariffs,
+  saveDormityTariffs,
+  calculateDormityTaskPrice,
+  DEFAULT_DORMITY_TARIFFS,
   initializeAdminTariffs,
   deleteUser,
   getAppName,
@@ -722,6 +728,13 @@ function App() {
 
   const [tickets, setTickets] = useState([]);
   const [tariffs, setTariffs] = useState([]);
+  const [dormityTariffs, setDormityTariffs] = useState([]);
+  const [tariffSubTab, setTariffSubTab] = useState('eci');
+  const [selectedTicketProvider, setSelectedTicketProvider] = useState('eci');
+  const [dormityKmInput, setDormityKmInput] = useState('');
+  const [dormityExtraOrdersInput, setDormityExtraOrdersInput] = useState('0');
+  const [billingProviderFilter, setBillingProviderFilter] = useState('all');
+  const [newAllowedProviders, setNewAllowedProviders] = useState(['eci', 'dormity']);
   const [modulePrice, setModulePrice] = useState(3.81);
   const [kmPrice, setKmPrice] = useState(0.43);
   const [fuelPrice, setFuelPrice] = useState(1.65);
@@ -2155,6 +2168,7 @@ function App() {
       
       setTickets(finalTickets);
       setTariffs(finalTariffs);
+      setDormityTariffs(getDormityTariffs() || []);
       setUsers(finalUsers);
       setShifts(finalShifts);
 
@@ -3633,6 +3647,7 @@ function App() {
       postcode: postcode.trim(),
       notes: finalNotes,
       codAmount: parseFloat(codAmount) || 0,
+      provider: selectedTicketProvider || 'eci',
       tasks: tasksArray,
       routeName: routeName || undefined,
       createdBy: editingTicketId ? undefined : (currentUser?.id || 'admin')
@@ -14271,6 +14286,9 @@ function App() {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
       if (billingFilterFurgo !== 'all' && t.furgoId !== billingFilterFurgo) return false;
+      const isDorm = t.provider === 'dormity' || (t.tasks && t.tasks.some(k => k.tariffId && String(k.tariffId).startsWith('DORMITY_')));
+      if (billingProviderFilter === 'eci' && isDorm) return false;
+      if (billingProviderFilter === 'dormity' && !isDorm) return false;
       return true;
     });
 
@@ -14842,7 +14860,7 @@ function App() {
                       }
                     }
 
-                    const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id, emailVal, authUid);
+                    const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id, emailVal, authUid, newAllowedProviders);
                     if (res.success) {
                       if (roleToUse === 'admin') {
                         await initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
@@ -14854,6 +14872,7 @@ function App() {
                       setNewRole('repartidor');
                       setNewEmailState('');
                       setNewAdminPricingOption('copy_default');
+                      setNewAllowedProviders(['eci', 'dormity']);
                       loadData();
                     } else {
                       triggerAlert(res.error, 'error');
@@ -14870,6 +14889,47 @@ function App() {
                     <div className="input-group">
                       <span className="input-label">Contraseña / PIN</span>
                       <input type="text" className="form-input" placeholder="Ej. 4444" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+                    </div>
+                    <div className="input-group">
+                      <span className="input-label" style={{ fontWeight: '700' }}>📋 Proveedores Habilitados:</span>
+                      <div style={{ display: 'flex', gap: '15px', marginTop: '6px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={newAllowedProviders.includes('eci')} 
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewAllowedProviders([...newAllowedProviders, 'eci']);
+                              } else {
+                                if (newAllowedProviders.length <= 1) {
+                                  triggerAlert('Debe haber al menos un proveedor habilitado', 'warning');
+                                  return;
+                                }
+                                setNewAllowedProviders(newAllowedProviders.filter(p => p !== 'eci'));
+                              }
+                            }} 
+                          />
+                          📦 El Corte Inglés
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input 
+                            type="checkbox" 
+                            checked={newAllowedProviders.includes('dormity')} 
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewAllowedProviders([...newAllowedProviders, 'dormity']);
+                              } else {
+                                if (newAllowedProviders.length <= 1) {
+                                  triggerAlert('Debe haber al menos un proveedor habilitado', 'warning');
+                                  return;
+                                }
+                                setNewAllowedProviders(newAllowedProviders.filter(p => p !== 'dormity'));
+                              }
+                            }} 
+                          />
+                          🛏️ Dormity
+                        </label>
+                      </div>
                     </div>
                     {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && (
                       <div className="input-group">
@@ -15031,6 +15091,68 @@ function App() {
                               />
                             </div>
                           </div>
+
+                          {/* Control de Proveedores Habilitados */}
+                          {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && (
+                            <div style={{
+                              background: 'rgba(255,255,255,0.015)',
+                              border: '1px solid rgba(255,255,255,0.05)',
+                              borderRadius: '6px',
+                              padding: '6px 10px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              flexWrap: 'wrap',
+                              gap: '6px'
+                            }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                                🏬 Proveedores Habilitados:
+                              </span>
+                              <div style={{ display: 'flex', gap: '12px' }}>
+                                {(() => {
+                                  const allowed = getUserAllowedProviders(u);
+                                  return (
+                                    <>
+                                      <label style={{ fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}>
+                                        <input 
+                                          type="checkbox"
+                                          checked={allowed.includes('eci')}
+                                          onChange={async (e) => {
+                                            let next = e.target.checked ? [...allowed, 'eci'] : allowed.filter(p => p !== 'eci');
+                                            if (next.length === 0) {
+                                              triggerAlert('Debe tener al menos un proveedor habilitado', 'warning');
+                                              return;
+                                            }
+                                            await updateUserAllowedProviders(u.id, next);
+                                            triggerAlert(`Proveedores actualizados para ${u.label}`);
+                                            loadData();
+                                          }}
+                                        />
+                                        📦 Corte Inglés
+                                      </label>
+                                      <label style={{ fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}>
+                                        <input 
+                                          type="checkbox"
+                                          checked={allowed.includes('dormity')}
+                                          onChange={async (e) => {
+                                            let next = e.target.checked ? [...allowed, 'dormity'] : allowed.filter(p => p !== 'dormity');
+                                            if (next.length === 0) {
+                                              triggerAlert('Debe tener al menos un proveedor habilitado', 'warning');
+                                              return;
+                                            }
+                                            await updateUserAllowedProviders(u.id, next);
+                                            triggerAlert(`Proveedores actualizados para ${u.label}`);
+                                            loadData();
+                                          }}
+                                        />
+                                        🛏️ Dormity
+                                      </label>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          )}
 
                           {currentUser.role === 'superadmin' && u.role === 'admin' && u.id !== 'admin' && (
                             <div style={{
@@ -15581,7 +15703,20 @@ function App() {
                     ))}
                   </select>
                 </div>
-                {(adminStartDate || adminEndDate || billingFilterFurgo !== 'all') && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Proveedor:</span>
+                  <select 
+                    className="form-input" 
+                    style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto', minWidth: '160px', height: '36px' }}
+                    value={billingProviderFilter} 
+                    onChange={(e) => setBillingProviderFilter(e.target.value)}
+                  >
+                    <option value="all">🏬 Todos los Proveedores</option>
+                    <option value="eci">📦 El Corte Inglés</option>
+                    <option value="dormity">🛏️ Dormity</option>
+                  </select>
+                </div>
+                {(adminStartDate || adminEndDate || billingFilterFurgo !== 'all' || billingProviderFilter !== 'all') && (
                   <button 
                     type="button" 
                     className="btn btn-secondary btn-small" 
@@ -15590,6 +15725,7 @@ function App() {
                       setAdminStartDate('');
                       setAdminEndDate('');
                       setBillingFilterFurgo('all');
+                      setBillingProviderFilter('all');
                     }}
                   >
                     Mostrar Todo
@@ -16651,7 +16787,118 @@ function App() {
         {activeTab === 'tariffs' && (
           <div className="glass-panel" style={{ textAlign: 'left' }}>
             <h2>Catálogo de Tarifas y Precios</h2>
-            <p style={{ marginBottom: '20px' }}>Edita los valores del sistema o añade nuevos artículos. Al cambiarlos, todas las ganancias del mes se recalculan automáticamente.</p>
+            <p style={{ marginBottom: '15px' }}>Edita los valores del sistema o añade nuevos artículos. Al cambiarlos, todas las ganancias del mes se recalculan automáticamente.</p>
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
+              <button 
+                type="button" 
+                className={`tab-btn ${tariffSubTab === 'eci' ? 'active' : ''}`}
+                onClick={() => setTariffSubTab('eci')}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
+              >
+                📦 Precios El Corte Inglés
+              </button>
+              <button 
+                type="button" 
+                className={`tab-btn ${tariffSubTab === 'dormity' ? 'active' : ''}`}
+                onClick={() => setTariffSubTab('dormity')}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
+              >
+                🛏️ Precios Dormity
+              </button>
+            </div>
+
+            {tariffSubTab === 'dormity' && (
+              <div style={{ animation: 'fadeIn 0.2s ease' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem' }}>
+                    🛏️ Tarifas Configurar Dormity ({dormityTariffs.length})
+                  </h3>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-small"
+                    onClick={async () => {
+                      const name = prompt('Nombre del nuevo servicio Dormity:');
+                      if (!name || !name.trim()) return;
+                      const valStr = prompt('Precio en € (ej: 150):', '100');
+                      if (valStr === null) return;
+                      const val = Number(valStr) || 0;
+                      const newId = `DORMITY_CUSTOM_${Date.now()}`;
+                      const updated = [...dormityTariffs, { id: newId, name: name.trim(), block: 'Servicios Dormity', type: 'fixed', value: val }];
+                      await saveDormityTariffs(updated);
+                      setDormityTariffs(updated);
+                      triggerAlert('Servicio Dormity añadido');
+                    }}
+                    style={{ width: 'auto', padding: '6px 14px' }}
+                  >
+                    <Plus size={14} /> Añadir Tarifa Dormity
+                  </button>
+                </div>
+
+                <div style={{ overflowX: 'auto', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--panel-border)', borderRadius: '10px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(255,255,255,0.04)', textAlign: 'left', borderBottom: '1px solid var(--panel-border)' }}>
+                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Código</th>
+                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Servicio / Descripción</th>
+                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Bloque</th>
+                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Precio (€)</th>
+                        <th style={{ padding: '12px 16px', fontSize: '0.85rem', textAlign: 'right' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dormityTariffs.map(t => (
+                        <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.id}</td>
+                          <td style={{ padding: '10px 16px', fontWeight: '600', fontSize: '0.9rem' }}>{t.name}</td>
+                          <td style={{ padding: '10px 16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.block || 'General'}</td>
+                          <td style={{ padding: '10px 16px' }}>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="form-input"
+                              value={t.value}
+                              onChange={(e) => {
+                                const newVal = parseFloat(e.target.value) || 0;
+                                const next = dormityTariffs.map(item => item.id === t.id ? { ...item, value: newVal } : item);
+                                setDormityTariffs(next);
+                              }}
+                              onBlur={async () => {
+                                await saveDormityTariffs(dormityTariffs);
+                                triggerAlert('Tarifa Dormity guardada');
+                              }}
+                              style={{ width: '110px', padding: '4px 8px', fontSize: '0.85rem', height: '30px' }}
+                            />
+                          </td>
+                          <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+                            {t.id.startsWith('DORMITY_CUSTOM_') && (
+                              <button
+                                type="button"
+                                className="btn btn-danger btn-small"
+                                onClick={async () => {
+                                  if (confirm(`¿Eliminar ${t.name}?`)) {
+                                    const next = dormityTariffs.filter(item => item.id !== t.id);
+                                    await saveDormityTariffs(next);
+                                    setDormityTariffs(next);
+                                    triggerAlert('Tarifa eliminada');
+                                  }
+                                }}
+                                style={{ width: 'auto', padding: '4px 8px', margin: 0 }}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {tariffSubTab === 'eci' && (
+              <>
 
             {currentUser?.role === 'superadmin' && (
               <div className="input-group" style={{ marginBottom: '25px', maxWidth: '350px' }}>
@@ -17055,6 +17302,8 @@ function App() {
                 </div>
               </div>
             </div>
+            </>
+            )}
           </div>
         )}
 
