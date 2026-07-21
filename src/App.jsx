@@ -3855,6 +3855,15 @@ function App() {
     }
 
     // Datos del ticket estructurados
+    const allowedProvidersSubmit = getUserAllowedProviders(loggedInUserObj || currentUser);
+    const canECISubmit = allowedProvidersSubmit.includes('eci') || currentUser?.role === 'superadmin';
+    const canDormitySubmit = allowedProvidersSubmit.includes('dormity') || currentUser?.role === 'superadmin';
+    const effectiveTicketProviderSubmit = (canECISubmit && !canDormitySubmit) 
+      ? 'eci' 
+      : (canDormitySubmit && !canECISubmit) 
+        ? 'dormity' 
+        : selectedTicketProvider;
+
     const ticketData = {
       id: editingTicketId || undefined,
       furgoId: assignedFurgoId,
@@ -3865,8 +3874,8 @@ function App() {
       postcode: postcode.trim(),
       notes: finalNotes,
       codAmount: parseFloat(codAmount) || 0,
-      provider: selectedTicketProvider || 'eci',
-      dormityRouteType: selectedTicketProvider === 'dormity' ? dormityRouteType : undefined,
+      provider: effectiveTicketProviderSubmit || 'eci',
+      dormityRouteType: effectiveTicketProviderSubmit === 'dormity' ? dormityRouteType : undefined,
       tasks: tasksArray,
       routeName: routeName || undefined,
       createdBy: editingTicketId ? undefined : (currentUser?.id || 'admin')
@@ -6300,6 +6309,15 @@ function App() {
       ? activeRoutes.filter(r => r.furgoId === currentUser.id)
       : activeRoutes;
 
+    const allowedTicketProviders = getUserAllowedProviders(loggedInUserObj || currentUser);
+    const canECITicket = allowedTicketProviders.includes('eci') || currentUser?.role === 'superadmin';
+    const canDormityTicket = allowedTicketProviders.includes('dormity') || currentUser?.role === 'superadmin';
+    const effectiveTicketProvider = (canECITicket && !canDormityTicket)
+      ? 'eci'
+      : (canDormityTicket && !canECITicket)
+        ? 'dormity'
+        : selectedTicketProvider;
+
     if (!activeRouteContext && !editingTicketId) {
       return renderCreateRouteForm();
     }
@@ -6454,7 +6472,7 @@ function App() {
             </div>
 
             {/* Selector de Modalidad de Servicio Dormity a nivel de Turno/Jornada */}
-            {selectedTicketProvider === 'dormity' && (
+            {effectiveTicketProvider === 'dormity' && (
               <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '14px 18px', borderRadius: '12px', marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <div>
@@ -6686,18 +6704,14 @@ function App() {
 
             {/* Selector de Proveedor (si el usuario tiene permitidos ambos o es superadmin) */}
             {(() => {
-              const allowed = getUserAllowedProviders(currentUser);
-              const canECI = allowed.includes('eci') || currentUser?.role === 'superadmin';
-              const canDormity = allowed.includes('dormity') || currentUser?.role === 'superadmin';
-
-              if (canECI && canDormity) {
+              if (canECITicket && canDormityTicket) {
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--panel-border)', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--primary)' }}>🏬 Cliente / Proveedor:</span>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button
                         type="button"
-                        className={`btn ${selectedTicketProvider === 'eci' ? 'btn-primary' : 'btn-secondary'}`}
+                        className={`btn ${effectiveTicketProvider === 'eci' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setSelectedTicketProvider('eci')}
                         style={{ padding: '6px 12px', fontSize: '0.8rem', margin: 0, width: 'auto' }}
                       >
@@ -6705,7 +6719,7 @@ function App() {
                       </button>
                       <button
                         type="button"
-                        className={`btn ${selectedTicketProvider === 'dormity' ? 'btn-primary' : 'btn-secondary'}`}
+                        className={`btn ${effectiveTicketProvider === 'dormity' ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={() => setSelectedTicketProvider('dormity')}
                         style={{ padding: '6px 12px', fontSize: '0.8rem', margin: 0, width: 'auto' }}
                       >
@@ -6718,7 +6732,7 @@ function App() {
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-                    🏬 Proveedor: {canDormity ? '🛏️ Dormity' : '📦 El Corte Inglés'}
+                    🏬 Proveedor: {effectiveTicketProvider === 'dormity' ? '🛏️ Dormity' : '📦 El Corte Inglés'}
                   </span>
                 </div>
               );
@@ -7118,7 +7132,7 @@ function App() {
                     }}
                   >
                     <option value="estandar">📦 Servicio Estándar (Azul / Amarillo)</option>
-                    {selectedTicketProvider === 'eci' ? (
+                    {effectiveTicketProvider === 'eci' ? (
                       <>
                         <option value="cuelgue">📺 Cuelgue TV / Instalación Cuelgue (Morado)</option>
                         <option value="puesta_marcha">⚙️ Puesta en Marcha (Rosa / Naranja)</option>
@@ -7177,7 +7191,7 @@ function App() {
 
         {/* PASO 2: ARTÍCULOS Y SERVICIOS */}
         {formStep === 2 && (() => {
-          if (selectedTicketProvider === 'dormity') {
+          if (effectiveTicketProvider === 'dormity') {
             const activeDormityItems = [...DEFAULT_DORMITY_CATALOG, ...customDormityItems];
             const isChofer = currentUser?.role === 'repartidor';
 
