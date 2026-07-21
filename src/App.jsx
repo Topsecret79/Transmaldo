@@ -762,6 +762,7 @@ function App() {
   const [tariffSubTab, setTariffSubTab] = useState('eci');
   const [selectedTicketProvider, setSelectedTicketProvider] = useState('eci');
   const [dormityRouteType, setDormityRouteType] = useState(() => getDraftVal('dormityRouteType', 'madrid'));
+  const [defaultNavigator, setDefaultNavigator] = useState(() => localStorage.getItem('delivery_default_navigator') || 'ask');
   const [dormityKmInput, setDormityKmInput] = useState('');
   const [dormityExtraOrdersInput, setDormityExtraOrdersInput] = useState('0');
   const [billingProviderFilter, setBillingProviderFilter] = useState('all');
