@@ -629,6 +629,20 @@ function processVoiceAddress(text) {
   return result;
 }
 
+const DEFAULT_DORMITY_CATALOG = [
+  { id: 'DORMITY_COLCHON', name: 'Colchón / Colchoneta', block: 'Entregas', value: 25 },
+  { id: 'DORMITY_CANAPE', name: 'Canapé Abatible / Tapizado', block: 'Entregas', value: 45 },
+  { id: 'DORMITY_TAPI', name: 'Base Tapizada / Tapi', block: 'Entregas', value: 30 },
+  { id: 'DORMITY_SOMIER', name: 'Somier / Cama Articulada', block: 'Entregas', value: 35 },
+  { id: 'DORMITY_CABECERO', name: 'Cabecero / Respaldo', block: 'Entregas', value: 20 },
+  { id: 'DORMITY_PATAS', name: 'Juego de Patas (4/6 patas)', block: 'Entregas', value: 10 },
+  { id: 'DORMITY_ALMOHADA', name: 'Almohada / Ropa de Cama / Textil', block: 'Entregas', value: 10 },
+  { id: 'DORMITY_REC_COLCHON', name: 'Recogida Colchón Usado', block: 'Recogidas', value: 15 },
+  { id: 'DORMITY_REC_CANAPE', name: 'Recogida Canapé Usado', block: 'Recogidas', value: 30 },
+  { id: 'DORMITY_REC_BASE', name: 'Recogida Base / Somier Usado', block: 'Recogidas', value: 20 },
+  { id: 'DORMITY_REC_RESTOS', name: 'Recogida Restos / Mueble Usado', block: 'Recogidas', value: 25 }
+];
+
 // Función auxiliar para cargar borradores temporales
 function getDraftVal(key, defaultVal) {
   try {
@@ -3519,7 +3533,7 @@ function App() {
             });
           }
         } else {
-          const originalTariff = tariffs.find(t => t.id === tariffId);
+          const originalTariff = tariffs.find(t => t.id === tariffId) || dormityTariffs.find(t => t.id === tariffId) || DEFAULT_DORMITY_CATALOG.find(t => t.id === tariffId);
           const isElectrodomestico = originalTariff && getNormalizedBlock(originalTariff.block) === 'electrodomesticos varios';
           
           if (isElectrodomestico) {
@@ -3546,9 +3560,15 @@ function App() {
               noCharge: getExistingNoCharge(tariffId)
             });
           } else {
+            const taskName = originalTariff?.name || tariffId;
+            const taskPrice = originalTariff?.value !== undefined ? parseFloat(originalTariff.value) : (originalTariff?.price || 0);
             tasksArray.push({
               tariffId,
               quantity,
+              name: taskName,
+              unitPrice: taskPrice,
+              price: taskPrice,
+              subtotal: taskPrice * quantity,
               noCharge: getExistingNoCharge(tariffId)
             });
           }
@@ -6826,6 +6846,302 @@ function App() {
 
         {/* PASO 2: ARTÍCULOS Y SERVICIOS */}
         {formStep === 2 && (() => {
+          if (selectedTicketProvider === 'dormity') {
+            const activeDormityItems = (dormityTariffs && dormityTariffs.length > 0) ? dormityTariffs : DEFAULT_DORMITY_CATALOG;
+            
+            const entregasItems = activeDormityItems.filter(t => t.block !== 'Recogidas' && t.category !== 'Recogidas' && !t.id.includes('REC_') && t.id !== 'DORMITY_PARADA_EXTRA' && t.id !== 'DORMITY_TOLEDO_FIXED');
+            const recogidasItems = activeDormityItems.filter(t => t.block === 'Recogidas' || t.category === 'Recogidas' || t.id.includes('REC_'));
+
+            const totalItemsCount = activeDormityItems.reduce((sum, item) => sum + (otherQuantities[item.id] || 0), 0);
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease' }}>
+                
+                {/* CABECERA DORMITY */}
+                <div style={{ background: 'rgba(99, 102, 241, 0.08)', padding: '14px 18px', borderRadius: '10px', border: '1px solid rgba(99, 102, 241, 0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <span style={{ fontWeight: 'bold', fontSize: '1.05rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🛏️ Registro de Carga y Servicios Dormity
+                    </span>
+                    <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Indica las cantidades de artículos y retiradas que traslada el chofer para este cliente.
+                    </p>
+                  </div>
+                  {totalItemsCount > 0 && (
+                    <span className="badge badge-primary" style={{ padding: '6px 12px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                      📦 {totalItemsCount} {totalItemsCount === 1 ? 'Artículo' : 'Artículos'} registrados
+                    </span>
+                  )}
+                </div>
+
+                {/* SECCIÓN 1: ENTREGAS E INSTALACIONES DORMITY */}
+                <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                  <div 
+                    onClick={() => toggleSection('dormity_entregas')}
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '16px 20px', 
+                      cursor: 'pointer',
+                      background: expandedSections.dormity_entregas !== false ? 'rgba(79, 70, 229, 0.04)' : 'transparent',
+                      borderRadius: '10px' 
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '1.2rem' }}>🛏️</span>
+                      <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text)' }}>Entregas e Instalaciones Dormity</span>
+                      {entregasItems.reduce((sum, item) => sum + (otherQuantities[item.id] || 0), 0) > 0 && (
+                        <span className="badge badge-primary" style={{ padding: '2px 8px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                          {entregasItems.reduce((sum, item) => sum + (otherQuantities[item.id] || 0), 0)} un.
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown size={18} style={{ transform: expandedSections.dormity_entregas !== false ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', color: 'var(--text-muted)' }} />
+                  </div>
+
+                  {expandedSections.dormity_entregas !== false && (
+                    <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px', borderTop: '1px solid var(--panel-border)' }}>
+                      {entregasItems.map(item => {
+                        const qty = otherQuantities[item.id] || 0;
+                        return (
+                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: qty > 0 ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid var(--primary)' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontWeight: '600', fontSize: '0.88rem' }}>{item.name}</span>
+                              {item.value ? (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
+                              ) : null}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <button 
+                                type="button" 
+                                className="btn btn-secondary btn-small"
+                                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
+                                onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                                disabled={isClosed}
+                              >
+                                -
+                              </button>
+                              <span style={{ width: '26px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: qty > 0 ? 'var(--primary)' : 'var(--text)' }}>
+                                {qty}
+                              </span>
+                              <button 
+                                type="button" 
+                                className="btn btn-primary btn-small"
+                                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
+                                onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                                disabled={isClosed}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* SECCIÓN 2: RECOGIDAS Y RETIRADAS DORMITY */}
+                <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                  <div 
+                    onClick={() => toggleSection('dormity_recogidas')}
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '16px 20px', 
+                      cursor: 'pointer',
+                      background: expandedSections.dormity_recogidas !== false ? 'rgba(245, 158, 11, 0.04)' : 'transparent',
+                      borderRadius: '10px' 
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '1.2rem' }}>♻️</span>
+                      <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text)' }}>Recogidas y Retiradas (Colchón Usado, Canapé, Restos)</span>
+                      {recogidasItems.reduce((sum, item) => sum + (otherQuantities[item.id] || 0), 0) > 0 && (
+                        <span className="badge badge-warning" style={{ padding: '2px 8px', fontSize: '0.75rem', fontWeight: 'bold', background: '#f59e0b', color: '#000' }}>
+                          {recogidasItems.reduce((sum, item) => sum + (otherQuantities[item.id] || 0), 0)} un.
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown size={18} style={{ transform: expandedSections.dormity_recogidas !== false ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', color: 'var(--text-muted)' }} />
+                  </div>
+
+                  {expandedSections.dormity_recogidas !== false && (
+                    <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px', borderTop: '1px solid var(--panel-border)' }}>
+                      {recogidasItems.map(item => {
+                        const qty = otherQuantities[item.id] || 0;
+                        return (
+                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: qty > 0 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid #f59e0b' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontWeight: '600', fontSize: '0.88rem' }}>{item.name}</span>
+                              {item.value ? (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
+                              ) : null}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <button 
+                                type="button" 
+                                className="btn btn-secondary btn-small"
+                                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
+                                onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                                disabled={isClosed}
+                              >
+                                -
+                              </button>
+                              <span style={{ width: '26px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: qty > 0 ? '#f59e0b' : 'var(--text)' }}>
+                                {qty}
+                              </span>
+                              <button 
+                                type="button" 
+                                className="btn btn-primary btn-small"
+                                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem', background: '#f59e0b', borderColor: '#f59e0b' }}
+                                onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                                disabled={isClosed}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* SECCIÓN 3: EXTRAS Y CONCEPTOS PERSONALIZADOS DORMITY */}
+                <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
+                  <div 
+                    onClick={() => toggleSection('extras')} 
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', cursor: 'pointer', background: expandedSections.extras ? 'rgba(79, 70, 229, 0.04)' : 'transparent', borderRadius: '10px' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '1.2rem' }}>➕</span>
+                      <span style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--text)' }}>Conceptos Adicionales (Extras Especiales)</span>
+                      {customExtras.length > 0 && (
+                        <span className="badge badge-success" style={{ padding: '2px 8px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                          {customExtras.length}
+                        </span>
+                      )}
+                    </div>
+                    <ChevronDown size={18} style={{ transform: expandedSections.extras ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', color: 'var(--text-muted)' }} />
+                  </div>
+
+                  {expandedSections.extras && (
+                    <div style={{ padding: '18px', borderTop: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ flex: 2, minWidth: '200px' }}>
+                          <span className="input-label" style={{ margin: '0 0 4px 0' }}>Descripción del Servicio Extra</span>
+                          <input 
+                            type="text" 
+                            className="form-input" 
+                            placeholder="Ej: Subida por escaleras (10 pisos)"
+                            value={customExtraName}
+                            onChange={(e) => setCustomExtraName(e.target.value)}
+                            disabled={isClosed}
+                          />
+                        </div>
+                        <div style={{ flex: 1, minWidth: '100px' }}>
+                          <span className="input-label" style={{ margin: '0 0 4px 0' }}>Precio (€)</span>
+                          <input 
+                            type="number" 
+                            className="form-input" 
+                            placeholder="Ej: 20"
+                            value={customExtraPrice}
+                            onChange={(e) => setCustomExtraPrice(e.target.value)}
+                            disabled={isClosed}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                          <button 
+                            type="button" 
+                            className="btn btn-primary"
+                            onClick={() => {
+                              if (!customExtraName.trim()) {
+                                triggerAlert('Escribe una descripción para el concepto adicional', 'error');
+                                return;
+                              }
+                              if (!customExtraPrice || parseFloat(customExtraPrice) < 0) {
+                                triggerAlert('Introduce un precio válido', 'error');
+                                return;
+                              }
+                              addCustomExtra();
+                            }}
+                            style={{ height: '42px', margin: 0, padding: '0 20px', width: 'auto' }}
+                            disabled={isClosed}
+                          >
+                            Añadir Extra
+                          </button>
+                        </div>
+                      </div>
+
+                      {customExtras.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {customExtras.map(extra => (
+                            <div key={extra.id} className="task-item-row" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '10px 15px', borderRadius: '8px', border: '1px solid var(--panel-border)', margin: 0 }}>
+                              <span style={{ fontWeight: '600' }}>✨ {extra.name}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                <span style={{ fontWeight: '700', color: 'var(--success)' }}>{extra.price.toFixed(2)} €</span>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-danger btn-small"
+                                  onClick={() => removeCustomExtra(extra.id)}
+                                  style={{ width: 'auto', margin: 0, padding: '4px 8px' }}
+                                  disabled={isClosed}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* OBSERVACIONES DEL REPARTO */}
+                <div className="input-group" style={{ marginTop: '5px' }}>
+                  <span className="input-label">Observaciones / Instrucciones del Reparto Dormity</span>
+                  <textarea 
+                    className="form-input" 
+                    placeholder="Escribe aquí notas adicionales, indicaciones de timbre, portales, etc." 
+                    value={notes} 
+                    onChange={(e) => setNotes(e.target.value)} 
+                    style={{ minHeight: '80px', resize: 'vertical', padding: '12px' }}
+                    disabled={isClosed}
+                  />
+                </div>
+
+                {/* FOOTER NAVEGACIÓN Y GUARDADO */}
+                <div className="wizard-footer">
+                  <button 
+                    type="button" 
+                    onClick={() => setFormStep(1)} 
+                    className="btn btn-secondary"
+                    style={{ width: 'auto' }}
+                  >
+                    ← Atrás
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary"
+                    style={{ 
+                      width: 'auto', 
+                      background: 'linear-gradient(135deg, var(--primary) 0%, #10b981 100%)',
+                      boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)',
+                      color: '#fff',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    {editingTicketId ? '💾 Guardar Cambios' : '🚀 Registrar Reparto Dormity'}
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
           const paqueteriaCount = itemsPaqueteria.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
           const gamaBlancaCount = itemsGamaBlanca.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
           const mueblesCount = itemsMuebles.reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
