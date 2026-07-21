@@ -761,7 +761,10 @@ function App() {
   const [dormityTariffs, setDormityTariffs] = useState([]);
   const [tariffSubTab, setTariffSubTab] = useState('eci');
   const [selectedTicketProvider, setSelectedTicketProvider] = useState('eci');
-  const [dormityRouteType, setDormityRouteType] = useState(() => getDraftVal('dormityRouteType', 'madrid'));
+  const [dormityRouteType, setDormityRouteType] = useState(() => getDraftVal('dormityRouteType', 'serv_dia'));
+  const [dormityServDiaOption, setDormityServDiaOption] = useState('express');
+  const [dormityServDiaDist, setDormityServDiaDist] = useState('cercania');
+  const [dormityExpressDist, setDormityExpressDist] = useState('cercania');
   const [defaultNavigator, setDefaultNavigator] = useState(() => localStorage.getItem('delivery_default_navigator') || 'ask');
   const [dormityKmInput, setDormityKmInput] = useState('');
   const [dormityExtraOrdersInput, setDormityExtraOrdersInput] = useState('0');
@@ -3689,17 +3692,45 @@ function App() {
       finalNotes = `[Ruta Original: ${originalRouteLabel}] ${finalNotes}`.trim();
     }
 
-    // Lógica Automática para Dormity (Ruta Madrid 9ª+ parada o Tiendas Toledo)
+    // Lógica Automática para Dormity (Asignación de modo de servicio y distancias)
     if (selectedTicketProvider === 'dormity') {
-      if (dormityRouteType === 'madrid') {
+      let dormityServiceTariffId = null;
+      let dormityServiceTaskName = null;
+
+      if (dormityRouteType === 'serv_dia') {
+        if (dormityServDiaOption === 'express') {
+          dormityServiceTariffId = 'DORMITY_SERVDIA_EXPRESS';
+          dormityServiceTaskName = 'Servicio Día - Tienda Express';
+        } else {
+          const distMap = {
+            cercania: { id: 'DORMITY_SERVDIA_CERCANIA', name: 'Servicio Día - Cercanía' },
+            media: { id: 'DORMITY_SERVDIA_MEDIA', name: 'Servicio Día - Media Distancia' },
+            lejania: { id: 'DORMITY_SERVDIA_LEJANIA', name: 'Servicio Día - Lejanía' },
+            gran_lejania: { id: 'DORMITY_SERVDIA_GRAN_LEJANIA', name: 'Servicio Día - Gran Lejanía' }
+          };
+          const selectedDist = distMap[dormityServDiaDist] || distMap.cercania;
+          dormityServiceTariffId = selectedDist.id;
+          dormityServiceTaskName = selectedDist.name;
+        }
+      } else if (dormityRouteType === 'express') {
+        const expressDistMap = {
+          cercania: { id: 'DORMITY_EXPRESS_CERCANIA', name: 'Ruta Express - Cercanía' },
+          media: { id: 'DORMITY_EXPRESS_MEDIA', name: 'Ruta Express - Media Distancia' },
+          lejania: { id: 'DORMITY_EXPRESS_LEJANIA', name: 'Ruta Express - Lejanía' },
+          gran_lejania: { id: 'DORMITY_EXPRESS_GRAN_LEJANIA', name: 'Ruta Express - Gran Lejanía' }
+        };
+        const selectedDist = expressDistMap[dormityExpressDist] || expressDistMap.cercania;
+        dormityServiceTariffId = selectedDist.id;
+        dormityServiceTaskName = selectedDist.name;
+      } else if (dormityRouteType === 'madrid') {
         const existingStops = tickets.filter(t => t.date === ticketDate && t.furgoId === assignedFurgoId && (!editingTicketId || t.id !== editingTicketId)).length;
         const currentStopNum = existingStops + 1;
-        if (currentStopNum >= 9 && !tasksArray.some(t => t.tariffId === 'DORMITY_PARADA_EXTRA')) {
-          const extraTariff = dormityTariffs.find(t => t.id === 'DORMITY_PARADA_EXTRA');
+        if (currentStopNum >= 9 && !tasksArray.some(t => t.tariffId === 'DORMITY_MADRID_EXTRA')) {
+          const extraTariff = dormityTariffs.find(t => t.id === 'DORMITY_MADRID_EXTRA');
           const extraPrice = extraTariff ? extraTariff.value : 70;
           tasksArray.push({
-            tariffId: 'DORMITY_PARADA_EXTRA',
-            name: `Cliente Adicional (Parada Nº ${currentStopNum})`,
+            tariffId: 'DORMITY_MADRID_EXTRA',
+            name: `Cliente Adicional Madrid (Parada Nº ${currentStopNum})`,
             quantity: 1,
             unitPrice: extraPrice,
             price: extraPrice,
@@ -3707,18 +3738,31 @@ function App() {
           });
         }
       } else if (dormityRouteType === 'toledo') {
-        if (!tasksArray.some(t => t.tariffId === 'DORMITY_TOLEDO_FIXED')) {
-          const toledoTariff = dormityTariffs.find(t => t.id === 'DORMITY_TOLEDO_FIXED');
-          const toledoPrice = toledoTariff ? toledoTariff.value : 150;
+        if (!tasksArray.some(t => t.tariffId === 'DORMITY_TOLEDO')) {
+          const toledoTariff = dormityTariffs.find(t => t.id === 'DORMITY_TOLEDO');
+          const toledoPrice = toledoTariff ? toledoTariff.value : 700;
           tasksArray.push({
-            tariffId: 'DORMITY_TOLEDO_FIXED',
-            name: 'Ruta Tiendas Toledo (Precio Fijo)',
+            tariffId: 'DORMITY_TOLEDO',
+            name: 'Tiendas Toledo (Precio Fijo)',
             quantity: 1,
             unitPrice: toledoPrice,
             price: toledoPrice,
             subtotal: toledoPrice
           });
         }
+      }
+
+      if (dormityServiceTariffId && !tasksArray.some(t => t.tariffId === dormityServiceTariffId)) {
+        const matchedT = dormityTariffs.find(t => t.id === dormityServiceTariffId);
+        const tVal = matchedT ? matchedT.value : 0;
+        tasksArray.push({
+          tariffId: dormityServiceTariffId,
+          name: dormityServiceTaskName,
+          quantity: 1,
+          unitPrice: tVal,
+          price: tVal,
+          subtotal: tVal
+        });
       }
     }
 
@@ -6298,17 +6342,33 @@ function App() {
 
             {/* Selector de Modalidad de Servicio Dormity a nivel de Turno/Jornada */}
             {selectedTicketProvider === 'dormity' && (
-              <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '14px 18px', borderRadius: '12px', marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
+              <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '14px 18px', borderRadius: '12px', marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <div>
                     <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       🛏️ Modalidad de Servicio del Turno Dormity:
                     </span>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
-                      Configura la modalidad de servicio para la jornada completa del chofer.
+                      Selecciona la modalidad y tramo de distancia para la jornada.
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'serv_dia' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('serv_dia')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      ☀️ Servicio Día
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'express' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('express')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      🚀 Ruta Distancia Express
+                    </button>
                     <button
                       type="button"
                       className={`btn ${dormityRouteType === 'madrid' ? 'btn-primary' : 'btn-secondary'}`}
@@ -6319,23 +6379,76 @@ function App() {
                     </button>
                     <button
                       type="button"
-                      className={`btn ${dormityRouteType === 'express' ? 'btn-primary' : 'btn-secondary'}`}
-                      onClick={() => setDormityRouteType('express')}
-                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      ⚡ Tienda Express
-                    </button>
-                    <button
-                      type="button"
                       className={`btn ${dormityRouteType === 'toledo' ? 'btn-primary' : 'btn-secondary'}`}
                       onClick={() => setDormityRouteType('toledo')}
                       style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      🏢 Tiendas Toledo (Precio Fijo)
+                      🏢 Tiendas Toledo
                     </button>
                   </div>
                 </div>
 
+                {/* Sub-opciones para ☀️ Servicio Día */}
+                {dormityRouteType === 'serv_dia' && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Opción de Servicio Día:</span>
+                      <button
+                        type="button"
+                        className={`btn ${dormityServDiaOption === 'express' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setDormityServDiaOption('express')}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', width: 'auto', margin: 0 }}
+                      >
+                        ⚡ Tienda Express
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${dormityServDiaOption === 'distancias' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setDormityServDiaOption('distancias')}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', width: 'auto', margin: 0 }}
+                      >
+                        📍 Ruta Distancias Día
+                      </button>
+                    </div>
+
+                    {dormityServDiaOption === 'distancias' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: '700' }}>📏 Seleccionar Tramo de Distancia:</span>
+                        <select
+                          className="form-input"
+                          value={dormityServDiaDist}
+                          onChange={(e) => setDormityServDiaDist(e.target.value)}
+                          style={{ width: '220px', padding: '6px 12px', fontSize: '0.85rem' }}
+                        >
+                          <option value="cercania">🟢 Cercanía</option>
+                          <option value="media">🟡 Media Distancia</option>
+                          <option value="lejania">🟠 Lejanía</option>
+                          <option value="gran_lejania">🔴 Gran Lejanía</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sub-opciones para 🚀 Ruta Distancia Express */}
+                {dormityRouteType === 'express' && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--panel-border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: '700' }}>🚀 Seleccionar Tramo Express:</span>
+                    <select
+                      className="form-input"
+                      value={dormityExpressDist}
+                      onChange={(e) => setDormityExpressDist(e.target.value)}
+                      style={{ width: '240px', padding: '6px 12px', fontSize: '0.85rem' }}
+                    >
+                      <option value="cercania">🟢 Cercanía Express</option>
+                      <option value="media">🟡 Media Distancia Express</option>
+                      <option value="lejania">🟠 Lejanía Express</option>
+                      <option value="gran_lejania">🔴 Gran Lejanía Express</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Info para 🚚 Ruta Madrid */}
                 {dormityRouteType === 'madrid' && (() => {
                   const activeFurgo = activeRouteContext ? activeRouteContext.furgoId : (currentUser?.id || 'admin');
                   const activeDate = activeRouteContext ? activeRouteContext.date : ticketDate;
@@ -6345,20 +6458,21 @@ function App() {
                       📍 Paradas creadas en esta jornada: <strong>{shiftStops} paradas</strong>.
                       {shiftStops >= 9 ? (
                         <div style={{ fontWeight: 'bold', marginTop: '4px', color: '#fbbf24' }}>
-                          ⭐ ¡Parada Nº {shiftStops} (≥ 9) alcanzada! El sistema sumará automáticamente la tarifa de Cliente Adicional (+70,00 €) a cada cliente extra del turno.
+                          ⭐ ¡Parada Nº {shiftStops} (≥ 9) alcanzada! Se contabilizará cliente adicional para la jornada.
                         </div>
                       ) : (
                         <span style={{ display: 'block', marginTop: '2px', opacity: 0.85 }}>
-                          (Paradas 1 a 8 incluidas en tarifa base. A partir de la 9ª parada del turno se calculará el recargo de 70 € por cliente extra).
+                          (Paradas 1 a 8 incluidas. A partir de la 9ª parada se contabiliza cliente adicional).
                         </span>
                       )}
                     </div>
                   );
                 })()}
 
+                {/* Info para 🏢 Tiendas Toledo */}
                 {dormityRouteType === 'toledo' && (
                   <div style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.12)', padding: '8px 12px', borderRadius: '6px' }}>
-                    🏢 Ruta Tiendas Toledo seleccionada: Tarifa a Precio Fijo configurada para la jornada.
+                    🏢 Ruta Tiendas Toledo seleccionada.
                   </div>
                 )}
               </div>

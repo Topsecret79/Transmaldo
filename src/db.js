@@ -748,17 +748,25 @@ const DEFAULT_TARIFFS = [
 ];
 
 export const DEFAULT_DORMITY_TARIFFS = [
-  { id: 'DORMITY_TIENDAS', name: 'Tiendas Estándar', block: 'Tiendas', type: 'fixed', value: 209.00, provider: 'dormity' },
-  { id: 'DORMITY_EXPRESS', name: 'Servicio Express', block: 'Express', type: 'fixed', value: 150.00, provider: 'dormity' },
-  { id: 'DORMITY_MADRID', name: 'Tiendas Madrid (hasta 8 pedidos)', block: 'Rutas Especiales', type: 'fixed', value: 700.00, provider: 'dormity' },
-  { id: 'DORMITY_MADRID_EXTRA', name: 'Pedido Adicional Madrid (>8 peds)', block: 'Rutas Especiales', type: 'fixed', value: 70.00, provider: 'dormity' },
-  { id: 'DORMITY_TOLEDO', name: 'Tiendas Toledo', block: 'Rutas Especiales', type: 'fixed', value: 700.00, provider: 'dormity' },
-  { id: 'DORMITY_CERCANIA_STD', name: 'Cercanía 0-50 km (Estándar)', block: 'Distancias', type: 'fixed', value: 230.00, provider: 'dormity', minKm: 0, maxKm: 50 },
-  { id: 'DORMITY_CERCANIA_EXP', name: 'Cercanía 0-50 km (Express)', block: 'Distancias', type: 'fixed', value: 150.00, provider: 'dormity', minKm: 0, maxKm: 50 },
-  { id: 'DORMITY_MEDIA_STD', name: 'Media Distancia 50-100 km (Estándar)', block: 'Distancias', type: 'fixed', value: 280.00, provider: 'dormity', minKm: 50, maxKm: 100 },
-  { id: 'DORMITY_MEDIA_EXP', name: 'Media Distancia 50-100 km (Express)', block: 'Distancias', type: 'fixed', value: 180.00, provider: 'dormity', minKm: 50, maxKm: 100 },
-  { id: 'DORMITY_LEJANIA_STD', name: 'Lejanía >100 km (Estándar)', block: 'Distancias', type: 'fixed', value: 340.00, provider: 'dormity', minKm: 100, maxKm: 9999 },
-  { id: 'DORMITY_LEJANIA_EXP', name: 'Lejanía >100 km (Express)', block: 'Distancias', type: 'fixed', value: 220.00, provider: 'dormity', minKm: 100, maxKm: 9999 }
+  // ☀️ Servicio Día
+  { id: 'DORMITY_SERVDIA_EXPRESS', name: 'Tienda Express', block: 'Servicio Día', type: 'fixed', value: 150.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_CERCANIA', name: 'Servicio Día - Cercanía', block: 'Servicio Día', type: 'fixed', value: 210.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_MEDIA', name: 'Servicio Día - Media Distancia', block: 'Servicio Día', type: 'fixed', value: 260.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_LEJANIA', name: 'Servicio Día - Lejanía', block: 'Servicio Día', type: 'fixed', value: 310.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_GRAN_LEJANIA', name: 'Servicio Día - Gran Lejanía', block: 'Servicio Día', type: 'fixed', value: 380.00, provider: 'dormity' },
+
+  // 🚀 Ruta Distancia Express
+  { id: 'DORMITY_EXPRESS_CERCANIA', name: 'Ruta Express - Cercanía', block: 'Ruta Express', type: 'fixed', value: 180.00, provider: 'dormity' },
+  { id: 'DORMITY_EXPRESS_MEDIA', name: 'Ruta Express - Media Distancia', block: 'Ruta Express', type: 'fixed', value: 230.00, provider: 'dormity' },
+  { id: 'DORMITY_EXPRESS_LEJANIA', name: 'Ruta Express - Lejanía', block: 'Ruta Express', type: 'fixed', value: 280.00, provider: 'dormity' },
+  { id: 'DORMITY_EXPRESS_GRAN_LEJANIA', name: 'Ruta Express - Gran Lejanía', block: 'Ruta Express', type: 'fixed', value: 350.00, provider: 'dormity' },
+
+  // 🚚 Ruta Madrid
+  { id: 'DORMITY_MADRID', name: 'Ruta Madrid (hasta 8 paradas)', block: 'Ruta Madrid', type: 'fixed', value: 700.00, provider: 'dormity' },
+  { id: 'DORMITY_MADRID_EXTRA', name: 'Cliente Adicional Madrid (>=9ª parada)', block: 'Ruta Madrid', type: 'fixed', value: 70.00, provider: 'dormity' },
+
+  // 🏢 Tiendas Toledo
+  { id: 'DORMITY_TOLEDO', name: 'Tiendas Toledo (Precio Fijo)', block: 'Tiendas Toledo', type: 'fixed', value: 700.00, provider: 'dormity' }
 ];
 
 export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74, 75, 77, 83, 85, 98, 100, 115];
