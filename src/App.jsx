@@ -2404,6 +2404,24 @@ function App() {
     }
   }, [mapFilterFurgo, ticketFilterFurgo, activeTab, currentUser]);
 
+  useEffect(() => {
+    if (currentUser) {
+      const allowed = getUserAllowedProviders(currentUser);
+      if (allowed.length === 1) {
+        const singleProv = allowed[0];
+        if (selectedTicketProvider !== singleProv) {
+          setSelectedTicketProvider(singleProv);
+        }
+        if (billingProviderFilter !== singleProv) {
+          setBillingProviderFilter(singleProv);
+        }
+        if (singleProv === 'dormity' && tariffSubTab !== 'dormity') {
+          setTariffSubTab('dormity');
+        }
+      }
+    }
+  }, [currentUser]);
+
   const triggerAlert = (text, type = 'success') => {
     setAlertMsg({ text, type });
     setTimeout(() => setAlertMsg({ text: '', type: '' }), 4000);
@@ -17668,24 +17686,35 @@ function App() {
             <h2>Catálogo de Tarifas y Precios</h2>
             <p style={{ marginBottom: '15px' }}>Edita los valores del sistema o añade nuevos artículos. Al cambiarlos, todas las ganancias del mes se recalculan automáticamente.</p>
 
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
-              <button 
-                type="button" 
-                className={`tab-btn ${tariffSubTab === 'eci' ? 'active' : ''}`}
-                onClick={() => setTariffSubTab('eci')}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
-              >
-                📦 Precios El Corte Inglés
-              </button>
-              <button 
-                type="button" 
-                className={`tab-btn ${tariffSubTab === 'dormity' ? 'active' : ''}`}
-                onClick={() => setTariffSubTab('dormity')}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
-              >
-                🛏️ Precios Dormity
-              </button>
-            </div>
+            {(() => {
+              const userAllowed = getUserAllowedProviders(currentUser);
+              const allowEci = userAllowed.includes('eci');
+              const allowDormity = userAllowed.includes('dormity');
+              return (
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
+                  {allowEci && (
+                    <button 
+                      type="button" 
+                      className={`tab-btn ${tariffSubTab === 'eci' ? 'active' : ''}`}
+                      onClick={() => setTariffSubTab('eci')}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
+                    >
+                      📦 Precios El Corte Inglés
+                    </button>
+                  )}
+                  {allowDormity && (
+                    <button 
+                      type="button" 
+                      className={`tab-btn ${tariffSubTab === 'dormity' ? 'active' : ''}`}
+                      onClick={() => setTariffSubTab('dormity')}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
+                    >
+                      🛏️ Precios Dormity
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             {tariffSubTab === 'dormity' && (
               <div style={{ animation: 'fadeIn 0.2s ease' }}>
