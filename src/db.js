@@ -799,11 +799,29 @@ export function initDB() {
   if (!localStorage.getItem('delivery_tariffs')) {
     localStorage.setItem('delivery_tariffs', JSON.stringify(DEFAULT_TARIFFS));
   }
-  if (!localStorage.getItem('delivery_dormity_tariffs')) {
+  let currentDormity = [];
+  try {
+    currentDormity = JSON.parse(localStorage.getItem('delivery_dormity_tariffs')) || [];
+  } catch (e) {}
+
+  if (!currentDormity || currentDormity.length === 0) {
     localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(DEFAULT_DORMITY_TARIFFS));
   } else {
-    // Migration to split Delivery and Pickup under Paquetería and add Soundbar items
-    try {
+    let updatedDormity = [...currentDormity];
+    let added = false;
+    DEFAULT_DORMITY_TARIFFS.forEach(defItem => {
+      if (!updatedDormity.some(t => t.id === defItem.id || (t.id && t.id.startsWith(defItem.id)))) {
+        updatedDormity.push(defItem);
+        added = true;
+      }
+    });
+    if (added) {
+      localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(updatedDormity));
+    }
+  }
+
+  // Migration to split Delivery and Pickup under Paquetería and add Soundbar items
+  try {
       let current = JSON.parse(localStorage.getItem('delivery_tariffs'));
       const hasUnifiedKeys = current.some(t => t.id === 'ENTREGA_RECOGIDA_PV');
       if (hasUnifiedKeys) {
@@ -914,7 +932,6 @@ export function initDB() {
     } catch (e) {
       console.error("Error migrating tariffs:", e);
     }
-  }
   if (!localStorage.getItem('delivery_tickets') || !localStorage.getItem('delivery_db_cleared_once')) {
     localStorage.setItem('delivery_tickets', JSON.stringify([]));
   }
@@ -1418,8 +1435,9 @@ export function getDormityTariffs() {
       }
     }
   });
-  
-  return Object.values(tariffMap);
+
+  const resultList = Object.values(tariffMap);
+  return resultList.length > 0 ? resultList : DEFAULT_DORMITY_TARIFFS;
 }
 
 export async function saveDormityTariffs(tariffs) {
