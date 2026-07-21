@@ -6718,7 +6718,7 @@ function App() {
                         onClick={() => setDormityServDiaOption('express')}
                         style={{ padding: '6px 12px', fontSize: '0.8rem', width: 'auto', margin: 0 }}
                       >
-                        ⚡ Tienda Express
+                        ⚡ Tienda
                       </button>
                       <button
                         type="button"

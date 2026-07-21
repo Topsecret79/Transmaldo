@@ -749,7 +749,7 @@ const DEFAULT_TARIFFS = [
 
 export const DEFAULT_DORMITY_TARIFFS = [
   // ☀️ Servicio Día
-  { id: 'DORMITY_SERVDIA_EXPRESS', name: 'Tienda Express', block: 'Servicio Día', type: 'fixed', value: 150.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_EXPRESS', name: 'Tienda', block: 'Servicio Día', type: 'fixed', value: 150.00, provider: 'dormity' },
   { id: 'DORMITY_SERVDIA_CERCANIA', name: 'Servicio Día - Cercanía', block: 'Servicio Día', type: 'fixed', value: 210.00, provider: 'dormity' },
   { id: 'DORMITY_SERVDIA_MEDIA', name: 'Servicio Día - Media Distancia', block: 'Servicio Día', type: 'fixed', value: 260.00, provider: 'dormity' },
   { id: 'DORMITY_SERVDIA_LEJANIA', name: 'Servicio Día - Lejanía', block: 'Servicio Día', type: 'fixed', value: 310.00, provider: 'dormity' },
@@ -809,6 +809,12 @@ export function initDB() {
   } else {
     let updatedDormity = [...currentDormity];
     let added = false;
+    updatedDormity = updatedDormity.map(t => {
+      if (t && t.id && t.id.includes('SERVDIA_EXPRESS') && t.name === 'Tienda Express') {
+        return { ...t, name: 'Tienda' };
+      }
+      return t;
+    });
     DEFAULT_DORMITY_TARIFFS.forEach(defItem => {
       if (!updatedDormity.some(t => t.id === defItem.id || (t.id && t.id.startsWith(defItem.id)))) {
         updatedDormity.push(defItem);
