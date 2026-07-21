@@ -256,6 +256,23 @@ export async function syncFromCloud() {
           }
         }
 
+        let allowedProvs = u.allowed_providers || u.allowedProviders;
+        if (!allowedProvs || !Array.isArray(allowedProvs) || allowedProvs.length === 0) {
+          const settingKey = `user_allowed_providers_${u.id}`;
+          const provSetting = settings ? settings.find(s => s.key === settingKey) : null;
+          if (provSetting && provSetting.value) {
+            try {
+              allowedProvs = JSON.parse(provSetting.value);
+            } catch (e) {}
+          }
+          if ((!allowedProvs || !Array.isArray(allowedProvs) || allowedProvs.length === 0) && existingLocal && existingLocal.allowedProviders) {
+            allowedProvs = existingLocal.allowedProviders;
+          }
+        }
+        if (!allowedProvs || !Array.isArray(allowedProvs) || allowedProvs.length === 0) {
+          allowedProvs = ['eci', 'dormity'];
+        }
+
         return {
           id: u.id,
           username: u.username,
@@ -266,6 +283,7 @@ export async function syncFromCloud() {
           createdBy: u.created_by || 'admin',
           mustChangePassword: !!u.must_change_password,
           permissions: pVal,
+          allowedProviders: allowedProvs,
           email: u.email || null,
           auth_uid: u.auth_uid || null
         };
@@ -973,6 +991,13 @@ export async function saveUsers(users) {
             value: permString || '{}'
           }).then(() => {}).catch(err => console.warn("Failed saving backup permissions to settings:", err));
         }
+        if (u.allowedProviders && Array.isArray(u.allowedProviders)) {
+          const provString = JSON.stringify(u.allowedProviders);
+          supabase.from('delivery_settings').upsert({
+            key: `user_allowed_providers_${u.id}`,
+            value: provString
+          }).then(() => {}).catch(err => console.warn("Failed saving backup allowedProviders to settings:", err));
+        }
       }
       try {
         // Detectar dinámicamente las columnas que existen realmente en la base de datos
@@ -1002,6 +1027,9 @@ export async function saveUsers(users) {
           }
           if (!dbColumns || dbColumns.includes('permissions')) {
             row.permissions = u.permissions || null;
+          }
+          if (dbColumns && dbColumns.includes('allowed_providers')) {
+            row.allowed_providers = u.allowedProviders || ['eci', 'dormity'];
           }
           if (!dbColumns || dbColumns.includes('email')) {
             row.email = u.email || null;
@@ -1454,6 +1482,13 @@ export function getUserAllowedProviders(user) {
   if (user.allowedProviders && Array.isArray(user.allowedProviders) && user.allowedProviders.length > 0) {
     return user.allowedProviders;
   }
+  try {
+    const saved = localStorage.getItem(`delivery_user_allowed_providers_${user.id}`);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
   if (user.role === 'repartidor' && user.createdBy) {
     const creator = getUsers().find(u => u.id === user.createdBy);
     if (creator && creator.allowedProviders && Array.isArray(creator.allowedProviders) && creator.allowedProviders.length > 0) {
@@ -2090,12 +2125,29 @@ export async function addUser(username, label, password, role = 'repartidor', cr
 export async function updateUserAllowedProviders(userId, allowedProviders) {
   const users = getUsers();
   const index = users.findIndex(u => u.id === userId);
+  const provs = allowedProviders && Array.isArray(allowedProviders) && allowedProviders.length > 0 ? allowedProviders : ['eci', 'dormity'];
+  
   if (index !== -1) {
-    users[index].allowedProviders = allowedProviders && Array.isArray(allowedProviders) && allowedProviders.length > 0 ? allowedProviders : ['eci', 'dormity'];
-    await saveUsers(users);
-    return true;
+    users[index].allowedProviders = provs;
   }
-  return false;
+  
+  try {
+    localStorage.setItem(`delivery_user_allowed_providers_${userId}`, JSON.stringify(provs));
+  } catch (e) {}
+
+  await saveUsers(users);
+  
+  if (supabase) {
+    try {
+      await supabase.from('delivery_settings').upsert({
+        key: `user_allowed_providers_${userId}`,
+        value: JSON.stringify(provs)
+      });
+    } catch (e) {
+      console.error("Error saving allowed providers to Supabase settings:", e);
+    }
+  }
+  return true;
 }
 
 // Inicializar tarifas de un administrador (copiar por defecto o a 0)
