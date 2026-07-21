@@ -17806,162 +17806,159 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'tariffs' && (
-          <div className="glass-panel" style={{ textAlign: 'left' }}>
-            <h2>Catálogo de Tarifas y Precios</h2>
-            <p style={{ marginBottom: '15px' }}>Edita los valores del sistema o añade nuevos artículos. Al cambiarlos, todas las ganancias del mes se recalculan automáticamente.</p>
+        {activeTab === 'tariffs' && (() => {
+          const userAllowed = getUserAllowedProviders(loggedInUserObj || currentUser);
+          const allowEci = userAllowed.includes('eci') || (loggedInUserObj || currentUser)?.role === 'superadmin';
+          const allowDormity = userAllowed.includes('dormity') || (loggedInUserObj || currentUser)?.role === 'superadmin';
+          const activeTariffSubTab = (!allowEci && allowDormity) ? 'dormity' : (!allowDormity && allowEci) ? 'eci' : tariffSubTab;
 
-            {(() => {
-              const userAllowed = getUserAllowedProviders(currentUser);
-              const allowEci = userAllowed.includes('eci');
-              const allowDormity = userAllowed.includes('dormity');
-              return (
+          return (
+            <div className="glass-panel" style={{ textAlign: 'left' }}>
+              <h2>Catálogo de Tarifas y Precios</h2>
+              <p style={{ marginBottom: '15px' }}>Edita los valores del sistema o añade nuevos artículos. Al cambiarlos, todas las ganancias del mes se recalculan automáticamente.</p>
+
+              {(allowEci && allowDormity) && (
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
-                  {allowEci && (
-                    <button 
-                      type="button" 
-                      className={`tab-btn ${tariffSubTab === 'eci' ? 'active' : ''}`}
-                      onClick={() => setTariffSubTab('eci')}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
-                    >
-                      📦 Precios El Corte Inglés
-                    </button>
-                  )}
-                  {allowDormity && (
-                    <button 
-                      type="button" 
-                      className={`tab-btn ${tariffSubTab === 'dormity' ? 'active' : ''}`}
-                      onClick={() => setTariffSubTab('dormity')}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
-                    >
-                      🛏️ Precios Dormity
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
-
-            {tariffSubTab === 'dormity' && (
-              <div style={{ animation: 'fadeIn 0.2s ease' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem' }}>
-                    🛏️ Tarifas Configurar Dormity ({dormityTariffs.length})
-                  </h3>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-small"
-                    onClick={async () => {
-                      const name = prompt('Nombre del nuevo servicio Dormity:');
-                      if (!name || !name.trim()) return;
-                      const valStr = prompt('Precio en € (ej: 150):', '100');
-                      if (valStr === null) return;
-                      const val = Number(valStr) || 0;
-                      const newId = `DORMITY_CUSTOM_${Date.now()}`;
-                      const updated = [...dormityTariffs, { id: newId, name: name.trim(), block: 'Servicios Dormity', type: 'fixed', value: val }];
-                      await saveDormityTariffs(updated);
-                      setDormityTariffs(updated);
-                      triggerAlert('Servicio Dormity añadido');
-                    }}
-                    style={{ width: 'auto', padding: '6px 14px' }}
+                  <button 
+                    type="button" 
+                    className={`tab-btn ${activeTariffSubTab === 'eci' ? 'active' : ''}`}
+                    onClick={() => setTariffSubTab('eci')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
                   >
-                    <Plus size={14} /> Añadir Tarifa Dormity
+                    📦 Precios El Corte Inglés
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`tab-btn ${activeTariffSubTab === 'dormity' ? 'active' : ''}`}
+                    onClick={() => setTariffSubTab('dormity')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', fontSize: '0.9rem', borderRadius: '8px' }}
+                  >
+                    🛏️ Precios Dormity
                   </button>
                 </div>
+              )}
 
-                <div style={{ overflowX: 'auto', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--panel-border)', borderRadius: '10px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: 'rgba(255,255,255,0.04)', textAlign: 'left', borderBottom: '1px solid var(--panel-border)' }}>
-                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Código</th>
-                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Servicio / Descripción</th>
-                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Bloque / Categoría</th>
-                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Precio (€)</th>
-                        <th style={{ padding: '12px 16px', fontSize: '0.85rem', textAlign: 'right' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dormityTariffs.map(t => (
-                        <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                          <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.id}</td>
-                          <td style={{ padding: '10px 16px' }}>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={t.name}
-                              onChange={(e) => {
-                                const newName = e.target.value;
-                                const next = dormityTariffs.map(item => item.id === t.id ? { ...item, name: newName } : item);
-                                setDormityTariffs(next);
-                              }}
-                              onBlur={async () => {
-                                await saveDormityTariffs(dormityTariffs);
-                                triggerAlert('Nombre de tarifa guardado');
-                              }}
-                              style={{ width: '100%', minWidth: '180px', padding: '4px 8px', fontSize: '0.85rem', height: '32px', fontWeight: '600' }}
-                            />
-                          </td>
-                          <td style={{ padding: '10px 16px' }}>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={t.block || 'Servicios Dormity'}
-                              onChange={(e) => {
-                                const newBlock = e.target.value;
-                                const next = dormityTariffs.map(item => item.id === t.id ? { ...item, block: newBlock } : item);
-                                setDormityTariffs(next);
-                              }}
-                              onBlur={async () => {
-                                await saveDormityTariffs(dormityTariffs);
-                                triggerAlert('Categoría guardada');
-                              }}
-                              style={{ width: '130px', padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
-                            />
-                          </td>
-                          <td style={{ padding: '10px 16px' }}>
-                            <input
-                              type="number"
-                              step="0.01"
-                              className="form-input"
-                              value={t.value}
-                              onChange={(e) => {
-                                const newVal = parseFloat(e.target.value) || 0;
-                                const next = dormityTariffs.map(item => item.id === t.id ? { ...item, value: newVal } : item);
-                                setDormityTariffs(next);
-                              }}
-                              onBlur={async () => {
-                                await saveDormityTariffs(dormityTariffs);
-                                triggerAlert('Precio guardado');
-                              }}
-                              style={{ width: '110px', padding: '4px 8px', fontSize: '0.85rem', height: '32px', fontWeight: 'bold', color: 'var(--primary)' }}
-                            />
-                          </td>
-                          <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                            <button
-                              type="button"
-                              className="btn btn-danger btn-small"
-                              title="Eliminar tarifa"
-                              onClick={async () => {
-                                if (window.confirm(`¿Estás seguro de que deseas eliminar la tarifa "${t.name}"?`)) {
-                                  const next = dormityTariffs.filter(item => item.id !== t.id);
-                                  await saveDormityTariffs(next);
-                                  setDormityTariffs(next);
-                                  triggerAlert(`Tarifa "${t.name}" eliminada`);
-                                }
-                              }}
-                              style={{ width: 'auto', padding: '6px 10px', margin: 0 }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
+              {activeTariffSubTab === 'dormity' && (
+                <div style={{ animation: 'fadeIn 0.2s ease' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                    <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem' }}>
+                      🛏️ Tarifas Configurar Dormity ({dormityTariffs.length})
+                    </h3>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-small"
+                      onClick={async () => {
+                        const name = prompt('Nombre del nuevo servicio Dormity:');
+                        if (!name || !name.trim()) return;
+                        const valStr = prompt('Precio en € (ej: 150):', '100');
+                        if (valStr === null) return;
+                        const val = Number(valStr) || 0;
+                        const newId = `DORMITY_CUSTOM_${Date.now()}`;
+                        const updated = [...dormityTariffs, { id: newId, name: name.trim(), block: 'Servicios Dormity', type: 'fixed', value: val }];
+                        await saveDormityTariffs(updated);
+                        setDormityTariffs(updated);
+                        triggerAlert('Servicio Dormity añadido');
+                      }}
+                      style={{ width: 'auto', padding: '6px 14px' }}
+                    >
+                      <Plus size={14} /> Añadir Tarifa Dormity
+                    </button>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--panel-border)', borderRadius: '10px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(255,255,255,0.04)', textAlign: 'left', borderBottom: '1px solid var(--panel-border)' }}>
+                          <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Código</th>
+                          <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Servicio / Descripción</th>
+                          <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Bloque / Categoría</th>
+                          <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Precio (€)</th>
+                          <th style={{ padding: '12px 16px', fontSize: '0.85rem', textAlign: 'right' }}>Acciones</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {dormityTariffs.map(t => (
+                          <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                            <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.id}</td>
+                            <td style={{ padding: '10px 16px' }}>
+                              <input
+                                type="text"
+                                className="form-input"
+                                value={t.name}
+                                onChange={(e) => {
+                                  const newName = e.target.value;
+                                  const next = dormityTariffs.map(item => item.id === t.id ? { ...item, name: newName } : item);
+                                  setDormityTariffs(next);
+                                }}
+                                onBlur={async () => {
+                                  await saveDormityTariffs(dormityTariffs);
+                                  triggerAlert('Nombre de tarifa guardado');
+                                }}
+                                style={{ width: '100%', minWidth: '180px', padding: '4px 8px', fontSize: '0.85rem', height: '32px', fontWeight: '600' }}
+                              />
+                            </td>
+                            <td style={{ padding: '10px 16px' }}>
+                              <input
+                                type="text"
+                                className="form-input"
+                                value={t.block || 'Servicios Dormity'}
+                                onChange={(e) => {
+                                  const newBlock = e.target.value;
+                                  const next = dormityTariffs.map(item => item.id === t.id ? { ...item, block: newBlock } : item);
+                                  setDormityTariffs(next);
+                                }}
+                                onBlur={async () => {
+                                  await saveDormityTariffs(dormityTariffs);
+                                  triggerAlert('Categoría guardada');
+                                }}
+                                style={{ width: '130px', padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
+                              />
+                            </td>
+                            <td style={{ padding: '10px 16px' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="form-input"
+                                value={t.value}
+                                onChange={(e) => {
+                                  const newVal = parseFloat(e.target.value) || 0;
+                                  const next = dormityTariffs.map(item => item.id === t.id ? { ...item, value: newVal } : item);
+                                  setDormityTariffs(next);
+                                }}
+                                onBlur={async () => {
+                                  await saveDormityTariffs(dormityTariffs);
+                                  triggerAlert('Precio guardado');
+                                }}
+                                style={{ width: '110px', padding: '4px 8px', fontSize: '0.85rem', height: '32px', fontWeight: 'bold', color: 'var(--primary)' }}
+                              />
+                            </td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                className="btn btn-danger btn-small"
+                                title="Eliminar tarifa"
+                                onClick={async () => {
+                                  if (window.confirm(`¿Estás seguro de que deseas eliminar la tarifa "${t.name}"?`)) {
+                                    const next = dormityTariffs.filter(item => item.id !== t.id);
+                                    await saveDormityTariffs(next);
+                                    setDormityTariffs(next);
+                                    triggerAlert(`Tarifa "${t.name}" eliminada`);
+                                  }
+                                }}
+                                style={{ width: 'auto', padding: '6px 10px', margin: 0 }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {tariffSubTab === 'eci' && (
+              {activeTariffSubTab === 'eci' && (
               <>
 
             {currentUser?.role === 'superadmin' && (
@@ -18369,7 +18366,8 @@ function App() {
             </>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {activeTab === 'users' && renderUsersSection()}
 
