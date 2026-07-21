@@ -731,6 +731,7 @@ function App() {
   const [dormityTariffs, setDormityTariffs] = useState([]);
   const [tariffSubTab, setTariffSubTab] = useState('eci');
   const [selectedTicketProvider, setSelectedTicketProvider] = useState('eci');
+  const [dormityRouteType, setDormityRouteType] = useState(() => getDraftVal('dormityRouteType', 'madrid'));
   const [dormityKmInput, setDormityKmInput] = useState('');
   const [dormityExtraOrdersInput, setDormityExtraOrdersInput] = useState('0');
   const [billingProviderFilter, setBillingProviderFilter] = useState('all');
@@ -3636,6 +3637,39 @@ function App() {
       finalNotes = `[Ruta Original: ${originalRouteLabel}] ${finalNotes}`.trim();
     }
 
+    // Lógica Automática para Dormity (Ruta Madrid 9ª+ parada o Tiendas Toledo)
+    if (selectedTicketProvider === 'dormity') {
+      if (dormityRouteType === 'madrid') {
+        const existingStops = tickets.filter(t => t.date === ticketDate && t.furgoId === assignedFurgoId && (!editingTicketId || t.id !== editingTicketId)).length;
+        const currentStopNum = existingStops + 1;
+        if (currentStopNum >= 9 && !tasksArray.some(t => t.tariffId === 'DORMITY_PARADA_EXTRA')) {
+          const extraTariff = dormityTariffs.find(t => t.id === 'DORMITY_PARADA_EXTRA');
+          const extraPrice = extraTariff ? extraTariff.value : 70;
+          tasksArray.push({
+            tariffId: 'DORMITY_PARADA_EXTRA',
+            name: `Cliente Adicional (Parada Nº ${currentStopNum})`,
+            quantity: 1,
+            unitPrice: extraPrice,
+            price: extraPrice,
+            subtotal: extraPrice
+          });
+        }
+      } else if (dormityRouteType === 'toledo') {
+        if (!tasksArray.some(t => t.tariffId === 'DORMITY_TOLEDO_FIXED')) {
+          const toledoTariff = dormityTariffs.find(t => t.id === 'DORMITY_TOLEDO_FIXED');
+          const toledoPrice = toledoTariff ? toledoTariff.value : 150;
+          tasksArray.push({
+            tariffId: 'DORMITY_TOLEDO_FIXED',
+            name: 'Ruta Tiendas Toledo (Precio Fijo)',
+            quantity: 1,
+            unitPrice: toledoPrice,
+            price: toledoPrice,
+            subtotal: toledoPrice
+          });
+        }
+      }
+    }
+
     // Datos del ticket estructurados
     const ticketData = {
       id: editingTicketId || undefined,
@@ -3648,6 +3682,7 @@ function App() {
       notes: finalNotes,
       codAmount: parseFloat(codAmount) || 0,
       provider: selectedTicketProvider || 'eci',
+      dormityRouteType: selectedTicketProvider === 'dormity' ? dormityRouteType : undefined,
       tasks: tasksArray,
       routeName: routeName || undefined,
       createdBy: editingTicketId ? undefined : (currentUser?.id || 'admin')
@@ -6294,6 +6329,98 @@ function App() {
                 )}
               </div>
             ) : null}
+
+            {/* Selector de Proveedor (si el usuario tiene permitidos ambos o es admin) */}
+            {(() => {
+              const allowed = getUserAllowedProviders(currentUser);
+              if (allowed.length > 1 || currentUser?.role === 'superadmin' || currentUser?.role === 'admin') {
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--panel-border)', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--primary)' }}>🏬 Cliente / Proveedor:</span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className={`btn ${selectedTicketProvider === 'eci' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setSelectedTicketProvider('eci')}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', margin: 0, width: 'auto' }}
+                      >
+                        📦 El Corte Inglés
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${selectedTicketProvider === 'dormity' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setSelectedTicketProvider('dormity')}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', margin: 0, width: 'auto' }}
+                      >
+                        🛏️ Dormity
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Modalidad de Ruta Dormity (Exclusivo Dormity) */}
+            {selectedTicketProvider === 'dormity' && (
+              <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '12px 16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  🛏️ Tipo / Modalidad de Ruta Dormity:
+                </span>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className={`btn ${dormityRouteType === 'madrid' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setDormityRouteType('madrid')}
+                    style={{ padding: '8px 14px', fontSize: '0.85rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    🚚 Ruta Madrid
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${dormityRouteType === 'express' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setDormityRouteType('express')}
+                    style={{ padding: '8px 14px', fontSize: '0.85rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    ⚡ Tienda Express
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${dormityRouteType === 'toledo' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setDormityRouteType('toledo')}
+                    style={{ padding: '8px 14px', fontSize: '0.85rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    🏢 Tiendas Toledo (Precio Fijo)
+                  </button>
+                </div>
+
+                {dormityRouteType === 'madrid' && (() => {
+                  const activeFurgo = editingTicketId ? editingFurgoId : (ticketRoute || currentUser?.id);
+                  const existingStops = tickets.filter(t => t.date === ticketDate && t.furgoId === activeFurgo && (!editingTicketId || t.id !== editingTicketId)).length;
+                  const currentStopNum = existingStops + 1;
+                  return (
+                    <div style={{ fontSize: '0.82rem', marginTop: '2px', color: currentStopNum >= 9 ? 'var(--warning)' : 'var(--text-muted)' }}>
+                      📍 Parada actual: <strong>Nº {currentStopNum}</strong> de la jornada.
+                      {currentStopNum >= 9 ? (
+                        <div style={{ fontWeight: 'bold', marginTop: '6px', color: '#fbbf24', background: 'rgba(251, 191, 36, 0.15)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
+                          ⭐ ¡Parada Nº {currentStopNum} (≥ 9) detectada! El sistema sumará automáticamente la tarifa de Cliente Adicional (+70,00 €).
+                        </div>
+                      ) : (
+                        <span style={{ display: 'block', marginTop: '2px', opacity: 0.8 }}>
+                          (Al añadir la 9ª parada o posteriores en Ruta Madrid, se aplicará automáticamente el recargo de 70 € por cliente adicional).
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {dormityRouteType === 'toledo' && (
+                  <div style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.12)', padding: '6px 12px', borderRadius: '6px' }}>
+                    🏢 Ruta Tiendas Toledo seleccionada: Tarifa con Precio Fijo aplicada.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 1. Dirección Primero */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
