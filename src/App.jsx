@@ -630,13 +630,7 @@ function processVoiceAddress(text) {
 }
 
 const DEFAULT_DORMITY_CATALOG = [
-  { id: 'DORMITY_COLCHON', name: 'Colchón / Colchoneta', block: 'Entregas', value: 25 },
-  { id: 'DORMITY_CANAPE', name: 'Canapé Abatible / Tapizado', block: 'Entregas', value: 45 },
-  { id: 'DORMITY_TAPI', name: 'Base Tapizada / Tapi', block: 'Entregas', value: 30 },
-  { id: 'DORMITY_SOMIER', name: 'Somier / Cama Articulada', block: 'Entregas', value: 35 },
-  { id: 'DORMITY_CABECERO', name: 'Cabecero / Respaldo', block: 'Entregas', value: 20 },
-  { id: 'DORMITY_PATAS', name: 'Juego de Patas (4/6 patas)', block: 'Entregas', value: 10 },
-  { id: 'DORMITY_ALMOHADA', name: 'Almohada / Ropa de Cama / Textil', block: 'Entregas', value: 10 },
+  // Entregas e Instalaciones vacías para agregar paso a paso según indicación
   { id: 'DORMITY_REC_COLCHON', name: 'Recogida Colchón Usado', block: 'Recogidas', value: 15 },
   { id: 'DORMITY_REC_CANAPE', name: 'Recogida Canapé Usado', block: 'Recogidas', value: 30 },
   { id: 'DORMITY_REC_BASE', name: 'Recogida Base / Somier Usado', block: 'Recogidas', value: 20 },
@@ -7130,8 +7124,13 @@ function App() {
                   </div>
 
                   {expandedSections.dormity_entregas !== false && (
-                    <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px', borderTop: '1px solid var(--panel-border)' }}>
-                      {entregasItems.map(item => {
+                    <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: entregasItems.length > 0 ? 'repeat(auto-fill, minmax(280px, 1fr))' : '1fr', gap: '12px', borderTop: '1px solid var(--panel-border)' }}>
+                      {entregasItems.length === 0 ? (
+                        <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: '0.88rem', fontStyle: 'italic', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px dashed var(--panel-border)' }}>
+                          📦 No hay artículos configurados en Entregas e Instalaciones. Listo para añadir el primer artículo.
+                        </div>
+                      ) : (
+                        entregasItems.map(item => {
                         const qty = otherQuantities[item.id] || 0;
                         const icon = getDormityItemIcon(item.id);
                         return (
@@ -7176,14 +7175,13 @@ function App() {
                                   type="text" 
                                   className="form-input" 
                                   placeholder="✏️ Especificar modelo / medidas (ej: Visco 150x190)" 
-                                  value={otherDescriptions[item.id] || ''} 
                                   onChange={(e) => {
                                     const val = e.target.value;
                                     setOtherDescriptions(prev => ({
                                       ...prev,
                                       [item.id]: val
                                     }));
-                                  }} 
+                                  }}
                                   disabled={isClosed} 
                                   style={{ padding: '4px 8px', fontSize: '0.78rem', height: '30px', margin: 0, background: 'rgba(0,0,0,0.2)' }} 
                                 />
@@ -7191,7 +7189,8 @@ function App() {
                             )}
                           </div>
                         );
-                      })}
+                      })
+                      )}
                     </div>
                   )}
                 </div>
