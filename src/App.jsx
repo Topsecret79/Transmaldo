@@ -3583,7 +3583,13 @@ function App() {
               noCharge: getExistingNoCharge(tariffId)
             });
           } else {
-            const taskName = originalTariff?.name || tariffId;
+            let taskName = originalTariff?.name || tariffId;
+            const descVal = otherDescriptions[tariffId];
+            if (descVal && typeof descVal === 'string' && descVal.trim()) {
+              taskName = `${taskName} (${descVal.trim()})`;
+            } else if (Array.isArray(descVal) && descVal.length > 0) {
+              taskName = `${taskName} (${descVal.join(', ')})`;
+            }
             const taskPrice = originalTariff?.value !== undefined ? parseFloat(originalTariff.value) : (originalTariff?.price || 0);
             tasksArray.push({
               tariffId,
@@ -6288,6 +6294,74 @@ function App() {
                 🏁 Finalizar y Cerrar Turno
               </button>
             </div>
+
+            {/* Selector de Modalidad de Servicio Dormity a nivel de Turno/Jornada */}
+            {selectedTicketProvider === 'dormity' && (
+              <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '14px 18px', borderRadius: '12px', marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🛏️ Modalidad de Servicio del Turno Dormity:
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                      Configura la modalidad de servicio para la jornada completa del chofer.
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'madrid' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('madrid')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      🚚 Ruta Madrid
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'express' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('express')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      ⚡ Tienda Express
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'toledo' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('toledo')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      🏢 Tiendas Toledo (Precio Fijo)
+                    </button>
+                  </div>
+                </div>
+
+                {dormityRouteType === 'madrid' && (() => {
+                  const activeFurgo = activeRouteContext ? activeRouteContext.furgoId : (currentUser?.id || 'admin');
+                  const activeDate = activeRouteContext ? activeRouteContext.date : ticketDate;
+                  const shiftStops = tickets.filter(t => t.date === activeDate && t.furgoId === activeFurgo).length;
+                  return (
+                    <div style={{ fontSize: '0.82rem', marginTop: '4px', background: shiftStops >= 9 ? 'rgba(251, 191, 36, 0.15)' : 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '8px', border: shiftStops >= 9 ? '1px solid #fbbf24' : '1px solid var(--panel-border)' }}>
+                      📍 Paradas creadas en esta jornada: <strong>{shiftStops} paradas</strong>.
+                      {shiftStops >= 9 ? (
+                        <div style={{ fontWeight: 'bold', marginTop: '4px', color: '#fbbf24' }}>
+                          ⭐ ¡Parada Nº {shiftStops} (≥ 9) alcanzada! El sistema sumará automáticamente la tarifa de Cliente Adicional (+70,00 €) a cada cliente extra del turno.
+                        </div>
+                      ) : (
+                        <span style={{ display: 'block', marginTop: '2px', opacity: 0.85 }}>
+                          (Paradas 1 a 8 incluidas en tarifa base. A partir de la 9ª parada del turno se calculará el recargo de 70 € por cliente extra).
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {dormityRouteType === 'toledo' && (
+                  <div style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.12)', padding: '8px 12px', borderRadius: '6px' }}>
+                    🏢 Ruta Tiendas Toledo seleccionada: Tarifa a Precio Fijo configurada para la jornada.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -6413,66 +6487,7 @@ function App() {
               return null;
             })()}
 
-            {/* Modalidad de Ruta Dormity (Exclusivo Dormity) */}
-            {selectedTicketProvider === 'dormity' && (
-              <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '12px 16px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  🛏️ Tipo / Modalidad de Ruta Dormity:
-                </span>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className={`btn ${dormityRouteType === 'madrid' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setDormityRouteType('madrid')}
-                    style={{ padding: '8px 14px', fontSize: '0.85rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    🚚 Ruta Madrid
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn ${dormityRouteType === 'express' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setDormityRouteType('express')}
-                    style={{ padding: '8px 14px', fontSize: '0.85rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    ⚡ Tienda Express
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn ${dormityRouteType === 'toledo' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setDormityRouteType('toledo')}
-                    style={{ padding: '8px 14px', fontSize: '0.85rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  >
-                    🏢 Tiendas Toledo (Precio Fijo)
-                  </button>
-                </div>
 
-                {dormityRouteType === 'madrid' && (() => {
-                  const activeFurgo = editingTicketId ? editingFurgoId : (ticketRoute || currentUser?.id);
-                  const existingStops = tickets.filter(t => t.date === ticketDate && t.furgoId === activeFurgo && (!editingTicketId || t.id !== editingTicketId)).length;
-                  const currentStopNum = existingStops + 1;
-                  return (
-                    <div style={{ fontSize: '0.82rem', marginTop: '2px', color: currentStopNum >= 9 ? 'var(--warning)' : 'var(--text-muted)' }}>
-                      📍 Parada actual: <strong>Nº {currentStopNum}</strong> de la jornada.
-                      {currentStopNum >= 9 ? (
-                        <div style={{ fontWeight: 'bold', marginTop: '6px', color: '#fbbf24', background: 'rgba(251, 191, 36, 0.15)', padding: '8px 12px', borderRadius: '6px', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
-                          ⭐ ¡Parada Nº {currentStopNum} (≥ 9) detectada! El sistema sumará automáticamente la tarifa de Cliente Adicional (+70,00 €).
-                        </div>
-                      ) : (
-                        <span style={{ display: 'block', marginTop: '2px', opacity: 0.8 }}>
-                          (Al añadir la 9ª parada o posteriores en Ruta Madrid, se aplicará automáticamente el recargo de 70 € por cliente adicional).
-                        </span>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {dormityRouteType === 'toledo' && (
-                  <div style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.12)', padding: '6px 12px', borderRadius: '6px' }}>
-                    🏢 Ruta Tiendas Toledo seleccionada: Tarifa con Precio Fijo aplicada.
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* 1. Dirección Primero */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
@@ -6935,36 +6950,58 @@ function App() {
                       {entregasItems.map(item => {
                         const qty = otherQuantities[item.id] || 0;
                         return (
-                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: qty > 0 ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid var(--primary)' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: '600', fontSize: '0.88rem' }}>{item.name}</span>
-                              {item.value ? (
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
-                              ) : null}
+                          <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 14px', background: qty > 0 ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid var(--primary)' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontWeight: '600', fontSize: '0.88rem' }}>{item.name}</span>
+                                {item.value ? (
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
+                                ) : null}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-secondary btn-small"
+                                  style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
+                                  onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                                  disabled={isClosed}
+                                >
+                                  -
+                                </button>
+                                <span style={{ width: '26px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: qty > 0 ? 'var(--primary)' : 'var(--text)' }}>
+                                  {qty}
+                                </span>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-primary btn-small"
+                                  style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
+                                  onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                                  disabled={isClosed}
+                                >
+                                  +
+                                </button>
+                              </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <button 
-                                type="button" 
-                                className="btn btn-secondary btn-small"
-                                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
-                                onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
-                                disabled={isClosed}
-                              >
-                                -
-                              </button>
-                              <span style={{ width: '26px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: qty > 0 ? 'var(--primary)' : 'var(--text)' }}>
-                                {qty}
-                              </span>
-                              <button 
-                                type="button" 
-                                className="btn btn-primary btn-small"
-                                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
-                                onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
-                                disabled={isClosed}
-                              >
-                                +
-                              </button>
-                            </div>
+
+                            {qty > 0 && (
+                              <div style={{ width: '100%', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '6px' }}>
+                                <input 
+                                  type="text" 
+                                  className="form-input" 
+                                  placeholder="✏️ Especificar modelo / medidas (ej: Visco 150x190)" 
+                                  value={otherDescriptions[item.id] || ''} 
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setOtherDescriptions(prev => ({
+                                      ...prev,
+                                      [item.id]: val
+                                    }));
+                                  }} 
+                                  disabled={isClosed} 
+                                  style={{ padding: '4px 8px', fontSize: '0.78rem', height: '30px', margin: 0, background: 'rgba(0,0,0,0.2)' }} 
+                                />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -7003,36 +7040,58 @@ function App() {
                       {recogidasItems.map(item => {
                         const qty = otherQuantities[item.id] || 0;
                         return (
-                          <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: qty > 0 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid #f59e0b' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: '600', fontSize: '0.88rem' }}>{item.name}</span>
-                              {item.value ? (
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
-                              ) : null}
+                          <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 14px', background: qty > 0 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid #f59e0b' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontWeight: '600', fontSize: '0.88rem' }}>{item.name}</span>
+                                {item.value ? (
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
+                                ) : null}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-secondary btn-small"
+                                  style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
+                                  onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                                  disabled={isClosed}
+                                >
+                                  -
+                                </button>
+                                <span style={{ width: '26px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: qty > 0 ? '#f59e0b' : 'var(--text)' }}>
+                                  {qty}
+                                </span>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-primary btn-small"
+                                  style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem', background: '#f59e0b', borderColor: '#f59e0b' }}
+                                  onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                                  disabled={isClosed}
+                                >
+                                  +
+                                </button>
+                              </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <button 
-                                type="button" 
-                                className="btn btn-secondary btn-small"
-                                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
-                                onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
-                                disabled={isClosed}
-                              >
-                                -
-                              </button>
-                              <span style={{ width: '26px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: qty > 0 ? '#f59e0b' : 'var(--text)' }}>
-                                {qty}
-                              </span>
-                              <button 
-                                type="button" 
-                                className="btn btn-primary btn-small"
-                                style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem', background: '#f59e0b', borderColor: '#f59e0b' }}
-                                onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
-                                disabled={isClosed}
-                              >
-                                +
-                              </button>
-                            </div>
+
+                            {qty > 0 && (
+                              <div style={{ width: '100%', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '6px' }}>
+                                <input 
+                                  type="text" 
+                                  className="form-input" 
+                                  placeholder="✏️ Notas de retirada (ej: Colchón usado 135x190)" 
+                                  value={otherDescriptions[item.id] || ''} 
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setOtherDescriptions(prev => ({
+                                      ...prev,
+                                      [item.id]: val
+                                    }));
+                                  }} 
+                                  disabled={isClosed} 
+                                  style={{ padding: '4px 8px', fontSize: '0.78rem', height: '30px', margin: 0, background: 'rgba(0,0,0,0.2)' }} 
+                                />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
