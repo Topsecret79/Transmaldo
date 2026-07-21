@@ -6916,7 +6916,49 @@ function App() {
               </div>
             </div>
 
-            {/* 3. Selección de Auxilio de Ruta */}
+            {/* 3. Cobro a la Entrega / Reembolso */}
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px',
+              background: showCod ? 'rgba(234, 179, 8, 0.08)' : 'rgba(255,255,255,0.02)',
+              padding: '12px 14px', borderRadius: '8px',
+              border: showCod ? '1px solid #eab308' : '1px solid var(--panel-border)',
+              transition: 'all 0.2s ease'
+            }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontWeight: '700' }}>
+                <input 
+                  type="checkbox" 
+                  checked={showCod} 
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setShowCod(checked);
+                    if (!checked) setCodAmount('');
+                  }} 
+                  disabled={isClosed}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                />
+                💶 ¿Se cobra dinero a la entrega / Reembolso?
+              </label>
+
+              {showCod && (
+                <div className="input-group" style={{ margin: '4px 0 0 0', animation: 'fadeIn 0.2s ease' }}>
+                  <span className="input-label" style={{ fontSize: '0.8rem', color: '#eab308', fontWeight: 'bold' }}>
+                    Importe Exacto a Cobrar (€)
+                  </span>
+                  <input 
+                    type="number" 
+                    step="0.01" 
+                    className="form-input" 
+                    placeholder="Ej: 150.00" 
+                    value={codAmount} 
+                    onChange={(e) => setCodAmount(e.target.value)} 
+                    disabled={isClosed} 
+                    style={{ borderColor: '#eab308', fontWeight: 'bold', fontSize: '1rem' }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 4. Selección de Auxilio de Ruta */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
               <label style={{ fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none', fontWeight: '600' }}>
                 <input 
