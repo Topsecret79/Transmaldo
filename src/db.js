@@ -1169,22 +1169,33 @@ export function saveModulePrice(price, userId) {
 
 export function getTariffs() {
   initDB();
+  let currentUserObj = null;
+  try {
+    const savedUser = localStorage.getItem('delivery_session');
+    if (savedUser) {
+      currentUserObj = JSON.parse(savedUser);
+    }
+  } catch (e) {}
+
+  if (currentUserObj && currentUserObj.role !== 'superadmin') {
+    const allowed = getUserAllowedProviders(currentUserObj);
+    if (!allowed.includes('eci')) {
+      return [];
+    }
+  }
+
   const rawTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
   
   let targetAdminId = 'admin';
   let isSuperAdmin = false;
   try {
-    const savedUser = localStorage.getItem('delivery_session');
-    if (savedUser) {
-      const u = JSON.parse(savedUser);
-      if (u) {
-        if (u.role === 'admin') {
-          targetAdminId = u.id;
-        } else if (u.role === 'repartidor') {
-          targetAdminId = u.createdBy || 'admin';
-        } else if (u.role === 'superadmin') {
-          isSuperAdmin = true;
-        }
+    if (currentUserObj) {
+      if (currentUserObj.role === 'admin') {
+        targetAdminId = currentUserObj.id;
+      } else if (currentUserObj.role === 'repartidor') {
+        targetAdminId = currentUserObj.createdBy || 'admin';
+      } else if (currentUserObj.role === 'superadmin') {
+        isSuperAdmin = true;
       }
     }
   } catch (e) {}
@@ -2159,7 +2170,10 @@ export async function updateUserAllowedProviders(userId, allowedProviders) {
 }
 
 // Inicializar tarifas de un administrador (copiar por defecto o a 0)
-export async function initializeAdminTariffs(newAdminId, option, creatorTariffs) {
+export async function initializeAdminTariffs(newAdminId, option, creatorTariffs, allowedProviders = ['eci', 'dormity']) {
+  if (option === 'none' || (allowedProviders && Array.isArray(allowedProviders) && !allowedProviders.includes('eci'))) {
+    return [];
+  }
   const currentTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
   
   // Lista base: usar las del creador si existen, o sino las DEFAULT_TARIFFS

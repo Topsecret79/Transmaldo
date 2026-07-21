@@ -15739,7 +15739,8 @@ function App() {
                     const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id, emailVal, authUid, newAllowedProviders);
                     if (res.success) {
                       if (roleToUse === 'admin') {
-                        await initializeAdminTariffs(res.user.id, newAdminPricingOption, tariffs);
+                        const pricingOptToUse = newAllowedProviders.includes('eci') ? newAdminPricingOption : 'none';
+                        await initializeAdminTariffs(res.user.id, pricingOptToUse, tariffs, newAllowedProviders);
                       }
                       triggerAlert(`Usuario "${newLabel}" creado correctamente`);
                       setNewUsername('');
@@ -15834,19 +15835,21 @@ function App() {
                             onChange={(e) => setNewEmailState(e.target.value)} 
                           />
                         </div>
-                        <div className="input-group">
-                          <span className="input-label">Configuración Inicial de Tarifas</span>
-                          <select 
-                            className="form-input" 
-                            value={newAdminPricingOption} 
-                            onChange={(e) => setNewAdminPricingOption(e.target.value)}
-                            required
-                            style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
-                          >
-                            <option value="copy_default">Copiar precios de tarifas por defecto</option>
-                            <option value="zero">Iniciar precios a 0,00 €</option>
-                          </select>
-                        </div>
+                        {newAllowedProviders.includes('eci') && (
+                          <div className="input-group">
+                            <span className="input-label">Configuración Inicial de Tarifas El Corte Inglés</span>
+                            <select 
+                              className="form-input" 
+                              value={newAdminPricingOption} 
+                              onChange={(e) => setNewAdminPricingOption(e.target.value)}
+                              required
+                              style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
+                            >
+                              <option value="copy_default">Copiar precios de tarifas por defecto</option>
+                              <option value="zero">Iniciar precios a 0,00 €</option>
+                            </select>
+                          </div>
+                        )}
                       </>
                     )}
                     <button type="submit" className="btn btn-primary" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
