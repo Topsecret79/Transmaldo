@@ -50,17 +50,42 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 * **Regla**: El panel principal del módulo de Flota (Dashboard) debe contener un selector desplegable que permita filtrar de forma reactiva los indicadores clave (KPIs) y las tablas de historial (kilómetros diarios, repostajes y mantenimientos).
   * **Comportamiento**: Al seleccionar un vehículo específico, los cálculos y listados deben actualizarse dinámicamente sumando solo sus datos. Al seleccionar "Todos los vehículos", se muestra el consolidado total de la flota.
 
+## 🏬 Proveedores Separados (El Corte Inglés vs. Dormity) y Proveedor Efectivo
+* **Regla**: Al renderizar formularios de creación de tickets o guardar datos en la base de datos, siempre se debe calcular `effectiveTicketProvider` basándose en `getUserAllowedProviders(user)`:
+  * Si el usuario solo tiene permiso para `eci` (o solo para `dormity`), se debe forzar este proveedor como efectivo, anulando cualquier estado en localStorage o prioridades por defecto.
+* **Separación de Tarifas y Servicios**:
+  * **El Corte Inglés (`eci`)**: Incluye tipos de servicio `estandar`, `cuelgue`, `puesta_marcha`. Catálogo: Televisores, Paquetería, Gama Blanca, Muebles, Electrodomésticos Varios, Otros Accesorios.
+  * **Dormity (`dormity`)**: Excluye Puestas en Marcha (PMs) y Cuelgues de los desgloses, reportes diarios y exportaciones de Excel. Tipos de servicio: `estandar`, `preferencial`, `vip`. Catálogo: Colchones, Canapés, Tapis, Somieres, Cabeceros y Retiradas.
+
+## ⚡ Carga Rápida de Rutas por Lote de Direcciones
+* **Regla**: El planificador de rutas incluye la carga masiva multilínea sin límite de paradas (5, 20, 50, 80 o más).
+* **Geolocalización & Optimización**:
+  * Se limpia automáticamente cualquier prefijo numérico o viñeta (`1. `, `• `, `- `).
+  * Realiza geolocalización secuencial en lote mostrando barra de progreso reactiva.
+  * Ejecuta la reordenación secuencial OSRM para minimizar distancia y tiempo de viaje.
+* **Tarjetas Incompletas**: Las paradas provisionales creadas por lote llevan `customerName` con formato `Parada #1`, `Parada #2` y muestran el distintivo `⚠️ Faltan datos` y el botón `✏️ Completar`.
+
+## ⛔ Condicional de Bloqueo al Cerrar Turno (Rutas Incompletas)
+* **Regla Inflexible**: No se permite cerrar el turno de un chofer (tanto en `handleConfirmCloseShift` como en el planificador) si en la jornada de esa furgoneta existe alguna parada creada por lote que permanezca incompleta.
+* **Criterios de Incompletitud**:
+  * El cliente mantiene el nombre provisional (`Parada #...`).
+  * La parada no tiene ningún servicio o mercancía asignada (0 tareas en `t.tasks`).
+* **Acción**: Si hay paradas incompletas, la función `handleConfirmCloseShift` detiene la ejecución, emite una alerta roja indicando qué paradas faltan por completar y retorna `false` impidiendo la liquidación del vale.
+
 ---
 
 ## 📅 Historial de Cambios y Commits Recientes
 
 ### Sesión del 20 de Julio de 2026
 * **Commit `2d244c1`**: `feat: show current logged admin separately at top and nest other admins with their drivers in hierarchical view`
-  * Aísla el perfil del administrador autenticado e implementa la vista jerárquica en árbol de coordinadores y repartidores.
 * **Commit `587ad44`**: `feat: automatically update global fuel price configuration on each refueling event`
-  * Introduce el cálculo dinámico y la auto-actualización del precio del gasoil global compartido en base a los repostajes reales ingresados en el sistema.
 * **Commit `0c697fb`**: `style: replace hardcoded light text colors with dynamic CSS variables for theme accessibility`
-  * Sustituye colores claros estáticos por variables dinámicas de CSS (`var(--danger)`, `var(--success)`, `var(--warning)`, `var(--primary)`) para garantizar una legibilidad excelente sobre fondos claros.
 * **Commit `46fbaf2`**: `feat: add individual vehicle selector and filtering for fleet statistics and logs`
-  * Implementa la selección interactiva y filtrado individual por vehículo de kilómetros, repostajes y mantenimientos en el panel de control de flota.
+
+### Sesión del 21 de Julio de 2026
+* **Commit `a831a1a`**: `fix: compute activeTariffSubTab dynamically so single-provider users don't see a blank tariffs screen (SW v236)`
+* **Commit `a662236`**: `fix: ensure user creation form and fleet tab are accessible to all admin roles (SW v237)`
+* **Commit `fba70af`**: `fix: compute effectiveTicketProvider dynamically so ECI-only users see ECI form catalog and options correctly (SW v238)`
+* **Commit `87517dc`**: `feat: add Fast Address Batch Route Builder with unlimited stops, sequential geocoding and OSRM optimization (SW v239)`
+* **Commit `9e1227d`**: `feat: block shift closure if fast batch route stops have incomplete client/services data (SW v240)`
 
