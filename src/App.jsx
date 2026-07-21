@@ -7088,13 +7088,27 @@ function App() {
                     style={{
                       borderLeft: `4px solid ${
                         serviceType === 'vip' ? '#ec4899' :
-                        serviceType === 'preferencial' ? '#f97316' : 'var(--primary)'
+                        serviceType === 'preferencial' ? '#f97316' : 
+                        serviceType === 'cuelgue' ? '#a855f7' :
+                        serviceType === 'puesta_marcha' ? '#ec4899' :
+                        'var(--primary)'
                       }`
                     }}
                   >
                     <option value="estandar">📦 Servicio Estándar (Azul / Amarillo)</option>
-                    <option value="preferencial">⭐ Servicio Preferencial (Naranja)</option>
-                    <option value="vip">👑 Servicio VIP (Rosa / Magenta)</option>
+                    {selectedTicketProvider === 'eci' ? (
+                      <>
+                        <option value="cuelgue">📺 Cuelgue TV / Instalación Cuelgue (Morado)</option>
+                        <option value="puesta_marcha">⚙️ Puesta en Marcha (Rosa / Naranja)</option>
+                        <option value="preferencial">⭐ Servicio Preferencial (Naranja)</option>
+                        <option value="vip">👑 Servicio VIP (Rosa / Magenta)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="preferencial">⭐ Servicio Preferencial (Naranja)</option>
+                        <option value="vip">👑 Servicio VIP (Rosa / Magenta)</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
