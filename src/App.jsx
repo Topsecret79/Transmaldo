@@ -15758,7 +15758,7 @@ function App() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
               {/* Crear nuevo usuario */}
-              {showStaff && (
+              {(showStaff || loggedInUserObj?.role === 'admin' || loggedInUserObj?.role === 'superadmin') && (
                 <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
                   <div className="block-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Plus size={18} color="var(--primary)" /> Crear Nuevo Usuario
@@ -16645,7 +16645,7 @@ function App() {
           {showVanPricing && (
             <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>🏷️ Tarifas</button>
           )}
-          {(showStaff || showSecurity) && (
+          {(showStaff || showSecurity || loggedInUserObj?.role === 'admin' || loggedInUserObj?.role === 'superadmin') && (
             <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}>Furgonetas y Seguridad</button>
           )}
           {showFleetControl && (
