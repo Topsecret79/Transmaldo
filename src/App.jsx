@@ -816,6 +816,10 @@ function App() {
 
   const [tariffSubTab, setTariffSubTab] = useState('eci');
   const [selectedTicketProvider, setSelectedTicketProvider] = useState('eci');
+  const [showBatchAddressModal, setShowBatchAddressModal] = useState(false);
+  const [batchAddressText, setBatchAddressText] = useState('');
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentAddress: '' });
   const [dormityRouteType, setDormityRouteType] = useState(() => getDraftVal('dormityRouteType', 'serv_dia'));
   const [dormityServDiaOption, setDormityServDiaOption] = useState('express');
   const [dormityServDiaDist, setDormityServDiaDist] = useState('cercania');
@@ -4481,6 +4485,187 @@ function App() {
     triggerAlert('Ajustes geográficos del mapa guardados con éxito', 'success');
   };
 
+  const handleProcessBatchAddresses = async () => {
+    if (!batchAddressText.trim()) {
+      triggerAlert('Por favor introduce o pega la lista de direcciones', 'error');
+      return;
+    }
+
+    const lines = batchAddressText
+      .split('\n')
+      .map(line => line.replace(/^[\s\d.•\-*]+/, '').trim())
+      .filter(line => line.length > 2);
+
+    if (lines.length === 0) {
+      triggerAlert('No se encontraron direcciones válidas en el texto introducido', 'error');
+      return;
+    }
+
+    const allowedProvidersBatch = getUserAllowedProviders(loggedInUserObj || currentUser);
+    const canECIBatch = allowedProvidersBatch.includes('eci') || currentUser?.role === 'superadmin';
+    const canDormityBatch = allowedProvidersBatch.includes('dormity') || currentUser?.role === 'superadmin';
+    const effectiveTicketProviderBatch = (canECIBatch && !canDormityBatch) 
+      ? 'eci' 
+      : (canDormityBatch && !canECIBatch) 
+        ? 'dormity' 
+        : selectedTicketProvider;
+
+    const targetFurgo = activeRouteContext ? activeRouteContext.furgoId : (ticketRoute || (currentUser?.role === 'repartidor' ? currentUser.id : 'admin'));
+    const targetDate = activeRouteContext ? activeRouteContext.date : ticketDate;
+    const targetRouteName = activeRouteContext ? activeRouteContext.name : (routeName || `Ruta ${targetDate}`);
+
+    if (!targetFurgo) {
+      triggerAlert('Por favor selecciona un chofer / furgoneta para la ruta.', 'error');
+      return;
+    }
+
+    setIsBatchProcessing(true);
+    setBatchProgress({ current: 0, total: lines.length, currentAddress: lines[0] });
+
+    let successCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const addrLine = lines[i];
+      setBatchProgress({ current: i + 1, total: lines.length, currentAddress: addrLine });
+
+      let coords = null;
+      try {
+        coords = await geocodeAddress(addrLine);
+      } catch (err) {
+        console.warn(`Error geocodificando [${addrLine}]:`, err);
+      }
+
+      const formattedName = `Parada #${i + 1}`;
+      const finalAddress = coords && coords.displayName ? getShortAddressString(coords.displayName) : addrLine;
+
+      const newTicketData = {
+        furgoId: targetFurgo,
+        date: targetDate,
+        customerName: formattedName,
+        phone: '',
+        address: finalAddress,
+        postcode: (coords && coords.postcode) ? coords.postcode : '',
+        notes: '',
+        codAmount: 0,
+        provider: effectiveTicketProviderBatch || 'eci',
+        tasks: [],
+        routeName: targetRouteName,
+        createdBy: currentUser?.id || 'admin'
+      };
+
+      if (coords && coords.lat && coords.lng) {
+        newTicketData.lat = parseFloat(coords.lat);
+        newTicketData.lng = parseFloat(coords.lng);
+      }
+
+      await addTicket(newTicketData);
+      successCount++;
+    }
+
+    try {
+      await autoOptimizeRemainingRoute(targetFurgo, targetDate);
+    } catch (e) {
+      console.warn("Error optimizando ruta en lote:", e);
+    }
+
+    setIsBatchProcessing(false);
+    setShowBatchAddressModal(false);
+    setBatchAddressText('');
+    triggerAlert(`¡Lote procesado con éxito! Se han registrado ${successCount} paradas sin límite y optimizado la ruta.`, 'success');
+    loadData();
+  };
+
+  const renderBatchAddressModal = () => {
+    if (!showBatchAddressModal) return null;
+
+    const allowedProvidersBatch = getUserAllowedProviders(loggedInUserObj || currentUser);
+    const canECIBatch = allowedProvidersBatch.includes('eci') || currentUser?.role === 'superadmin';
+    const canDormityBatch = allowedProvidersBatch.includes('dormity') || currentUser?.role === 'superadmin';
+    const effectiveTicketProviderBatch = (canECIBatch && !canDormityBatch) 
+      ? 'eci' 
+      : (canDormityBatch && !canECIBatch) 
+        ? 'dormity' 
+        : selectedTicketProvider;
+
+    return (
+      <div className="modal-overlay" style={{ zIndex: 2500 }}>
+        <div className="modal-content glass-panel" style={{ maxWidth: '600px', width: '92%', padding: '25px', textAlign: 'left' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px', marginBottom: '15px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              ⚡ Cargar Lote de Direcciones (Sin Límite)
+            </h3>
+            {!isBatchProcessing && (
+              <button onClick={() => setShowBatchAddressModal(false)} className="btn btn-secondary btn-small" style={{ padding: '4px', width: 'auto', margin: 0 }}>
+                <X size={18} />
+              </button>
+            )}
+          </div>
+
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0 15px 0', lineHeight: '1.4' }}>
+            Pega o escribe cualquier número de direcciones (una por línea). La aplicación geolocalizará, creará las paradas en lote y ordenará secuencialmente toda la ruta.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <div className="input-group" style={{ marginBottom: 0 }}>
+              <span className="input-label" style={{ fontWeight: '700' }}>Direcciones de la Ruta (1 por línea):</span>
+              <textarea 
+                className="form-input"
+                rows={8}
+                placeholder={`Ejemplo:\nCalle Mayor 15, Sabadell\nAv. Diagonal 400, Barcelona\nCarrer de la Creu Alta 12, Sabadell\nCarrer de Balmes 120, Barcelona`}
+                value={batchAddressText}
+                onChange={(e) => setBatchAddressText(e.target.value)}
+                disabled={isBatchProcessing}
+                style={{ fontSize: '0.88rem', lineHeight: '1.5', fontFamily: 'monospace', resize: 'vertical' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(99, 102, 241, 0.08)', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 'bold' }}>
+                🏬 Proveedor Activo: {effectiveTicketProviderBatch === 'dormity' ? '🛏️ Dormity' : '📦 El Corte Inglés'}
+              </span>
+            </div>
+
+            {isBatchProcessing && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(168, 85, 247, 0.1)', border: '1px solid #a855f7', padding: '12px 15px', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 'bold', color: '#c084fc' }}>
+                  <span>⚡ Procesando parada {batchProgress.current} de {batchProgress.total}...</span>
+                  <span>{Math.round((batchProgress.current / batchProgress.total) * 100)}%</span>
+                </div>
+                <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #a855f7, #6366f1)', transition: 'width 0.2s ease' }}></div>
+                </div>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  📍 {batchProgress.currentAddress}
+                </span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary"
+                onClick={() => setShowBatchAddressModal(false)}
+                disabled={isBatchProcessing}
+                style={{ flex: 1, height: '42px', margin: 0 }}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary"
+                onClick={handleProcessBatchAddresses}
+                disabled={isBatchProcessing || !batchAddressText.trim()}
+                style={{ flex: 2, height: '42px', margin: 0, background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)', boxShadow: '0 4px 15px rgba(168, 85, 247, 0.3)', fontWeight: 'bold' }}
+              >
+                {isBatchProcessing ? '⚡ Geolocalizando y Organizando...' : '🚀 Procesar y Organizar Ruta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Iniciar la edición de un ticket y reconstruir los estados desde el listado de tareas del ticket
   const startEditing = (ticket) => {
     const isClosed = getShiftStatus(ticket.furgoId, ticket.date) === 'closed';
@@ -6403,6 +6588,14 @@ function App() {
               </span>
             </div>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-small"
+                onClick={() => setShowBatchAddressModal(true)}
+                style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)', color: '#ffffff', fontWeight: 'bold', border: 'none', boxShadow: '0 4px 10px rgba(168, 85, 247, 0.3)' }}
+              >
+                ⚡ Cargar Lote de Direcciones
+              </button>
               <button
                 type="button"
                 className="btn btn-secondary btn-small"
@@ -8671,9 +8864,16 @@ function App() {
                       )}
                       
                       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, marginLeft: '4px' }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {t.customerName}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {t.customerName}
+                          </span>
+                          {t.customerName.startsWith('Parada #') && (
+                            <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '10px', fontWeight: '700' }}>
+                              ⚠️ Faltan datos
+                            </span>
+                          )}
+                        </div>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {t.lat && t.lng ? '🟢 ' : '🔴 '}
                           {(() => {
@@ -8700,6 +8900,17 @@ function App() {
                     </div>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      {t.customerName.startsWith('Parada #') && (
+                        <button
+                          type="button"
+                          onClick={() => startEditing(t)}
+                          className="btn btn-warning btn-small"
+                          style={{ margin: 0, padding: '4px 8px', fontSize: '0.72rem', fontWeight: 'bold', background: '#f59e0b', color: '#000', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          title="Completar datos del cliente y mercancía"
+                        >
+                          ✏️ Completar
+                        </button>
+                      )}
                       <button 
                         type="button" 
                         onClick={() => startEditing(t)} 
@@ -19474,6 +19685,8 @@ function App() {
           </div>
         </div>
       )}
+
+      {renderBatchAddressModal()}
 
       {/* Modal de Presintonías de Motivo de Fallo Rápido */}
       {quickFailTicketId !== null && (
