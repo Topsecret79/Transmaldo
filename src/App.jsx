@@ -630,7 +630,16 @@ function processVoiceAddress(text) {
 }
 
 const DEFAULT_DORMITY_CATALOG = [
-  // Entregas e Instalaciones vacías para agregar paso a paso según indicación
+  // Entregas e Instalaciones
+  { id: 'DORMITY_COLCHON', name: 'Colchón / Colchoneta', block: 'Entregas', value: 0 },
+  { id: 'DORMITY_CANAPE', name: 'Canapé Abatible / Tapizado', block: 'Entregas', value: 0 },
+  { id: 'DORMITY_TAPI', name: 'Base Tapizada / Tapi', block: 'Entregas', value: 0 },
+  { id: 'DORMITY_SOMIER', name: 'Somier / Cama Articulada', block: 'Entregas', value: 0 },
+  { id: 'DORMITY_CABECERO', name: 'Cabecero', block: 'Entregas', value: 0 },
+  { id: 'DORMITY_PATAS', name: 'Juego de Patas', block: 'Entregas', value: 0 },
+  { id: 'DORMITY_ALMOHADA', name: 'Almohada / Textil', block: 'Entregas', value: 0 },
+
+  // Recogidas y Retiradas
   { id: 'DORMITY_REC_COLCHON', name: 'Recogida Colchón Usado', block: 'Recogidas', value: 15 },
   { id: 'DORMITY_REC_CANAPE', name: 'Recogida Canapé Usado', block: 'Recogidas', value: 30 },
   { id: 'DORMITY_REC_BASE', name: 'Recogida Base / Somier Usado', block: 'Recogidas', value: 20 },
@@ -7056,7 +7065,7 @@ function App() {
         {/* PASO 2: ARTÍCULOS Y SERVICIOS */}
         {formStep === 2 && (() => {
           if (selectedTicketProvider === 'dormity') {
-            const activeDormityItems = (dormityTariffs && dormityTariffs.length > 0) ? dormityTariffs : DEFAULT_DORMITY_CATALOG;
+            const activeDormityItems = DEFAULT_DORMITY_CATALOG;
             const isChofer = currentUser?.role === 'repartidor';
 
             const getDormityItemIcon = (id) => {
