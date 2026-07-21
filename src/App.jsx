@@ -895,25 +895,40 @@ function App() {
   const calcTaskPrice = (task) => {
     if (!task) return 0;
     if (task.noCharge) return 0;
+    if (task.subtotal !== undefined && task.subtotal !== null) return parseFloat(task.subtotal) || 0;
+    if (task.price !== undefined && task.price !== null) return (parseFloat(task.price) || 0) * (task.quantity || 1);
+    if (task.unitPrice !== undefined && task.unitPrice !== null) return (parseFloat(task.unitPrice) || 0) * (task.quantity || 1);
+    
     const catalogTariff = tariffs.find(tar => tar.id === task.tariffId);
     if (catalogTariff) {
-      return calculateTaskPrice(task.tariffId, tariffs, modulePrice) * task.quantity;
+      return calculateTaskPrice(task.tariffId, tariffs, modulePrice) * (task.quantity || 1);
+    }
+    const dormityTariff = dormityTariffs.find(tar => tar.id === task.tariffId) || DEFAULT_DORMITY_CATALOG.find(tar => tar.id === task.tariffId);
+    if (dormityTariff) {
+      return (parseFloat(dormityTariff.value) || 0) * (task.quantity || 1);
     }
     if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
-      return (task.unitPrice || task.price || 0) * task.quantity;
+      return (parseFloat(task.unitPrice || task.price || 0)) * (task.quantity || 1);
     }
-    return calculateTaskPrice(task.tariffId, tariffs, modulePrice) * task.quantity;
+    return calculateTaskPrice(task.tariffId, tariffs, modulePrice) * (task.quantity || 1);
   };
 
   const calcTaskUnitPrice = (task) => {
     if (!task) return 0;
     if (task.noCharge) return 0;
+    if (task.unitPrice !== undefined && task.unitPrice !== null) return parseFloat(task.unitPrice) || 0;
+    if (task.price !== undefined && task.price !== null) return parseFloat(task.price) || 0;
+    
     const catalogTariff = tariffs.find(tar => tar.id === task.tariffId);
     if (catalogTariff) {
       return calculateTaskPrice(task.tariffId, tariffs, modulePrice);
     }
+    const dormityTariff = dormityTariffs.find(tar => tar.id === task.tariffId) || DEFAULT_DORMITY_CATALOG.find(tar => tar.id === task.tariffId);
+    if (dormityTariff) {
+      return parseFloat(dormityTariff.value) || 0;
+    }
     if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) {
-      return task.unitPrice || task.price || 0;
+      return parseFloat(task.unitPrice || task.price || 0);
     }
     return calculateTaskPrice(task.tariffId, tariffs, modulePrice);
   };
@@ -922,7 +937,7 @@ function App() {
     if (!ticket) return [];
     if (ticket.status === 'success') {
       return (ticket.tasks || []).map(task => {
-        const tariff = tariffs.find(tar => tar.id === task.tariffId);
+        const tariff = tariffs.find(tar => tar.id === task.tariffId) || dormityTariffs.find(tar => tar.id === task.tariffId) || DEFAULT_DORMITY_CATALOG.find(tar => tar.id === task.tariffId);
         const name = task.name || (tariff ? tariff.name : task.tariffId);
         return {
           name,
