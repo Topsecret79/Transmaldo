@@ -760,11 +760,11 @@ export const DEFAULT_DORMITY_TARIFFS = [
   { id: 'DORMITY_EXPRESS_LEJANIA', name: 'Ruta Express - Lejanía', block: 'Ruta Express', type: 'fixed', value: 280.00, provider: 'dormity' },
 
   // 🚚 Ruta Madrid
-  { id: 'DORMITY_MADRID', name: 'Ruta Madrid (hasta 8 paradas)', block: 'Ruta Madrid', type: 'fixed', value: 700.00, provider: 'dormity' },
-  { id: 'DORMITY_MADRID_EXTRA', name: 'Cliente Adicional Madrid (>=9ª parada)', block: 'Ruta Madrid', type: 'fixed', value: 70.00, provider: 'dormity' },
+  { id: 'DORMITY_MADRID', name: 'Ruta Madrid (700,00 € hasta 8 clientes)', block: 'Ruta Madrid', type: 'fixed', value: 700.00, provider: 'dormity' },
+  { id: 'DORMITY_MADRID_EXTRA', name: 'Cliente Adicional Madrid (+70,00 € a partir del 9º cliente)', block: 'Ruta Madrid', type: 'fixed', value: 70.00, provider: 'dormity' },
 
   // 🏢 Ruta Toledo
-  { id: 'DORMITY_TOLEDO', name: 'Ruta Toledo', block: 'Ruta Toledo', type: 'fixed', value: 700.00, provider: 'dormity' }
+  { id: 'DORMITY_TOLEDO', name: 'Ruta Toledo (700,00 € Fija)', block: 'Ruta Toledo', type: 'fixed', value: 700.00, provider: 'dormity' }
 ];
 
 export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74, 75, 77, 83, 85, 98, 100, 115];
@@ -810,8 +810,14 @@ export function initDB() {
       if (t && t.id && (t.id === 'DORMITY_SERVDIA_EXPRESS' || t.id.startsWith('DORMITY_SERVDIA_EXPRESS_'))) {
         return { ...t, name: 'Tienda' };
       }
+      if (t && t.id && (t.id === 'DORMITY_MADRID' || t.id.startsWith('DORMITY_MADRID_') && t.id !== 'DORMITY_MADRID_EXTRA')) {
+        return { ...t, name: 'Ruta Madrid (700,00 € hasta 8 clientes)' };
+      }
+      if (t && t.id && (t.id === 'DORMITY_MADRID_EXTRA' || t.id.startsWith('DORMITY_MADRID_EXTRA_'))) {
+        return { ...t, name: 'Cliente Adicional Madrid (+70,00 € a partir del 9º cliente)' };
+      }
       if (t && t.id && (t.id === 'DORMITY_TOLEDO' || t.id.startsWith('DORMITY_TOLEDO_'))) {
-        return { ...t, name: 'Ruta Toledo' };
+        return { ...t, name: 'Ruta Toledo (700,00 € Fija)' };
       }
       return t;
     });
@@ -1394,7 +1400,13 @@ export function getDormityTariffs() {
   
   const sanitizedRaw = (rawTariffs || []).filter(t => t && t.id && !t.id.includes('GRAN_LEJANIA') && t.id !== 'DORMITY_TOLEDO_EXTRA' && !t.id.startsWith('DORMITY_TOLEDO_EXTRA')).map(t => {
     if (t.id === 'DORMITY_TOLEDO' || t.id.startsWith('DORMITY_TOLEDO_')) {
-      return { ...t, name: 'Ruta Toledo' };
+      return { ...t, name: 'Ruta Toledo (700,00 € Fija)' };
+    }
+    if (t.id === 'DORMITY_MADRID' || (t.id.startsWith('DORMITY_MADRID_') && t.id !== 'DORMITY_MADRID_EXTRA')) {
+      return { ...t, name: 'Ruta Madrid (700,00 € hasta 8 clientes)' };
+    }
+    if (t.id === 'DORMITY_MADRID_EXTRA' || t.id.startsWith('DORMITY_MADRID_EXTRA_')) {
+      return { ...t, name: 'Cliente Adicional Madrid (+70,00 € a partir del 9º cliente)' };
     }
     if (t.id === 'DORMITY_SERVDIA_EXPRESS' || t.id.startsWith('DORMITY_SERVDIA_EXPRESS_')) {
       return { ...t, name: 'Tienda' };
