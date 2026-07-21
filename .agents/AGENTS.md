@@ -104,9 +104,9 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
   * La parada no tiene ningún servicio o mercancía asignada (0 tareas en `t.tasks`).
 * **Acción**: Si hay paradas incompletas, la función `handleConfirmCloseShift` detiene la ejecución, emite una alerta roja indicando qué paradas faltan por completar y retorna `false` impidiendo la liquidación del vale.
 
-## 🚗 Kilometraje de Odómetro como Telemetría de Flota (Sin Coste de Salario/Facturación)
-* **Regla Inflexible**: Los kilómetros diarios de odómetro registrados por el chofer al iniciar y cerrar turno (`driverKmStart`, `driverKmEnd`, `getRouteKms()`) corresponden al control de telemetría de uso del vehículo de la flota y **NUNCA** se multiplican por la tarifa de kilometraje (`kmPrice`) ni se añaden a los totales de salario/facturación de furgonetas, resúmenes diarios o cortes de facturación.
-* **Presentación**: Los kilómetros de odómetro se muestran de forma transparente como dato informativo de telemetría (`Odómetro Flota (X km - Control de Flota)`) con 0.00 € de importe asociado en informes, drilldowns y Dashboard.
+## 🚗 Kilometraje de Odómetro (Telemetría Flota) vs. Kilómetros Facturables (Tareas Manuales Ticket)
+* **Odómetro de Vehículo (Telemetría de Flota)**: Los kilómetros diarios de odómetro registrados por el chofer al iniciar y cerrar turno (`driverKmStart`, `driverKmEnd`, `getRouteKms()`) corresponden al control de telemetría y mantenimiento de la flota. **NUNCA** se multiplican por la tarifa de kilometraje (`kmPrice`) ni se añaden a los totales de salario, facturación de furgonetas, resúmenes diarios o cortes de facturación. En informes y Dashboard se presentan estrictamente a **0.00 €** como `Odómetro Flota (X km - Control de Flota)`.
+* **Kilómetros Facturables (Tareas Manuales de Ticket)**: Los únicos kilómetros que generan importe de facturación (€) en los resúmenes diarios son aquellos que el chofer o administrador **introduce manualmente dentro de un ticket/albarán** (por ejemplo: seleccionando la tarifa *Kilometraje Ruta Larga / Extra* o especificando una distancia $X$ facturable para un servicio especial).
 
 ---
 
