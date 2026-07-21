@@ -7063,6 +7063,20 @@ function App() {
         {formStep === 2 && (() => {
           if (selectedTicketProvider === 'dormity') {
             const activeDormityItems = (dormityTariffs && dormityTariffs.length > 0) ? dormityTariffs : DEFAULT_DORMITY_CATALOG;
+            const isChofer = currentUser?.role === 'repartidor';
+
+            const getDormityItemIcon = (id) => {
+              if (id.includes('COLCHON')) return '🛏️';
+              if (id.includes('CANAPE')) return '📦';
+              if (id.includes('TAPI')) return '🛋️';
+              if (id.includes('SOMIER')) return '⚙️';
+              if (id.includes('CABECERO')) return '🖼️';
+              if (id.includes('PATAS')) return '🦶';
+              if (id.includes('ALMOHADA')) return '☁️';
+              if (id.includes('REC_RESTOS')) return '🗑️';
+              if (id.includes('REC_')) return '♻️';
+              return '📦';
+            };
             
             const entregasItems = activeDormityItems.filter(t => t.block !== 'Recogidas' && t.category !== 'Recogidas' && !t.id.includes('REC_') && t.id !== 'DORMITY_PARADA_EXTRA' && t.id !== 'DORMITY_TOLEDO_FIXED');
             const recogidasItems = activeDormityItems.filter(t => t.block === 'Recogidas' || t.category === 'Recogidas' || t.id.includes('REC_'));
@@ -7119,12 +7133,15 @@ function App() {
                     <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px', borderTop: '1px solid var(--panel-border)' }}>
                       {entregasItems.map(item => {
                         const qty = otherQuantities[item.id] || 0;
+                        const icon = getDormityItemIcon(item.id);
                         return (
                           <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 14px', background: qty > 0 ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid var(--primary)' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontWeight: '600', fontSize: '0.88rem' }}>{item.name}</span>
-                                {item.value ? (
+                                <span style={{ fontWeight: '600', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span>{icon}</span> {item.name}
+                                </span>
+                                {(item.value && !isChofer) ? (
                                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
                                 ) : null}
                               </div>
@@ -7209,12 +7226,15 @@ function App() {
                     <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px', borderTop: '1px solid var(--panel-border)' }}>
                       {recogidasItems.map(item => {
                         const qty = otherQuantities[item.id] || 0;
+                        const icon = getDormityItemIcon(item.id);
                         return (
                           <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 14px', background: qty > 0 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid #f59e0b' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontWeight: '600', fontSize: '0.88rem' }}>{item.name}</span>
-                                {item.value ? (
+                                <span style={{ fontWeight: '600', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span>{icon}</span> {item.name}
+                                </span>
+                                {(item.value && !isChofer) ? (
                                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
                                 ) : null}
                               </div>
@@ -7301,17 +7321,19 @@ function App() {
                             disabled={isClosed}
                           />
                         </div>
-                        <div style={{ flex: 1, minWidth: '100px' }}>
-                          <span className="input-label" style={{ margin: '0 0 4px 0' }}>Precio (€)</span>
-                          <input 
-                            type="number" 
-                            className="form-input" 
-                            placeholder="Ej: 20"
-                            value={customExtraPrice}
-                            onChange={(e) => setCustomExtraPrice(e.target.value)}
-                            disabled={isClosed}
-                          />
-                        </div>
+                        {!isChofer && (
+                          <div style={{ flex: 1, minWidth: '100px' }}>
+                            <span className="input-label" style={{ margin: '0 0 4px 0' }}>Precio (€)</span>
+                            <input 
+                              type="number" 
+                              className="form-input" 
+                              placeholder="Ej: 20"
+                              value={customExtraPrice}
+                              onChange={(e) => setCustomExtraPrice(e.target.value)}
+                              disabled={isClosed}
+                            />
+                          </div>
+                        )}
                         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                           <button 
                             type="button" 
@@ -7321,7 +7343,7 @@ function App() {
                                 triggerAlert('Escribe una descripción para el concepto adicional', 'error');
                                 return;
                               }
-                              if (!customExtraPrice || parseFloat(customExtraPrice) < 0) {
+                              if (!isChofer && (!customExtraPrice || parseFloat(customExtraPrice) < 0)) {
                                 triggerAlert('Introduce un precio válido', 'error');
                                 return;
                               }
@@ -7341,7 +7363,9 @@ function App() {
                             <div key={extra.id} className="task-item-row" style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '10px 15px', borderRadius: '8px', border: '1px solid var(--panel-border)', margin: 0 }}>
                               <span style={{ fontWeight: '600' }}>✨ {extra.name}</span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                <span style={{ fontWeight: '700', color: 'var(--success)' }}>{extra.price.toFixed(2)} €</span>
+                                {!isChofer && (
+                                  <span style={{ fontWeight: '700', color: 'var(--success)' }}>{extra.price.toFixed(2)} €</span>
+                                )}
                                 <button 
                                   type="button" 
                                   className="btn btn-danger btn-small"
