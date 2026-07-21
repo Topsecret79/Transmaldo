@@ -17,6 +17,26 @@ class ErrorBoundary extends Component {
     console.error("ErrorBoundary caught an error", error, errorInfo);
   }
 
+  handleForceUpdate = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const reg of regs) {
+          await reg.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const key of keys) {
+          await caches.delete(key);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    window.location.href = window.location.origin + window.location.pathname + '?reload=' + Date.now();
+  };
+
   render() {
     if (this.state.hasError) {
       return (
@@ -28,9 +48,14 @@ class ErrorBoundary extends Component {
             {"\n\nStack:\n"}
             {this.state.error ? this.state.error.stack : ''}
           </pre>
-          <button onClick={() => window.location.reload(true)} style={{ marginTop: '10px', padding: '8px 16px', background: '#991b1b', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-            🔄 Recargar Aplicación
-          </button>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px' }}>
+            <button 
+              onClick={this.handleForceUpdate} 
+              style={{ padding: '10px 18px', background: '#991b1b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem' }}
+            >
+              🔄 Limpiar Caché y Actualizar Aplicación
+            </button>
+          </div>
         </div>
       );
     }
@@ -53,6 +78,7 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
       .then(reg => {
         console.log('SW registrado:', reg.scope);
+        reg.update().catch(() => {});
       })
       .catch(err => console.warn('Fallo al registrar SW:', err));
   });

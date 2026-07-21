@@ -1,5 +1,5 @@
 // sw.js - Service Worker optimizado (Network-First) para recibir actualizaciones al instante
-const CACHE_NAME = 'delivery-app-v220';
+const CACHE_NAME = 'delivery-app-v221';
 const ASSETS = [
   './',
   './index.html',
@@ -30,7 +30,7 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Ignorar peticiones que no sean GET (como POST o solicitudes a APIs externas como OSM/Supabase que no queremos cachear de forma rígida)
+  // Ignorar peticiones que no sean GET
   if (e.request.method !== 'GET') {
     e.respondWith(fetch(e.request));
     return;
@@ -42,12 +42,10 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Estrategia Network-First: Intenta red primero, si falla va a la caché.
-  // Esto garantiza que si hay internet, el móvil SIEMPRE cargará la versión más nueva de la app al abrirla.
+  // Estrategia Network-First: Intenta red primero sin usar caché HTTP antiguo
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then((response) => {
-        // Si la respuesta es válida, actualizamos la caché en segundo plano
         if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -57,7 +55,7 @@ self.addEventListener('fetch', (e) => {
         return response;
       })
       .catch(() => {
-        // Si no hay internet, cargamos desde la caché
+        // Si no hay internet, cargamos desde la caché local
         return caches.match(e.request);
       })
   );
