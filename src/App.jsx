@@ -956,8 +956,17 @@ function App() {
       if (allowed && allowed.length > 0 && !allowed.includes(selectedTicketProvider)) {
         setSelectedTicketProvider(allowed[0]);
       }
+      if (allowed && allowed.length === 1 && loggedInUserObj.role !== 'superadmin') {
+        const singleProv = allowed[0];
+        if (billingProviderFilter !== singleProv) {
+          setBillingProviderFilter(singleProv);
+        }
+        if (tariffSubTab !== singleProv) {
+          setTariffSubTab(singleProv);
+        }
+      }
     }
-  }, [loggedInUserObj, users, selectedTicketProvider]);
+  }, [loggedInUserObj, users, selectedTicketProvider, billingProviderFilter, tariffSubTab]);
 
   const calcTaskPrice = (task) => {
     if (!task) return 0;
@@ -6675,10 +6684,13 @@ function App() {
               </div>
             ) : null}
 
-            {/* Selector de Proveedor (si el usuario tiene permitidos ambos o es admin) */}
+            {/* Selector de Proveedor (si el usuario tiene permitidos ambos o es superadmin) */}
             {(() => {
               const allowed = getUserAllowedProviders(currentUser);
-              if (allowed.length > 1 || currentUser?.role === 'superadmin' || currentUser?.role === 'admin') {
+              const canECI = allowed.includes('eci') || currentUser?.role === 'superadmin';
+              const canDormity = allowed.includes('dormity') || currentUser?.role === 'superadmin';
+
+              if (canECI && canDormity) {
                 return (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--panel-border)', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--primary)' }}>🏬 Cliente / Proveedor:</span>
@@ -6703,7 +6715,13 @@ function App() {
                   </div>
                 );
               }
-              return null;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                    🏬 Proveedor: {canDormity ? '🛏️ Dormity' : '📦 El Corte Inglés'}
+                  </span>
+                </div>
+              );
             })()}
 
 
@@ -16683,20 +16701,39 @@ function App() {
                     ))}
                   </select>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Proveedor:</span>
-                  <select 
-                    className="form-input" 
-                    style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto', minWidth: '160px', height: '36px' }}
-                    value={billingProviderFilter} 
-                    onChange={(e) => setBillingProviderFilter(e.target.value)}
-                  >
-                    <option value="all">🏬 Todos los Proveedores</option>
-                    <option value="eci">📦 El Corte Inglés</option>
-                    <option value="dormity">🛏️ Dormity</option>
-                  </select>
-                </div>
-                {(adminStartDate || adminEndDate || billingFilterFurgo !== 'all' || billingProviderFilter !== 'all') && (
+                {(() => {
+                  const allowed = getUserAllowedProviders(loggedInUserObj);
+                  const canECI = allowed.includes('eci') || loggedInUserObj?.role === 'superadmin';
+                  const canDormity = allowed.includes('dormity') || loggedInUserObj?.role === 'superadmin';
+
+                  if (canECI && canDormity) {
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Proveedor:</span>
+                        <select 
+                          className="form-input" 
+                          style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto', minWidth: '160px', height: '36px' }}
+                          value={billingProviderFilter} 
+                          onChange={(e) => setBillingProviderFilter(e.target.value)}
+                        >
+                          <option value="all">🏬 Todos los Proveedores</option>
+                          <option value="eci">📦 El Corte Inglés</option>
+                          <option value="dormity">🛏️ Dormity</option>
+                        </select>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Proveedor:</span>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                        {canDormity ? '🛏️ Dormity' : '📦 El Corte Inglés'}
+                      </span>
+                    </div>
+                  );
+                })()}
+                {(adminStartDate || adminEndDate || billingFilterFurgo !== 'all' || (billingProviderFilter !== 'all' && (getUserAllowedProviders(loggedInUserObj).length > 1 || loggedInUserObj?.role === 'superadmin'))) && (
                   <button 
                     type="button" 
                     className="btn btn-secondary btn-small" 
@@ -16705,7 +16742,12 @@ function App() {
                       setAdminStartDate('');
                       setAdminEndDate('');
                       setBillingFilterFurgo('all');
-                      setBillingProviderFilter('all');
+                      const allowed = getUserAllowedProviders(loggedInUserObj);
+                      if (allowed.length > 1 || loggedInUserObj?.role === 'superadmin') {
+                        setBillingProviderFilter('all');
+                      } else {
+                        setBillingProviderFilter(allowed[0] || 'dormity');
+                      }
                     }}
                   >
                     Mostrar Todo
