@@ -18065,6 +18065,22 @@ function App() {
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                       <button
                         type="button"
+                        className="btn btn-secondary btn-small"
+                        onClick={async () => {
+                          if (window.confirm('¿Deseas restaurar todas las tarifas de Dormity a sus valores iniciales por defecto?')) {
+                            localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(DEFAULT_DORMITY_TARIFFS));
+                            const fresh = getDormityTariffs();
+                            await saveDormityTariffs(fresh);
+                            setDormityTariffs(fresh);
+                            triggerAlert('Tarifas de Dormity restauradas a los valores por defecto');
+                          }
+                        }}
+                        style={{ width: 'auto', padding: '6px 14px' }}
+                      >
+                        🔄 Restaurar Predeterminadas
+                      </button>
+                      <button
+                        type="button"
                         className="btn btn-success btn-small"
                         onClick={async () => {
                           const cleaned = dormityTariffs.map(item => ({ ...item, value: Number(item.value) || 0 }));

@@ -822,7 +822,7 @@ export function initDB() {
       return t;
     });
     DEFAULT_DORMITY_TARIFFS.forEach(defItem => {
-      if (!updatedDormity.some(t => t.id === defItem.id || (t.id && t.id.startsWith(defItem.id)))) {
+      if (!updatedDormity.some(t => t.id === defItem.id || (t.id && t.id.startsWith(defItem.id + '_')))) {
         updatedDormity.push(defItem);
       }
     });
@@ -1412,6 +1412,12 @@ export function getDormityTariffs() {
       return { ...t, name: 'Tienda' };
     }
     return t;
+  });
+
+  DEFAULT_DORMITY_TARIFFS.forEach(defItem => {
+    if (!sanitizedRaw.some(t => t.id === defItem.id || (t.id && t.id.startsWith(defItem.id + '_')))) {
+      sanitizedRaw.push(defItem);
+    }
   });
 
   let targetAdminId = 'admin';
