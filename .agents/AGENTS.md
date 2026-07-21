@@ -60,7 +60,7 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 ## 🛌 Modalidades de Servicio de Ruta Dormity (Madrid, Express, Toledo)
 * **Regla**: Las rutas de Dormity admiten distintas modalidades a nivel de jornada/turno (`shiftDormityServiceType`):
   * **Ruta Madrid**: Tarifa base de **700,00 €** (paradas 1 a 8 fijas). A partir de la 9ª parada, se añade automáticamente un extra de **+70,00 € por cada parada adicional** (`DORMITY_MADRID_EXTRA`).
-  * **Ruta Toledo**: Tarifa base de **700,00 €** (paradas 1 a 8 fijas). A partir de la 9ª parada, se añade automáticamente un extra de **+70,00 € por cada parada adicional** (`DORMITY_TOLEDO_EXTRA`).
+  * **Ruta Toledo**: Tarifa plana fija única por servicio de ruta (**700,00 €**), independiente del número de paradas.
   * **Ruta Express / Servicios Día**: Tarifas por tramos de distancia (Cercanía, Media, Lejanía) y opción **Tienda** (antigua *Tienda Express*). Se han eliminado de forma permanente las opciones de Gran Lejanía.
 * **Persistencia**: La modalidad de servicio se selecciona en la cabecera de la ruta activa y se sincroniza reactivamente para todas las entregas del turno.
 
