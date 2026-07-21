@@ -774,6 +774,43 @@ function App() {
   const [tickets, setTickets] = useState([]);
   const [tariffs, setTariffs] = useState([]);
   const [dormityTariffs, setDormityTariffs] = useState([]);
+  const [customDormityItems, setCustomDormityItems] = useState([]);
+  const [customDormityEntregaName, setCustomDormityEntregaName] = useState('');
+  const [customDormityRecogidaName, setCustomDormityRecogidaName] = useState('');
+
+  const addCustomDormityItem = (block, name) => {
+    if (!name || !name.trim()) return;
+    const cleanName = name.trim();
+    const id = `CUSTOM_DORMITY_${block === 'Recogidas' ? 'REC' : 'ENT'}_${Date.now()}`;
+    const newItem = {
+      id,
+      name: cleanName,
+      block: block,
+      value: 0
+    };
+    setCustomDormityItems(prev => [...prev, newItem]);
+    setOtherQuantities(prev => ({ ...prev, [id]: 1 }));
+    if (block === 'Recogidas') {
+      setCustomDormityRecogidaName('');
+    } else {
+      setCustomDormityEntregaName('');
+    }
+  };
+
+  const removeCustomDormityItem = (itemId) => {
+    setCustomDormityItems(prev => prev.filter(item => item.id !== itemId));
+    setOtherQuantities(prev => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+    setOtherDescriptions(prev => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+  };
+
   const [tariffSubTab, setTariffSubTab] = useState('eci');
   const [selectedTicketProvider, setSelectedTicketProvider] = useState('eci');
   const [dormityRouteType, setDormityRouteType] = useState(() => getDraftVal('dormityRouteType', 'serv_dia'));
@@ -4591,6 +4628,7 @@ function App() {
     }
 
     const tempCustomExtras = [];
+    const tempCustomDormity = [];
     const tempDescriptions = {};
     const tempActions = {};
     let localUrgente = 'none';
@@ -4603,6 +4641,21 @@ function App() {
       }
       if (t.tariffId === 'URGENTE_120') {
         localUrgente = '120';
+        return;
+      }
+      if (t.tariffId && t.tariffId.startsWith('CUSTOM_DORMITY_')) {
+        const isRec = t.tariffId.includes('_REC_') || (t.name && t.name.toLowerCase().includes('recogida'));
+        tempCustomDormity.push({
+          id: t.tariffId,
+          name: t.name ? t.name.split(' (')[0] : 'Artículo Personalizado',
+          block: isRec ? 'Recogidas' : 'Entregas',
+          value: 0
+        });
+        tempOthers[t.tariffId] = (tempOthers[t.tariffId] || 0) + (t.quantity || 1);
+        const match = t.name ? t.name.match(/\(([^)]+)\)/) : null;
+        if (match) {
+          tempDescriptions[t.tariffId] = match[1];
+        }
         return;
       }
       if (t.tariffId && t.tariffId.startsWith('CUSTOM_')) {
@@ -4635,6 +4688,11 @@ function App() {
           for (let i = 0; i < t.quantity; i++) {
             tempDescriptions[t.tariffId].push(desc);
           }
+        } else {
+          const match = t.name ? t.name.match(/\(([^)]+)\)/) : null;
+          if (match && !tempDescriptions[t.tariffId]) {
+            tempDescriptions[t.tariffId] = match[1];
+          }
         }
       }
     });
@@ -4644,6 +4702,9 @@ function App() {
     setOtherActions(tempActions);
     setOtherDescriptions(tempDescriptions);
     setCustomExtras(tempCustomExtras);
+    setCustomDormityItems(tempCustomDormity);
+    setCustomDormityEntregaName('');
+    setCustomDormityRecogidaName('');
     setUrgenteType(localUrgente);
     setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
     setFormStep(1);
@@ -7065,7 +7126,7 @@ function App() {
         {/* PASO 2: ARTÍCULOS Y SERVICIOS */}
         {formStep === 2 && (() => {
           if (selectedTicketProvider === 'dormity') {
-            const activeDormityItems = DEFAULT_DORMITY_CATALOG;
+            const activeDormityItems = [...DEFAULT_DORMITY_CATALOG, ...customDormityItems];
             const isChofer = currentUser?.role === 'repartidor';
 
             const getDormityItemIcon = (id) => {
@@ -7140,66 +7201,106 @@ function App() {
                         </div>
                       ) : (
                         entregasItems.map(item => {
-                        const qty = otherQuantities[item.id] || 0;
-                        const icon = getDormityItemIcon(item.id);
-                        return (
-                          <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 14px', background: qty > 0 ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid var(--primary)' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ fontWeight: '600', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span>{icon}</span> {item.name}
-                                </span>
-                                {(item.value && !isChofer) ? (
-                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
-                                ) : null}
+                          const qty = otherQuantities[item.id] || 0;
+                          const icon = getDormityItemIcon(item.id);
+                          const isCustom = item.id.startsWith('CUSTOM_DORMITY_');
+                          return (
+                            <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 14px', background: qty > 0 ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid var(--primary)' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontWeight: '600', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span>{icon}</span> {item.name}
+                                    {isCustom && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); removeCustomDormityItem(item.id); }}
+                                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 4px', display: 'inline-flex', alignItems: 'center' }}
+                                        title="Eliminar artículo personalizado"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    )}
+                                  </span>
+                                  {(item.value && !isChofer) ? (
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
+                                  ) : null}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <button 
+                                    type="button" 
+                                    className="btn btn-secondary btn-small"
+                                    style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
+                                    onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                                    disabled={isClosed}
+                                  >
+                                    -
+                                  </button>
+                                  <span style={{ width: '26px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: qty > 0 ? 'var(--primary)' : 'var(--text)' }}>
+                                    {qty}
+                                  </span>
+                                  <button 
+                                    type="button" 
+                                    className="btn btn-primary btn-small"
+                                    style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
+                                    onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                                    disabled={isClosed}
+                                  >
+                                    +
+                                  </button>
+                                </div>
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button 
-                                  type="button" 
-                                  className="btn btn-secondary btn-small"
-                                  style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
-                                  onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
-                                  disabled={isClosed}
-                                >
-                                  -
-                                </button>
-                                <span style={{ width: '26px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: qty > 0 ? 'var(--primary)' : 'var(--text)' }}>
-                                  {qty}
-                                </span>
-                                <button 
-                                  type="button" 
-                                  className="btn btn-primary btn-small"
-                                  style={{ width: '32px', height: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.1rem' }}
-                                  onClick={() => setOtherQuantities(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
-                                  disabled={isClosed}
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </div>
 
-                            {qty > 0 && (
-                              <div style={{ width: '100%', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '6px' }}>
-                                <input 
-                                  type="text" 
-                                  className="form-input" 
-                                  placeholder="✏️ Especificar modelo / medidas (ej: Visco 150x190)" 
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setOtherDescriptions(prev => ({
-                                      ...prev,
-                                      [item.id]: val
-                                    }));
-                                  }}
-                                  disabled={isClosed} 
-                                  style={{ padding: '4px 8px', fontSize: '0.78rem', height: '30px', margin: 0, background: 'rgba(0,0,0,0.2)' }} 
-                                />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
+                              {qty > 0 && (
+                                <div style={{ width: '100%', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '6px' }}>
+                                  <input 
+                                    type="text" 
+                                    className="form-input" 
+                                    placeholder="✏️ Especificar modelo / medidas (ej: Visco 150x190)" 
+                                    value={otherDescriptions[item.id] || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setOtherDescriptions(prev => ({
+                                        ...prev,
+                                        [item.id]: val
+                                      }));
+                                    }}
+                                    disabled={isClosed} 
+                                    style={{ padding: '4px 8px', fontSize: '0.78rem', height: '30px', margin: 0, background: 'rgba(0,0,0,0.2)' }} 
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                       )}
+
+                      {/* Opción para añadir Entrega Personalizada */}
+                      <div style={{ gridColumn: '1 / -1', marginTop: '8px', paddingTop: '12px', borderTop: '1px dashed var(--panel-border)', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="➕ Añadir otro artículo de entrega (ej: Cojín ergonómico, Topper 160x200)..." 
+                          value={customDormityEntregaName} 
+                          onChange={(e) => setCustomDormityEntregaName(e.target.value)} 
+                          disabled={isClosed} 
+                          style={{ flex: 1, margin: 0, fontSize: '0.85rem' }} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addCustomDormityItem('Entregas', customDormityEntregaName);
+                            }
+                          }}
+                        />
+                        <button 
+                          type="button" 
+                          className="btn btn-primary" 
+                          style={{ width: 'auto', margin: 0, height: '38px', padding: '0 14px', fontSize: '0.82rem', whiteSpace: 'nowrap' }} 
+                          disabled={isClosed || !customDormityEntregaName.trim()} 
+                          onClick={() => addCustomDormityItem('Entregas', customDormityEntregaName)}
+                        >
+                          + Añadir Entrega
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -7235,12 +7336,23 @@ function App() {
                       {recogidasItems.map(item => {
                         const qty = otherQuantities[item.id] || 0;
                         const icon = getDormityItemIcon(item.id);
+                        const isCustom = item.id.startsWith('CUSTOM_DORMITY_');
                         return (
                           <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 14px', background: qty > 0 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255,255,255,0.02)', borderRadius: '8px', border: qty > 0 ? '1px solid #f59e0b' : '1px solid var(--panel-border)', transition: 'all 0.2s ease' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontWeight: '600', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <span>{icon}</span> {item.name}
+                                  {isCustom && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); removeCustomDormityItem(item.id); }}
+                                      style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 4px', display: 'inline-flex', alignItems: 'center' }}
+                                      title="Eliminar recogida personalizada"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
                                 </span>
                                 {(item.value && !isChofer) ? (
                                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa: {parseFloat(item.value).toFixed(2)} €</span>
@@ -7293,6 +7405,34 @@ function App() {
                           </div>
                         );
                       })}
+
+                      {/* Opción para añadir Recogida Personalizada */}
+                      <div style={{ gridColumn: '1 / -1', marginTop: '6px', paddingTop: '12px', borderTop: '1px dashed var(--panel-border)', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="➕ Añadir otra recogida personalizada (ej: Estructura metálica, Mueble aux)..." 
+                          value={customDormityRecogidaName} 
+                          onChange={(e) => setCustomDormityRecogidaName(e.target.value)} 
+                          disabled={isClosed} 
+                          style={{ flex: 1, margin: 0, fontSize: '0.85rem' }} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addCustomDormityItem('Recogidas', customDormityRecogidaName);
+                            }
+                          }}
+                        />
+                        <button 
+                          type="button" 
+                          className="btn btn-warning" 
+                          style={{ width: 'auto', margin: 0, height: '38px', padding: '0 14px', fontSize: '0.82rem', whiteSpace: 'nowrap', background: '#f59e0b', borderColor: '#f59e0b', color: '#000', fontWeight: 'bold' }} 
+                          disabled={isClosed || !customDormityRecogidaName.trim()} 
+                          onClick={() => addCustomDormityItem('Recogidas', customDormityRecogidaName)}
+                        >
+                          + Añadir Recogida
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
