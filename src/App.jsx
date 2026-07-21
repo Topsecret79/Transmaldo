@@ -886,11 +886,19 @@ function App() {
   const [empSearchQuery, setEmpSearchQuery] = useState('');
   const [empFilterRole, setEmpFilterRole] = useState('all');
   const [empFilterStatus, setEmpFilterStatus] = useState('active');
-  const [defaultNavigator, setDefaultNavigator] = useState(localStorage.getItem('delivery_default_navigator') || 'ask');
-
   const [navModalOpen, setNavModalOpen] = useState(false);
   const [navTarget, setNavTarget] = useState({ address: '', latitude: null, longitude: null, ticketId: null });
   const [navRememberChoice, setNavRememberChoice] = useState(false);
+
+  // Sincronizar automáticamente el proveedor seleccionado con los proveedores habilitados del usuario
+  useEffect(() => {
+    if (loggedInUserObj) {
+      const allowed = getUserAllowedProviders(loggedInUserObj);
+      if (allowed && allowed.length > 0 && !allowed.includes(selectedTicketProvider)) {
+        setSelectedTicketProvider(allowed[0]);
+      }
+    }
+  }, [loggedInUserObj, users, selectedTicketProvider]);
 
   const calcTaskPrice = (task) => {
     if (!task) return 0;
@@ -4335,6 +4343,13 @@ function App() {
 
     setEditingTicketId(ticket.id);
     setEditingFurgoId(ticket.furgoId);
+
+    const ticketProv = ticket.provider || (ticket.tasks && ticket.tasks.some(t => t.tariffId && (t.tariffId.startsWith('DORMITY_') || t.tariffId.startsWith('DORMITY'))) ? 'dormity' : 'eci');
+    setSelectedTicketProvider(ticketProv);
+    if (ticket.dormityRouteType) {
+      setDormityRouteType(ticket.dormityRouteType);
+    }
+
     setCustomerName(ticket.customerName);
     setPhone(ticket.phone || '');
     setAddress(ticket.address);
