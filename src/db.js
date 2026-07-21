@@ -1460,10 +1460,17 @@ export function getDormityTariffs() {
   });
   
   sanitizedRaw.forEach(t => {
-    if (t && !t.createdBy && !(t.id && t.id.endsWith(adminSuffix))) {
-      if (!tariffMap[t.id]) {
-        tariffMap[t.id] = t;
+    if (t && (!t.createdBy || t.createdBy === 'admin' || !t.id.includes('_')) && !(t.id && t.id.endsWith(adminSuffix))) {
+      let baseId = t.id;
+      if (!tariffMap[baseId]) {
+        tariffMap[baseId] = t;
       }
+    }
+  });
+
+  DEFAULT_DORMITY_TARIFFS.forEach(defItem => {
+    if (!tariffMap[defItem.id]) {
+      tariffMap[defItem.id] = defItem;
     }
   });
 
