@@ -16841,7 +16841,7 @@ function App() {
                       <tr style={{ background: 'rgba(255,255,255,0.04)', textAlign: 'left', borderBottom: '1px solid var(--panel-border)' }}>
                         <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Código</th>
                         <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Servicio / Descripción</th>
-                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Bloque</th>
+                        <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Bloque / Categoría</th>
                         <th style={{ padding: '12px 16px', fontSize: '0.85rem' }}>Precio (€)</th>
                         <th style={{ padding: '12px 16px', fontSize: '0.85rem', textAlign: 'right' }}>Acciones</th>
                       </tr>
@@ -16850,8 +16850,40 @@ function App() {
                       {dormityTariffs.map(t => (
                         <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                           <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.id}</td>
-                          <td style={{ padding: '10px 16px', fontWeight: '600', fontSize: '0.9rem' }}>{t.name}</td>
-                          <td style={{ padding: '10px 16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.block || 'General'}</td>
+                          <td style={{ padding: '10px 16px' }}>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={t.name}
+                              onChange={(e) => {
+                                const newName = e.target.value;
+                                const next = dormityTariffs.map(item => item.id === t.id ? { ...item, name: newName } : item);
+                                setDormityTariffs(next);
+                              }}
+                              onBlur={async () => {
+                                await saveDormityTariffs(dormityTariffs);
+                                triggerAlert('Nombre de tarifa guardado');
+                              }}
+                              style={{ width: '100%', minWidth: '180px', padding: '4px 8px', fontSize: '0.85rem', height: '32px', fontWeight: '600' }}
+                            />
+                          </td>
+                          <td style={{ padding: '10px 16px' }}>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={t.block || 'Servicios Dormity'}
+                              onChange={(e) => {
+                                const newBlock = e.target.value;
+                                const next = dormityTariffs.map(item => item.id === t.id ? { ...item, block: newBlock } : item);
+                                setDormityTariffs(next);
+                              }}
+                              onBlur={async () => {
+                                await saveDormityTariffs(dormityTariffs);
+                                triggerAlert('Categoría guardada');
+                              }}
+                              style={{ width: '130px', padding: '4px 8px', fontSize: '0.8rem', height: '32px' }}
+                            />
+                          </td>
                           <td style={{ padding: '10px 16px' }}>
                             <input
                               type="number"
@@ -16865,29 +16897,28 @@ function App() {
                               }}
                               onBlur={async () => {
                                 await saveDormityTariffs(dormityTariffs);
-                                triggerAlert('Tarifa Dormity guardada');
+                                triggerAlert('Precio guardado');
                               }}
-                              style={{ width: '110px', padding: '4px 8px', fontSize: '0.85rem', height: '30px' }}
+                              style={{ width: '110px', padding: '4px 8px', fontSize: '0.85rem', height: '32px', fontWeight: 'bold', color: 'var(--primary)' }}
                             />
                           </td>
                           <td style={{ padding: '10px 16px', textAlign: 'right' }}>
-                            {t.id.startsWith('DORMITY_CUSTOM_') && (
-                              <button
-                                type="button"
-                                className="btn btn-danger btn-small"
-                                onClick={async () => {
-                                  if (confirm(`¿Eliminar ${t.name}?`)) {
-                                    const next = dormityTariffs.filter(item => item.id !== t.id);
-                                    await saveDormityTariffs(next);
-                                    setDormityTariffs(next);
-                                    triggerAlert('Tarifa eliminada');
-                                  }
-                                }}
-                                style={{ width: 'auto', padding: '4px 8px', margin: 0 }}
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-small"
+                              title="Eliminar tarifa"
+                              onClick={async () => {
+                                if (window.confirm(`¿Estás seguro de que deseas eliminar la tarifa "${t.name}"?`)) {
+                                  const next = dormityTariffs.filter(item => item.id !== t.id);
+                                  await saveDormityTariffs(next);
+                                  setDormityTariffs(next);
+                                  triggerAlert(`Tarifa "${t.name}" eliminada`);
+                                }
+                              }}
+                              style={{ width: 'auto', padding: '6px 10px', margin: 0 }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </td>
                         </tr>
                       ))}
