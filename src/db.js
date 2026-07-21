@@ -744,7 +744,8 @@ const DEFAULT_TARIFFS = [
   // Nuevos artículos
   { id: 'ORDE', name: 'Ordenador', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
   { id: 'PANT', name: 'Pantalla', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
-  { id: 'MCAD', name: 'Micro Cadena', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 }
+  { id: 'MCAD', name: 'Micro Cadena', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+  { id: 'KM_RUTA_LARGA', name: 'Kilometraje Ruta Larga / Extra (por km)', block: 'Servicios', type: 'fixed', value: 0.30 }
 ];
 
 export const DEFAULT_DORMITY_TARIFFS = [

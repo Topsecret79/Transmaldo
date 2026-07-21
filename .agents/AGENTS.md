@@ -104,8 +104,9 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
   * La parada no tiene ningún servicio o mercancía asignada (0 tareas en `t.tasks`).
 * **Acción**: Si hay paradas incompletas, la función `handleConfirmCloseShift` detiene la ejecución, emite una alerta roja indicando qué paradas faltan por completar y retorna `false` impidiendo la liquidación del vale.
 
-## 🔄 Recuperación y Purga de Caché del Service Worker (`ErrorBoundary`)
-* **Regla**: Ante cualquier error no capturado en la aplicación, el `ErrorBoundary` presenta una interfaz amigable con un botón para **Limpiar Caché del Service Worker (`delivery-app-vXXX`) y Forzar Recarga**, garantizando que el usuario obtenga la versión más reciente del servidor de forma limpia.
+## 🚗 Kilometraje de Odómetro como Telemetría de Flota (Sin Coste de Salario/Facturación)
+* **Regla Inflexible**: Los kilómetros diarios de odómetro registrados por el chofer al iniciar y cerrar turno (`driverKmStart`, `driverKmEnd`, `getRouteKms()`) corresponden al control de telemetría de uso del vehículo de la flota y **NUNCA** se multiplican por la tarifa de kilometraje (`kmPrice`) ni se añaden a los totales de salario/facturación de furgonetas, resúmenes diarios o cortes de facturación.
+* **Presentación**: Los kilómetros de odómetro se muestran de forma transparente como dato informativo de telemetría (`Odómetro Flota (X km - Control de Flota)`) con 0.00 € de importe asociado en informes, drilldowns y Dashboard.
 
 ---
 
@@ -129,4 +130,10 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 * **Commit `87517dc`**: `feat: add Fast Address Batch Route Builder with unlimited stops, sequential geocoding and OSRM optimization (SW v239)`
 * **Commit `9e1227d`**: `feat: block shift closure if fast batch route stops have incomplete client/services data (SW v240)`
 * **Commit `f656eaf`**: `docs: update AGENTS.md rules with multi-provider, batch route builder, and shift closure block guidelines`
+* **Commit `7910f58`**: `renombrar Tienda Express a Tienda (SW v244)`
+* **Commit `c471ad6`**: `fix: set Ruta Toledo as flat rate (700€) and retain +70€ extra from 9th stop for Ruta Madrid (SW v245)`
+* **Commit `9f2c2df`**: `fix: remove superadmin raw-return bypass in getDormityTariffs to unify tariff sanitization (SW v246)`
+* **Commit `79b2555`**: `fix: set exact default nomenclature labels for Ruta Madrid, Cliente Adicional Madrid and Ruta Toledo (SW v247)`
+* **Commit `0a91f54`**: `fix: string match in initDB auto-seed for DORMITY_MADRID (SW v248)`
+* **Commit `2b73c41`**: `fix: exclude shift odometer telemetry kms from earnings calculation (SW v250)`
 
