@@ -629,6 +629,22 @@ function processVoiceAddress(text) {
   return result;
 }
 
+// Función auxiliar para cargar borradores temporales
+function getDraftVal(key, defaultVal) {
+  try {
+    const draft = localStorage.getItem('delivery_form_draft');
+    if (draft) {
+      const parsed = JSON.parse(draft);
+      if (parsed && parsed[key] !== undefined) {
+        return parsed[key];
+      }
+    }
+  } catch (e) {
+    console.error("Error loading draft val for", key, e);
+  }
+  return defaultVal;
+}
+
 function App() {
   const formatCustomerName = (name) => {
     if (!name) return '';
@@ -946,21 +962,7 @@ function App() {
   };
 
 
-  // Función auxiliar para cargar borradores temporales
-  const getDraftVal = (key, defaultVal) => {
-    try {
-      const draft = localStorage.getItem('delivery_form_draft');
-      if (draft) {
-        const parsed = JSON.parse(draft);
-        if (parsed && parsed[key] !== undefined) {
-          return parsed[key];
-        }
-      }
-    } catch (e) {
-      console.error("Error loading draft val for", key, e);
-    }
-    return defaultVal;
-  };
+
 
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('delivery_active_tab') || '';
