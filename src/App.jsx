@@ -15754,11 +15754,16 @@ function App() {
                       }
                     }
 
-                    const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id, emailVal, authUid, newAllowedProviders);
+                    const creatorAllowed = getUserAllowedProviders(currentUser);
+                    const allowedToAssign = creatorAllowed.length <= 1 
+                      ? creatorAllowed 
+                      : newAllowedProviders.filter(p => creatorAllowed.includes(p));
+
+                    const res = await addUser(newUsername, newLabel, newPassword, roleToUse, currentUser.id, emailVal, authUid, allowedToAssign.length > 0 ? allowedToAssign : creatorAllowed);
                     if (res.success) {
                       if (roleToUse === 'admin') {
-                        const pricingOptToUse = newAllowedProviders.includes('eci') ? newAdminPricingOption : 'none';
-                        await initializeAdminTariffs(res.user.id, pricingOptToUse, tariffs, newAllowedProviders);
+                        const pricingOptToUse = allowedToAssign.includes('eci') ? newAdminPricingOption : 'none';
+                        await initializeAdminTariffs(res.user.id, pricingOptToUse, tariffs, allowedToAssign);
                       }
                       triggerAlert(`Usuario "${newLabel}" creado correctamente`);
                       setNewUsername('');
@@ -15767,7 +15772,7 @@ function App() {
                       setNewRole('repartidor');
                       setNewEmailState('');
                       setNewAdminPricingOption('copy_default');
-                      setNewAllowedProviders(['eci', 'dormity']);
+                      setNewAllowedProviders(creatorAllowed);
                       loadData();
                     } else {
                       triggerAlert(res.error, 'error');
@@ -15785,47 +15790,70 @@ function App() {
                       <span className="input-label">Contraseña / PIN</span>
                       <input type="text" className="form-input" placeholder="Ej. 4444" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
                     </div>
-                    <div className="input-group">
-                      <span className="input-label" style={{ fontWeight: '700' }}>📋 Proveedores Habilitados:</span>
-                      <div style={{ display: 'flex', gap: '15px', marginTop: '6px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input 
-                            type="checkbox" 
-                            checked={newAllowedProviders.includes('eci')} 
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewAllowedProviders([...newAllowedProviders, 'eci']);
-                              } else {
-                                if (newAllowedProviders.length <= 1) {
-                                  triggerAlert('Debe haber al menos un proveedor habilitado', 'warning');
-                                  return;
-                                }
-                                setNewAllowedProviders(newAllowedProviders.filter(p => p !== 'eci'));
-                              }
-                            }} 
-                          />
-                          📦 El Corte Inglés
-                        </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input 
-                            type="checkbox" 
-                            checked={newAllowedProviders.includes('dormity')} 
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setNewAllowedProviders([...newAllowedProviders, 'dormity']);
-                              } else {
-                                if (newAllowedProviders.length <= 1) {
-                                  triggerAlert('Debe haber al menos un proveedor habilitado', 'warning');
-                                  return;
-                                }
-                                setNewAllowedProviders(newAllowedProviders.filter(p => p !== 'dormity'));
-                              }
-                            }} 
-                          />
-                          🛏️ Dormity
-                        </label>
-                      </div>
-                    </div>
+
+                    {(() => {
+                      const creatorAllowed = getUserAllowedProviders(currentUser);
+                      if (creatorAllowed.length <= 1) {
+                        const singleProv = creatorAllowed[0] || 'dormity';
+                        return (
+                          <div className="input-group">
+                            <span className="input-label" style={{ fontWeight: '700' }}>📋 Proveedor Habilitado:</span>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: '600', padding: '6px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {singleProv === 'dormity' ? '🛏️ Dormity' : '📦 El Corte Inglés'}
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>(Heredado de Administrador)</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="input-group">
+                          <span className="input-label" style={{ fontWeight: '700' }}>📋 Proveedores Habilitados:</span>
+                          <div style={{ display: 'flex', gap: '15px', marginTop: '6px' }}>
+                            {creatorAllowed.includes('eci') && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={newAllowedProviders.includes('eci')} 
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setNewAllowedProviders([...newAllowedProviders, 'eci']);
+                                    } else {
+                                      if (newAllowedProviders.length <= 1) {
+                                        triggerAlert('Debe haber al menos un proveedor habilitado', 'warning');
+                                        return;
+                                      }
+                                      setNewAllowedProviders(newAllowedProviders.filter(p => p !== 'eci'));
+                                    }
+                                  }} 
+                                />
+                                📦 El Corte Inglés
+                              </label>
+                            )}
+                            {creatorAllowed.includes('dormity') && (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={newAllowedProviders.includes('dormity')} 
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setNewAllowedProviders([...newAllowedProviders, 'dormity']);
+                                    } else {
+                                      if (newAllowedProviders.length <= 1) {
+                                        triggerAlert('Debe haber al menos un proveedor habilitado', 'warning');
+                                        return;
+                                      }
+                                      setNewAllowedProviders(newAllowedProviders.filter(p => p !== 'dormity'));
+                                    }
+                                  }} 
+                                />
+                                🛏️ Dormity
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && (
                       <div className="input-group">
                         <span className="input-label">Rol del Usuario</span>
@@ -15990,66 +16018,92 @@ function App() {
                           </div>
 
                           {/* Control de Proveedores Habilitados */}
-                          {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && (
-                            <div style={{
-                              background: 'rgba(255,255,255,0.015)',
-                              border: '1px solid rgba(255,255,255,0.05)',
-                              borderRadius: '6px',
-                              padding: '6px 10px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              flexWrap: 'wrap',
-                              gap: '6px'
-                            }}>
-                              <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-                                🏬 Proveedores Habilitados:
-                              </span>
-                              <div style={{ display: 'flex', gap: '12px' }}>
-                                {(() => {
-                                  const allowed = getUserAllowedProviders(u);
-                                  return (
-                                    <>
-                                      <label style={{ fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}>
-                                        <input 
-                                          type="checkbox"
-                                          checked={allowed.includes('eci')}
-                                          onChange={async (e) => {
-                                            let next = e.target.checked ? [...allowed, 'eci'] : allowed.filter(p => p !== 'eci');
-                                            if (next.length === 0) {
-                                              triggerAlert('Debe tener al menos un proveedor habilitado', 'warning');
-                                              return;
-                                            }
-                                            await updateUserAllowedProviders(u.id, next);
-                                            triggerAlert(`Proveedores actualizados para ${u.label}`);
-                                            loadData();
-                                          }}
-                                        />
-                                        📦 Corte Inglés
-                                      </label>
-                                      <label style={{ fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}>
-                                        <input 
-                                          type="checkbox"
-                                          checked={allowed.includes('dormity')}
-                                          onChange={async (e) => {
-                                            let next = e.target.checked ? [...allowed, 'dormity'] : allowed.filter(p => p !== 'dormity');
-                                            if (next.length === 0) {
-                                              triggerAlert('Debe tener al menos un proveedor habilitado', 'warning');
-                                              return;
-                                            }
-                                            await updateUserAllowedProviders(u.id, next);
-                                            triggerAlert(`Proveedores actualizados para ${u.label}`);
-                                            loadData();
-                                          }}
-                                        />
-                                        🛏️ Dormity
-                                      </label>
-                                    </>
-                                  );
-                                })()}
+                          {(currentUser.role === 'superadmin' || currentUser.role === 'admin') && (() => {
+                            const creatorAllowed = getUserAllowedProviders(currentUser);
+                            const targetUserAllowed = getUserAllowedProviders(u);
+
+                            if (currentUser.role !== 'superadmin' && creatorAllowed.length <= 1) {
+                              const singleProv = creatorAllowed[0] || 'dormity';
+                              return (
+                                <div style={{
+                                  background: 'rgba(255,255,255,0.015)',
+                                  border: '1px solid rgba(255,255,255,0.05)',
+                                  borderRadius: '6px',
+                                  padding: '6px 10px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  flexWrap: 'wrap',
+                                  gap: '6px'
+                                }}>
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                                    🏬 Proveedor Habilitado:
+                                  </span>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text)' }}>
+                                    {singleProv === 'dormity' ? '🛏️ Dormity' : '📦 El Corte Inglés'}
+                                  </span>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div style={{
+                                background: 'rgba(255,255,255,0.015)',
+                                border: '1px solid rgba(255,255,255,0.05)',
+                                borderRadius: '6px',
+                                padding: '6px 10px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '6px'
+                              }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                                  🏬 Proveedores Habilitados:
+                                </span>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                  {creatorAllowed.includes('eci') && (
+                                    <label style={{ fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}>
+                                      <input 
+                                        type="checkbox"
+                                        checked={targetUserAllowed.includes('eci')}
+                                        onChange={async (e) => {
+                                          let next = e.target.checked ? [...targetUserAllowed, 'eci'] : targetUserAllowed.filter(p => p !== 'eci');
+                                          if (next.length === 0) {
+                                            triggerAlert('Debe tener al menos un proveedor habilitado', 'warning');
+                                            return;
+                                          }
+                                          await updateUserAllowedProviders(u.id, next);
+                                          triggerAlert(`Proveedores actualizados para ${u.label}`);
+                                          loadData();
+                                        }}
+                                      />
+                                      📦 Corte Inglés
+                                    </label>
+                                  )}
+                                  {creatorAllowed.includes('dormity') && (
+                                    <label style={{ fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}>
+                                      <input 
+                                        type="checkbox"
+                                        checked={targetUserAllowed.includes('dormity')}
+                                        onChange={async (e) => {
+                                          let next = e.target.checked ? [...targetUserAllowed, 'dormity'] : targetUserAllowed.filter(p => p !== 'dormity');
+                                          if (next.length === 0) {
+                                            triggerAlert('Debe tener al menos un proveedor habilitado', 'warning');
+                                            return;
+                                          }
+                                          await updateUserAllowedProviders(u.id, next);
+                                          triggerAlert(`Proveedores actualizados para ${u.label}`);
+                                          loadData();
+                                        }}
+                                      />
+                                      🛏️ Dormity
+                                    </label>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {currentUser.role === 'superadmin' && u.role === 'admin' && u.id !== 'admin' && (
                             <div style={{
