@@ -675,6 +675,7 @@ function App() {
 
   const getTicketServiceType = (t) => {
     if (!t) return 'estandar';
+    const isDormity = t.provider === 'dormity';
 
     // 1. Prioridad: Etiquetas o palabras clave en las notas
     if (t.notes) {
@@ -688,28 +689,30 @@ function App() {
       if (notesLower.includes('[estandar]') || notesLower.includes('[estándar]') || notesLower.includes('estandar')) {
         return 'estandar';
       }
-      if (
-        notesLower.includes('[cuelgue]') || 
-        notesLower.includes('[cuelgue_manana]') || 
-        notesLower.includes('[cuelgue_mañana]') || 
-        notesLower.includes('[cuelgue_tarde]') || 
-        notesLower.includes('cuelgue') || 
-        notesLower.includes('colgar') || 
-        notesLower.includes('soporte')
-      ) {
-        return 'cuelgue';
-      }
-      if (
-        notesLower.includes('[puesta_marcha]') || 
-        notesLower.includes('[puesta_marcha_manana]') || 
-        notesLower.includes('[puesta_marcha_mañana]') || 
-        notesLower.includes('[puesta_marcha_tarde]') || 
-        notesLower.includes('puesta en marcha') || 
-        notesLower.includes('puesta_en_marcha') || 
-        notesLower.includes('instalar') || 
-        notesLower.includes('instalacion')
-      ) {
-        return 'puesta_marcha';
+      if (!isDormity) {
+        if (
+          notesLower.includes('[cuelgue]') || 
+          notesLower.includes('[cuelgue_manana]') || 
+          notesLower.includes('[cuelgue_mañana]') || 
+          notesLower.includes('[cuelgue_tarde]') || 
+          notesLower.includes('cuelgue') || 
+          notesLower.includes('colgar') || 
+          notesLower.includes('soporte')
+        ) {
+          return 'cuelgue';
+        }
+        if (
+          notesLower.includes('[puesta_marcha]') || 
+          notesLower.includes('[puesta_marcha_manana]') || 
+          notesLower.includes('[puesta_marcha_mañana]') || 
+          notesLower.includes('[puesta_marcha_tarde]') || 
+          notesLower.includes('puesta en marcha') || 
+          notesLower.includes('puesta_en_marcha') || 
+          notesLower.includes('instalar') || 
+          notesLower.includes('instalacion')
+        ) {
+          return 'puesta_marcha';
+        }
       }
       if (notesLower.includes('[tarde]') || notesLower.includes('servicio de tarde') || notesLower.includes('por la tarde') || notesLower.includes('tarde')) {
         return 'tarde';
@@ -717,7 +720,7 @@ function App() {
     }
 
     // 2. Si no hay marcas en las notas, deducir por las tareas asignadas
-    if (t.tasks && t.tasks.length > 0) {
+    if (!isDormity && t.tasks && t.tasks.length > 0) {
       const hasDelivery = t.tasks.some(task => 
         task.tariffId.startsWith('TV_ENT_') || 
         task.tariffId.startsWith('TV_COMB_') || 
@@ -4969,6 +4972,7 @@ function App() {
     
     dayTickets.forEach(t => {
       totalCODAmount += t.codAmount || 0;
+      const isDormityTicket = t.provider === 'dormity';
       t.tasks.forEach(task => {
         const tid = task.tariffId || '';
         
@@ -5008,7 +5012,7 @@ function App() {
             totalGV += task.quantity;
           }
         } else if (tariff.block === 'Instalaciones' || tid.startsWith('PM_') || tid.startsWith('CUELGUE_')) {
-          if (tid.startsWith('PM_')) {
+          if (tid.startsWith('PM_') && !isDormityTicket) {
             totalPM += task.quantity;
           } else if (tid.startsWith('CUELGUE_')) {
             totalCuelgues += task.quantity;
@@ -15198,6 +15202,8 @@ function App() {
       return true;
     });
 
+    const isDormityView = billingProviderFilter === 'dormity' || (loggedInUserObj && getUserAllowedProviders(loggedInUserObj).length === 1 && getUserAllowedProviders(loggedInUserObj)[0] === 'dormity');
+
     const exportSingleFurgoDailyReport = async (fid) => {
       const label = users.find(u => u.id === fid)?.label || fid;
       
@@ -15225,9 +15231,10 @@ function App() {
         let pms = 0;
         let deliveries = 0;
         fSuccess.forEach(t => {
+          const isDormityTicket = t.provider === 'dormity';
           t.tasks.forEach(task => {
             const tid = task.tariffId || '';
-            if (tid.startsWith('PM_')) pms += task.quantity;
+            if (!isDormityTicket && tid.startsWith('PM_')) pms += task.quantity;
             if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) deliveries += task.quantity;
           });
         });
@@ -15250,29 +15257,37 @@ function App() {
         const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
         const formattedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
 
-        rows.push({
+        const rowObj = {
           'Fecha': `${formattedWeekday}, ${date}`,
-          'Éxitos / Total': `${fSuccess.length} / ${fTickets.length}`,
-          'Puestas en Marcha': pms,
-          'Entregas': deliveries,
-          'Kilómetros': `${kms.toFixed(1)} km`,
-          'Kilometraje (€)': mileage.toFixed(2),
-          'Base Imponible (€)': base.toFixed(2),
-          'Total Neto (€)': net.toFixed(2)
-        });
+          'Éxitos / Total': `${fSuccess.length} / ${fTickets.length}`
+        };
+        if (!isDormityView) {
+          rowObj['Puestas en Marcha'] = pms;
+        }
+        rowObj['Entregas'] = deliveries;
+        rowObj['Kilómetros'] = `${kms.toFixed(1)} km`;
+        rowObj['Kilometraje (€)'] = mileage.toFixed(2);
+        rowObj['Base Imponible (€)'] = base.toFixed(2);
+        rowObj['Total Neto (€)'] = net.toFixed(2);
+
+        rows.push(rowObj);
       });
 
       rows.push({});
-      rows.push({
+      const totalsObj = {
         'Fecha': 'TOTALES ACUMULADOS',
-        'Éxitos / Total': '',
-        'Puestas en Marcha': '',
-        'Entregas': '',
-        'Kilómetros': `${totalKms.toFixed(1)} km`,
-        'Kilometraje (€)': totalMileage.toFixed(2),
-        'Base Imponible (€)': totalBase.toFixed(2),
-        'Total Neto (€)': totalNet.toFixed(2)
-      });
+        'Éxitos / Total': ''
+      };
+      if (!isDormityView) {
+        totalsObj['Puestas en Marcha'] = '';
+      }
+      totalsObj['Entregas'] = '';
+      totalsObj['Kilómetros'] = `${totalKms.toFixed(1)} km`;
+      totalsObj['Kilometraje (€)'] = totalMileage.toFixed(2);
+      totalsObj['Base Imponible (€)'] = totalBase.toFixed(2);
+      totalsObj['Total Neto (€)'] = totalNet.toFixed(2);
+
+      rows.push(totalsObj);
 
       const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
@@ -15312,9 +15327,10 @@ function App() {
         let pms = 0;
         let deliveries = 0;
         fSuccess.forEach(t => {
+          const isDormityTicket = t.provider === 'dormity';
           t.tasks.forEach(task => {
             const tid = task.tariffId || '';
-            if (tid.startsWith('PM_')) pms += task.quantity;
+            if (!isDormityTicket && tid.startsWith('PM_')) pms += task.quantity;
             if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) deliveries += task.quantity;
           });
         });
@@ -15413,7 +15429,7 @@ function App() {
                     <tr>
                       <th>Fecha</th>
                       <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
-                      <th style={{ textAlign: 'center' }}>PMs</th>
+                      {!isDormityView && <th style={{ textAlign: 'center' }}>PMs</th>}
                       <th style={{ textAlign: 'center' }}>Entregas</th>
                       <th style={{ textAlign: 'center' }}>Kms</th>
                       <th style={{ textAlign: 'right' }}>Kilometraje</th>
@@ -15432,7 +15448,7 @@ function App() {
                         <tr key={stat.date}>
                           <td style={{ fontWeight: '600' }}>{stat.formattedWeekday}, {stat.date}</td>
                           <td style={{ textAlign: 'center' }}>{stat.successCount} / {stat.totalCount}</td>
-                          <td style={{ textAlign: 'center' }}>{stat.pms}</td>
+                          {!isDormityView && <td style={{ textAlign: 'center' }}>{stat.pms}</td>}
                           <td style={{ textAlign: 'center' }}>{stat.deliveries}</td>
                           <td style={{ textAlign: 'center' }}>{stat.kms.toFixed(1)} km</td>
                           <td style={{ textAlign: 'right', color: 'var(--primary)' }}>{stat.mileage.toFixed(2)} €</td>
@@ -15462,9 +15478,10 @@ function App() {
       let pms = 0;
       let deliveries = 0;
       fSuccess.forEach(t => {
+        const isDormityTicket = t.provider === 'dormity';
         t.tasks.forEach(task => {
           const tid = task.tariffId || '';
-          if (tid.startsWith('PM_')) {
+          if (!isDormityTicket && tid.startsWith('PM_')) {
             pms += task.quantity;
           }
           if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) {
