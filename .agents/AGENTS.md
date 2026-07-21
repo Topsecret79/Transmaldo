@@ -57,6 +57,37 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
   * **El Corte Inglés (`eci`)**: Incluye tipos de servicio `estandar`, `cuelgue`, `puesta_marcha`. Catálogo: Televisores, Paquetería, Gama Blanca, Muebles, Electrodomésticos Varios, Otros Accesorios.
   * **Dormity (`dormity`)**: Excluye Puestas en Marcha (PMs) y Cuelgues de los desgloses, reportes diarios y exportaciones de Excel. Tipos de servicio: `estandar`, `preferencial`, `vip`. Catálogo: Colchones, Canapés, Tapis, Somieres, Cabeceros y Retiradas.
 
+## 🛌 Modalidades de Servicio de Ruta Dormity (Madrid, Express, Toledo)
+* **Regla**: Las rutas de Dormity admiten distintas modalidades a nivel de jornada/turno (`shiftDormityServiceType`):
+  * **Ruta Estándar / Madrid**: Tarifa base con escalado acordado por número de paradas.
+  * **Ruta Express / Recogidas / Toledo**: Tarifa especial con un extra automático de **+70 € por cada parada adicional a partir de la 9ª parada** (paradas 1 a 8 tarifa base, parada 9 en adelante +70 €/parada).
+* **Persistencia**: La modalidad de servicio se selecciona en la cabecera de la ruta activa y se sincroniza reactivamente para todas las entregas del turno.
+
+## 🛍️ Catálogo Desacoplado de Mercancías de Dormity y Privacidad de Precios
+* **Regla**: El catálogo del Paso 2 del formulario para Dormity (Colchones, Canapés, Tapis, Somieres, Cabeceros, Patas, Recogidas y Retiradas) está totalmente desacoplado del motor de precios de ruta.
+* **Privacidad para Choferes**: Los usuarios con rol `repartidor` **NUNCA** ven importes monetarios ni precios unitarios en la interfaz del catálogo de mercancías ni en los desgloses de entregas. Únicamente los administradores tienen visibilidad de precios.
+* **Artículos Personalizados**: Se permite la inclusión de artículos fuera de catálogo en el Paso 2 con nombre y cantidad libre (`customItemName`, `customItemQty`).
+
+## 🔒 Heredabilidad y Restricción Estricta de Proveedores Permitidos (`allowedProviders`)
+* **Regla**: `allowedProviders` se almacena como array (`['eci']`, `['dormity']` o ambos) en Supabase dentro de `delivery_settings_[adminId]`.
+* **Heredabilidad de Creador**: Al crear un nuevo usuario o repartidor, este **hereda estrictamente los proveedores permitidos de su administrador creador**. Un chofer creado por un admin de solo Dormity jamás podrá acceder a El Corte Inglés.
+* **Ocultamiento de Selector**: Si un usuario tiene un único proveedor en `allowedProviders`, los botones manuales para alternar proveedor en el formulario se **ocultan automáticamente** para prevenir errores.
+
+## 🚫 Prohibición Cruzada de Tipos de Servicio entre ECI y Dormity
+* **Regla**:
+  * **Dormity**: Únicamente admite `estandar`, `preferencial` y `vip`. Las Puestas en Marcha (PMs) y Cuelgues de TV en Pared están totalmente **PROHIBIDOS y DESHABILITADOS** en los dropdowns de Dormity.
+  * **El Corte Inglés**: Únicamente admite `estandar`, `cuelgue` (TV pared) y `puesta_marcha` (PM). Los servicios `preferencial` y `vip` están totalmente **PROHIBIDOS y DESHABILITADOS** para El Corte Inglés.
+
+## 📊 Exclusión Total de Puestas en Marcha (PMs) en Reportes Dormity
+* **Regla**: En los reportes diarios de facturación, desglose por furgonetas, tablas de drilldown y exportación de archivos Excel, las Puestas en Marcha (PMs) se **filtran y omiten al 100% cuando el ticket pertenezca a Dormity**, conservándose únicamente para tickets de El Corte Inglés.
+
+## ⚙️ Gestión Dinámica de Tarifas de Dormity en Panel Admin
+* **Regla**: Si el administrador autenticado solo tiene acceso a Dormity, la sub-pestaña del tarifario se establece por defecto en `'dormity'` (`activeTariffSubTab = 'dormity'`) y la pestaña de El Corte Inglés se oculta, evitando vistas en blanco.
+* **Edición Inline Completa**: Todas las tarifas de Dormity permiten editar Nombre, Bloque, Tipo (`fixed`/`percentage`), Precio (€) y Eliminación directa en caliente con recalculo en tiempo real.
+
+## 💵 Control de Reembolsos / Cobros en Efectivo (COD)
+* **Regla**: El Paso 1 del ticket incluye un conmutador interactivo para activar cobros/reembolsos en efectivo. Al activarse, habilita el campo de importe `codAmount` (€), sumándose automáticamente al resumen de caja del turno y en la facturación en Excel.
+
 ## ⚡ Carga Rápida de Rutas por Lote de Direcciones
 * **Regla**: El planificador de rutas incluye la carga masiva multilínea sin límite de paradas (5, 20, 50, 80 o más).
 * **Geolocalización & Optimización**:
@@ -72,6 +103,9 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
   * La parada no tiene ningún servicio o mercancía asignada (0 tareas en `t.tasks`).
 * **Acción**: Si hay paradas incompletas, la función `handleConfirmCloseShift` detiene la ejecución, emite una alerta roja indicando qué paradas faltan por completar y retorna `false` impidiendo la liquidación del vale.
 
+## 🔄 Recuperación y Purga de Caché del Service Worker (`ErrorBoundary`)
+* **Regla**: Ante cualquier error no capturado en la aplicación, el `ErrorBoundary` presenta una interfaz amigable con un botón para **Limpiar Caché del Service Worker (`delivery-app-vXXX`) y Forzar Recarga**, garantizando que el usuario obtenga la versión más reciente del servidor de forma limpia.
+
 ---
 
 ## 📅 Historial de Cambios y Commits Recientes
@@ -83,9 +117,15 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 * **Commit `46fbaf2`**: `feat: add individual vehicle selector and filtering for fleet statistics and logs`
 
 ### Sesión del 21 de Julio de 2026
+* **Commit `594e12a`**: `feat: implement Dormity route modes (Madrid, Express, Toledo) with automatic 70EUR 9th stop extra pricing`
+* **Commit `12d2d7f`**: `fix(dormity): decouple Step 2 merchandise catalog from route pricing tariffs`
+* **Commit `d2c01cd`**: `fix: inherit and restrict allowed providers strictly based on logged-in creator permissions`
+* **Commit `95e2692`**: `fix: separate service type options for El Corte Ingles (cuelgue, puesta_marcha) and Dormity (estandar, preferencial, vip)`
+* **Commit `7506e73`**: `Fix Dormity daily reports to exclude Puestas en Marcha (SW v234)`
 * **Commit `a831a1a`**: `fix: compute activeTariffSubTab dynamically so single-provider users don't see a blank tariffs screen (SW v236)`
 * **Commit `a662236`**: `fix: ensure user creation form and fleet tab are accessible to all admin roles (SW v237)`
 * **Commit `fba70af`**: `fix: compute effectiveTicketProvider dynamically so ECI-only users see ECI form catalog and options correctly (SW v238)`
 * **Commit `87517dc`**: `feat: add Fast Address Batch Route Builder with unlimited stops, sequential geocoding and OSRM optimization (SW v239)`
 * **Commit `9e1227d`**: `feat: block shift closure if fast batch route stops have incomplete client/services data (SW v240)`
+* **Commit `f656eaf`**: `docs: update AGENTS.md rules with multi-provider, batch route builder, and shift closure block guidelines`
 
