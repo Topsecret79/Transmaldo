@@ -6789,11 +6789,25 @@ function App() {
                 })()}
 
                 {/* Info para 🏢 Tiendas Toledo */}
-                {dormityRouteType === 'toledo' && (
-                  <div style={{ fontSize: '0.82rem', color: 'var(--primary)', fontWeight: 'bold', background: 'rgba(99, 102, 241, 0.12)', padding: '8px 12px', borderRadius: '6px' }}>
-                    🏢 Ruta Tiendas Toledo seleccionada.
-                  </div>
-                )}
+                {dormityRouteType === 'toledo' && (() => {
+                  const activeFurgo = activeRouteContext ? activeRouteContext.furgoId : (currentUser?.id || 'admin');
+                  const activeDate = activeRouteContext ? activeRouteContext.date : ticketDate;
+                  const shiftStops = tickets.filter(t => t.date === activeDate && t.furgoId === activeFurgo).length;
+                  return (
+                    <div style={{ fontSize: '0.82rem', marginTop: '4px', background: shiftStops >= 9 ? 'rgba(251, 191, 36, 0.15)' : 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '8px', border: shiftStops >= 9 ? '1px solid #fbbf24' : '1px solid var(--panel-border)' }}>
+                      📍 Paradas creadas en esta jornada (Toledo): <strong>{shiftStops} paradas</strong>.
+                      {shiftStops >= 9 ? (
+                        <div style={{ fontWeight: 'bold', marginTop: '4px', color: '#fbbf24' }}>
+                          ⭐ ¡Parada Nº {shiftStops} (≥ 9) alcanzada! Se contabilizará cliente adicional para la jornada de Toledo (+70 €).
+                        </div>
+                      ) : (
+                        <span style={{ display: 'block', marginTop: '2px', opacity: 0.85 }}>
+                          (Paradas 1 a 8 incluidas a 700 €. A partir de la 9ª parada se contabiliza cliente adicional a +70 €).
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

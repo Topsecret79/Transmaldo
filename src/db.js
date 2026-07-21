@@ -765,8 +765,9 @@ export const DEFAULT_DORMITY_TARIFFS = [
   { id: 'DORMITY_MADRID', name: 'Ruta Madrid (hasta 8 paradas)', block: 'Ruta Madrid', type: 'fixed', value: 700.00, provider: 'dormity' },
   { id: 'DORMITY_MADRID_EXTRA', name: 'Cliente Adicional Madrid (>=9ª parada)', block: 'Ruta Madrid', type: 'fixed', value: 70.00, provider: 'dormity' },
 
-  // 🏢 Tiendas Toledo
-  { id: 'DORMITY_TOLEDO', name: 'Tiendas Toledo (Precio Fijo)', block: 'Tiendas Toledo', type: 'fixed', value: 700.00, provider: 'dormity' }
+  // 🏢 Ruta Toledo
+  { id: 'DORMITY_TOLEDO', name: 'Ruta Toledo (hasta 8 paradas)', block: 'Ruta Toledo', type: 'fixed', value: 700.00, provider: 'dormity' },
+  { id: 'DORMITY_TOLEDO_EXTRA', name: 'Cliente Adicional Toledo (>=9ª parada)', block: 'Ruta Toledo', type: 'fixed', value: 70.00, provider: 'dormity' }
 ];
 
 export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74, 75, 77, 83, 85, 98, 100, 115];
@@ -1503,10 +1504,11 @@ export function calculateDormityTaskPrice(tariffId, distanceKm = 0, extraOrders 
   const tariff = tariffs.find(t => t.id === tariffId || t.id.startsWith(tariffId + '_'));
   if (!tariff) return 0;
 
-  if (tariffId === 'DORMITY_MADRID') {
+  if (tariffId === 'DORMITY_MADRID' || tariffId === 'DORMITY_TOLEDO') {
     const basePrice = Number(tariff.value) || 700;
     const extraCount = Math.max(0, extraOrders);
-    const extraTariff = tariffs.find(t => t.id === 'DORMITY_MADRID_EXTRA' || t.id.startsWith('DORMITY_MADRID_EXTRA_'));
+    const extraKey = tariffId === 'DORMITY_MADRID' ? 'DORMITY_MADRID_EXTRA' : 'DORMITY_TOLEDO_EXTRA';
+    const extraTariff = tariffs.find(t => t.id === extraKey || t.id.startsWith(extraKey + '_'));
     const extraUnitPrice = extraTariff ? Number(extraTariff.value) : 70;
     return basePrice + (extraCount * extraUnitPrice);
   }
