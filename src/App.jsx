@@ -15177,7 +15177,7 @@ function App() {
                                   { id: 'shift_calendar', label: '📅 Cal. Turnos' },
                                   { id: 'general_search', label: '🔍 Buscador Gral' },
                                   { id: 'staff', label: '👤 Personal' },
-                                  { id: 'van_pricing', label: '💰 Tarifas ECI' },
+                                  { id: 'van_pricing', label: '🏷️ Tarifas' },
                                   { id: 'security', label: '⚙️ Seguridad' },
                                   { id: 'fleet_control', label: '🚗 Flota' }
                                 ].map(mod => {
@@ -15645,7 +15645,7 @@ function App() {
             <button className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('employees'); }}>👥 Personal</button>
           )}
           {showVanPricing && (
-            <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>Precios Corte Inglés</button>
+            <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>🏷️ Tarifas</button>
           )}
           {(showStaff || showSecurity) && (
             <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}>Furgonetas y Seguridad</button>
