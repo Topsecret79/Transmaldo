@@ -668,14 +668,23 @@ function App() {
       .join(' ');
   };
   const [currentUser, setCurrentUser] = useState(null);
-  const [serviceType, setServiceType] = useState('entrega');
+  const [serviceType, setServiceType] = useState('estandar');
 
   const getTicketServiceType = (t) => {
-    if (!t) return 'entrega';
+    if (!t) return 'estandar';
 
     // 1. Prioridad: Etiquetas o palabras clave en las notas
     if (t.notes) {
       const notesLower = t.notes.toLowerCase();
+      if (notesLower.includes('[vip]') || notesLower.includes('vip')) {
+        return 'vip';
+      }
+      if (notesLower.includes('[preferencial]') || notesLower.includes('preferencial')) {
+        return 'preferencial';
+      }
+      if (notesLower.includes('[estandar]') || notesLower.includes('[estándar]') || notesLower.includes('estandar')) {
+        return 'estandar';
+      }
       if (
         notesLower.includes('[cuelgue]') || 
         notesLower.includes('[cuelgue_manana]') || 
@@ -724,7 +733,7 @@ function App() {
       }
     }
 
-    return 'entrega';
+    return 'estandar';
   };
 
   const getTicketColor = (t) => {
@@ -733,6 +742,9 @@ function App() {
     if (t.status === 'failed') return '#ef4444';
     
     const sType = getTicketServiceType(t);
+    if (sType === 'vip') return '#ec4899'; // Rosa / Magenta
+    if (sType === 'preferencial') return '#f97316'; // Naranja
+    if (sType === 'estandar') return '#fbbf24'; // Amarillo / Azul
     if (sType === 'cuelgue') return '#a855f7'; // Violeta/Morado
     if (sType === 'puesta_marcha') return '#ec4899'; // Rosa/Magenta
     if (sType === 'tarde') return '#f97316'; // Naranja
@@ -2037,11 +2049,11 @@ function App() {
             // Construir insignias para el Popup informativo
             const sType = getTicketServiceType(t);
             let badgeHtml = '';
-            if (sType !== 'entrega') {
-              const bg = sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.15)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(249, 115, 22, 0.15)';
-              const fg = sType === 'cuelgue' ? '#c084fc' : sType === 'puesta_marcha' ? '#f472b6' : '#fb923c';
-              const border = sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.25)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.25)' : 'rgba(249, 115, 22, 0.25)';
-              const labelText = sType === 'cuelgue' ? '📺 Cuelgue' : sType === 'puesta_marcha' ? '⚙️ Puesta en Marcha' : '🌙 Servicio Tarde';
+            if (sType !== 'estandar' && sType !== 'entrega') {
+              const bg = sType === 'vip' ? 'rgba(236, 72, 153, 0.15)' : sType === 'preferencial' ? 'rgba(249, 115, 22, 0.15)' : sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.15)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(249, 115, 22, 0.15)';
+              const fg = sType === 'vip' ? '#f472b6' : sType === 'preferencial' ? '#fb923c' : sType === 'cuelgue' ? '#c084fc' : sType === 'puesta_marcha' ? '#f472b6' : '#fb923c';
+              const border = sType === 'vip' ? 'rgba(236, 72, 153, 0.25)' : sType === 'preferencial' ? 'rgba(249, 115, 22, 0.25)' : sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.25)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.25)' : 'rgba(249, 115, 22, 0.25)';
+              const labelText = sType === 'vip' ? '👑 VIP' : sType === 'preferencial' ? '⭐ Preferencial' : sType === 'cuelgue' ? '📺 Cuelgue' : sType === 'puesta_marcha' ? '⚙️ Puesta en Marcha' : '🌙 Servicio Tarde';
               badgeHtml += '<span style="font-size:0.65rem;padding:1px 5px;background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-weight:bold;border-radius:4px;display:inline-block;margin-right:4px;">' + labelText + '</span>';
             }
             if (parsedNotesObj.timeSlot !== 'any') {
@@ -3667,7 +3679,13 @@ function App() {
     }
 
     let finalNotes = notes.trim();
-    if (activeServiceType === 'cuelgue') {
+    if (activeServiceType === 'vip') {
+      finalNotes = `[VIP] ${finalNotes}`.trim();
+    } else if (activeServiceType === 'preferencial') {
+      finalNotes = `[PREFERENCIAL] ${finalNotes}`.trim();
+    } else if (activeServiceType === 'estandar') {
+      finalNotes = `[ESTANDAR] ${finalNotes}`.trim();
+    } else if (activeServiceType === 'cuelgue') {
       if (timeSlot === 'morning') {
         finalNotes = `[CUELGUE_MAÑANA] ${finalNotes}`.trim();
       } else if (timeSlot === 'afternoon') {
@@ -6941,23 +6959,18 @@ function App() {
                     onChange={(e) => {
                       const newType = e.target.value;
                       setServiceType(newType);
-                      if (newType === 'tarde') {
-                        setTimeSlot('afternoon');
-                      }
                     }}
                     disabled={isClosed}
                     style={{
                       borderLeft: `4px solid ${
-                        serviceType === 'cuelgue' ? '#a855f7' :
-                        serviceType === 'puesta_marcha' ? '#ec4899' :
-                        serviceType === 'tarde' ? '#f97316' : 'var(--primary)'
+                        serviceType === 'vip' ? '#ec4899' :
+                        serviceType === 'preferencial' ? '#f97316' : 'var(--primary)'
                       }`
                     }}
                   >
-                    <option value="entrega">📦 Entrega Estándar (Azul / Amarillo)</option>
-                    <option value="cuelgue">📺 Cuelgue de TV (Violeta)</option>
-                    <option value="puesta_marcha">⚙️ Puesta en Marcha (Rosa)</option>
-                    <option value="tarde">🌙 Servicio de Tarde (Naranja)</option>
+                    <option value="estandar">📦 Servicio Estándar (Azul / Amarillo)</option>
+                    <option value="preferencial">⭐ Servicio Preferencial (Naranja)</option>
+                    <option value="vip">👑 Servicio VIP (Rosa / Magenta)</option>
                   </select>
                 </div>
 
