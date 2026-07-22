@@ -113,6 +113,9 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 * **Regla Inflexible**: Para **todos los administradores, coordinadores y repartidores** del sistema, todas las pantallas de resumen (Dashboard, Desglose Diario, Informe Diario y Exportaciones Excel) deben mostrar siempre el **desglose explícito entre Puestas en Marcha Básicas (`PM_BAS_` @ 11.43 €) y Puestas en Marcha Complejas (`PM_COMP_` @ 19.05 €)**.
 * **Formato**: En tarjetas de contadores y cabeceras de informes se muestra el total y el sub-desglose: `X PMs (Y Básicas / Z Complejas)`. Ambas tarifas se contabilizan y suman íntegramente en la facturación neta de los tickets.
 
+## 🔄 Asignación de Albaranes con Auxilio entre Rutas (Criterio de Origen por Defecto)
+* **Regla Inflexible**: Los albaranes etiquetados como auxilios realizados por otra furgoneta (ej. `(Auxilio realizado por Ruta X)`) pertenecen por defecto en el informe diario a su **Ruta de Origen** (donde fueron planificados originalmente), a menos que la administración transfiera explícitamente el ticket a la furgoneta ejecutora.
+
 ---
 
 ## 📅 Historial de Cambios y Commits Recientes
@@ -141,4 +144,9 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 * **Commit `79b2555`**: `fix: set exact default nomenclature labels for Ruta Madrid, Cliente Adicional Madrid and Ruta Toledo (SW v247)`
 * **Commit `0a91f54`**: `fix: string match in initDB auto-seed for DORMITY_MADRID (SW v248)`
 * **Commit `2b73c41`**: `fix: exclude shift odometer telemetry kms from earnings calculation (SW v250)`
+
+### Sesión del 22 de Julio de 2026
+* **Commit `945dae7`**: `feat: add detailed breakdown for PM Basica vs PM Compleja in Dashboard and Drilldown tables (SW v251)`
+* **Commit `a401662`**: `feat: ensure PM Basica vs PM Compleja breakdown rule is applied for all admins and saved in AGENTS.md (SW v251)`
+
 
