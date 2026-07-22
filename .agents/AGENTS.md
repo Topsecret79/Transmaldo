@@ -119,6 +119,12 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 ## 🔄 Asignación de Albaranes con Auxilio entre Rutas (Criterio de Origen por Defecto)
 * **Regla Inflexible**: Los albaranes etiquetados como auxilios realizados por otra furgoneta (ej. `(Auxilio realizado por Ruta X)`) pertenecen por defecto en el informe diario a su **Ruta de Origen** (donde fueron planificados originalmente), a menos que la administración transfiera explícitamente el ticket a la furgoneta ejecutora.
 
+## ⚙️ Desglose Dinámico de Puestas en Marcha en Turnos Históricos Cerrados
+* **Regla**: Si un turno se cerró en el pasado y carece de desglose de `pmsBasic` y `pmsComplex` en su instantánea guardada, la interfaz debe calcularlo y completarlo dinámicamente y de manera retroactiva al renderizarlo en la tabla de turnos y en la ventana modal de resumen.
+
+## 🔄 Sincronización Total de Ganancias de Entregas (Exclusión de Fallidos y Tasa de Intento)
+* **Regla**: El valor de ganancias de entregas que se muestra en el cierre de turno y vale de liquidación de la ruta (esté abierto o cerrado) debe calcularse usando `getBillableTasks` en cada ticket del día. Debe coincidir al 100% con la lógica del informe diario: excluyendo albaranes fallidos sin cargo (sumando 0.00 €) e incluyendo albaranes fallidos con cobro sumando únicamente el importe de su tasa por intento de entrega, en lugar de sumar el importe de tarifa original.
+
 ## 💬 Reglas de Comunicación con el Usuario
 * **Regla Inflexible**: Responder **únicamente** y de manera concisa sobre la pregunta o instrucción formulada por el usuario. Evitar dar explicaciones no solicitadas, detalles extras o resúmenes innecesarios.
 * **Certeza Absoluta**: Toda respuesta debe basarse en la verificación directa de la base de datos o el código fuente antes de contestar, respondiendo con total precisión y seguridad.
@@ -155,5 +161,6 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 ### Sesión del 22 de Julio de 2026
 * **Commit `945dae7`**: `feat: add detailed breakdown for PM Basica vs PM Compleja in Dashboard and Drilldown tables (SW v251)`
 * **Commit `a401662`**: `feat: ensure PM Basica vs PM Compleja breakdown rule is applied for all admins and saved in AGENTS.md (SW v251)`
-
-
+### Sesión del 23 de Julio de 2026
+* **Commit `0f7a71a`**: `feat: add dynamic PM breakdown calculation for historical closed shifts (SW v255)`
+* **Commit `b35da1f`**: `fix: align shift total delivery earnings with daily report logic (SW v256)`
