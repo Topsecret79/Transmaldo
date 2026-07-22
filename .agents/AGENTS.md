@@ -113,6 +113,9 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 * **Regla Inflexible**: Para **todos los administradores, coordinadores y repartidores** del sistema, todas las pantallas de resumen (Dashboard, Desglose Diario, Informe Diario y Exportaciones Excel) deben mostrar siempre el **desglose explícito entre Puestas en Marcha Básicas (`PM_BAS_` @ 11.43 €) y Puestas en Marcha Complejas (`PM_COMP_` @ 19.05 €)**.
 * **Formato**: En tarjetas de contadores y cabeceras de informes se muestra el total y el sub-desglose: `X PMs (Y Básicas / Z Complejas)`. Ambas tarifas se contabilizan y suman íntegramente en la facturación neta de los tickets.
 
+## 🔄 Sincronización Obligatoria de Valores entre Resumen Diario e Informe del Día
+* **Regla Inflexible**: Para garantizar que los valores coincidan al 100% entre pantallas, la columna y tarjeta principal en **Resumen Diario (Dashboard y Modal de Desglose)** debe mostrar siempre la **Base Imponible directa (€)** de la facturación de servicios, coincidiendo con la **Base Imponible del Informe del Día**. El cálculo de Neto con IVA/Retención se presenta como información secundaria aclaratoria.
+
 ## 🔄 Asignación de Albaranes con Auxilio entre Rutas (Criterio de Origen por Defecto)
 * **Regla Inflexible**: Los albaranes etiquetados como auxilios realizados por otra furgoneta (ej. `(Auxilio realizado por Ruta X)`) pertenecen por defecto en el informe diario a su **Ruta de Origen** (donde fueron planificados originalmente), a menos que la administración transfiera explícitamente el ticket a la furgoneta ejecutora.
 
