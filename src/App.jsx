@@ -19539,8 +19539,18 @@ function App() {
                     
                     {isAdminOrSuper && (() => {
                       const isShiftClosed = existingShift && existingShift.status === 'closed';
-                      const billableTickets = dayTickets.filter(t => !isShiftClosed || (t.status === 'success' || !t.status));
-                      const totalDeliveryEarnings = billableTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
+                      const billableTickets = dayTickets.filter(t => {
+                        if (t.status === 'success' || !t.status) return true;
+                        if (t.status === 'failed') {
+                          const parsed = parseTicketNotes(t.notes);
+                          return parsed.failedChargeType && parsed.failedChargeType !== 'none';
+                        }
+                        return false;
+                      });
+                      const totalDeliveryEarnings = billableTickets.reduce((sum, t) => {
+                        const billable = getBillableTasks(t);
+                        return sum + billable.reduce((s, tk) => s + (tk.totalPrice || 0), 0);
+                      }, 0);
                       
                       const recordedKms = isShiftClosed ? getRouteKms(targetFurgoId, targetDate) : (parseFloat(shiftKmsInput) || 0);
                       const totalMileageEarnings = recordedKms * kmPrice;
