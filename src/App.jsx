@@ -17744,9 +17744,15 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleShifts.map(s => {
+                                            {visibleShifts.map(s => {
                         const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
-                        const summary = (s.summary && Object.keys(s.summary).length > 0) ? s.summary : getShiftSummary(s.furgoId, s.date);
+                        const rawSummary = (s.summary && Object.keys(s.summary).length > 0) ? s.summary : getShiftSummary(s.furgoId, s.date);
+                        const summary = rawSummary ? { ...rawSummary } : null;
+                        if (summary && summary.totalPM > 0 && summary.pmsBasic === undefined) {
+                          const dynamic = getShiftSummary(s.furgoId, s.date);
+                          summary.pmsBasic = dynamic.pmsBasic;
+                          summary.pmsComplex = dynamic.pmsComplex;
+                        }
                         return (
                           <tr key={s.id}>
                             <td style={{ fontWeight: '600' }}>
@@ -19273,8 +19279,8 @@ function App() {
                 const furgoLabel = users.find(u => u.id === targetFurgoId)?.label || targetFurgoId;
                 const existingShift = shifts.find(s => s.furgoId === targetFurgoId && s.date === targetDate);
                 
-                const rawSummary = (existingShift && existingShift.summary && Object.keys(existingShift.summary).length > 0) ? existingShift.summary : getShiftSummary(targetFurgoId, targetDate);
-                const summary = rawSummary || {
+                                const rawSummary = (existingShift && existingShift.summary && Object.keys(existingShift.summary).length > 0) ? existingShift.summary : getShiftSummary(targetFurgoId, targetDate);
+                const summary = rawSummary ? { ...rawSummary } : {
                   ticketsCount: 0,
                   totalTvs: 0,
                   tvs49: 0,
@@ -19289,6 +19295,11 @@ function App() {
                   otherDetails: [],
                   totalCODAmount: 0
                 };
+                if (summary && summary.totalPM > 0 && summary.pmsBasic === undefined) {
+                  const dynamic = getShiftSummary(targetFurgoId, targetDate);
+                  summary.pmsBasic = dynamic.pmsBasic;
+                  summary.pmsComplex = dynamic.pmsComplex;
+                }
                 
                 const dayTickets = tickets.filter(t => t.furgoId === targetFurgoId && t.date === targetDate);
                 const routeNameText = existingShift?.routeName || (dayTickets.length > 0 ? dayTickets[0].routeName : '');
