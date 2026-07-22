@@ -108,6 +108,11 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 * **Odómetro de Vehículo (Telemetría de Flota)**: Los kilómetros diarios de odómetro registrados por el chofer al iniciar y cerrar turno (`driverKmStart`, `driverKmEnd`, `getRouteKms()`) corresponden al control de telemetría y mantenimiento de la flota. **NUNCA** se multiplican por la tarifa de kilometraje (`kmPrice`) ni se añaden a los totales de salario, facturación de furgonetas, resúmenes diarios o cortes de facturación. En informes y Dashboard se presentan estrictamente a **0.00 €** como `Odómetro Flota (X km - Control de Flota)`.
 * **Kilómetros Facturables (Tareas Manuales de Ticket)**: Los únicos kilómetros que generan importe de facturación (€) en los resúmenes diarios son aquellos que el chofer o administrador **introduce manualmente dentro de un ticket/albarán** (por ejemplo: seleccionando la tarifa *Kilometraje Ruta Larga / Extra* o especificando una distancia $X$ facturable para un servicio especial).
 
+
+## ⚙️ Desglose Obligatorio de Puestas en Marcha (PM Básica vs PM Compleja) para Todos los Administradores
+* **Regla Inflexible**: Para **todos los administradores, coordinadores y repartidores** del sistema, todas las pantallas de resumen (Dashboard, Desglose Diario, Informe Diario y Exportaciones Excel) deben mostrar siempre el **desglose explícito entre Puestas en Marcha Básicas (`PM_BAS_` @ 11.43 €) y Puestas en Marcha Complejas (`PM_COMP_` @ 19.05 €)**.
+* **Formato**: En tarjetas de contadores y cabeceras de informes se muestra el total y el sub-desglose: `X PMs (Y Básicas / Z Complejas)`. Ambas tarifas se contabilizan y suman íntegramente en la facturación neta de los tickets.
+
 ---
 
 ## 📅 Historial de Cambios y Commits Recientes

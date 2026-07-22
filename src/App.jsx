@@ -15172,11 +15172,19 @@ function App() {
               
               let furgoDeliveryTotal = 0;
               let furgoTotalQty = 0;
+              let furgoPmsBasic = 0;
+              let furgoPmsComplex = 0;
               fTickets.forEach(t => {
+                const isDormityTicket = t.provider === 'dormity';
                 const billable = getBillableTasks(t);
                 billable.forEach(task => {
                   furgoDeliveryTotal += task.totalPrice;
                   furgoTotalQty += task.quantity || 0;
+                  const tid = task.tariffId || '';
+                  if (!isDormityTicket && tid.startsWith('PM_')) {
+                    if (tid.startsWith('PM_COMP_')) furgoPmsComplex += task.quantity || 0;
+                    else furgoPmsBasic += task.quantity || 0;
+                  }
                 });
               });
 
@@ -15196,6 +15204,11 @@ function App() {
                     </div>
                     <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>✅ {fTickets.length} entregas</span>
+                      {(furgoPmsBasic > 0 || furgoPmsComplex > 0) && (
+                        <span style={{ fontSize: '0.82rem', padding: '3px 9px', borderRadius: '5px', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)', fontWeight: '600' }} title={`${furgoPmsBasic} Básicas, ${furgoPmsComplex} Complejas`}>
+                          ⚙️ PMs: {furgoPmsBasic + furgoPmsComplex} ({furgoPmsBasic} B. / {furgoPmsComplex} C.)
+                        </span>
+                      )}
                       <span style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--primary)' }}>💰 {furgoGrandTotal.toFixed(2)} €</span>
                     </div>
                   </div>
