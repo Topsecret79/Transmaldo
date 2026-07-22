@@ -5316,13 +5316,15 @@ function App() {
     if (window.confirm(confirmMsg)) {
       const summary = getShiftSummary(furgoId, date);
       let kms = parseFloat(shiftKmsInput) || 0;
+      summary.kms = kms;
       
       // Si está activo el control de flota, guardar en el diario e impactar en kms
       if (adminAllowsFleetInput && currentUser && currentUser.role === 'repartidor') {
         const start = Number(driverKmStart);
         const end = Number(driverKmEnd);
         const traveled = end - start;
-        kms = traveled; // Forzar que los kms de facturación coincidan con el recorrido real
+        summary.startKms = start;
+        summary.endKms = end;
         
         // 1. Guardar en diario de kilómetros
         const newDailyLog = {
@@ -15415,8 +15417,6 @@ function App() {
                               const billable = getBillableTasks(t);
                               billable.forEach(task => { gt += task.totalPrice; }); 
                             });
-                            const fKms = getRouteKms(fId, reportDate);
-                            gt += fKms * kmPrice;
                           });
                           return gt.toFixed(2) + ' €';
                         })()}
@@ -15483,9 +15483,9 @@ function App() {
 
         const shift = shifts.find(s => s.furgoId === fid && s.date === date && s.status === 'closed');
         const kms = shift ? getRouteKms(fid, date) : 0;
-        const mileage = kms * kmPrice;
+        const mileage = 0;
         const base = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
-        const dailyTotal = base + mileage;
+        const dailyTotal = base;
         const iva = dailyTotal * 0.21;
         const retencion = dailyTotal * 0.01;
         const net = dailyTotal + iva - retencion;
@@ -17746,13 +17746,7 @@ function App() {
                     <tbody>
                                             {visibleShifts.map(s => {
                         const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
-                        const rawSummary = (s.summary && Object.keys(s.summary).length > 0) ? s.summary : getShiftSummary(s.furgoId, s.date);
-                        const summary = rawSummary ? { ...rawSummary } : null;
-                        if (summary && summary.totalPM > 0 && summary.pmsBasic === undefined) {
-                          const dynamic = getShiftSummary(s.furgoId, s.date);
-                          summary.pmsBasic = dynamic.pmsBasic;
-                          summary.pmsComplex = dynamic.pmsComplex;
-                        }
+                        const summary = getShiftSummary(s.furgoId, s.date);
                         return (
                           <tr key={s.id}>
                             <td style={{ fontWeight: '600' }}>
@@ -19279,27 +19273,7 @@ function App() {
                 const furgoLabel = users.find(u => u.id === targetFurgoId)?.label || targetFurgoId;
                 const existingShift = shifts.find(s => s.furgoId === targetFurgoId && s.date === targetDate);
                 
-                                const rawSummary = (existingShift && existingShift.summary && Object.keys(existingShift.summary).length > 0) ? existingShift.summary : getShiftSummary(targetFurgoId, targetDate);
-                const summary = rawSummary ? { ...rawSummary } : {
-                  ticketsCount: 0,
-                  totalTvs: 0,
-                  tvs49: 0,
-                  tvs74: 0,
-                  tvs115: 0,
-                  totalPV: 0,
-                  totalGV: 0,
-                  totalPM: 0,
-                  totalCuelgues: 0,
-                  totalVieja: 0,
-                  totalOtros: 0,
-                  otherDetails: [],
-                  totalCODAmount: 0
-                };
-                if (summary && summary.totalPM > 0 && summary.pmsBasic === undefined) {
-                  const dynamic = getShiftSummary(targetFurgoId, targetDate);
-                  summary.pmsBasic = dynamic.pmsBasic;
-                  summary.pmsComplex = dynamic.pmsComplex;
-                }
+                                const summary = getShiftSummary(targetFurgoId, targetDate);
                 
                 const dayTickets = tickets.filter(t => t.furgoId === targetFurgoId && t.date === targetDate);
                 const routeNameText = existingShift?.routeName || (dayTickets.length > 0 ? dayTickets[0].routeName : '');
@@ -19393,15 +19367,15 @@ function App() {
                         const recordedKms = getRouteKms(targetFurgoId, targetDate);
                         if (recordedKms <= 0) return null;
                         return (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px dashed var(--panel-border)', marginTop: '6px', color: 'var(--primary)', fontWeight: '600' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px dashed var(--panel-border)', marginTop: '6px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             {isAdminOrSuper ? (
                               <>
-                                <span>Kilometraje ({recordedKms} km a {kmPrice.toFixed(2)}€/km):</span>
-                                <strong>+ {(recordedKms * kmPrice).toFixed(2)} €</strong>
+                                <span>Odómetro Flota ({recordedKms} km - Control):</span>
+                                <strong>0.00 €</strong>
                               </>
                             ) : (
                               <>
-                                <span>Kilometraje Recorrido:</span>
+                                <span>Odómetro Flota (Control):</span>
                                 <strong>{recordedKms} km</strong>
                               </>
                             )}
@@ -19409,118 +19383,120 @@ function App() {
                         );
                       })()
                     ) : (
-                      adminAllowsFleetInput && !isAdminOrSuper ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-                          <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>🚐 Control de Vehículo ({driverMatricula})</span>
-                          
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                            <div>
-                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Inicio *</label>
-                              <input 
-                                type="number" 
-                                className="form-input" 
-                                value={driverKmStart} 
-                                onChange={(e) => setDriverKmStart(e.target.value)} 
-                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }} 
-                              />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Fin *</label>
-                              <input 
-                                type="number" 
-                                className="form-input" 
-                                placeholder="Lectura final" 
-                                value={driverKmEnd} 
-                                onChange={(e) => setDriverKmEnd(e.target.value)} 
-                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px', border: '1px solid var(--primary)' }} 
-                              />
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                            <div>
-                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km/L Promedio</label>
-                              <input 
-                                type="number" 
-                                step="0.1" 
-                                placeholder="Ej: 13.2" 
-                                className="form-input" 
-                                value={driverKmL} 
-                                onChange={(e) => setDriverKmL(e.target.value)} 
-                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }} 
-                              />
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Recorrido Estimado:</span>
-                              <strong style={{ fontSize: '0.9rem', color: '#60a5fa' }}>
-                                {Number(driverKmEnd) - Number(driverKmStart) > 0 ? `+${Number(driverKmEnd) - Number(driverKmStart)} km` : '0 km'}
-                              </strong>
-                            </div>
-                          </div>
-
-                          <div style={{ borderTop: '1px dashed var(--panel-border)', marginTop: '5px', paddingTop: '8px' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={driverHasFuel} 
-                                onChange={(e) => setDriverHasFuel(e.target.checked)} 
-                                style={{ cursor: 'pointer' }}
-                              />
-                              ⛽ ¿Has repostado combustible?
-                            </label>
-                          </div>
-
-                          {driverHasFuel && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                <div>
-                                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Litros *</label>
-                                  <input 
-                                    type="number" 
-                                    step="0.01" 
-                                    placeholder="Ej: 45.5" 
-                                    className="form-input" 
-                                    value={driverFuelLiters} 
-                                    onChange={(e) => setDriverFuelLiters(e.target.value)} 
-                                    style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
-                                  />
-                                </div>
-                                <div>
-                                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Coste Total (€) *</label>
-                                  <input 
-                                    type="number" 
-                                    step="0.01" 
-                                    placeholder="Ej: 75.20" 
-                                    className="form-input" 
-                                    value={driverFuelCost} 
-                                    onChange={(e) => setDriverFuelCost(e.target.value)} 
-                                    style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
-                                  />
-                                </div>
+                      <>
+                        {adminAllowsFleetInput && !isAdminOrSuper && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                            <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>🚐 Control de Vehículo ({driverMatricula})</span>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Inicio *</label>
+                                <input 
+                                  type="number" 
+                                  className="form-input" 
+                                  value={driverKmStart} 
+                                  onChange={(e) => setDriverKmStart(e.target.value)} 
+                                  style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }} 
+                                />
                               </div>
                               <div>
-                                <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Gasolinera / Estación</label>
+                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Fin *</label>
                                 <input 
-                                  type="text" 
-                                  placeholder="Ej: BP Sabadell" 
+                                  type="number" 
                                   className="form-input" 
-                                  value={driverFuelStation} 
-                                  onChange={(e) => setDriverFuelStation(e.target.value)} 
-                                  style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
+                                  placeholder="Lectura final" 
+                                  value={driverKmEnd} 
+                                  onChange={(e) => setDriverKmEnd(e.target.value)} 
+                                  style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px', border: '1px solid var(--primary)' }} 
                                 />
                               </div>
                             </div>
-                          )}
-                        </div>
-                      ) : (
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km/L Promedio</label>
+                                <input 
+                                  type="number" 
+                                  step="0.1" 
+                                  placeholder="Ej: 13.2" 
+                                  className="form-input" 
+                                  value={driverKmL} 
+                                  onChange={(e) => setDriverKmL(e.target.value)} 
+                                  style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }} 
+                                />
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Recorrido Estimado:</span>
+                                <strong style={{ fontSize: '0.9rem', color: '#60a5fa' }}>
+                                  {Number(driverKmEnd) - Number(driverKmStart) > 0 ? `+${Number(driverKmEnd) - Number(driverKmStart)} km` : '0 km'}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div style={{ borderTop: '1px dashed var(--panel-border)', marginTop: '5px', paddingTop: '8px' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={driverHasFuel} 
+                                  onChange={(e) => setDriverHasFuel(e.target.checked)} 
+                                  style={{ cursor: 'pointer' }}
+                                />
+                                ⛽ ¿Has repostado combustible?
+                              </label>
+                            </div>
+
+                            {driverHasFuel && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px', padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                  <div>
+                                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Litros *</label>
+                                    <input 
+                                      type="number" 
+                                      step="0.01" 
+                                      placeholder="Ej: 45.5" 
+                                      className="form-input" 
+                                      value={driverFuelLiters} 
+                                      onChange={(e) => setDriverFuelLiters(e.target.value)} 
+                                      style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
+                                    />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Coste Total (€) *</label>
+                                    <input 
+                                      type="number" 
+                                      step="0.01" 
+                                      placeholder="Ej: 75.20" 
+                                      className="form-input" 
+                                      value={driverFuelCost} 
+                                      onChange={(e) => setDriverFuelCost(e.target.value)} 
+                                      style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Gasolinera / Estación</label>
+                                  <input 
+                                    type="text" 
+                                    placeholder="Ej: BP Sabadell" 
+                                    className="form-input" 
+                                    value={driverFuelStation} 
+                                    onChange={(e) => setDriverFuelStation(e.target.value)} 
+                                    style={{ padding: '6px', fontSize: '0.8rem', margin: 0, height: '30px' }} 
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-                          <span style={{ fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>🏁 Kilómetros de la Ruta:</span>
+                          <span style={{ fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>🏁 Kilómetros de la Ruta (Facturables):</span>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <input 
                               type="number" 
                               step="0.1" 
                               className="form-input" 
-                              placeholder="Introduce kms recorridos" 
+                              placeholder="Introduce kms recorridos de ganancia" 
                               value={shiftKmsInput} 
                               onChange={(e) => setShiftKmsInput(e.target.value)} 
                               style={{ flex: 1, padding: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', height: '36px', margin: 0 }} 
@@ -19530,11 +19506,11 @@ function App() {
                           {isAdminOrSuper && (
                             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
                               <span>Tarifa: {kmPrice.toFixed(2)} €/km</span>
-                              <span>Importe: <strong style={{ color: '#fff' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
+                              <span>Importe: <strong style={{ color: 'var(--primary)' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
                             </div>
                           )}
                         </div>
-                      )
+                      </>
                     )}
                     
                     {isAdminOrSuper && (() => {
@@ -19553,6 +19529,10 @@ function App() {
                       }, 0);
                       
                       const recordedKms = isShiftClosed ? getRouteKms(targetFurgoId, targetDate) : (parseFloat(shiftKmsInput) || 0);
+                      const traveledKms = isShiftClosed
+                        ? ((existingShift.endKms !== null && existingShift.startKms !== null) ? (Number(existingShift.endKms) - Number(existingShift.startKms)) : 0)
+                        : (currentUser && currentUser.role === 'repartidor' ? (Number(driverKmEnd) - Number(driverKmStart)) : 0);
+                      
                       const totalMileageEarnings = recordedKms * kmPrice;
                       const grandTotalEarnings = totalDeliveryEarnings + totalMileageEarnings;
                       
@@ -19571,8 +19551,14 @@ function App() {
                             <span>Ganancia Entregas:</span>
                             <span>{totalDeliveryEarnings.toFixed(2)} €</span>
                           </div>
+                          {traveledKms > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                              <span>Odómetro Flota ({traveledKms.toFixed(1)} km):</span>
+                              <span>0.00 € (Control)</span>
+                            </div>
+                          )}
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                            <span>Ganancia Kilometraje:</span>
+                            <span>Ganancia Kilometraje ({recordedKms.toFixed(1)} km):</span>
                             <span>{totalMileageEarnings.toFixed(2)} €</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.98rem', fontWeight: '700', color: 'var(--primary)', borderTop: '1px solid rgba(99, 102, 241, 0.2)', paddingTop: '4px', marginTop: '2px' }}>

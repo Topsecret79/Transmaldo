@@ -164,3 +164,4 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 ### Sesión del 23 de Julio de 2026
 * **Commit `0f7a71a`**: `feat: add dynamic PM breakdown calculation for historical closed shifts (SW v255)`
 * **Commit `b35da1f`**: `fix: align shift total delivery earnings with daily report logic (SW v256)`
+* **Commit `a90ade6`**: `fix: ensure fleet driver mileage pay shows 0.00 EUR (Control) and restore database for 01/07/2026 (SW v257)`
