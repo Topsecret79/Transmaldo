@@ -5172,6 +5172,8 @@ function App() {
     let totalOtros = 0;
     let otherDetails = [];
     let totalCODAmount = 0;
+    let pmsBasic = 0;
+    let pmsComplex = 0;
     
     dayTickets.forEach(t => {
       totalCODAmount += t.codAmount || 0;
@@ -5217,6 +5219,11 @@ function App() {
         } else if (tariff.block === 'Instalaciones' || tid.startsWith('PM_') || tid.startsWith('CUELGUE_')) {
           if (tid.startsWith('PM_') && !isDormityTicket) {
             totalPM += task.quantity;
+            if (tid.startsWith('PM_COMP_')) {
+              pmsComplex += task.quantity;
+            } else {
+              pmsBasic += task.quantity;
+            }
           } else if (tid.startsWith('CUELGUE_')) {
             totalCuelgues += task.quantity;
           }
@@ -5241,6 +5248,8 @@ function App() {
       totalPV,
       totalGV,
       totalPM,
+      pmsBasic,
+      pmsComplex,
       totalCuelgues,
       totalVieja,
       totalOtros,
@@ -17757,7 +17766,8 @@ function App() {
                                 <span>Cli: <strong>{summary ? summary.ticketsCount : 0}</strong></span> |
                                 <span>TV: <strong>{summary ? summary.totalTvs : 0}</strong></span> |
                                 <span>PV/GV: <strong>{summary ? summary.totalPV : 0}/{summary ? summary.totalGV : 0}</strong></span> |
-                                <span>PM/Cuelgues: <strong>{summary ? summary.totalPM : 0}/{summary ? summary.totalCuelgues : 0}</strong></span>
+                                <span>PM: <strong>{summary ? `${summary.totalPM} (${summary.pmsBasic || 0} B. / ${summary.pmsComplex || 0} C.)` : '0'}</strong></span> |
+                                <span>Cuelgues: <strong>{summary ? summary.totalCuelgues : 0}</strong></span>
                                 {summary && summary.totalCODAmount > 0 && (
                                   <> | <span>Cobrado: <strong style={{ color: 'var(--success)' }}>{summary.totalCODAmount.toFixed(2)} €</strong></span></>
                                 )}
@@ -19328,7 +19338,7 @@ function App() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                        <span>Puestas en Marcha (PM):</span>
-                       <strong>{summary.totalPM}</strong>
+                       <strong>{summary.totalPM} ({summary.pmsBasic || 0} B. / {summary.pmsComplex || 0} C.)</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                        <span>Cuelgues en Pared:</span>
