@@ -15545,12 +15545,18 @@ function App() {
         const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
         
         let pms = 0;
+        let pmsBasic = 0;
+        let pmsComplex = 0;
         let deliveries = 0;
         fSuccess.forEach(t => {
           const isDormityTicket = t.provider === 'dormity';
           t.tasks.forEach(task => {
             const tid = task.tariffId || '';
-            if (!isDormityTicket && tid.startsWith('PM_')) pms += task.quantity;
+            if (!isDormityTicket && tid.startsWith('PM_')) {
+              pms += task.quantity;
+              if (tid.startsWith('PM_COMP_')) pmsComplex += task.quantity;
+              else pmsBasic += task.quantity;
+            }
             if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) deliveries += task.quantity;
           });
         });
@@ -15582,6 +15588,8 @@ function App() {
           successCount: fSuccess.length,
           totalCount: fTickets.length,
           pms,
+          pmsBasic,
+          pmsComplex,
           deliveries,
           kms,
           mileage,
@@ -15668,7 +15676,13 @@ function App() {
                         <tr key={stat.date}>
                           <td style={{ fontWeight: '600' }}>{stat.formattedWeekday}, {stat.date}</td>
                           <td style={{ textAlign: 'center' }}>{stat.successCount} / {stat.totalCount}</td>
-                          {!isDormityView && <td style={{ textAlign: 'center' }}>{stat.pms}</td>}
+                          {!isDormityView && (
+                            <td style={{ textAlign: 'center' }}>
+                              {stat.pms > 0 ? (
+                                <span>{stat.pms} <span style={{ fontSize: '0.75rem', opacity: 0.8 }} title={`${stat.pmsBasic} Básica(s), ${stat.pmsComplex} Compleja(s)`}>({stat.pmsBasic} B. / {stat.pmsComplex} C.)</span></span>
+                              ) : '0'}
+                            </td>
+                          )}
                           <td style={{ textAlign: 'center' }}>{stat.deliveries}</td>
                           <td style={{ textAlign: 'center' }}>{stat.kms.toFixed(1)} km</td>
                           <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>0.00 €</td>
@@ -15696,6 +15710,8 @@ function App() {
       const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
       
       let pms = 0;
+      let pmsBasic = 0;
+      let pmsComplex = 0;
       let deliveries = 0;
       fSuccess.forEach(t => {
         const isDormityTicket = t.provider === 'dormity';
@@ -15703,6 +15719,8 @@ function App() {
           const tid = task.tariffId || '';
           if (!isDormityTicket && tid.startsWith('PM_')) {
             pms += task.quantity;
+            if (tid.startsWith('PM_COMP_')) pmsComplex += task.quantity;
+            else pmsBasic += task.quantity;
           }
           if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) {
             deliveries += task.quantity;
@@ -15731,6 +15749,8 @@ function App() {
         mileageEarnings: 0,
         kms: fKms,
         pms,
+        pmsBasic,
+        pmsComplex,
         deliveries
       };
       return acc;
@@ -15744,12 +15764,17 @@ function App() {
 
     // Contadores (Solo cuenta de paradas con éxito)
     let totalPMs = 0;
+    let totalPMsBasic = 0;
+    let totalPMsComplex = 0;
     let totalCustomEarnings = 0;
     successTickets.forEach(t => {
+      const isDormityTicket = t.provider === 'dormity';
       t.tasks.forEach(task => {
         const tid = task.tariffId || '';
-        if (tid.startsWith('PM_')) {
+        if (!isDormityTicket && tid.startsWith('PM_')) {
           totalPMs += task.quantity;
+          if (tid.startsWith('PM_COMP_')) totalPMsComplex += task.quantity;
+          else totalPMsBasic += task.quantity;
         }
         if (tid.startsWith('CUSTOM_')) {
           totalCustomEarnings += (task.unitPrice || task.price || 0) * task.quantity;
@@ -16967,9 +16992,12 @@ function App() {
                 <div className="stat-val" style={{ lineHeight: 1 }}>{successTickets.length}</div>
                 <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>de {filteredAdminTickets.length} totales</span>
               </div>
-              <div className="stat-card warning">
+              <div className="stat-card warning" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <p>Puestas en Marcha</p>
-                <div className="stat-val">{totalPMs}</div>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{totalPMs}</div>
+                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                  {totalPMsBasic} Básicas ({ (totalPMsBasic * 11.43).toFixed(2) } €) / {totalPMsComplex} Complejas ({ (totalPMsComplex * 19.05).toFixed(2) } €)
+                </span>
               </div>
               <div className="stat-card danger">
                 <p>Adicionales Mes</p>
@@ -17024,7 +17052,11 @@ function App() {
                           <tr key={fid} className="interactive-row" onClick={() => setSelectedDrilldownFurgoId(fid)} title={`Ver detalle diario de ${label}`}>
                             <td style={{ fontWeight: '600' }}>{label}</td>
                             <td style={{ textAlign: 'center' }}>{data.successCount} / {data.count}</td>
-                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.pms}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>
+                              {data.pms > 0 ? (
+                                <span>{data.pms} <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>({data.pmsBasic} B. / {data.pmsComplex} C.)</span></span>
+                              ) : '0'}
+                            </td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.deliveries}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.kms.toFixed(1)} km</td>
                             <td style={{ textAlign: 'right', fontWeight: '500', color: 'var(--text-muted)' }}>0.00 €</td>
