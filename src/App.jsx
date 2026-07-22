@@ -15633,8 +15633,9 @@ function App() {
 
             <div className="dashboard-grid" style={{ marginBottom: '20px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
               <div className="stat-card success" style={{ padding: '15px' }}>
-                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Total Neto Acumulado</p>
-                <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{overallTotalNet.toFixed(2)} €</div>
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Facturación Base (Informe del Día)</p>
+                <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalBase.toFixed(2)} €</div>
+                <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>(Neto con IVA/Ret: {overallTotalNet.toFixed(2)} €)</span>
               </div>
               <div className="stat-card info" style={{ padding: '15px' }}>
                 <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Entregas / Éxitos</p>
@@ -15674,8 +15675,8 @@ function App() {
                       <th style={{ textAlign: 'center' }}>Entregas</th>
                       <th style={{ textAlign: 'center' }}>Kms</th>
                       <th style={{ textAlign: 'right' }}>Kilometraje</th>
-                      <th style={{ textAlign: 'right' }}>Base Imponible</th>
-                      <th style={{ textAlign: 'right' }}>Total Neto</th>
+                      <th style={{ textAlign: 'right' }}>Base Imponible (€)</th>
+                      <th style={{ textAlign: 'right' }}>Total Neto (+20%)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -15699,8 +15700,8 @@ function App() {
                           <td style={{ textAlign: 'center' }}>{stat.deliveries}</td>
                           <td style={{ textAlign: 'center' }}>{stat.kms.toFixed(1)} km</td>
                           <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>0.00 €</td>
-                          <td style={{ textAlign: 'right' }}>{stat.base.toFixed(2)} €</td>
-                          <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{net.toFixed(2)} €</td>
+                          <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{stat.base.toFixed(2)} €</td>
+                          <td style={{ textAlign: 'right', fontWeight: '500', opacity: 0.85 }}>{net.toFixed(2)} €</td>
                         </tr>
                       );
                     })}
@@ -17073,10 +17074,10 @@ function App() {
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.deliveries}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.kms.toFixed(1)} km</td>
                             <td style={{ textAlign: 'right', fontWeight: '500', color: 'var(--text-muted)' }}>0.00 €</td>
-                            <td style={{ textAlign: 'right', fontWeight: '500' }}>{base.toFixed(2)} €</td>
+                            <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{base.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: '500' }}>+{iva.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>-{retencion.toFixed(2)} €</td>
-                            <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{totalNeto.toFixed(2)} €</td>
+                            <td style={{ textAlign: 'right', fontWeight: '500', opacity: 0.85 }}>{totalNeto.toFixed(2)} €</td>
                           </tr>
                         );
                       })}
