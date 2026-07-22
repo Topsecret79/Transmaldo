@@ -119,6 +119,10 @@ Este archivo contiene reglas y directrices críticas de diseño y comportamiento
 ## 🔄 Asignación de Albaranes con Auxilio entre Rutas (Criterio de Origen por Defecto)
 * **Regla Inflexible**: Los albaranes etiquetados como auxilios realizados por otra furgoneta (ej. `(Auxilio realizado por Ruta X)`) pertenecen por defecto en el informe diario a su **Ruta de Origen** (donde fueron planificados originalmente), a menos que la administración transfiera explícitamente el ticket a la furgoneta ejecutora.
 
+## 💬 Reglas de Comunicación con el Usuario
+* **Regla Inflexible**: Responder **únicamente** y de manera concisa sobre la pregunta o instrucción formulada por el usuario. Evitar dar explicaciones no solicitadas, detalles extras o resúmenes innecesarios.
+* **Certeza Absoluta**: Toda respuesta debe basarse en la verificación directa de la base de datos o el código fuente antes de contestar, respondiendo con total precisión y seguridad.
+
 ---
 
 ## 📅 Historial de Cambios y Commits Recientes
