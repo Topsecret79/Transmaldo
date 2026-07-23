@@ -679,7 +679,9 @@ function App() {
 
     // 1. Prioridad: Etiquetas o palabras clave en las notas
     if (t.notes) {
-      const notesLower = t.notes.toLowerCase();
+      const notesLower = t.notes.toLowerCase()
+        .replace(/\[horario:\s*[^\]]+\]/g, '')
+        .replace(/\[duracion:\s*[^\]]+\]/g, '');
       if (notesLower.includes('[vip]') || notesLower.includes('vip')) {
         return 'vip';
       }
