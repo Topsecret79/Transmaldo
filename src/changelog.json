@@ -86,5 +86,18 @@
       "Implementación del flujo de cambio de contraseña obligatorio: los nuevos usuarios creados por administradores son redirigidos forzosamente a establecer su contraseña privada en su primer inicio de sesión.",
       "Implementación del filtro de furgoneta/chofer en el Corte de Facturación (Periodo): permite aislar las ganancias, entregas, kilometraje y exportación de Excel de un repartidor específico en lugar de hacerlo de manera general."
     ]
+  },
+  {
+    "id": "v1.5.0",
+    "date": "2026-07-23",
+    "version": "1.5.0",
+    "title": "Control de Flota Simultáneo, Desacoplamiento de Barras de Sonido y Reapertura de Turnos",
+    "category": "UI / Core / Admin",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Modificación del modal de cierre de turno para mostrar y guardar simultáneamente el kilometraje facturable de la ruta y los datos de flota.",
+      "Desacoplamiento de la puesta en marcha de barras de sonido eliminando el cobro automático de entrega y recalculando el histórico de tickets.",
+      "Adición de un botón de reapertura de turnos cerrado ('Reabrir Turno') en el resumen de turno visible únicamente para administradores."
+    ]
   }
 ]

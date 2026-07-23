@@ -5392,6 +5392,39 @@ function App() {
     return false;
   };
 
+  const handleAdminUpdateShift = (furgoId, date) => {
+    let kms = parseFloat(shiftKmsInput) || 0;
+    saveRouteKms(furgoId, date, kms);
+
+    const shiftsList = getShifts();
+    const shiftId = `${furgoId}_${date}`;
+    const existingIndex = shiftsList.findIndex(s => s.id === shiftId);
+
+    if (existingIndex !== -1) {
+      const existingShift = shiftsList[existingIndex];
+      const summary = getShiftSummary(furgoId, date);
+      summary.kms = kms;
+      const updatedShift = {
+        ...existingShift,
+        kms: kms,
+        summary: {
+          ...(existingShift.summary || summary),
+          kms: kms
+        }
+      };
+      shiftsList[existingIndex] = updatedShift;
+      saveShifts(shiftsList);
+    } else {
+      const summary = getShiftSummary(furgoId, date);
+      summary.kms = kms;
+      closeShift(furgoId, date, summary);
+    }
+
+    triggerAlert('Kilómetros del turno actualizados con éxito ✓');
+    setShowShiftModal(false);
+    loadData();
+  };
+
   const saveExcelToDisk = async (wb, filename) => {
     try {
       const XLSX = await import('xlsx');
@@ -19625,9 +19658,21 @@ function App() {
                     )}
                     
                     {existingShift && existingShift.status === 'closed' && (
-                      <div style={{ marginTop: '15px', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px' }}>
-                        🔒 Cierre realizado el: {new Date(existingShift.closedAt).toLocaleString()}
-                      </div>
+                      <>
+                        <div style={{ marginTop: '15px', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px' }}>
+                          🔒 Cierre realizado el: {new Date(existingShift.closedAt).toLocaleString()}
+                        </div>
+                        {isAdminOrSuper && (
+                          <button 
+                            type="button" 
+                            onClick={() => handleReopenShift(targetFurgoId, targetDate)} 
+                            className="btn btn-warning"
+                            style={{ width: '100%', marginTop: '15px', fontWeight: '700' }}
+                          >
+                            🔓 Reabrir Turno (Admin)
+                          </button>
+                        )}
+                      </>
                     )}
 
                     {(!existingShift || existingShift.status !== 'closed') && !isAdminOrSuper && (
