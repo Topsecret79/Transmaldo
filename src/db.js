@@ -1583,19 +1583,6 @@ export function calculateTaskPrice(tariffId, tariffs = null, modulePrice = null)
   const tariff = activeTariffs.find(t => t.id === tariffId);
   if (!tariff) return 0;
 
-  // PM de barra de sonido: Entrega TV pequeña (TV_ENT_49) + 3 módulos
-  if (tariffId === 'PM_BSND') {
-    const tvSmall = activeTariffs.find(t => t.id === 'TV_ENT_49');
-    const tvSmallPrice = tvSmall ? tvSmall.value : 5.23;
-    return tvSmallPrice + (3 * activeModulePrice);
-  }
-
-  // Cuelgue de barra de sonido: Entrega TV pequeña (TV_ENT_49) + 8 módulos
-  if (tariffId === 'CUELGUE_BSND') {
-    const tvSmall = activeTariffs.find(t => t.id === 'TV_ENT_49');
-    const tvSmallPrice = tvSmall ? tvSmall.value : 5.23;
-    return tvSmallPrice + (8 * activeModulePrice);
-  }
 
   if (tariff.type === 'fixed') {
     return tariff.value;
