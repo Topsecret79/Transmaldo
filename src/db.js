@@ -26,6 +26,30 @@ export function getSupabaseClient() {
 let isSyncing = false;
 let realtimeChannel = null;
 
+// Agrupa (debounce) las sincronizaciones disparadas por Realtime: si llegan varios cambios
+// seguidos (varios tickets, ajustes, etc.) en una ráfaga, solo se ejecuta UNA sincronización
+// al final de la ráfaga en lugar de una por cada evento. Además solo se vuelve a pedir la
+// tabla delivery_tickets (la más pesada, ~43 MB) si alguno de los cambios de la ráfaga era
+// realmente sobre esa tabla.
+let syncDebounceTimer = null;
+let syncDebouncePendingTickets = false;
+const SYNC_DEBOUNCE_MS = 4000;
+
+function scheduleSyncFromCloud(changedTable) {
+  if (changedTable === 'delivery_tickets') {
+    syncDebouncePendingTickets = true;
+  }
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+  }
+  syncDebounceTimer = setTimeout(() => {
+    const includeTickets = syncDebouncePendingTickets;
+    syncDebounceTimer = null;
+    syncDebouncePendingTickets = false;
+    syncFromCloud(includeTickets);
+  }, SYNC_DEBOUNCE_MS);
+}
+
 export let isSaving = false;
 export function setIsSaving(val) {
   isSaving = val;
@@ -71,7 +95,7 @@ export async function reinitSupabase() {
                       updatedAt: val.updatedAt || val.timestamp
                     };
                     localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
-                    
+
                     window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: { fid, lat: val.lat, lng: val.lng } }));
                   } catch (e) {
                     console.error("Error parsing realtime driver location:", e);
@@ -79,7 +103,13 @@ export async function reinitSupabase() {
                   return;
                 }
               }
-              syncFromCloud();
+              // Antes: cada cambio en CUALQUIER tabla llamaba a syncFromCloud() de inmediato,
+              // que siempre volvía a descargar las 5 tablas completas (incluida delivery_tickets,
+              // ~43 MB). Con varios dispositivos conectados esto multiplicaba el tráfico y fue
+              // la causa principal del exceso de egress. Ahora se agrupan los cambios que llegan
+              // en ráfaga (p.ej. varios tickets seguidos) en una sola sincronización, y solo se
+              // vuelve a pedir la tabla de tickets si de verdad hubo un cambio en delivery_tickets.
+              scheduleSyncFromCloud(payload.table);
             })
             .subscribe();
         } catch (err) {
@@ -227,7 +257,7 @@ export async function initializeSupabaseTables() {
   }
 }
 
-export async function syncFromCloud() {
+export async function syncFromCloud(includeTickets = true) {
   if (!supabase) return;
   if (isSaving) return;
   try {
@@ -326,7 +356,9 @@ export async function syncFromCloud() {
       }
     }
 
-    // Pull Tickets
+    // Pull Tickets (se omite si el cambio detectado por Realtime no afecta a delivery_tickets,
+    // para no volver a descargar la tabla completa -principal causa de egress- en cada cambio menor)
+    if (includeTickets) {
     const { data: tickets, error: errTickets } = await supabase.from('delivery_tickets').select('*');
     if (tickets && !errTickets) {
       const cloudTickets = tickets.map(t => ({
@@ -379,6 +411,7 @@ export async function syncFromCloud() {
       });
 
       localStorage.setItem('delivery_tickets', JSON.stringify(mergedTickets));
+    }
     }
 
     // Pull Shifts
