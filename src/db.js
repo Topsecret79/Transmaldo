@@ -336,7 +336,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           permissions: pVal,
           allowedProviders: allowedProvs,
           email: u.email || null,
-          auth_uid: u.auth_uid || null
+          auth_uid: u.auth_uid || null,
+          active: u.active !== false
         };
       });
       localStorage.setItem('delivery_users', JSON.stringify(localUsers));
@@ -1169,9 +1170,12 @@ export async function saveUsers(users) {
           if (!dbColumns || dbColumns.includes('auth_uid')) {
             row.auth_uid = u.auth_uid || null;
           }
+          if (!dbColumns || dbColumns.includes('active')) {
+            row.active = u.active !== false;
+          }
           return row;
         });
-        
+
         const { error } = await supabase.from('delivery_users').upsert(formatted);
         
         if (error) {
@@ -2421,15 +2425,51 @@ export async function initializeAdminTariffs(newAdminId, option, creatorTariffs,
 }
 
 // Eliminar un usuario
-export function deleteUser(userId) {
+// Desactiva una cuenta (reversible): no borra nada, solo impide iniciar sesión
+// y la marca como inactiva. Es la acción por defecto para "quitar" un usuario.
+export async function deactivateUser(userId) {
+  const users = getUsers();
+  const updated = users.map(u => u.id === userId ? { ...u, active: false } : u);
+  localStorage.setItem('delivery_users', JSON.stringify(updated));
+  if (!supabase) return { success: true };
+  const { error } = await supabase.from('delivery_users').update({ active: false }).eq('id', userId);
+  if (error) {
+    console.error("Error deactivating user in Supabase:", error);
+    return { success: false, error };
+  }
+  return { success: true };
+}
+
+// Reactiva una cuenta previamente desactivada.
+export async function reactivateUser(userId) {
+  const users = getUsers();
+  const updated = users.map(u => u.id === userId ? { ...u, active: true } : u);
+  localStorage.setItem('delivery_users', JSON.stringify(updated));
+  if (!supabase) return { success: true };
+  const { error } = await supabase.from('delivery_users').update({ active: true }).eq('id', userId);
+  if (error) {
+    console.error("Error reactivating user in Supabase:", error);
+    return { success: false, error };
+  }
+  return { success: true };
+}
+
+// Borrado PERMANENTE y real de una cuenta (irreversible). Reservado para el
+// superadministrador. Espera la confirmación real de Supabase antes de tocar
+// la copia local, para no mostrar nunca "eliminado" si en realidad falló.
+export async function deleteUserPermanently(userId) {
+  if (!supabase) {
+    return { success: false, error: new Error('Sin conexión a la base de datos. No se puede eliminar de forma permanente sin conexión.') };
+  }
+  const { error } = await supabase.from('delivery_users').delete().eq('id', userId);
+  if (error) {
+    console.error("Error deleting user permanently from Supabase:", error);
+    return { success: false, error };
+  }
   const users = getUsers();
   const filtered = users.filter(u => u.id !== userId);
-  saveUsers(filtered);
-  if (supabase) {
-    supabase.from('delivery_users').delete().eq('id', userId).then(({ error }) => {
-      if (error) console.error("Error deleting user from Supabase:", error);
-    });
-  }
+  localStorage.setItem('delivery_users', JSON.stringify(filtered));
+  return { success: true };
 }
 
 // Obtener nombre de la aplicación

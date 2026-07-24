@@ -393,7 +393,9 @@ import {
   calculateDormityTaskPrice,
   DEFAULT_DORMITY_TARIFFS,
   initializeAdminTariffs,
-  deleteUser,
+  deactivateUser,
+  reactivateUser,
+  deleteUserPermanently,
   getAppName,
   saveAppName,
   getAppTheme,
@@ -1864,6 +1866,9 @@ function App() {
   };
   const [appTheme, setAppTheme] = useState(getInitialAppTheme());
   const [showPassword, setShowPassword] = useState(false);
+  // Borrado permanente de usuarios (solo superadmin): id del usuario en confirmación y texto tecleado
+  const [hardDeleteTarget, setHardDeleteTarget] = useState(null);
+  const [hardDeleteInput, setHardDeleteInput] = useState('');
 
   // Estados para añadir nueva tarifa
   const [newTariffName, setNewTariffName] = useState('');
@@ -2694,7 +2699,8 @@ function App() {
               createdBy: u.created_by || 'admin',
               mustChangePassword: !!u.must_change_password,
               email: u.email,
-              auth_uid: u.auth_uid || authUser.id
+              auth_uid: u.auth_uid || authUser.id,
+              active: u.active !== false
             };
             
             // Si el perfil en la base de datos no tiene guardado el UID aún, actualizarlo
@@ -2760,7 +2766,8 @@ function App() {
                 createdBy: u.created_by || 'admin',
                 mustChangePassword: !!u.must_change_password,
                 email: u.email || null,
-                auth_uid: u.auth_uid || null
+                auth_uid: u.auth_uid || null,
+                active: u.active !== false
               };
               const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
               saveUsers(updatedUsers);
@@ -2773,6 +2780,10 @@ function App() {
     }
 
     if (foundUser) {
+      if (foundUser.active === false) {
+        setLoginError('Esta cuenta está desactivada. Contacta con tu administrador para reactivarla.');
+        return;
+      }
       if (foundUser.mustChangePassword) {
         setForceChangePasswordUser(foundUser);
         setUsernameInput('');
@@ -16650,11 +16661,22 @@ function App() {
                           borderLeft: isNested ? '3px solid var(--primary)' : '1px solid var(--panel-border)'
                         }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                           <div>
-                            <strong style={{ fontSize: '0.9rem', color: u.role === 'repartidor' ? '#60a5fa' : 'var(--primary)' }}>
+                            <strong style={{ fontSize: '0.9rem', color: u.active === false ? 'var(--text-muted)' : (u.role === 'repartidor' ? '#60a5fa' : 'var(--primary)') }}>
                               {u.role === 'repartidor' ? '🚐' : '👤'} {u.label} ({u.username})
                             </strong>
+                            <span style={{
+                              marginLeft: '8px',
+                              padding: '1px 8px',
+                              borderRadius: '20px',
+                              fontSize: '0.65rem',
+                              fontWeight: 'bold',
+                              background: u.active === false ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                              color: u.active === false ? 'var(--danger)' : 'var(--success)'
+                            }}>
+                              {u.active === false ? 'Inactivo' : 'Activo'}
+                            </span>
                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                               Rol: <span style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>{u.role}</span>
                               {u.role === 'repartidor' && (() => {
@@ -16664,20 +16686,97 @@ function App() {
                             </div>
                           </div>
                           {u.id !== 'admin' && u.id !== currentUser.id && (
-                            <button 
-                              type="button" 
-                              onClick={() => {
-                                if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente a ${u.label}?`)) {
-                                  deleteUser(u.id);
-                                  triggerAlert('Usuario eliminado correctamente');
-                                  loadData();
-                                }
-                              }} 
-                              className="btn btn-danger btn-small" 
-                              style={{ padding: '4px 8px', margin: 0, width: 'auto', display: 'flex', gap: '4px', alignItems: 'center', fontSize: '0.7rem' }}
-                            >
-                              <Trash2 size={11} /> Eliminar
-                            </button>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              {u.active === false ? (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const result = await reactivateUser(u.id);
+                                    if (result.success) {
+                                      triggerAlert(`${u.label} reactivado correctamente`);
+                                      loadData();
+                                    } else {
+                                      triggerAlert('No se pudo reactivar el usuario: fallo de conexión con el servidor. Inténtalo de nuevo.', 'error');
+                                    }
+                                  }}
+                                  className="btn btn-secondary btn-small"
+                                  style={{ padding: '4px 8px', margin: 0, width: 'auto', display: 'flex', gap: '4px', alignItems: 'center', fontSize: '0.7rem', color: 'var(--success)' }}
+                                >
+                                  🟢 Reactivar
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (window.confirm(`¿Desactivar a ${u.label}? No podrá iniciar sesión hasta que lo reactives. Esto no borra nada de su historial.`)) {
+                                      const result = await deactivateUser(u.id);
+                                      if (result.success) {
+                                        triggerAlert(`${u.label} desactivado correctamente`);
+                                        loadData();
+                                      } else {
+                                        triggerAlert('No se pudo desactivar el usuario: fallo de conexión con el servidor. Inténtalo de nuevo.', 'error');
+                                      }
+                                    }
+                                  }}
+                                  className="btn btn-danger btn-small"
+                                  style={{ padding: '4px 8px', margin: 0, width: 'auto', display: 'flex', gap: '4px', alignItems: 'center', fontSize: '0.7rem' }}
+                                >
+                                  🔴 Desactivar
+                                </button>
+                              )}
+
+                              {currentUser.role === 'superadmin' && (
+                                hardDeleteTarget === u.id ? (
+                                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                    <input
+                                      type="text"
+                                      value={hardDeleteInput}
+                                      onChange={(e) => setHardDeleteInput(e.target.value)}
+                                      placeholder={`Escribe "${u.username}"`}
+                                      className="form-input"
+                                      style={{ padding: '4px 6px', fontSize: '0.7rem', width: '140px', height: 'auto' }}
+                                    />
+                                    <button
+                                      type="button"
+                                      disabled={hardDeleteInput.trim().toLowerCase() !== u.username.toLowerCase()}
+                                      onClick={async () => {
+                                        const result = await deleteUserPermanently(u.id);
+                                        if (result.success) {
+                                          triggerAlert('Usuario eliminado permanentemente');
+                                          loadData();
+                                        } else {
+                                          triggerAlert('No se pudo eliminar de forma permanente: fallo de conexión con el servidor. El usuario NO se ha borrado. Inténtalo de nuevo.', 'error');
+                                        }
+                                        setHardDeleteTarget(null);
+                                        setHardDeleteInput('');
+                                      }}
+                                      className="btn btn-danger btn-small"
+                                      style={{ padding: '4px 8px', margin: 0, width: 'auto', fontSize: '0.7rem', opacity: hardDeleteInput.trim().toLowerCase() !== u.username.toLowerCase() ? 0.5 : 1 }}
+                                    >
+                                      Confirmar borrado
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setHardDeleteTarget(null); setHardDeleteInput(''); }}
+                                      className="btn btn-secondary btn-small"
+                                      style={{ padding: '4px 8px', margin: 0, width: 'auto', fontSize: '0.7rem' }}
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setHardDeleteTarget(u.id); setHardDeleteInput(''); }}
+                                    className="btn btn-secondary btn-small"
+                                    style={{ padding: '4px 8px', margin: 0, width: 'auto', display: 'flex', gap: '4px', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}
+                                    title="Borrado permanente e irreversible (solo superadmin)"
+                                  >
+                                    <Trash2 size={11} /> Eliminar definitivamente
+                                  </button>
+                                )
+                              )}
+                            </div>
                           )}
                         </div>
 
