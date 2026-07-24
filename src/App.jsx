@@ -1049,6 +1049,12 @@ function App() {
         const name = task.name || (tariff ? tariff.name : task.tariffId);
         return {
           name,
+          // Fix: antes no se exponía tariffId/action en el objeto devuelto, así que
+          // cualquier código que agrupara servicios por tipo (ej. el conteo de PMs
+          // básicas/complejas y ahora el de recogidas en el Informe del Día) leía
+          // siempre task.tariffId === undefined y nunca contaba nada.
+          tariffId: task.tariffId,
+          action: task.action,
           quantity: task.quantity || 0,
           unitPrice: calcTaskUnitPrice(task),
           totalPrice: calcTaskPrice(task),
@@ -1088,6 +1094,8 @@ function App() {
       const unitPrice = tariff ? tariff.value : 0;
       return [{
         name: label,
+        tariffId,
+        action: null,
         quantity: 1,
         unitPrice,
         totalPrice: unitPrice,
@@ -1098,7 +1106,19 @@ function App() {
     return [];
   };
 
-
+  // Identifica si una tarea facturable es una "recogida" (TV vieja, PV/GV de paquetería,
+  // recogidas de Dormity, o el tramo de recogida de un TV combinado Entrega+Recogida),
+  // para poder contarlas por separado en el Informe del Día (antes no se distinguían
+  // de las entregas en el resumen, solo se mostraban como líneas sueltas en la tabla).
+  const isPickupTask = (task) => {
+    if (!task) return false;
+    const tid = task.tariffId || '';
+    if (tid.startsWith('DORMITY_REC_')) return true;
+    if (tid === 'TV_VIEJA_URB' || tid === 'TV_VIEJA_NO_URB') return true;
+    if (tid.startsWith('RECOGIDA_')) return true;
+    if (task.action === 'recogida' || task.action === 'combinado') return true;
+    return false;
+  };
 
 
   const [activeTab, setActiveTab] = useState(() => {
@@ -15356,7 +15376,10 @@ function App() {
 
           let furgoTotal = 0;
           let furgoTotalQty = 0;
+          let furgoPickupsEci = 0;
+          let furgoPickupsDormity = 0;
           fTickets.forEach(ticket => {
+            const isDormityTicket = ticket.provider === 'dormity';
             const billableTasks = getBillableTasks(ticket);
             const taskCount = billableTasks.length;
             billableTasks.forEach((task, ti) => {
@@ -15364,6 +15387,12 @@ function App() {
               const totalP = task.totalPrice;
               furgoTotal += totalP;
               furgoTotalQty += task.quantity || 0;
+              if (isPickupTask(task)) {
+                // Se mantienen separadas ECI y Dormity (nunca se mezclan): son módulos
+                // de negocio independientes con sus propios catálogos y facturación.
+                if (isDormityTicket) furgoPickupsDormity += task.quantity || 0;
+                else furgoPickupsEci += task.quantity || 0;
+              }
               allRows.push([
                 ti === 0 ? ticket.customerName : '',
                 task.name,
@@ -15381,6 +15410,12 @@ function App() {
           const recordedKms = existingShift ? getRouteKms(furgoId, reportDate) : 0;
 
           allRows.push(['', '', 'TOTAL FURGONETA:', furgoTotalQty, '', furgoTotal.toFixed(2) + ' €']);
+          if (furgoPickupsEci > 0) {
+            allRows.push(['', '', 'De las cuales, Recogidas (El Corte Inglés):', furgoPickupsEci, '', '']);
+          }
+          if (furgoPickupsDormity > 0) {
+            allRows.push(['', '', 'De las cuales, Recogidas (Dormity):', furgoPickupsDormity, '', '']);
+          }
           if (recordedKms > 0) {
             allRows.push(['', '', `Odómetro Flota (${recordedKms} km - Control Flota):`, '', '', '0.00 €']);
           }
@@ -15467,6 +15502,8 @@ function App() {
               let furgoTotalQty = 0;
               let furgoPmsBasic = 0;
               let furgoPmsComplex = 0;
+              let furgoPickupsEci = 0;
+              let furgoPickupsDormity = 0;
               fTickets.forEach(t => {
                 const isDormityTicket = t.provider === 'dormity';
                 const billable = getBillableTasks(t);
@@ -15477,6 +15514,12 @@ function App() {
                   if (!isDormityTicket && tid.startsWith('PM_')) {
                     if (tid.startsWith('PM_COMP_')) furgoPmsComplex += task.quantity || 0;
                     else furgoPmsBasic += task.quantity || 0;
+                  }
+                  if (isPickupTask(task)) {
+                    // ECI y Dormity se cuentan siempre por separado (son módulos de
+                    // negocio independientes, con catálogos y facturación propios).
+                    if (isDormityTicket) furgoPickupsDormity += task.quantity || 0;
+                    else furgoPickupsEci += task.quantity || 0;
                   }
                 });
               });
@@ -15500,6 +15543,16 @@ function App() {
                       {(furgoPmsBasic > 0 || furgoPmsComplex > 0) && (
                         <span style={{ fontSize: '0.82rem', padding: '3px 9px', borderRadius: '5px', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)', fontWeight: '600' }} title={`${furgoPmsBasic} Básicas, ${furgoPmsComplex} Complejas`}>
                           ⚙️ PMs: {furgoPmsBasic + furgoPmsComplex} ({furgoPmsBasic} B. / {furgoPmsComplex} C.)
+                        </span>
+                      )}
+                      {furgoPickupsEci > 0 && (
+                        <span style={{ fontSize: '0.82rem', padding: '3px 9px', borderRadius: '5px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', fontWeight: '600' }} title="Recogidas El Corte Inglés del día (TV vieja, paquetería PV/GV)">
+                          📦 Recogidas ECI: {furgoPickupsEci}
+                        </span>
+                      )}
+                      {furgoPickupsDormity > 0 && (
+                        <span style={{ fontSize: '0.82rem', padding: '3px 9px', borderRadius: '5px', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', border: '1px solid rgba(168, 85, 247, 0.3)', fontWeight: '600' }} title="Recogidas Dormity del día">
+                          📦 Recogidas Dormity: {furgoPickupsDormity}
                         </span>
                       )}
                       <span style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--primary)' }}>💰 {furgoGrandTotal.toFixed(2)} €</span>
@@ -15622,6 +15675,8 @@ function App() {
                       <th style={{ padding: '8px 12px', textAlign: 'left', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Furgoneta</th>
                       <th style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Entregas</th>
                       <th style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Cant. Serv.</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>📦 Recog. ECI</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>📦 Recog. Dormity</th>
                       <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Imp. Servicios</th>
                       <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Kms</th>
                       <th style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.78rem', textTransform: 'uppercase' }}>Total</th>
@@ -15634,12 +15689,19 @@ function App() {
                       const fTickets = reportTickets.filter(t => t.furgoId === furgoId);
                       let fTotal = 0;
                       let fQty = 0;
-                      fTickets.forEach(t => { 
+                      let fPickupsEci = 0;
+                      let fPickupsDormity = 0;
+                      fTickets.forEach(t => {
+                        const isDormityTicket = t.provider === 'dormity';
                         const billable = getBillableTasks(t);
-                        billable.forEach(task => { 
-                          fTotal += task.totalPrice; 
+                        billable.forEach(task => {
+                          fTotal += task.totalPrice;
                           fQty += task.quantity || 0;
-                        }); 
+                          if (isPickupTask(task)) {
+                            if (isDormityTicket) fPickupsDormity += task.quantity || 0;
+                            else fPickupsEci += task.quantity || 0;
+                          }
+                        });
                       });
                       const fKms = getRouteKms(furgoId, reportDate);
                       return (
@@ -15647,6 +15709,8 @@ function App() {
                           <td style={{ padding: '9px 12px', fontWeight: '600', color: 'var(--text-main)' }}>🚚 {furgoLabel}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{fTickets.length}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'center', color: 'var(--text-main)', fontWeight: '600' }}>{fQty}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', color: '#38bdf8', fontWeight: '600' }}>{fPickupsEci > 0 ? fPickupsEci : '—'}</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'center', color: '#a855f7', fontWeight: '600' }}>{fPickupsDormity > 0 ? fPickupsDormity : '—'}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{fTotal.toFixed(2)} €</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{fKms > 0 ? `${fKms} km` : '—'}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{fTotal.toFixed(2)} €</td>
@@ -15663,19 +15727,41 @@ function App() {
                       <td style={{ padding: '12px', textAlign: 'center', fontWeight: '800', color: 'var(--primary)' }}>
                         {(() => {
                           let tq = 0;
-                          reportTickets.forEach(t => { 
+                          reportTickets.forEach(t => {
                             const billable = getBillableTasks(t);
-                            billable.forEach(task => { tq += task.quantity || 0; }); 
+                            billable.forEach(task => { tq += task.quantity || 0; });
                           });
                           return tq;
+                        })()}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: '800', color: '#38bdf8' }}>
+                        {(() => {
+                          let tp = 0;
+                          reportTickets.forEach(t => {
+                            if (t.provider === 'dormity') return;
+                            const billable = getBillableTasks(t);
+                            billable.forEach(task => { if (isPickupTask(task)) tp += task.quantity || 0; });
+                          });
+                          return tp;
+                        })()}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: '800', color: '#a855f7' }}>
+                        {(() => {
+                          let tp = 0;
+                          reportTickets.forEach(t => {
+                            if (t.provider !== 'dormity') return;
+                            const billable = getBillableTasks(t);
+                            billable.forEach(task => { if (isPickupTask(task)) tp += task.quantity || 0; });
+                          });
+                          return tp;
                         })()}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>
                         {(() => {
                           let ts = 0;
-                          reportTickets.forEach(t => { 
+                          reportTickets.forEach(t => {
                             const billable = getBillableTasks(t);
-                            billable.forEach(task => { ts += task.totalPrice; }); 
+                            billable.forEach(task => { ts += task.totalPrice; });
                           });
                           return ts.toFixed(2) + ' €';
                         })()}
