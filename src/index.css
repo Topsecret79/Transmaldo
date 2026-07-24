@@ -82,6 +82,24 @@ body.dark-mode {
   --border-radius-sm: 8px;
 }
 
+/* Fix (estilo): a diferencia de los demás temas (neon, corporate, cyberpunk, sakura,
+   arctic), a Esmeralda —el tema por defecto— le faltaba esta regla explícita por
+   clase. Solo tenía la variante por @media (prefers-color-scheme), así que si se
+   forzaba la clase dark-mode sin que el sistema operativo también estuviera en modo
+   oscuro, el tema por defecto se quedaba en claro. Ahora coincide con el patrón de
+   los demás temas. */
+body.theme-emerald.dark-mode, body.dark-mode:not([class*="theme-"]) {
+  --bg-gradient: linear-gradient(135deg, #022c22 0%, #064e3b 50%, #022c22 100%);
+  --panel-bg: rgba(2, 44, 34, 0.6);
+  --panel-border: rgba(167, 243, 208, 0.12);
+  --input-bg: rgba(6, 78, 59, 0.6);
+  --input-border: rgba(167, 243, 208, 0.25);
+  --text-main: #f0fdf4;
+  --text-muted: #34d399;
+  --text-inverse: #022c22;
+  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+}
+
 @media (prefers-color-scheme: dark) {
   :root, body.theme-emerald {
     /* Dark Theme */

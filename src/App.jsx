@@ -1875,7 +1875,14 @@ function App() {
 
   // Aplicar tema en el body
   useEffect(() => {
-    document.body.className = appTheme;
+    // Fix (estilo): forzamos siempre modo oscuro en vez de depender de la
+    // configuración del sistema (prefers-color-scheme), que era la única forma en que
+    // se activaba antes. La mayoría de los estilos de la app se diseñaron pensando en
+    // fondo oscuro (muchos textos usan color blanco fijo); en modo claro, ese texto
+    // quedaba blanco sobre fondos claros/translúcidos y era ilegible. Al forzar
+    // dark-mode siempre, todos los temas usan sus variables de modo oscuro ya
+    // definidas en index.css, sin importar el dispositivo o su configuración.
+    document.body.className = appTheme + ' dark-mode';
     localStorage.setItem('delivery_app_theme', appTheme);
   }, [appTheme]);
 
@@ -7978,7 +7985,7 @@ function App() {
                   {/* Accordion header container */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>📺</span>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Televisores y Servicios</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Televisores y Servicios</span>
                     {formTvs.length > 0 && (
                       <span className="badge badge-primary" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--primary)', color: '#fff' }}>
                         {formTvs.length} {formTvs.length === 1 ? 'TV' : 'TVs'}
@@ -8343,7 +8350,7 @@ function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>📦</span>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Paquetería</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Paquetería</span>
                     {paqueteriaCount > 0 && (
                       <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                         {paqueteriaCount} {paqueteriaCount === 1 ? 'unidad' : 'unidades'}
@@ -8413,7 +8420,7 @@ function App() {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '1.25rem' }}>🔌</span>
-                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Gama Blanca</span>
+                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Gama Blanca</span>
                       {gamaBlancaCount > 0 && (
                         <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                           {gamaBlancaCount} {gamaBlancaCount === 1 ? 'artículo' : 'artículos'}
@@ -8469,7 +8476,7 @@ function App() {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '1.25rem' }}>🪑</span>
-                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Muebles</span>
+                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Muebles</span>
                       {mueblesCount > 0 && (
                         <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                           {mueblesCount} {mueblesCount === 1 ? 'artículo' : 'artículos'}
@@ -8525,7 +8532,7 @@ function App() {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <span style={{ fontSize: '1.25rem' }}>💻</span>
-                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Electrodomésticos Varios</span>
+                      <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Electrodomésticos Varios</span>
                       {electrodomesticosCount > 0 && (
                         <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                           {electrodomesticosCount} {electrodomesticosCount === 1 ? 'unidad' : 'unidades'}
@@ -8629,7 +8636,7 @@ function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>🔧</span>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Otros Elementos / Accesorios</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Otros Elementos / Accesorios</span>
                     {otrosCount > 0 && (
                       <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                         {otrosCount} {otrosCount === 1 ? 'unidad' : 'unidades'}
@@ -8690,7 +8697,7 @@ function App() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '1.25rem' }}>➕</span>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#000' }}>Conceptos Adicionales (Extras Especiales)</span>
+                    <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Conceptos Adicionales (Extras Especiales)</span>
                     {customExtras.length > 0 && (
                       <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
                         {customExtras.length} {customExtras.length === 1 ? 'extra' : 'extras'}
@@ -8976,7 +8983,7 @@ function App() {
                       
                       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, marginLeft: '4px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span style={{ fontSize: '0.88rem', fontWeight: '700', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {t.customerName}
                           </span>
                           {t.customerName.startsWith('Parada #') && (
@@ -11723,7 +11730,7 @@ function App() {
                           {ticket.date}
                         </td>
                         <td>
-                          <div style={{ fontWeight: '600', color: '#000' }}>{ticket.customerName}</div>
+                          <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>{ticket.customerName}</div>
                           {ticket.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>📞 {ticket.phone}</div>}
                         </td>
                         <td>
@@ -15391,7 +15398,7 @@ function App() {
                           const tasks = getBillableTasks(ticket);
                           if (tasks.length === 0) return (
                             <tr key={ticket.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                              <td style={{ padding: '10px 16px', fontWeight: '600', color: '#000' }}>{ticket.customerName}</td>
+                              <td style={{ padding: '10px 16px', fontWeight: '600', color: 'var(--text-main)' }}>{ticket.customerName}</td>
                               <td colSpan={5} style={{ padding: '10px 16px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sin servicios registrados</td>
                             </tr>
                           );
@@ -15406,7 +15413,7 @@ function App() {
                             const rowBorder = (isLastTask && !isLastTicket) ? '2px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.03)';
                             return (
                               <tr key={`${ticket.id}-${sIdx}`} style={{ borderBottom: rowBorder, background: isFirstRow && tIdx % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
-                                <td style={{ padding: '9px 16px', verticalAlign: 'top', fontWeight: isFirstRow ? '600' : '400', color: isFirstRow ? '#000' : 'transparent', fontSize: isFirstRow ? '0.86rem' : '0.85rem', whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '9px 16px', verticalAlign: 'top', fontWeight: isFirstRow ? '600' : '400', color: isFirstRow ? 'var(--text-main)' : 'transparent', fontSize: isFirstRow ? '0.86rem' : '0.85rem', whiteSpace: 'nowrap' }}>
                                   {isFirstRow ? ticket.customerName : ''}
                                 </td>
                                 <td style={{ padding: '9px 16px', color: 'var(--text-main)' }}>
@@ -17609,7 +17616,7 @@ function App() {
                           </div>
                         </td>
                         <td style={{ fontWeight: '600' }}>
-                          <div style={{ color: '#000' }}>{t.customerName || ''}</div>
+                          <div style={{ color: 'var(--text-main)' }}>{t.customerName || ''}</div>
                           {t.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>📞 {t.phone}</div>}
                           {t.codAmount > 0 && (
                             <div style={{
@@ -19772,7 +19779,7 @@ function App() {
                       <div style={{ maxHeight: '250px', overflowY: 'auto', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '6px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {dayTickets.map((t, idx) => (
                           <div key={t.id} style={{ fontSize: '0.85rem', borderBottom: idx < dayTickets.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', paddingBottom: idx < dayTickets.length - 1 ? '8px' : '0' }}>
-                            <div style={{ fontWeight: '600', color: '#000' }}>{idx + 1}. {t.customerName}</div>
+                            <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>{idx + 1}. {t.customerName}</div>
                             <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', marginBottom: '6px' }}>
                               <MapPin size={11} /> {t.address}
                             </div>
