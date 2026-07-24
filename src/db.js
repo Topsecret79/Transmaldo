@@ -2422,7 +2422,36 @@ export async function deleteTariff(id) {
     const filtered = tariffs.filter(t => t.id !== id);
     await saveTariffs(filtered);
     if (supabase) {
-      const { error } = await supabase.from('delivery_tariffs').delete().eq('id', id);
+      // Fix: getTariffs() devuelve el id SIN el sufijo de admin (baseId) para tarifas
+      // propias de un admin (ver el mismo patrón "_<adminId>" que usa saveTariffs()).
+      // Borrar en Supabase con ese baseId tal cual no encontraba la fila real (quedaba
+      // huérfana en la nube y reaparecía en el siguiente sync) o, si existía otra
+      // tarifa global/de otro admin con ese mismo id corto, se borraba por error esa
+      // tarifa equivocada. Reconstruimos aquí el mismo id sufijado que usa
+      // saveTariffs() antes de borrar.
+      let activeAdminId = null;
+      let isSuperAdmin = false;
+      try {
+        const savedUser = localStorage.getItem('delivery_session');
+        if (savedUser) {
+          const u = JSON.parse(savedUser);
+          if (u) {
+            if (u.role === 'admin') activeAdminId = u.id;
+            else if (u.role === 'superadmin') isSuperAdmin = true;
+          }
+        }
+      } catch (e) {}
+
+      let realId = id;
+      if (!isSuperAdmin && activeAdminId && !id.startsWith('CUSTOM_')) {
+        const rawTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+        const suffixedId = `${id}_${activeAdminId}`;
+        if (rawTariffs.some(t => t.id === suffixedId)) {
+          realId = suffixedId;
+        }
+      }
+
+      const { error } = await supabase.from('delivery_tariffs').delete().eq('id', realId);
       if (error) console.error("Error deleting tariff from Supabase:", error);
     }
   } finally {
@@ -2941,83 +2970,140 @@ export function getRouteManualStatus(furgoId, date) {
 export async function moveRouteDate(furgoId, oldDate, newDate) {
   const tickets = getTickets();
   const shifts = getShifts();
-  
+
+  // Fix: antes, ni los tickets ni el turno se marcaban con _syncStatus:'pending'.
+  // syncFromCloud() protege de sobrescrituras precisamente a los registros marcados
+  // como 'pending' (ver el filtro pendingLocal más arriba en este archivo). Sin esa
+  // marca, si un sync desde la nube llegaba mientras esta subida todavía estaba en
+  // curso (o fallaba), el cambio de fecha se revertía en silencio a la fecha vieja,
+  // sin ningún aviso ni error visible.
+
   // 1. Filtrar e ir cambiando la fecha de los tickets
   const ticketsToUpdate = tickets.filter(t => t.furgoId === furgoId && t.date === oldDate);
   ticketsToUpdate.forEach(t => {
     t.date = newDate;
+    t._syncStatus = 'pending';
   });
-  saveTickets(tickets);
+  await saveTickets(tickets);
 
   // 2. Filtrar e ir cambiando la fecha del turno (shift)
   const shiftIndex = shifts.findIndex(s => s.furgoId === furgoId && s.date === oldDate);
   let shiftToUpsert = null;
   if (shiftIndex !== -1) {
     shifts[shiftIndex].date = newDate;
+    shifts[shiftIndex]._syncStatus = 'pending';
     shiftToUpsert = shifts[shiftIndex];
-    saveShifts(shifts);
+    await saveShifts(shifts);
   }
 
   // 3. Sincronizar remotamente si Supabase está activo
+  let remoteSyncError = null;
   if (supabase) {
-    // Upsert tickets
-    if (ticketsToUpdate.length > 0) {
-      const ticketsFormatted = ticketsToUpdate.map(t => ({
-        id: t.id,
-        date: t.date,
-        furgo_id: t.furgoId,
-        furgo_label: t.furgoLabel,
-        route_name: t.routeName,
-        customer_name: t.customerName,
-        phone: t.phone,
-        address: t.address,
-        postcode: t.postcode,
-        notes: t.notes,
-        cod_amount: t.codAmount,
-        tasks: t.tasks,
-        total_price: t.totalPrice,
-        status: t.status,
-        failure_reason: t.failureReason || '',
-        lat: t.lat,
-        lng: t.lng,
-        completed_lat: t.completedLat,
-        completed_lng: t.completedLng,
-        route_order: t.routeOrder,
-        created_at: t.createdAt,
-        created_by: t.createdBy || 'admin'
-      }));
-      await supabase.from('delivery_tickets').upsert(ticketsFormatted);
-    }
+    try {
+      // Upsert tickets
+      if (ticketsToUpdate.length > 0) {
+        const ticketsFormatted = ticketsToUpdate.map(t => ({
+          id: t.id,
+          date: t.date,
+          furgo_id: t.furgoId,
+          furgo_label: t.furgoLabel,
+          route_name: t.routeName,
+          customer_name: t.customerName,
+          phone: t.phone,
+          address: t.address,
+          postcode: t.postcode,
+          notes: t.notes,
+          cod_amount: t.codAmount,
+          tasks: t.tasks,
+          total_price: t.totalPrice,
+          status: t.status,
+          failure_reason: t.failureReason || '',
+          lat: t.lat,
+          lng: t.lng,
+          completed_lat: t.completedLat,
+          completed_lng: t.completedLng,
+          route_order: t.routeOrder,
+          created_at: t.createdAt,
+          created_by: t.createdBy || 'admin'
+        }));
+        const { error: ticketsErr } = await supabase.from('delivery_tickets').upsert(ticketsFormatted);
+        if (ticketsErr) {
+          console.error("Error al subir el cambio de fecha de tickets a Supabase:", ticketsErr);
+          remoteSyncError = ticketsErr;
+        }
+      }
 
-    // Upsert shift
-    if (shiftToUpsert) {
-      await supabase.from('delivery_shifts').upsert({
-        id: shiftToUpsert.id,
-        date: shiftToUpsert.date,
-        furgo_id: shiftToUpsert.furgoId,
-        status: shiftToUpsert.status,
-        created_by: shiftToUpsert.createdBy || 'admin'
-      });
-      const meta = {
-        helper: shiftToUpsert.helper || '',
-        helper2: shiftToUpsert.helper2 || '',
-        matricula: shiftToUpsert.matricula || '',
-        customDriver: shiftToUpsert.customDriver || '',
-        observations: shiftToUpsert.observations || '',
-        routeName: shiftToUpsert.routeName || '',
-        kms: shiftToUpsert.kms || null,
-        startKms: shiftToUpsert.startKms || null,
-        endKms: shiftToUpsert.endKms || null,
-        summary: shiftToUpsert.summary || null
-      };
-      await supabase.from('delivery_settings').upsert({
-        key: `shift_meta_${shiftToUpsert.id}`,
-        value: JSON.stringify(meta)
-      });
+      // Upsert shift
+      if (shiftToUpsert) {
+        const { error: shiftErr } = await supabase.from('delivery_shifts').upsert({
+          id: shiftToUpsert.id,
+          date: shiftToUpsert.date,
+          furgo_id: shiftToUpsert.furgoId,
+          status: shiftToUpsert.status,
+          created_by: shiftToUpsert.createdBy || 'admin'
+        });
+        if (shiftErr) {
+          console.error("Error al subir el cambio de fecha del turno a Supabase:", shiftErr);
+          remoteSyncError = remoteSyncError || shiftErr;
+        }
+        const meta = {
+          helper: shiftToUpsert.helper || '',
+          helper2: shiftToUpsert.helper2 || '',
+          matricula: shiftToUpsert.matricula || '',
+          customDriver: shiftToUpsert.customDriver || '',
+          observations: shiftToUpsert.observations || '',
+          routeName: shiftToUpsert.routeName || '',
+          kms: shiftToUpsert.kms || null,
+          startKms: shiftToUpsert.startKms || null,
+          endKms: shiftToUpsert.endKms || null,
+          summary: shiftToUpsert.summary || null
+        };
+        const { error: metaErr } = await supabase.from('delivery_settings').upsert({
+          key: `shift_meta_${shiftToUpsert.id}`,
+          value: JSON.stringify(meta)
+        });
+        if (metaErr) {
+          console.error("Error al subir metadatos del turno a Supabase:", metaErr);
+          remoteSyncError = remoteSyncError || metaErr;
+        }
+      }
+
+      // Si todo se subió bien, quitar la marca 'pending' de los registros afectados
+      if (!remoteSyncError) {
+        try {
+          const currentTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+          const movedIds = new Set(ticketsToUpdate.map(t => t.id));
+          const clearedTickets = currentTickets.map(t => {
+            if (t && movedIds.has(t.id) && t._syncStatus === 'pending') {
+              const { _syncStatus, ...rest } = t;
+              return rest;
+            }
+            return t;
+          });
+          localStorage.setItem('delivery_tickets', JSON.stringify(clearedTickets));
+
+          if (shiftToUpsert) {
+            const currentShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+            const clearedShifts = currentShifts.map(s => {
+              if (s && s.id === shiftToUpsert.id && s._syncStatus === 'pending') {
+                const { _syncStatus, ...rest } = s;
+                return rest;
+              }
+              return s;
+            });
+            localStorage.setItem('delivery_shifts', JSON.stringify(clearedShifts));
+          }
+        } catch (e) {
+          console.error("Error limpiando _syncStatus tras mover fecha de ruta:", e);
+        }
+      }
+    } catch (e) {
+      console.error("Error inesperado sincronizando el cambio de fecha de ruta con Supabase:", e);
+      remoteSyncError = e;
     }
   }
 
-  return { ticketsCount: ticketsToUpdate.length, hasShift: !!shiftToUpsert };
+  return { ticketsCount: ticketsToUpdate.length, hasShift: !!shiftToUpsert, remoteSyncError };
 }
 
 // Obtener la lista de ayudantes configurados

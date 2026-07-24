@@ -2549,11 +2549,28 @@ function App() {
         
         // Fallback: Si no está guardado localmente, consultar a Supabase en vivo
         if (!profile) {
-          const { data: cloudProfile, error: errProfile } = await supabaseClient
+          // Seguridad: se hacen dos consultas separadas con .eq()/.ilike() en vez de
+          // construir un filtro .or() con texto del usuario, para evitar que un valor
+          // con comas u operadores PostgREST (ej. "x,role.eq.admin") inyecte condiciones
+          // adicionales y devuelva un perfil que no corresponde a la cuenta autenticada.
+          let cloudProfile = null;
+          let errProfile = null;
+          const byUid = await supabaseClient
             .from('delivery_users')
             .select('*')
-            .or(`auth_uid.eq.${authUser.id},email.eq.${inputIdentifier}`);
-            
+            .eq('auth_uid', authUser.id);
+          if (byUid.data && byUid.data.length > 0) {
+            cloudProfile = byUid.data;
+            errProfile = byUid.error;
+          } else {
+            const byEmail = await supabaseClient
+              .from('delivery_users')
+              .select('*')
+              .ilike('email', inputIdentifier);
+            cloudProfile = byEmail.data;
+            errProfile = byEmail.error;
+          }
+
           if (cloudProfile && cloudProfile.length > 0 && !errProfile) {
             const u = cloudProfile[0];
             profile = {
@@ -2606,12 +2623,20 @@ function App() {
         const supabaseClient = getSupabaseClient();
         if (supabaseClient) {
           try {
-            const { data: cloudUsers, error } = await supabaseClient
+            // Seguridad: NO se construye un filtro .or() con la contraseña tecleada por
+            // el usuario (eso permitía inyectar condiciones PostgREST, ej. una contraseña
+            // como "x,id.neq.0" podía hacer que la fila coincidiera sin validar la
+            // contraseña real). Se trae solo por nombre de usuario y se compara en JS,
+            // igual que ya se hace con la lista local (dbUsers.find de más arriba).
+            const { data: cloudMatches, error } = await supabaseClient
               .from('delivery_users')
               .select('*')
-              .ilike('username', inputIdentifier)
-              .or(`password.eq.${password},password.eq.${hashedVal}`);
-              
+              .ilike('username', inputIdentifier);
+
+            const cloudUsers = (cloudMatches || []).filter(
+              u => u.password === password || u.password === hashedVal
+            );
+
             if (cloudUsers && cloudUsers.length > 0 && !error) {
               const u = cloudUsers[0];
               foundUser = {
@@ -5919,9 +5944,15 @@ function App() {
         }
         return t;
       });
+      // Fix: al marcar/desmarcar una tarea como gratuita hay que recalcular el total
+      // del reparto. Antes solo se cambiaba noCharge en la tarea, pero ticket.totalPrice
+      // (usado directamente en nómina/ganancias, ver totalBaseEarnings más abajo) no se
+      // volvía a calcular, así que una tarea "gratis" seguía sumando en los cobros.
+      const recalculatedTotalPrice = updatedTasks.reduce((sum, t) => sum + calcTaskPrice(t), 0);
       const updatedTicket = {
         ...ticket,
-        tasks: updatedTasks
+        tasks: updatedTasks,
+        totalPrice: recalculatedTotalPrice
       };
       await updateTicket(updatedTicket);
       triggerAlert('Estado de cobro del servicio actualizado', 'success');
@@ -5977,7 +6008,11 @@ function App() {
       totalPrice: totalCalculado
     };
 
-    updateTicket(ticketId, updatedTicket);
+    // Fix: updateTicket() solo acepta el ticket actualizado (un argumento), no el
+    // ticketId. Con la llamada anterior, updatedTicket.tasks llegaba como undefined
+    // dentro de updateTicket() y el .map() lanzaba una excepción: editar la medida
+    // de un TV rompía siempre, en cada intento, en producción.
+    updateTicket(updatedTicket);
     triggerAlert('Medida de TV actualizada y módulos recalculados');
     loadData();
   };
@@ -18946,8 +18981,12 @@ function App() {
     setIsMovingRouteDate(true);
     try {
       const result = await moveRouteDate(ticketFilterFurgo, ticketFilterDate, newRouteDateInput);
-      triggerAlert(`¡Ruta trasladada! Se cambiaron ${result.ticketsCount} repartos ${result.hasShift ? 'y el turno' : ''} al ${newRouteDateInput}.`);
-      
+      if (result.remoteSyncError) {
+        triggerAlert(`Se cambió la fecha localmente, pero falló la subida a la nube (puede revertirse en el próximo sync). Vuelve a intentarlo cuando tengas buena conexión.`, 'error');
+      } else {
+        triggerAlert(`¡Ruta trasladada! Se cambiaron ${result.ticketsCount} repartos ${result.hasShift ? 'y el turno' : ''} al ${newRouteDateInput}.`);
+      }
+
       setTicketFilterDate(newRouteDateInput);
       setShowMoveRouteModal(false);
       loadData();
