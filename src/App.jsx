@@ -800,7 +800,7 @@ function App() {
   const addCustomDormityItem = (block, name) => {
     if (!name || !name.trim()) return;
     const cleanName = name.trim();
-    const id = `CUSTOM_DORMITY_${block === 'Recogidas' ? 'REC' : 'ENT'}_${Date.now()}`;
+    const id = `CUSTOM_DORMITY_${block === 'Recogidas' ? 'REC' : 'ENT'}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newItem = {
       id,
       name: cleanName,
@@ -1391,6 +1391,7 @@ function App() {
   const [newUsername, setNewUsername] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showNewUserPassword, setShowNewUserPassword] = useState(false); // Fix: ocultar contraseña en texto plano al crear un usuario, con opción de mostrar/ocultar
   const [newRole, setNewRole] = useState('repartidor');
   const [newEmailState, setNewEmailState] = useState('');
   const [newAdminPricingOption, setNewAdminPricingOption] = useState('copy_default');
@@ -2737,11 +2738,18 @@ function App() {
       triggerAlert('La contraseña no puede estar vacía', 'error');
       return;
     }
+    // Fix: antes solo se exigían 4 caracteres (y solo vía el atributo HTML minLength,
+    // que se puede saltar). Añadimos también la comprobación en JS, con un mínimo más
+    // razonable, en el flujo de cambio de contraseña obligatorio del primer login.
+    if (newPasswordVal.trim().length < 6) {
+      triggerAlert('La contraseña debe tener al menos 6 caracteres', 'error');
+      return;
+    }
     if (newPasswordVal.trim() !== confirmPasswordVal.trim()) {
       triggerAlert('Las contraseñas no coinciden', 'error');
       return;
     }
-    
+
     const dbUsers = getUsers() || [];
     const updatedUsers = dbUsers.map(u => {
       if (u.id === forceChangePasswordUser.id) {
@@ -16224,7 +16232,45 @@ function App() {
                     </div>
                     <div className="input-group">
                       <span className="input-label">Contraseña / PIN</span>
-                      <input type="text" className="form-input" placeholder="Ej. 4444" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+                      {/* Fix: antes este campo era type="text" y mostraba la contraseña
+                          en texto plano siempre. Ahora se oculta por defecto, con el
+                          mismo botón de mostrar/ocultar que ya se usa en el login. */}
+                      <div style={{ position: 'relative', width: '100%' }}>
+                        <input
+                          type={showNewUserPassword ? "text" : "password"}
+                          className="form-input"
+                          placeholder="Ej. 4444"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          required
+                          autoComplete="new-password"
+                          style={{ paddingRight: '45px' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+                          style={{
+                            position: 'absolute',
+                            right: '12px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '4px'
+                          }}
+                        >
+                          {showNewUserPassword ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="22"></line></svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                          )}
+                        </button>
+                      </div>
                     </div>
 
                     {(() => {
@@ -16442,13 +16488,17 @@ function App() {
                             </div>
                             <div className="input-group" style={{ marginBottom: 0 }}>
                               <span className="input-label" style={{ fontSize: '0.7rem' }}>Contraseña / PIN</span>
-                              <input 
-                                type="text" 
+                              {/* Fix: este campo mostraba la contraseña/hash actual del
+                                  usuario en texto plano (type="text") con solo abrir el
+                                  formulario de edición. Ahora está oculto por defecto. */}
+                              <input
+                                type="password"
                                 name="user_password"
-                                className="form-input" 
-                                defaultValue={u.password} 
-                                style={{ padding: '4px 8px', fontSize: '0.8rem', height: '28px' }} 
+                                className="form-input"
+                                defaultValue={u.password}
+                                style={{ padding: '4px 8px', fontSize: '0.8rem', height: '28px' }}
                                 required
+                                autoComplete="new-password"
                               />
                             </div>
                           </div>
@@ -18280,7 +18330,7 @@ function App() {
                           const valStr = prompt('Precio en € (ej: 150):', '100');
                           if (valStr === null) return;
                           const val = Number(valStr) || 0;
-                          const newId = `DORMITY_CUSTOM_${Date.now()}`;
+                          const newId = `DORMITY_CUSTOM_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
                           const updated = [...dormityTariffs, { id: newId, name: name.trim(), block: 'Servicios Dormity', type: 'fixed', value: val }];
                           await saveDormityTariffs(updated);
                           setDormityTariffs(updated);
@@ -18846,11 +18896,11 @@ function App() {
                 <input 
                   type="password" 
                   className="form-input" 
-                  placeholder="Mínimo 4 caracteres" 
-                  value={newPasswordVal} 
-                  onChange={(e) => setNewPasswordVal(e.target.value)} 
-                  required 
-                  minLength={4}
+                  placeholder="Mínimo 6 caracteres"
+                  value={newPasswordVal}
+                  onChange={(e) => setNewPasswordVal(e.target.value)}
+                  required
+                  minLength={6}
                   autoComplete="new-password"
                 />
               </div>
@@ -18860,11 +18910,11 @@ function App() {
                 <input 
                   type="password" 
                   className="form-input" 
-                  placeholder="Repite la contraseña" 
-                  value={confirmPasswordVal} 
-                  onChange={(e) => setConfirmPasswordVal(e.target.value)} 
-                  required 
-                  minLength={4}
+                  placeholder="Repite la contraseña"
+                  value={confirmPasswordVal}
+                  onChange={(e) => setConfirmPasswordVal(e.target.value)}
+                  required
+                  minLength={6}
                   autoComplete="new-password"
                 />
               </div>

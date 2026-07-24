@@ -269,9 +269,18 @@ export async function initializeSupabaseTables() {
   }
 }
 
-export async function syncFromCloud(includeTickets = true) {
+export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
   if (!supabase) return;
-  if (isSaving > 0) return;
+  if (isSaving > 0) {
+    // Fix: antes, si justo en ese momento había un guardado en curso, este ciclo de
+    // sincronización se abortaba sin más — no se perdía solo esa vez, se perdía del
+    // todo, sin reintento ni aviso. Ahora reprogramamos un reintento corto (hasta 3
+    // veces) en vez de descartarlo directamente.
+    if (retriesLeft > 0) {
+      setTimeout(() => syncFromCloud(includeTickets, retriesLeft - 1), 2000);
+    }
+    return;
+  }
   try {
     // Pull settings first so we can use them for user permissions fallback if needed
     const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
@@ -1024,14 +1033,26 @@ export async function hashPassword(password) {
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     return hashHex;
   } catch (e) {
-    console.error("Crypto subtle hash failed, falling back to simple hash:", e);
-    let hash = 0;
-    for (let i = 0; i < password.length; i++) {
-      const char = password.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
-    }
-    return hash.toString(16).padStart(64, '0');
+    // Fix: este fallback solo debería activarse si crypto.subtle no está disponible
+    // (contexto no seguro / navegador muy viejo) — no debería ocurrir nunca en
+    // producción, ya que la app se sirve por HTTPS. El fallback anterior calculaba UN
+    // solo hash de 32 bits y lo rellenaba con ceros hasta 64 caracteres para "parecer"
+    // un SHA-256 real: era trivialmente débil (32 bits de espacio de búsqueda) y además
+    // el relleno de ceros lo hacía aún más reconocible/atacable. Ahora se combinan 8
+    // mezclas de 32 bits con semillas distintas para llenar los 64 caracteres sin
+    // relleno predecible. Sigue sin ser SHA-256 real, pero ya no es un checksum trivial.
+    console.error("Crypto subtle hash failed, falling back to a stronger local hash. Esto no debería pasar en producción (HTTPS); si ocurre, conviene investigar por qué crypto.subtle no está disponible:", e);
+    const seeds = [5381, 52711, 1000003, 16777619, 2166136261, 40503, 65599, 131];
+    const hex = seeds.map(seed => {
+      let hash = seed >>> 0;
+      for (let i = 0; i < password.length; i++) {
+        const char = password.charCodeAt(i);
+        hash = (Math.imul(hash, 33) + char + i) >>> 0;
+        hash = (hash ^ (hash >>> 15)) >>> 0;
+      }
+      return hash.toString(16).padStart(8, '0');
+    }).join('');
+    return hex;
   }
 }
 
@@ -1731,7 +1752,11 @@ export function addTicket(ticketData) {
   const inferredProvider = ticketData.provider || (ticketData.tasks && ticketData.tasks.some(t => t.tariffId && t.tariffId.startsWith('DORMITY_')) ? 'dormity' : 'eci');
 
   const newTicket = {
-    id: Date.now().toString(),
+    // Fix: un id basado solo en Date.now() puede colisionar si dos dispositivos crean
+    // un ticket en el mismo milisegundo (offline-first, con varios choferes/admins
+    // trabajando a la vez). Añadimos un sufijo aleatorio, igual que ya se hace en otros
+    // puntos de la app (ver App.jsx) para IDs generados en el cliente.
+    id: Date.now().toString() + Math.random().toString(36).substring(2, 7),
     date: ticketData.date || new Date().toISOString().split('T')[0],
     furgoId: ticketData.furgoId,
     furgoLabel: users.find(u => u.id === ticketData.furgoId)?.label || ticketData.furgoId,
