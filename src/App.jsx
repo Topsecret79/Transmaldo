@@ -8520,7 +8520,7 @@ function App() {
                     <span style={{ fontSize: '1.25rem' }}>📦</span>
                     <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Paquetería</span>
                     {paqueteriaCount > 0 && (
-                      <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                      <span className="badge badge-success-solid">
                         {paqueteriaCount} {paqueteriaCount === 1 ? 'unidad' : 'unidades'}
                       </span>
                     )}
@@ -8590,7 +8590,7 @@ function App() {
                       <span style={{ fontSize: '1.25rem' }}>🔌</span>
                       <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Gama Blanca</span>
                       {gamaBlancaCount > 0 && (
-                        <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                        <span className="badge badge-success-solid">
                           {gamaBlancaCount} {gamaBlancaCount === 1 ? 'artículo' : 'artículos'}
                         </span>
                       )}
@@ -8646,7 +8646,7 @@ function App() {
                       <span style={{ fontSize: '1.25rem' }}>🪑</span>
                       <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Muebles</span>
                       {mueblesCount > 0 && (
-                        <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                        <span className="badge badge-success-solid">
                           {mueblesCount} {mueblesCount === 1 ? 'artículo' : 'artículos'}
                         </span>
                       )}
@@ -8702,7 +8702,7 @@ function App() {
                       <span style={{ fontSize: '1.25rem' }}>💻</span>
                       <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Electrodomésticos Varios</span>
                       {electrodomesticosCount > 0 && (
-                        <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                        <span className="badge badge-success-solid">
                           {electrodomesticosCount} {electrodomesticosCount === 1 ? 'unidad' : 'unidades'}
                         </span>
                       )}
@@ -8806,7 +8806,7 @@ function App() {
                     <span style={{ fontSize: '1.25rem' }}>🔧</span>
                     <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Otros Elementos / Accesorios</span>
                     {otrosCount > 0 && (
-                      <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                      <span className="badge badge-success-solid">
                         {otrosCount} {otrosCount === 1 ? 'unidad' : 'unidades'}
                       </span>
                     )}
@@ -8867,7 +8867,7 @@ function App() {
                     <span style={{ fontSize: '1.25rem' }}>➕</span>
                     <span style={{ fontWeight: '700', fontSize: '1.05rem', color: 'var(--text-main)' }}>Conceptos Adicionales (Extras Especiales)</span>
                     {customExtras.length > 0 && (
-                      <span className="badge badge-success" style={{ padding: '3px 8px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', background: 'var(--success)', color: '#000' }}>
+                      <span className="badge badge-success-solid">
                         {customExtras.length} {customExtras.length === 1 ? 'extra' : 'extras'}
                       </span>
                     )}
@@ -9755,11 +9755,7 @@ function App() {
                         <button
                           type="button"
                           onClick={() => handleNavigate(routeStartAddr)}
-                          style={{
-                            background: 'transparent', border: 'none', color: '#10b981',
-                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                            fontWeight: 'bold'
-                          }}
+                          className="inline-nav-btn"
                           title="Navegar a esta dirección"
                         >
                           🗺️ Navegar
@@ -9811,11 +9807,7 @@ function App() {
                         <button
                           type="button"
                           onClick={() => handleNavigate(routeEndAddr)}
-                          style={{
-                            background: 'transparent', border: 'none', color: '#10b981',
-                            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                            fontWeight: 'bold'
-                          }}
+                          className="inline-nav-btn"
                           title="Navegar a esta dirección"
                         >
                           🗺️ Navegar
@@ -17071,11 +17063,7 @@ function App() {
                           <button
                             type="button"
                             onClick={() => handleNavigate(routeStartAddr)}
-                            style={{
-                              background: 'transparent', border: 'none', color: '#10b981',
-                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                              fontWeight: 'bold'
-                            }}
+                            className="inline-nav-btn"
                             title="Navegar a esta dirección"
                           >
                             🗺️ Navegar
@@ -17117,11 +17105,7 @@ function App() {
                           <button
                             type="button"
                             onClick={() => handleNavigate(routeEndAddr)}
-                            style={{
-                              background: 'transparent', border: 'none', color: '#10b981',
-                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                              fontWeight: 'bold'
-                            }}
+                            className="inline-nav-btn"
                             title="Navegar a esta dirección"
                           >
                             🗺️ Navegar
@@ -17648,11 +17632,7 @@ function App() {
                           <button
                             type="button"
                             onClick={() => handleNavigate(routeStartAddr)}
-                            style={{
-                              background: 'transparent', border: 'none', color: '#10b981',
-                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                              fontWeight: 'bold'
-                            }}
+                            className="inline-nav-btn"
                             title="Navegar a esta dirección"
                           >
                             🗺️ Navegar
@@ -17704,11 +17684,7 @@ function App() {
                           <button
                             type="button"
                             onClick={() => handleNavigate(routeEndAddr)}
-                            style={{
-                              background: 'transparent', border: 'none', color: '#10b981',
-                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                              fontWeight: 'bold'
-                            }}
+                            className="inline-nav-btn"
                             title="Navegar a esta dirección"
                           >
                             🗺️ Navegar
@@ -18358,11 +18334,7 @@ function App() {
                           <button
                             type="button"
                             onClick={() => handleNavigate(routeStartAddr)}
-                            style={{
-                              background: 'transparent', border: 'none', color: '#10b981',
-                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                              fontWeight: 'bold'
-                            }}
+                            className="inline-nav-btn"
                             title="Navegar a esta dirección"
                           >
                             🗺️ Navegar
@@ -18414,11 +18386,7 @@ function App() {
                           <button
                             type="button"
                             onClick={() => handleNavigate(routeEndAddr)}
-                            style={{
-                              background: 'transparent', border: 'none', color: '#10b981',
-                              fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', padding: 0,
-                              fontWeight: 'bold'
-                            }}
+                            className="inline-nav-btn"
                             title="Navegar a esta dirección"
                           >
                             🗺️ Navegar

@@ -816,6 +816,34 @@ tr:hover td {
 .badge-warning { background: var(--warning-light); color: var(--warning); }
 .badge-danger { background: var(--danger-light); color: var(--danger); }
 
+/* Tercer lote: contador de artículos por bloque en el formulario de ticket (Paquetería,
+   Gama Blanca, Muebles, Electrodomésticos, Otros, Extras) — 6 copias idénticas que ya
+   usaban className="badge badge-success" pero además repetían, palabra por palabra, un
+   estilo en línea que sobrescribía esa clase con un fondo verde sólido y letra negra. */
+.badge-success-solid {
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--success);
+  color: #000;
+}
+
+/* Cuarto lote: botón "🗺️ Navegar" (dirección de inicio/fin de ruta) — 8 copias
+   idénticas repartidas entre el formulario de creación de ruta y sus variantes. */
+.inline-nav-btn {
+  background: transparent;
+  border: none;
+  color: #10b981;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  font-weight: bold;
+}
+
 /* Etiquetas de estado tipo "pill" (badges pequeños con borde y fondo translúcido),
    ej. contadores de PMs/Recogidas en el Informe del Día. Antes cada una repetía el
    mismo bloque de estilos en línea completo dentro de App.jsx; ahora se centralizan
