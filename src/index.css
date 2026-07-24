@@ -816,6 +816,41 @@ tr:hover td {
 .badge-warning { background: var(--warning-light); color: var(--warning); }
 .badge-danger { background: var(--danger-light); color: var(--danger); }
 
+/* Etiquetas de estado tipo "pill" (badges pequeños con borde y fondo translúcido),
+   ej. contadores de PMs/Recogidas en el Informe del Día. Antes cada una repetía el
+   mismo bloque de estilos en línea completo dentro de App.jsx; ahora se centralizan
+   aquí para que un futuro cambio de color no requiera buscar cada aparición suelta.
+   Primer lote (bajo riesgo, mismo aspecto visual, solo centralizado); se pueden ir
+   sumando más variantes de color a medida que se confirmen más duplicados reales. */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-badge-warning {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.status-badge-info {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.status-badge-purple {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
 /* Settings / Tariffs Form Grid */
 .settings-grid {
   display: grid;
@@ -1111,7 +1146,7 @@ tr:hover td {
 .driver-card-title {
   font-size: 1.05rem;
   font-weight: 700;
-  color: #000 !important;
+  color: var(--text-main) !important;
   flex: 1;
   margin-left: 8px;
 }

@@ -15541,17 +15541,17 @@ function App() {
                     <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>✅ {fTickets.length} entregas</span>
                       {(furgoPmsBasic > 0 || furgoPmsComplex > 0) && (
-                        <span style={{ fontSize: '0.82rem', padding: '3px 9px', borderRadius: '5px', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)', fontWeight: '600' }} title={`${furgoPmsBasic} Básicas, ${furgoPmsComplex} Complejas`}>
+                        <span className="status-badge status-badge-warning" title={`${furgoPmsBasic} Básicas, ${furgoPmsComplex} Complejas`}>
                           ⚙️ PMs: {furgoPmsBasic + furgoPmsComplex} ({furgoPmsBasic} B. / {furgoPmsComplex} C.)
                         </span>
                       )}
                       {furgoPickupsEci > 0 && (
-                        <span style={{ fontSize: '0.82rem', padding: '3px 9px', borderRadius: '5px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', fontWeight: '600' }} title="Recogidas El Corte Inglés del día (TV vieja, paquetería PV/GV)">
+                        <span className="status-badge status-badge-info" title="Recogidas El Corte Inglés del día (TV vieja, paquetería PV/GV)">
                           📦 Recogidas ECI: {furgoPickupsEci}
                         </span>
                       )}
                       {furgoPickupsDormity > 0 && (
-                        <span style={{ fontSize: '0.82rem', padding: '3px 9px', borderRadius: '5px', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', border: '1px solid rgba(168, 85, 247, 0.3)', fontWeight: '600' }} title="Recogidas Dormity del día">
+                        <span className="status-badge status-badge-purple" title="Recogidas Dormity del día">
                           📦 Recogidas Dormity: {furgoPickupsDormity}
                         </span>
                       )}
