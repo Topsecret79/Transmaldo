@@ -396,6 +396,8 @@ import {
   deleteUser,
   getAppName,
   saveAppName,
+  getAppTheme,
+  saveAppTheme,
   getRouteStartAddr,
   saveRouteStartAddr,
   getRouteEndAddr,
@@ -1847,7 +1849,20 @@ function App() {
   };
   const [appName, setAppName] = useState(getInitialAppName());
   const [appNameInput, setAppNameInput] = useState(getInitialAppName());
-  const [appTheme, setAppTheme] = useState(localStorage.getItem('delivery_app_theme') || 'theme-emerald');
+  // Tema visual: por cuenta (sincronizado vía Supabase), con el mismo mecanismo que el nombre de la app.
+  // Los repartidores heredan el tema de su administrador (igual que ya heredan otros ajustes por `createdBy`).
+  const getInitialAppTheme = () => {
+    let uId = null;
+    try {
+      const savedUser = localStorage.getItem('delivery_session');
+      if (savedUser && savedUser !== 'null') {
+        const parsed = JSON.parse(savedUser);
+        if (parsed) uId = (parsed.role === 'repartidor') ? (parsed.createdBy || 'admin') : parsed.id;
+      }
+    } catch (e) {}
+    return getAppTheme(uId);
+  };
+  const [appTheme, setAppTheme] = useState(getInitialAppTheme());
   const [showPassword, setShowPassword] = useState(false);
 
   // Estados para añadir nueva tarifa
@@ -2475,6 +2490,7 @@ function App() {
     setKmPrice(getKmPrice(targetUserId) || 0.43);
     setFuelPrice(getFuelPrice(targetUserId) || 1.65);
     setAppName(getAppName(targetUserId) || 'My Delivery Team');
+    setAppTheme(getAppTheme(targetUserId) || 'theme-emerald');
     if (activeTab !== 'users') {
       setAppNameInput(getAppName(targetUserId) || 'My Delivery Team');
     }
@@ -16277,43 +16293,22 @@ function App() {
                   <div className="block-title">🎨 Personalización del Tema Visual</div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Elige el estilo visual y fondo para la aplicación:</p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '10px' }}>
-                    <button 
-                      onClick={() => { setAppTheme('theme-emerald'); triggerAlert('Tema Esmeralda / Naturaleza seleccionado'); }}
+                    <button
+                      onClick={() => { setAppTheme('theme-emerald'); saveAppTheme('theme-emerald', currentUser?.id); triggerAlert('Tema Esmeralda / Naturaleza seleccionado'); }}
                       className={`btn ${appTheme === 'theme-emerald' ? 'btn-primary' : 'btn-secondary'}`}
                       style={{ padding: '8px', fontSize: '0.8rem' }}
                     >
                       🌲 Esmeralda
                     </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-neon'); triggerAlert('Tema Neón Aurora seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-neon' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      🔮 Neón Aurora
-                    </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-corporate' ); triggerAlert('Tema Corporativo Moderno seleccionado'); }}
+                    <button
+                      onClick={() => { setAppTheme('theme-corporate'); saveAppTheme('theme-corporate', currentUser?.id); triggerAlert('Tema Corporativo Moderno seleccionado'); }}
                       className={`btn ${appTheme === 'theme-corporate' ? 'btn-primary' : 'btn-secondary'}`}
                       style={{ padding: '8px', fontSize: '0.8rem' }}
                     >
                       💼 Corporativo
                     </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-cyberpunk' ); triggerAlert('Tema Atardecer Cyberpunk seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-cyberpunk' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      🌇 Cyberpunk
-                    </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-sakura' ); triggerAlert('Tema Sakura Rose seleccionado'); }}
-                      className={`btn ${appTheme === 'theme-sakura' ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ padding: '8px', fontSize: '0.8rem' }}
-                    >
-                      🌸 Sakura Rose
-                    </button>
-                    <button 
-                      onClick={() => { setAppTheme('theme-arctic' ); triggerAlert('Tema Océano Ártico seleccionado'); }}
+                    <button
+                      onClick={() => { setAppTheme('theme-arctic'); saveAppTheme('theme-arctic', currentUser?.id); triggerAlert('Tema Océano Ártico seleccionado'); }}
                       className={`btn ${appTheme === 'theme-arctic' ? 'btn-primary' : 'btn-secondary'}`}
                       style={{ padding: '8px', fontSize: '0.8rem' }}
                     >

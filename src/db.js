@@ -580,6 +580,19 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       }
 
+      // App Theme
+      if (userId) {
+        const themeKey = `app_theme_${userId}`;
+        let themeSetting = settings.find(s => s.key === themeKey);
+        if (!themeSetting) {
+          themeSetting = settings.find(s => s.key === 'app_theme');
+        }
+        if (themeSetting) {
+          localStorage.setItem(`delivery_app_theme_${userId}`, themeSetting.value);
+          localStorage.setItem('delivery_app_theme', themeSetting.value);
+        }
+      }
+
       // Start & End Addresses
       if (userId) {
         const startKey = `default_start_addr_${userId}`;
@@ -2449,6 +2462,29 @@ export function saveAppName(name, userId) {
     const key = userId ? `app_name_${userId}` : 'app_name';
     supabase.from('delivery_settings').upsert({ key, value: name.trim() }).then(({ error }) => {
       if (error) console.error("Error saving app name to Supabase:", error);
+    });
+  }
+}
+
+// Obtener tema visual (por cuenta, sincronizado entre dispositivos vía Supabase)
+export function getAppTheme(userId) {
+  if (userId) {
+    const custom = localStorage.getItem(`delivery_app_theme_${userId}`);
+    if (custom) return custom;
+  }
+  return localStorage.getItem('delivery_app_theme') || 'theme-emerald';
+}
+
+// Guardar tema visual
+export function saveAppTheme(theme, userId) {
+  if (userId) {
+    localStorage.setItem(`delivery_app_theme_${userId}`, theme);
+  }
+  localStorage.setItem('delivery_app_theme', theme);
+  if (supabase) {
+    const key = userId ? `app_theme_${userId}` : 'app_theme';
+    supabase.from('delivery_settings').upsert({ key, value: theme }).then(({ error }) => {
+      if (error) console.error("Error saving app theme to Supabase:", error);
     });
   }
 }
