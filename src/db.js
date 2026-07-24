@@ -50,13 +50,25 @@ function scheduleSyncFromCloud(changedTable) {
   }, SYNC_DEBOUNCE_MS);
 }
 
-export let isSaving = false;
+// Fix: isSaving era un booleano global compartido por 6 funciones de guardado
+// distintas (tarifas, tickets, turnos, tarifas dormity, borrado de tarifas, usuarios).
+// Al ser un simple true/false, si dos guardados se solapaban, el que terminaba antes
+// podía dejarlo en false mientras el otro seguía en curso (o viceversa), y mientras
+// tanto syncFromCloud()/reinitSupabase() se saltaban el pull por completo (ver más
+// abajo) sin encolar ni reintentar. Ahora es un contador: cada guardado que empieza
+// suma 1 y el que termina resta 1, así que solo llega a 0 cuando de verdad no hay
+// ningún guardado en curso.
+export let isSaving = 0;
 export function setIsSaving(val) {
-  isSaving = val;
+  if (val) {
+    isSaving++;
+  } else {
+    isSaving = Math.max(0, isSaving - 1);
+  }
 }
 
 export async function reinitSupabase() {
-  if (isSyncing || isSaving) return;
+  if (isSyncing || isSaving > 0) return;
   isSyncing = true;
   try {
     const url = localStorage.getItem('supabase_url');
@@ -259,7 +271,7 @@ export async function initializeSupabaseTables() {
 
 export async function syncFromCloud(includeTickets = true) {
   if (!supabase) return;
-  if (isSaving) return;
+  if (isSaving > 0) return;
   try {
     // Pull settings first so we can use them for user permissions fallback if needed
     const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
@@ -469,7 +481,25 @@ export async function syncFromCloud(includeTickets = true) {
       // Merge: start from cloud, but if local version has richer metadata (non-empty driver/plate)
       // and the cloud version is empty, prefer the local data to avoid losing unsaved state
       const mergedShifts = [...cloudShifts];
+
+      // Fix: antes esta protección solo miraba si customDriver/matricula estaban vacíos
+      // en la nube. Cualquier otro cambio local pendiente (status, kms, fecha movida,
+      // helper, etc.) podía perderse en silencio si un sync llegaba antes de que la
+      // subida terminara o fallara. Igual que con los tickets (ver pendingLocal más
+      // arriba), un turno marcado _syncStatus:'pending' localmente tiene ahora
+      // prioridad total sobre lo que venga de la nube hasta que se confirme la subida.
+      const pendingLocalShifts = localExisting.filter(s => s && s._syncStatus === 'pending');
+      pendingLocalShifts.forEach(localS => {
+        const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
+        if (cloudIdx !== -1) {
+          mergedShifts[cloudIdx] = localS;
+        } else {
+          mergedShifts.push(localS);
+        }
+      });
+
       localExisting.forEach(localS => {
+        if (localS._syncStatus === 'pending') return; // ya protegido arriba
         const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
         if (cloudIdx !== -1) {
           const cloud = mergedShifts[cloudIdx];
@@ -1293,7 +1323,7 @@ export function getTariffs() {
 }
 
 export async function saveTariffs(tariffs) {
-  isSaving = true;
+  isSaving++; // contador, no booleano (ver comentario junto a la declaración de isSaving)
   try {
     let activeAdminId = null;
     let isSuperAdmin = false;
@@ -1361,7 +1391,7 @@ export async function saveTariffs(tariffs) {
       }
     }
   } finally {
-    isSaving = false;
+    isSaving = Math.max(0, isSaving - 1);
   }
 }
 
@@ -1373,9 +1403,24 @@ export function getTickets() {
 export async function saveTickets(tickets) {
   localStorage.setItem('delivery_tickets', JSON.stringify(tickets));
   if (supabase) {
-    isSaving = true;
+    isSaving++; // contador, no booleano (ver comentario junto a la declaración de isSaving)
     try {
-      const formatted = tickets.map(t => ({
+      // Fix: antes se re-subía el array COMPLETO de tickets en cada guardado, sin
+      // importar cuántos hubieran cambiado realmente. Con miles de tickets acumulados,
+      // esto era caro (mismo patrón que causó el problema de egress, pero en subida) y
+      // aumentaba el riesgo de pisar cambios concurrentes de otro dispositivo en filas
+      // que ni siquiera habían cambiado aquí. Todos los que llaman a saveTickets()
+      // marcan _syncStatus:'pending' en los tickets que sí modificaron, así que ahora
+      // solo subimos esos. Si por algún motivo ninguno está marcado, no hay nada que
+      // subir (p.ej. borrar un ticket o resetear el mes, que ya gestionan su propia
+      // sincronización).
+      const pendingTickets = tickets.filter(t => t && t._syncStatus === 'pending');
+
+      if (pendingTickets.length === 0) {
+        return; // nada que subir; el finally de abajo igualmente libera isSaving
+      }
+
+      const formatted = pendingTickets.map(t => ({
         id: t.id,
         date: t.date,
         furgo_id: t.furgoId,
@@ -1422,7 +1467,7 @@ export async function saveTickets(tickets) {
       console.error("Error saving tickets to Supabase:", e);
     } finally {
       setTimeout(() => {
-        isSaving = false;
+        isSaving = Math.max(0, isSaving - 1);
       }, 1500);
     }
   }
@@ -1513,7 +1558,7 @@ export function getDormityTariffs() {
 }
 
 export async function saveDormityTariffs(tariffs) {
-  isSaving = true;
+  isSaving++; // contador, no booleano (ver comentario junto a la declaración de isSaving)
   try {
     let activeAdminId = null;
     let isSuperAdmin = false;
@@ -1566,7 +1611,7 @@ export async function saveDormityTariffs(tariffs) {
   } catch (err) {
     console.error("Error in saveDormityTariffs:", err);
   } finally {
-    setTimeout(() => { isSaving = false; }, 1500);
+    setTimeout(() => { isSaving = Math.max(0, isSaving - 1); }, 1500);
   }
 }
 
@@ -2009,7 +2054,7 @@ export function getShifts() {
 export async function saveShifts(shifts) {
   localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
   if (supabase) {
-    isSaving = true;
+    isSaving++; // contador, no booleano (ver comentario junto a la declaración de isSaving)
     try {
       const basicShifts = shifts.map(s => ({
         id: s.id,
@@ -2047,10 +2092,31 @@ export async function saveShifts(shifts) {
           console.error("Error saving shift meta batch to Supabase:", metaErr);
         }
       }
+
+      // Fix: si la subida del turno fue bien, limpiar _syncStatus de los turnos
+      // afectados, igual que ya hace saveTickets(). Esto es lo que permite que la
+      // protección de merge en el pull (ver más arriba) sepa quién sigue "pendiente
+      // de confirmar" y quién ya se subió con éxito.
+      if (!error) {
+        try {
+          const currentLocal = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+          const savedIds = new Set(shifts.map(s => s.id));
+          const updatedLocal = currentLocal.map(s => {
+            if (s && savedIds.has(s.id) && s._syncStatus === 'pending') {
+              const { _syncStatus, ...rest } = s;
+              return rest;
+            }
+            return s;
+          });
+          localStorage.setItem('delivery_shifts', JSON.stringify(updatedLocal));
+        } catch (e) {
+          console.error("Error clearing local shift sync status:", e);
+        }
+      }
     } catch (e) {
       console.error("Error saving shifts or meta to Supabase:", e);
     } finally {
-      isSaving = false;
+      isSaving = Math.max(0, isSaving - 1);
     }
   }
 }
@@ -2202,6 +2268,38 @@ export async function addUser(username, label, password, role = 'repartidor', cr
   if (email && users.some(u => u.email && u.email.toLowerCase() === email.toLowerCase())) {
     return { success: false, error: 'El correo electrónico ya está registrado' };
   }
+
+  // Fix: la comprobación de arriba solo mira el array local (localStorage), que puede
+  // estar desactualizado respecto a otros dispositivos. Si dos personas creaban casi a
+  // la vez un usuario con el mismo nombre desde dispositivos distintos, ambas pasaban
+  // esta comprobación local y el segundo guardado sobrescribía en silencio al primero
+  // en Supabase (mismo id determinista = nombre de usuario en minúsculas). Añadimos una
+  // comprobación en vivo contra Supabase antes de crear.
+  if (supabase) {
+    try {
+      const { data: existingRemote } = await supabase
+        .from('delivery_users')
+        .select('id')
+        .ilike('username', username);
+      if (existingRemote && existingRemote.length > 0) {
+        return { success: false, error: 'El usuario ya existe (registrado desde otro dispositivo)' };
+      }
+      if (email) {
+        const { data: existingRemoteEmail } = await supabase
+          .from('delivery_users')
+          .select('id')
+          .ilike('email', email);
+        if (existingRemoteEmail && existingRemoteEmail.length > 0) {
+          return { success: false, error: 'El correo electrónico ya está registrado (desde otro dispositivo)' };
+        }
+      }
+    } catch (e) {
+      console.error("Error comprobando colisión de usuario contra Supabase:", e);
+      // Si falla la comprobación remota (sin red, etc.) seguimos solo con la local,
+      // igual que antes de este fix, para no bloquear la creación de usuarios offline.
+    }
+  }
+
   const newUser = {
     id: username.toLowerCase().trim(),
     username: username.trim(),
@@ -2416,7 +2514,7 @@ export async function addTariff(tariff) {
 
 // Eliminar tarifa
 export async function deleteTariff(id) {
-  isSaving = true;
+  isSaving++; // contador, no booleano (ver comentario junto a la declaración de isSaving)
   try {
     const tariffs = getTariffs();
     const filtered = tariffs.filter(t => t.id !== id);
@@ -2455,7 +2553,7 @@ export async function deleteTariff(id) {
       if (error) console.error("Error deleting tariff from Supabase:", error);
     }
   } finally {
-    isSaving = false;
+    isSaving = Math.max(0, isSaving - 1);
   }
 }
 

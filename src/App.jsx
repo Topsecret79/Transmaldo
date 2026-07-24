@@ -128,6 +128,19 @@ const getTownAndProvinceFromPostcode = (postcode) => {
   return provinces[provCode] || '';
 };
 
+// Seguridad: escapar texto antes de insertarlo en HTML construido a mano (popups del
+// mapa, etc.). Sin esto, un nombre de cliente o dirección con caracteres HTML/JS
+// (ej. "<img src=x onerror=...>") se ejecutaría al abrir el popup (XSS almacenado).
+const escapeHtml = (str) => {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
 // Formatear dirección larga a formato corto: Calle, Número, Población
 const getShortAddressString = (addressStr) => {
   if (!addressStr) return '';
@@ -365,6 +378,7 @@ import {
   getTVRange,
   PREDEFINED_TV_INCHES,
   getShifts,
+  saveShifts,
   getShiftStatus,
   closeShift,
   reopenShift,
@@ -2100,8 +2114,10 @@ function App() {
             el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
             let optHtml = '';
             for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
-            const cAddr = getShortAddressString(t.address);
-            const cName = t.customerName || 'Cliente';
+            // Seguridad: escapar nombre/dirección antes de insertarlos en el HTML del
+            // popup (ver escapeHtml arriba) — evita XSS almacenado vía estos campos.
+            const cAddr = escapeHtml(getShortAddressString(t.address));
+            const cName = escapeHtml(t.customerName || 'Cliente');
             const posBlock = (!isClosed || isAdminOrSuper) ? '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#9ca3af;font-weight:600;">Posición:</span><select onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder(\'' + t.id + '\', this.value)" style="background:var(--primary);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;">' + optHtml + '</select></div>' : '<div style="font-size:0.74rem;color:#9ca3af;font-weight:700;margin-top:3px;">Parada #' + (seqIndex + 1) + '</div>';
             
             // Construir insignias para el Popup informativo
@@ -2169,7 +2185,7 @@ function App() {
             if (!updatedAtStr) return;
             const locTime = new Date(updatedAtStr).getTime();
             if (isNaN(locTime) || Date.now() - locTime > 48 * 3600 * 1000) return;
-            const furgoLabel = users.find(u => u.id === fid)?.label || fid;
+            const furgoLabel = escapeHtml(users.find(u => u.id === fid)?.label || fid);
             const dEl = document.createElement('div');
             dEl.style.cssText = 'width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.2);border:2px solid #a78bfa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px #a78bfa;animation:gpsPulse 2s infinite ease-in-out;font-size:17px;cursor:pointer;';
             dEl.textContent = '🚚';
@@ -3415,7 +3431,9 @@ function App() {
         if (order === undefined || order === null || order === '') {
           order = itemIdx + 1;
         }
-        return { ...t, routeOrder: Number(order) };
+        // Fix: marcar como 'pending' para que saveTickets() solo suba estos tickets
+        // (los de esta ruta/día), no el array completo de todos los repartos.
+        return { ...t, routeOrder: Number(order), _syncStatus: 'pending' };
       }
       return t;
     });
@@ -3470,7 +3488,8 @@ function App() {
     const updatedTickets = tickets.map(t => {
       if (t && t.date === ticketToMove.date && t.furgoId === ticketToMove.furgoId) {
         const idx = dayTickets.findIndex(x => x.id === t.id);
-        return { ...t, routeOrder: idx + 1 };
+        // Fix: marcar como 'pending' para que saveTickets() solo suba estos tickets.
+        return { ...t, routeOrder: idx + 1, _syncStatus: 'pending' };
       }
       return t;
     });
@@ -4209,7 +4228,10 @@ function App() {
 
       const optimizedWithOrder = route.map((ticket, index) => ({
         ...ticket,
-        routeOrder: index + 1
+        routeOrder: index + 1,
+        // Fix: marcar como 'pending' para que saveTickets() solo suba los tickets de
+        // esta ruta optimizada, no el array completo de todos los repartos.
+        _syncStatus: 'pending'
       }));
       const updatedAllTickets = tickets.map(t => {
         const match = optimizedWithOrder.find(x => x.id === t.id);
@@ -4491,7 +4513,9 @@ function App() {
 
       const orderedSequence = finalSequence.map((ticket, index) => ({
         ...ticket,
-        routeOrder: index + 1
+        routeOrder: index + 1,
+        // Fix: marcar como 'pending' para que saveTickets() solo suba estos tickets.
+        _syncStatus: 'pending'
       }));
       const updatedAll = allTickets.map(t => {
         const match = orderedSequence.find(x => x.id === t.id);
@@ -5935,6 +5959,15 @@ function App() {
   };
 
   const toggleTaskCharge = async (ticketId, taskIndex) => {
+    // Fix: esta función cambia directamente lo que se cobra por un servicio y no tenía
+    // NINGUNA comprobación de permisos (solo dependía de que el botón no se mostrara en
+    // la pestaña de un rol sin acceso a "Informe del Día", lo cual es solo una
+    // restricción de interfaz, no una comprobación real). La dejamos restringida a
+    // admin/superadmin/coordinador, igual que otras acciones sensibles de precio.
+    if (!isAdminOrSuper && !(currentUser && currentUser.role === 'coordinador')) {
+      triggerAlert('No tienes permisos para cambiar el cobro de un servicio', 'error');
+      return;
+    }
     try {
       const ticket = tickets.find(t => t.id === ticketId);
       if (!ticket) return;
@@ -6073,7 +6106,7 @@ function App() {
     const ticket = tickets.find(t => t.id === id);
     if (!ticket) return;
 
-    handleNavigate(ticket.address, ticket.latitude, ticket.longitude, ticket.id);
+    handleNavigate(ticket.address, ticket.lat, ticket.lng, ticket.id); /* Fix: el ticket guarda lat/lng, no latitude/longitude */
   };
 
   const handleNavigateFullRoute = () => {
@@ -9959,7 +9992,7 @@ function App() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleNavigate(t.address, t.latitude, t.longitude, t.id);
+                                      handleNavigate(t.address, t.lat, t.lng, t.id); /* Fix: el ticket guarda lat/lng, no latitude/longitude */
                                     }}
                                     className="btn btn-secondary btn-small"
                                     style={{ display: 'inline-flex', padding: '8px', margin: 0, width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)', alignItems: 'center', justifyContent: 'center' }}
@@ -9971,7 +10004,7 @@ function App() {
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      openStreetView(t.address, t.latitude, t.longitude);
+                                      openStreetView(t.address, t.lat, t.lng); /* Fix: el ticket guarda lat/lng, no latitude/longitude */
                                     }}
                                     className="btn btn-secondary btn-small"
                                     style={{ display: 'inline-flex', padding: '8px', margin: 0, width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', alignItems: 'center', justifyContent: 'center' }}
@@ -10289,7 +10322,7 @@ function App() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleNavigate(t.address, t.latitude, t.longitude, t.id);
+                                    handleNavigate(t.address, t.lat, t.lng, t.id); /* Fix: el ticket guarda lat/lng, no latitude/longitude */
                                   }}
                                   className="btn btn-secondary btn-small"
                                   style={{ display: 'inline-flex', padding: '10px', margin: 0, width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', border: '1px solid var(--primary)', alignItems: 'center', justifyContent: 'center' }}
@@ -10301,7 +10334,7 @@ function App() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    openStreetView(t.address, t.latitude, t.longitude);
+                                    openStreetView(t.address, t.lat, t.lng); /* Fix: el ticket guarda lat/lng, no latitude/longitude */
                                   }}
                                   className="btn btn-secondary btn-small"
                                   style={{ display: 'inline-flex', padding: '10px', margin: 0, width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', alignItems: 'center', justifyContent: 'center' }}
@@ -10973,7 +11006,7 @@ function App() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleNavigate(ticketToShow.address, ticketToShow.latitude, ticketToShow.longitude, ticketToShow.id);
+                  handleNavigate(ticketToShow.address, ticketToShow.lat, ticketToShow.lng, ticketToShow.id); /* Fix: lat/lng, no latitude/longitude */
                 }}
                 className="btn btn-primary btn-small map-floating-action-btn"
                 style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1 }}
@@ -10984,7 +11017,7 @@ function App() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  openStreetView(ticketToShow.address, ticketToShow.latitude, ticketToShow.longitude);
+                  openStreetView(ticketToShow.address, ticketToShow.lat, ticketToShow.lng); /* Fix: lat/lng, no latitude/longitude */
                 }}
                 className="btn btn-secondary btn-small map-floating-action-btn"
                 style={{ margin: 0, padding: '8px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, borderColor: '#10b981', color: '#10b981', background: 'rgba(16, 185, 129, 0.05)' }}
@@ -11396,7 +11429,7 @@ function App() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleNavigate(t.address, t.latitude, t.longitude, t.id);
+                          handleNavigate(t.address, t.lat, t.lng, t.id); /* Fix: el ticket guarda lat/lng, no latitude/longitude */
                         }}
                         className="btn btn-primary btn-small"
                         style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', flex: 1, height: 'auto' }}
@@ -13214,14 +13247,52 @@ function App() {
         return;
       }
       const rate = parseFloat(editEmpRate) || 0;
+      const newName = editEmpName.trim();
+      const existingEmp = employeesList.find(e => e.id === id);
+      const oldName = existingEmp ? existingEmp.name : null;
+
       const updated = employeesList.map(e => {
         if (e.id === id) {
-          return { ...e, name: editEmpName.trim(), role: editEmpRole, dailyRate: rate };
+          return { ...e, name: newName, role: editEmpRole, dailyRate: rate };
         }
         return e;
       });
       setEmployeesList(updated);
       saveEmployeesList(updated);
+
+      // Fix: la nómina relaciona turnos con empleados comparando NOMBRE (customDriver/
+      // helper/helper2), no ID. Antes, renombrar a un empleado (ej. corregir una tilde)
+      // dejaba todo su historial de turnos ya guardado sin coincidir con el nombre
+      // nuevo, perdiendo silenciosamente días trabajados y pagos ya registrados. Ahora,
+      // si el nombre cambió, actualizamos también los turnos existentes que usaban el
+      // nombre viejo para que la nómina histórica se conserve.
+      if (oldName && oldName.trim().toLowerCase() !== newName.toLowerCase()) {
+        const oldNameLower = oldName.trim().toLowerCase();
+        let shiftsChanged = false;
+        const updatedShifts = shifts.map(s => {
+          let changed = false;
+          const next = { ...s };
+          if (s.customDriver && s.customDriver.trim().toLowerCase() === oldNameLower) {
+            next.customDriver = newName;
+            changed = true;
+          }
+          if (s.helper && s.helper.trim().toLowerCase() === oldNameLower) {
+            next.helper = newName;
+            changed = true;
+          }
+          if (s.helper2 && s.helper2.trim().toLowerCase() === oldNameLower) {
+            next.helper2 = newName;
+            changed = true;
+          }
+          if (changed) shiftsChanged = true;
+          return changed ? next : s;
+        });
+        if (shiftsChanged) {
+          setShifts(updatedShifts);
+          saveShifts(updatedShifts);
+        }
+      }
+
       setEditingEmployeeId(null);
       triggerAlert('Datos de empleado actualizados');
       loadData();
@@ -15333,9 +15404,9 @@ function App() {
                                 <td style={{ padding: '9px 16px', color: 'var(--text-main)' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                     <span>{name}</span>
-                                    {ticket.status === 'success' && (
-                                      <span 
-                                        onClick={() => toggleTaskCharge(ticket.id, sIdx)} 
+                                    {ticket.status === 'success' && (isAdminOrSuper || currentUser?.role === 'coordinador') && (
+                                      <span
+                                        onClick={() => toggleTaskCharge(ticket.id, sIdx)}
                                         style={{ 
                                           cursor: 'pointer', 
                                           fontSize: '0.7rem', 
