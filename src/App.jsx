@@ -12785,7 +12785,7 @@ function App() {
                     >
                       <option value="">-- Seleccionar Chofer --</option>
                       {activeDrivers.map(d => (
-                        <option key={d.id} value={d.name}>{d.name}</option>
+                        <option key={d.id} value={d.label || d.username}>{d.label || d.username}</option>
                       ))}
                     </select>
                   </div>

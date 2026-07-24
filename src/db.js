@@ -3353,7 +3353,8 @@ export function saveEmployeesList(employees) {
     id: item.id || `emp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
     name: item.name.trim(),
     role: item.role || 'chofer',
-    dailyRate: parseFloat(item.dailyRate) || 0
+    dailyRate: parseFloat(item.dailyRate) || 0,
+    active: item.active === false ? false : true
   }));
   const empStr = JSON.stringify(formatted);
   localStorage.setItem(`delivery_employees_list_${adminId}`, empStr);
