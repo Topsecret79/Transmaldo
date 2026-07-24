@@ -773,6 +773,33 @@ function App() {
     
     return t.status === 'transit' ? '#38bdf8' : '#fbbf24';
   };
+
+  // Insignia de "tipo de servicio" para un ticket, centralizada para los 3 lugares que la
+  // muestran (popup del mapa, lista de paradas, lista de repartos del periodo). Antes dos
+  // de esos tres lugares tenían su propia copia incompleta de esta lógica: no contemplaban
+  // 'vip' ni 'preferencial' (esos repartos caían por defecto en la rama "else" y se
+  // mostraban, por error, como "🌙 Servicio Tarde"), y tampoco excluían 'estandar', así que
+  // un reparto estándar cualquiera también se etiquetaba incorrectamente como "Servicio
+  // Tarde". Devuelve null si el ticket no debe llevar insignia (estándar, o el valor
+  // defensivo 'entrega' que getTicketServiceType en la práctica nunca produce).
+  const getServiceTypeBadge = (sType) => {
+    switch (sType) {
+      case 'vip': return { className: 'badge-svc-vip', label: '👑 VIP' };
+      case 'preferencial': return { className: 'badge-svc-preferencial', label: '⭐ Preferencial' };
+      case 'cuelgue': return { className: 'badge-svc-cuelgue', label: '📺 Cuelgue' };
+      case 'puesta_marcha': return { className: 'badge-svc-puesta-marcha', label: '⚙️ Puesta en Marcha' };
+      case 'tarde': return { className: 'badge-svc-tarde', label: '🌙 Servicio Tarde' };
+      default: return null; // 'estandar', 'entrega' u otro valor no reconocido: sin insignia
+    }
+  };
+
+  // Insignia de franja horaria (Mañana/Tarde), también centralizada por el mismo motivo.
+  const getTimeSlotBadge = (timeSlot) => {
+    if (timeSlot === 'morning') return { className: 'badge-timeslot-morning', label: '☀️ Mañana' };
+    if (timeSlot === 'afternoon') return { className: 'badge-timeslot-afternoon', label: '🌙 Tarde' };
+    return null; // 'any' u otro valor: sin insignia
+  };
+
   const isAdminOrSuper = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
@@ -2177,22 +2204,17 @@ function App() {
             const cName = escapeHtml(t.customerName || 'Cliente');
             const posBlock = (!isClosed || isAdminOrSuper) ? '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#9ca3af;font-weight:600;">Posición:</span><select onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder(\'' + t.id + '\', this.value)" style="background:var(--primary);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;">' + optHtml + '</select></div>' : '<div style="font-size:0.74rem;color:#9ca3af;font-weight:700;margin-top:3px;">Parada #' + (seqIndex + 1) + '</div>';
             
-            // Construir insignias para el Popup informativo
+            // Construir insignias para el Popup informativo (clases CSS centralizadas,
+            // ver getServiceTypeBadge/getTimeSlotBadge más arriba en el componente)
             const sType = getTicketServiceType(t);
             let badgeHtml = '';
-            if (sType !== 'estandar' && sType !== 'entrega') {
-              const bg = sType === 'vip' ? 'rgba(236, 72, 153, 0.15)' : sType === 'preferencial' ? 'rgba(249, 115, 22, 0.15)' : sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.15)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(249, 115, 22, 0.15)';
-              const fg = sType === 'vip' ? '#f472b6' : sType === 'preferencial' ? '#fb923c' : sType === 'cuelgue' ? '#c084fc' : sType === 'puesta_marcha' ? '#f472b6' : '#fb923c';
-              const border = sType === 'vip' ? 'rgba(236, 72, 153, 0.25)' : sType === 'preferencial' ? 'rgba(249, 115, 22, 0.25)' : sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.25)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.25)' : 'rgba(249, 115, 22, 0.25)';
-              const labelText = sType === 'vip' ? '👑 VIP' : sType === 'preferencial' ? '⭐ Preferencial' : sType === 'cuelgue' ? '📺 Cuelgue' : sType === 'puesta_marcha' ? '⚙️ Puesta en Marcha' : '🌙 Servicio Tarde';
-              badgeHtml += '<span style="font-size:0.65rem;padding:1px 5px;background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-weight:bold;border-radius:4px;display:inline-block;margin-right:4px;">' + labelText + '</span>';
+            const svcBadge = getServiceTypeBadge(sType);
+            if (svcBadge) {
+              badgeHtml += '<span class="badge-service ' + svcBadge.className + '" style="display:inline-block;margin-right:4px;">' + svcBadge.label + '</span>';
             }
-            if (parsedNotesObj.timeSlot !== 'any') {
-              const bg = parsedNotesObj.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(56, 189, 248, 0.15)';
-              const fg = parsedNotesObj.timeSlot === 'morning' ? '#fbbf24' : '#38bdf8';
-              const border = parsedNotesObj.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.25)' : 'rgba(56, 189, 248, 0.25)';
-              const labelText = parsedNotesObj.timeSlot === 'morning' ? '☀️ Mañana' : '🌙 Tarde';
-              badgeHtml += '<span style="font-size:0.65rem;padding:1px 5px;background:' + bg + ';color:' + fg + ';border:1px solid ' + border + ';font-weight:bold;border-radius:4px;display:inline-block;">' + labelText + '</span>';
+            const slotBadge = getTimeSlotBadge(parsedNotesObj.timeSlot);
+            if (slotBadge) {
+              badgeHtml += '<span class="badge-service ' + slotBadge.className + '" style="display:inline-block;">' + slotBadge.label + '</span>';
             }
             if (badgeHtml) {
               badgeHtml = '<div style="margin-top:3px;margin-bottom:3px;display:flex;flex-wrap:wrap;gap:4px;">' + badgeHtml + '</div>';
@@ -11411,37 +11433,25 @@ function App() {
                       </span>
                       <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>{t.customerName || 'Cliente sin nombre'}</strong>
                     </div>
-                    {/* Renderizar insignias de servicio y franja horaria para el mapa */}
+                    {/* Insignias de servicio y franja horaria (clases CSS centralizadas,
+                        ver getServiceTypeBadge/getTimeSlotBadge). Fix: antes esta lista
+                        no contemplaba 'vip' ni 'preferencial' (caían en la rama por
+                        defecto y se mostraban como "Servicio Tarde"), y tampoco excluía
+                        'estandar', así que un reparto estándar también se etiquetaba
+                        erróneamente como "Servicio Tarde". */}
                     {(() => {
                       const parsed = parseTicketNotes(t.notes);
                       const sType = getTicketServiceType(t);
+                      const svcBadge = getServiceTypeBadge(sType);
+                      const slotBadge = getTimeSlotBadge(parsed.timeSlot);
+                      if (!svcBadge && !slotBadge) return null;
                       return (
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginLeft: '34px', marginTop: '2px' }}>
-                          {sType !== 'entrega' && (
-                            <span className="badge" style={{
-                              fontSize: '0.62rem',
-                              padding: '1px 5px',
-                              background: sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.15)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(249, 115, 22, 0.15)',
-                              color: sType === 'cuelgue' ? '#a855f7' : sType === 'puesta_marcha' ? '#ec4899' : '#f97316',
-                              border: sType === 'cuelgue' ? '1px solid rgba(168, 85, 247, 0.25)' : sType === 'puesta_marcha' ? '1px solid rgba(236, 72, 153, 0.25)' : '1px solid rgba(249, 115, 22, 0.25)',
-                              fontWeight: 'bold',
-                              borderRadius: '4px'
-                            }}>
-                              {sType === 'cuelgue' ? '📺 Cuelgue' : sType === 'puesta_marcha' ? '⚙️ Puesta en Marcha' : '🌙 Servicio Tarde'}
-                            </span>
+                          {svcBadge && (
+                            <span className={`badge-service ${svcBadge.className}`}>{svcBadge.label}</span>
                           )}
-                          {parsed.timeSlot !== 'any' && (
-                            <span className="badge" style={{
-                              fontSize: '0.62rem',
-                              padding: '1px 5px',
-                              background: parsed.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                              color: parsed.timeSlot === 'morning' ? 'var(--warning)' : 'var(--primary)',
-                              border: parsed.timeSlot === 'morning' ? '1px solid rgba(251, 191, 36, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
-                              fontWeight: 'bold',
-                              borderRadius: '4px'
-                            }}>
-                              {parsed.timeSlot === 'morning' ? '☀️ Mañana' : '🌙 Tarde'}
-                            </span>
+                          {slotBadge && (
+                            <span className={`badge-service ${slotBadge.className}`}>{slotBadge.label}</span>
                           )}
                         </div>
                       );
@@ -17884,34 +17894,21 @@ function App() {
                             } else {
                               sType = getTicketServiceType(t);
                             }
+                            // Insignias centralizadas (getServiceTypeBadge/getTimeSlotBadge).
+                            // Fix: antes esta lista tampoco contemplaba 'vip' ni
+                            // 'preferencial' (posibles vía el fallback a
+                            // getTicketServiceType), ni excluía 'estandar' — ambos casos
+                            // se mostraban erróneamente como "Servicio Tarde".
+                            const svcBadge = getServiceTypeBadge(sType);
+                            const slotBadge = getTimeSlotBadge(parsed.timeSlot);
                             return (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                  {sType !== 'entrega' && (
-                                    <span className="badge" style={{
-                                      fontSize: '0.65rem',
-                                      padding: '1px 5px',
-                                      background: sType === 'cuelgue' ? 'rgba(168, 85, 247, 0.15)' : sType === 'puesta_marcha' ? 'rgba(236, 72, 153, 0.15)' : 'rgba(249, 115, 22, 0.15)',
-                                      color: sType === 'cuelgue' ? '#a855f7' : sType === 'puesta_marcha' ? '#ec4899' : '#f97316',
-                                      border: sType === 'cuelgue' ? '1px solid rgba(168, 85, 247, 0.25)' : sType === 'puesta_marcha' ? '1px solid rgba(236, 72, 153, 0.25)' : '1px solid rgba(249, 115, 22, 0.25)',
-                                      fontWeight: 'bold',
-                                      borderRadius: '4px'
-                                    }}>
-                                      {sType === 'cuelgue' ? '📺 Cuelgue' : sType === 'puesta_marcha' ? '⚙️ Puesta en Marcha' : '🌙 Servicio Tarde'}
-                                    </span>
+                                  {svcBadge && (
+                                    <span className={`badge-service ${svcBadge.className}`}>{svcBadge.label}</span>
                                   )}
-                                  {parsed.timeSlot !== 'any' && (
-                                    <span className="badge" style={{
-                                      fontSize: '0.65rem',
-                                      padding: '1px 5px',
-                                      background: parsed.timeSlot === 'morning' ? 'rgba(251, 191, 36, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                                      color: parsed.timeSlot === 'morning' ? 'var(--warning)' : 'var(--primary)',
-                                      border: parsed.timeSlot === 'morning' ? '1px solid rgba(251, 191, 36, 0.25)' : '1px solid rgba(56, 189, 248, 0.25)',
-                                      fontWeight: 'bold',
-                                      borderRadius: '4px'
-                                    }}>
-                                      {parsed.timeSlot === 'morning' ? '☀️ Mañana' : '🌙 Tarde'}
-                                    </span>
+                                  {slotBadge && (
+                                    <span className={`badge-service ${slotBadge.className}`}>{slotBadge.label}</span>
                                   )}
                                   <span className="badge" style={{
                                     fontSize: '0.65rem',

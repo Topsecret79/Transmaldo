@@ -851,6 +851,64 @@ tr:hover td {
   border: 1px solid rgba(168, 85, 247, 0.3);
 }
 
+/* Segundo lote: insignias de "tipo de servicio" (VIP, Preferencial, Cuelgue, Puesta en
+   Marcha, Servicio de Tarde) y de "franja horaria" (Mañana/Tarde), usadas en 3 sitios
+   distintos (popup del mapa, lista de paradas, lista de repartos del periodo). Antes
+   cada sitio repetía el mismo bloque de estilos — y dos de los tres sitios tenían un
+   bug real: les faltaban los casos VIP/Preferencial y mostraban por error la etiqueta
+   "Servicio Tarde" también en repartos estándar. Se corrige aquí junto con la
+   centralización, usando getServiceTypeBadge()/getTimeSlotBadge() en App.jsx. */
+.badge-service {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.badge-svc-vip {
+  background: rgba(236, 72, 153, 0.15);
+  color: #f472b6;
+  border: 1px solid rgba(236, 72, 153, 0.25);
+}
+
+.badge-svc-preferencial {
+  background: rgba(249, 115, 22, 0.15);
+  color: #fb923c;
+  border: 1px solid rgba(249, 115, 22, 0.25);
+}
+
+.badge-svc-cuelgue {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+.badge-svc-puesta-marcha {
+  background: rgba(236, 72, 153, 0.15);
+  color: #ec4899;
+  border: 1px solid rgba(236, 72, 153, 0.25);
+}
+
+.badge-svc-tarde {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, 0.25);
+}
+
+.badge-timeslot-morning {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.badge-timeslot-afternoon {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--primary);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
 /* Settings / Tariffs Form Grid */
 .settings-grid {
   display: grid;
