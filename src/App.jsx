@@ -789,6 +789,18 @@ function App() {
   const [linkageError, setLinkageError] = useState('');
   const [isLinking, setIsLinking] = useState(false);
 
+  // Estados para "Olvidé mi contraseña" (solo administradores/coordinadores con correo vinculado a Supabase Auth)
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [forgotPasswordError, setForgotPasswordError] = useState('');
+  const [passwordRecoverySession, setPasswordRecoverySession] = useState(false);
+  const [recoveryNewPassword, setRecoveryNewPassword] = useState('');
+  const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('');
+  const [isSavingRecoveryPassword, setIsSavingRecoveryPassword] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
+
 
   const [tickets, setTickets] = useState([]);
   const [tariffs, setTariffs] = useState([]);
@@ -1820,6 +1832,23 @@ function App() {
         console.error("Error parsing saved user session on mount:", e);
       }
     }
+  }, []);
+
+  // Detecta cuando el usuario llega desde el enlace de recuperación de contraseña
+  // (correo enviado por Supabase Auth) para mostrarle el formulario de nueva contraseña.
+  useEffect(() => {
+    const supabaseClient = getSupabaseClient();
+    if (!supabaseClient) return;
+    const { data: authListener } = supabaseClient.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecoverySession(true);
+      }
+    });
+    return () => {
+      if (authListener && authListener.subscription) {
+        authListener.subscription.unsubscribe();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -2893,6 +2922,103 @@ function App() {
       setLinkageError('Ocurrió un error inesperado al vincular la cuenta.');
     } finally {
       setIsLinking(false);
+    }
+  };
+
+  // Envía el correo de recuperación de contraseña (solo administradores/coordinadores
+  // con correo vinculado a Supabase Auth; los repartidores usan usuario/contraseña propios
+  // y no tienen correo, así que este flujo no aplica para ellos).
+  const handleSendPasswordReset = async (e) => {
+    e.preventDefault();
+    setForgotPasswordError('');
+
+    const email = forgotPasswordEmail.trim();
+    if (!email || !email.includes('@')) {
+      setForgotPasswordError('Por favor introduce un correo electrónico válido.');
+      return;
+    }
+
+    const supabaseClient = getSupabaseClient();
+    if (!supabaseClient) {
+      setForgotPasswordError('Error de red: no se pudo inicializar la base de datos.');
+      return;
+    }
+
+    setIsSendingReset(true);
+    try {
+      await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname
+      });
+    } catch (err) {
+      console.error("Error sending password reset email:", err);
+      // No se distingue el error al usuario: se muestra el mismo mensaje exista o no
+      // exista esa cuenta, para no revelar qué correos están registrados en el sistema.
+    } finally {
+      setForgotPasswordSent(true);
+      setIsSendingReset(false);
+    }
+  };
+
+  // Aplica la nueva contraseña tras hacer clic en el enlace de recuperación del correo.
+  const handleCompletePasswordReset = async (e) => {
+    e.preventDefault();
+    setRecoveryError('');
+
+    const pass1 = recoveryNewPassword.trim();
+    const pass2 = recoveryConfirmPassword.trim();
+    if (pass1.length < 6) {
+      setRecoveryError('La contraseña debe tener al menos 6 caracteres.');
+      return;
+    }
+    if (pass1 !== pass2) {
+      setRecoveryError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    const supabaseClient = getSupabaseClient();
+    if (!supabaseClient) {
+      setRecoveryError('Error de red: no se pudo inicializar la base de datos.');
+      return;
+    }
+
+    setIsSavingRecoveryPassword(true);
+    try {
+      const { data: updateData, error: updateErr } = await supabaseClient.auth.updateUser({ password: pass1 });
+      if (updateErr) {
+        setRecoveryError(`No se pudo actualizar la contraseña: ${updateErr.message}`);
+        setIsSavingRecoveryPassword(false);
+        return;
+      }
+
+      // Sincronizar también la contraseña en la tabla propia delivery_users, para que
+      // el inicio de sesión clásico por nombre de usuario deje de aceptar la contraseña antigua.
+      try {
+        const authUser = updateData?.user;
+        const dbUsers = getUsers() || [];
+        const hashedNew = await hashPassword(pass1);
+        const match = dbUsers.find(u =>
+          (authUser?.id && u.auth_uid === authUser.id) ||
+          (authUser?.email && u.email && u.email.toLowerCase() === authUser.email.toLowerCase())
+        );
+        if (match) {
+          const updatedUsers = dbUsers.map(u => u.id === match.id ? { ...u, password: hashedNew } : u);
+          saveUsers(updatedUsers);
+          setUsers(updatedUsers);
+        }
+      } catch (syncErr) {
+        console.error("Error sincronizando la contraseña local tras la recuperación:", syncErr);
+      }
+
+      await supabaseClient.auth.signOut();
+      setPasswordRecoverySession(false);
+      setRecoveryNewPassword('');
+      setRecoveryConfirmPassword('');
+      triggerAlert('Contraseña actualizada. Ya puedes iniciar sesión con tu nueva contraseña.');
+    } catch (err) {
+      console.error("Error completing password reset:", err);
+      setRecoveryError('Ocurrió un error inesperado al actualizar la contraseña.');
+    } finally {
+      setIsSavingRecoveryPassword(false);
     }
   };
 
@@ -18867,7 +18993,7 @@ function App() {
     );
   };
 
-  if (!currentUser || emailLinkageUser) {
+  if (!currentUser || emailLinkageUser || passwordRecoverySession) {
     return (
       <>
         {alertMsg.text && (
@@ -18888,7 +19014,55 @@ function App() {
           minHeight: '80vh',
           padding: '20px'
         }}>
-          {forceChangePasswordUser ? (
+          {passwordRecoverySession ? (
+            <form onSubmit={handleCompletePasswordReset} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <Key size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
+                <h1 className="login-title" style={{ fontWeight: '800', letterSpacing: '-0.03em', margin: 0 }}>Nueva Contraseña</h1>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>
+                  Establece tu nueva contraseña para completar la recuperación de tu cuenta.
+                </p>
+              </div>
+
+              {recoveryError && (
+                <div style={{ color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                  ⚠️ {recoveryError}
+                </div>
+              )}
+
+              <div className="input-group">
+                <span className="input-label">Nueva Contraseña</span>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Mínimo 6 caracteres"
+                  value={recoveryNewPassword}
+                  onChange={(e) => setRecoveryNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <div className="input-group">
+                <span className="input-label">Confirmar Contraseña</span>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="Repite la contraseña"
+                  value={recoveryConfirmPassword}
+                  onChange={(e) => setRecoveryConfirmPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }} disabled={isSavingRecoveryPassword}>
+                {isSavingRecoveryPassword ? '🔄 Guardando...' : '💾 Guardar Nueva Contraseña'}
+              </button>
+            </form>
+          ) : forceChangePasswordUser ? (
             <form onSubmit={handleForceChangePasswordSubmit} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ textAlign: 'center', marginBottom: '10px' }}>
                 <Key size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
@@ -19019,6 +19193,74 @@ function App() {
                 Cancelar
               </button>
             </form>
+          ) : showForgotPassword ? (
+            <form onSubmit={handleSendPasswordReset} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                <Mail size={40} color="var(--primary)" style={{ marginBottom: '10px', display: 'inline-block' }} />
+                <h1 className="login-title" style={{ fontWeight: '800', letterSpacing: '-0.03em', margin: 0 }}>Recuperar Contraseña</h1>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>
+                  Disponible solo para cuentas de administrador/coordinador con correo vinculado.
+                </p>
+              </div>
+
+              {forgotPasswordSent ? (
+                <>
+                  <div style={{ color: 'var(--success)', background: 'rgba(16, 185, 129, 0.1)', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                    ✅ Si ese correo está registrado, te enviamos un enlace para restablecer tu contraseña. Revisa tu bandeja de entrada (y la carpeta de spam).
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ marginTop: '10px' }}
+                    onClick={() => {
+                      setShowForgotPassword(false);
+                      setForgotPasswordSent(false);
+                      setForgotPasswordEmail('');
+                      setForgotPasswordError('');
+                    }}
+                  >
+                    Volver a Iniciar Sesión
+                  </button>
+                </>
+              ) : (
+                <>
+                  {forgotPasswordError && (
+                    <div style={{ color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                      ⚠️ {forgotPasswordError}
+                    </div>
+                  )}
+
+                  <div className="input-group">
+                    <span className="input-label">Correo Electrónico</span>
+                    <input
+                      type="email"
+                      className="form-input"
+                      placeholder="ejemplo@correo.com"
+                      value={forgotPasswordEmail}
+                      onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                      required
+                      autoComplete="email"
+                    />
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }} disabled={isSendingReset}>
+                    {isSendingReset ? '🔄 Enviando...' : '📧 Enviar Enlace de Recuperación'}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowForgotPassword(false);
+                      setForgotPasswordError('');
+                    }}
+                    style={{ marginTop: '8px', background: 'transparent', border: 'none', color: 'var(--text-muted)' }}
+                  >
+                    Cancelar
+                  </button>
+                </>
+              )}
+            </form>
           ) : (
             <form onSubmit={handleLogin} autoComplete="off" className="glass-panel login-form-panel" style={{ maxWidth: '400px', width: '100%', display: 'flex', flexDirection: 'column' }}>
               <div style={{ textAlign: 'center', marginBottom: '10px' }}>
@@ -19088,6 +19330,23 @@ function App() {
 
               <button type="submit" className="btn btn-primary" style={{ marginTop: '10px' }}>
                 <Lock size={16} /> Iniciar Sesión
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                style={{
+                  marginTop: '10px',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  alignSelf: 'center'
+                }}
+              >
+                ¿Olvidaste tu contraseña? (Administradores/Coordinadores)
               </button>
             </form>
           )}
