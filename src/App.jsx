@@ -5473,8 +5473,15 @@ function App() {
     
     localStorage.setItem('delivery_tickets', JSON.stringify(updatedTickets));
     setTickets(updatedTickets);
-    
-    if (supabase && changedTickets.length > 0) {
+
+    // Fix: usaba la variable global `supabase`, que nunca se importa ni se declara
+    // en App.jsx (db.js la mantiene privada y solo la expone via getSupabaseClient()).
+    // Esto lanzaba un ReferenceError no controlado cada vez que se recalculaban
+    // tickets con cambios, impidiendo que los totales recalculados se subieran a la
+    // nube (quedaban solo en localStorage) y, en el caso de handleUpdateModulePrice
+    // (que no tiene try/catch), propagando el error sin control fuera de la función.
+    const supabaseClient = getSupabaseClient();
+    if (supabaseClient && changedTickets.length > 0) {
       (async () => {
         try {
           const formatted = changedTickets.map(t => ({
@@ -5501,7 +5508,7 @@ function App() {
             created_at: t.createdAt,
             created_by: t.createdBy || 'admin'
           }));
-          await supabase.from('delivery_tickets').upsert(formatted);
+          await supabaseClient.from('delivery_tickets').upsert(formatted);
         } catch (e) {
           console.error("Error saving updated tickets to Supabase:", e);
         }
