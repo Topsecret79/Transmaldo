@@ -17805,62 +17805,66 @@ function App() {
               </div>
             </div>
 
+            {/* Fix: rediseño minimalista de las tarjetas — ver comentario junto a
+                .dashboard-grid en index.css. Los estilos inline de centrado/lineHeight
+                que antes se repetían en cada tarjeta ya los aplica la clase base
+                .stat-card, así que se han quitado de aquí. */}
             <div className="dashboard-grid">
-              <div className="stat-card success" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card success">
                 <p>Total Mes</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{totalEarnings.toFixed(2)} €</div>
-                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>Km Flota (Odómetro): {totalKmsAllFurgos.toFixed(1)} km</span>
+                <div className="stat-val">{totalEarnings.toFixed(2)} €</div>
+                <span>Km Flota (Odómetro): {totalKmsAllFurgos.toFixed(1)} km</span>
               </div>
-              <div className="stat-card info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card info">
                 <p>Entregas</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{successTickets.length}</div>
-                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>de {filteredAdminTickets.length} totales</span>
+                <div className="stat-val">{successTickets.length}</div>
+                <span>de {filteredAdminTickets.length} totales</span>
               </div>
-              <div className="stat-card warning" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card warning">
                 <p>Puestas en Marcha</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{totalPMs}</div>
-                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                <div className="stat-val">{totalPMs}</div>
+                <span>
                   {totalPMsBasic} Básicas ({ totalPMsBasicEarnings.toFixed(2) } €) / {totalPMsComplex} Complejas ({ totalPMsComplexEarnings.toFixed(2) } €)
                 </span>
               </div>
-              <div className="stat-card info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card info">
                 <p>Cuelgues</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{totalCuelgues}</div>
-                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>{totalCuelguesEarnings.toFixed(2)} € facturados</span>
+                <div className="stat-val">{totalCuelgues}</div>
+                <span>{totalCuelguesEarnings.toFixed(2)} € facturados</span>
               </div>
               <div className="stat-card danger">
                 <p>Adicionales Mes</p>
                 <div className="stat-val">{totalCustomEarnings.toFixed(2)} €</div>
               </div>
-              <div className="stat-card success" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card success">
                 <p>Ticket Promedio</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{avgTicketValue.toFixed(2)} €</div>
-                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>por reparto exitoso</span>
+                <div className="stat-val">{avgTicketValue.toFixed(2)} €</div>
+                <span>por reparto exitoso</span>
               </div>
-              <div className="stat-card warning" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card warning">
                 <p>Recogidas TV Vieja</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{totalRecogidas}</div>
+                <div className="stat-val">{totalRecogidas}</div>
               </div>
-              <div className="stat-card danger" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card danger">
                 <p>Fallidos</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{totalFailed}</div>
-                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                <div className="stat-val">{totalFailed}</div>
+                <span>
                   {(filteredAdminTickets.length > 0 ? (totalFailed / filteredAdminTickets.length * 100) : 0).toFixed(1)}% del total
                 </span>
               </div>
-              <div className="stat-card info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card info">
                 <p>Contra Reembolso (COD)</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{totalCOD.toFixed(2)} €</div>
-                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>cobrado en puerta</span>
+                <div className="stat-val">{totalCOD.toFixed(2)} €</div>
+                <span>cobrado en puerta</span>
               </div>
-              <div className="stat-card success" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="stat-card success">
                 <p>Barras de Sonido</p>
-                <div className="stat-val" style={{ lineHeight: 1 }}>{totalBarrasSonido}</div>
+                <div className="stat-val">{totalBarrasSonido}</div>
               </div>
               {totalUrgentes > 0 && (
-                <div className="stat-card warning" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div className="stat-card warning">
                   <p>Servicios Urgentes</p>
-                  <div className="stat-val" style={{ lineHeight: 1 }}>{totalUrgentes}</div>
+                  <div className="stat-val">{totalUrgentes}</div>
                 </div>
               )}
             </div>
