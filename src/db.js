@@ -2001,6 +2001,17 @@ export async function addTicket(ticketData) {
         const typeStr = isComb ? 'Ent+Rec' : (isRec ? 'Recogida' : (task.tariffId.includes('ENT') ? 'Entrega' : ''));
         name = `${task.brand} ${task.inches}" (${typeStr || name})`;
       }
+      // Fix: para Paquetería (Pequeño/Gran Volumen) el formulario ya arma el
+      // nombre con la descripción de "qué se lleva" entre paréntesis (ej.
+      // "Pequeño Volumen (ventilador de techo)"), pero esta línea lo pisaba
+      // siempre con el nombre plano de la tarifa del catálogo, perdiendo la
+      // descripción para siempre — nunca llegaba al Informe del Día ni a la
+      // lista de repartos, y tampoco sobrevivía a una edición posterior del
+      // ticket (que la reconstruye leyendo el paréntesis del nombre guardado).
+      const isPaqueteria = task.tariffId && ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(task.tariffId);
+      if (isPaqueteria && task.name && task.name.includes('(')) {
+        name = task.name;
+      }
     }
 
     const price = round2(task.noCharge ? 0 : basePrice);
@@ -2113,6 +2124,17 @@ export async function updateTicket(updatedTicket) {
         const isRec = task.action === 'recogida';
         const typeStr = isComb ? 'Ent+Rec' : (isRec ? 'Recogida' : (task.tariffId.includes('ENT') ? 'Entrega' : ''));
         name = `${task.brand} ${task.inches}" (${typeStr || name})`;
+      }
+      // Fix: para Paquetería (Pequeño/Gran Volumen) el formulario ya arma el
+      // nombre con la descripción de "qué se lleva" entre paréntesis (ej.
+      // "Pequeño Volumen (ventilador de techo)"), pero esta línea lo pisaba
+      // siempre con el nombre plano de la tarifa del catálogo, perdiendo la
+      // descripción para siempre — nunca llegaba al Informe del Día ni a la
+      // lista de repartos, y tampoco sobrevivía a una edición posterior del
+      // ticket (que la reconstruye leyendo el paréntesis del nombre guardado).
+      const isPaqueteria = task.tariffId && ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(task.tariffId);
+      if (isPaqueteria && task.name && task.name.includes('(')) {
+        name = task.name;
       }
     }
 
