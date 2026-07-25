@@ -16133,6 +16133,8 @@ function App() {
       let pmsBasic = 0;
       let pmsComplex = 0;
       let deliveries = 0;
+      let cuelgues = 0;
+      let recogidas = 0;
       fSuccess.forEach(t => {
         const isDormityTicket = t.provider === 'dormity';
         t.tasks.forEach(task => {
@@ -16142,11 +16144,19 @@ function App() {
             if (tid.startsWith('PM_COMP_')) pmsComplex += task.quantity;
             else pmsBasic += task.quantity;
           }
+          if (!isDormityTicket && tid.startsWith('CUELGUE_')) {
+            cuelgues += task.quantity;
+          }
           if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) {
             deliveries += task.quantity;
           }
+          if (tid.startsWith('TV_VIEJA_')) {
+            recogidas += task.quantity;
+          }
         });
       });
+      const fFailed = fTickets.filter(t => t.status === 'failed').length;
+      const fCod = fSuccess.reduce((sum, t) => sum + (t.codAmount || 0), 0);
 
       // Get all closed shifts for this furgoneta in the filtered period
       const fShifts = shifts.filter(s => 
@@ -16171,7 +16181,11 @@ function App() {
         pms,
         pmsBasic,
         pmsComplex,
-        deliveries
+        deliveries,
+        cuelgues,
+        recogidas,
+        failed: fFailed,
+        cod: fCod
       };
       return acc;
     }, {});
@@ -16187,6 +16201,11 @@ function App() {
     let totalPMsBasic = 0;
     let totalPMsComplex = 0;
     let totalCustomEarnings = 0;
+    let totalCuelgues = 0;
+    let totalCuelguesEarnings = 0;
+    let totalRecogidas = 0;
+    let totalBarrasSonido = 0;
+    let totalUrgentes = 0;
     successTickets.forEach(t => {
       const isDormityTicket = t.provider === 'dormity';
       t.tasks.forEach(task => {
@@ -16199,8 +16218,24 @@ function App() {
         if (tid.startsWith('CUSTOM_')) {
           totalCustomEarnings += (task.unitPrice || task.price || 0) * task.quantity;
         }
+        if (!isDormityTicket && tid.startsWith('CUELGUE_')) {
+          totalCuelgues += task.quantity;
+          totalCuelguesEarnings += (task.subtotal !== undefined ? task.subtotal : (task.unitPrice || task.price || 0) * task.quantity);
+        }
+        if (tid.startsWith('TV_VIEJA_')) {
+          totalRecogidas += task.quantity;
+        }
+        if (tid === 'BSND') {
+          totalBarrasSonido += task.quantity;
+        }
+        if (tid.startsWith('URGENTE_')) {
+          totalUrgentes += task.quantity;
+        }
       });
     });
+    const totalFailed = filteredAdminTickets.filter(t => t.status === 'failed').length;
+    const totalCOD = successTickets.reduce((sum, t) => sum + (t.codAmount || 0), 0);
+    const avgTicketValue = successTickets.length > 0 ? totalEarnings / successTickets.length : 0;
 
   const renderUsersSection = () => {
     return (
@@ -17520,10 +17555,46 @@ function App() {
                   {totalPMsBasic} Básicas ({ (totalPMsBasic * 11.43).toFixed(2) } €) / {totalPMsComplex} Complejas ({ (totalPMsComplex * 19.05).toFixed(2) } €)
                 </span>
               </div>
+              <div className="stat-card info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <p>Cuelgues</p>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{totalCuelgues}</div>
+                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>{totalCuelguesEarnings.toFixed(2)} € facturados</span>
+              </div>
               <div className="stat-card danger">
                 <p>Adicionales Mes</p>
                 <div className="stat-val">{totalCustomEarnings.toFixed(2)} €</div>
               </div>
+              <div className="stat-card success" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <p>Ticket Promedio</p>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{avgTicketValue.toFixed(2)} €</div>
+                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>por reparto exitoso</span>
+              </div>
+              <div className="stat-card warning" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <p>Recogidas TV Vieja</p>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{totalRecogidas}</div>
+              </div>
+              <div className="stat-card danger" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <p>Fallidos</p>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{totalFailed}</div>
+                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
+                  {(filteredAdminTickets.length > 0 ? (totalFailed / filteredAdminTickets.length * 100) : 0).toFixed(1)}% del total
+                </span>
+              </div>
+              <div className="stat-card info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <p>Contra Reembolso (COD)</p>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{totalCOD.toFixed(2)} €</div>
+                <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>cobrado en puerta</span>
+              </div>
+              <div className="stat-card success" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <p>Barras de Sonido</p>
+                <div className="stat-val" style={{ lineHeight: 1 }}>{totalBarrasSonido}</div>
+              </div>
+              {totalUrgentes > 0 && (
+                <div className="stat-card warning" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <p>Servicios Urgentes</p>
+                  <div className="stat-val" style={{ lineHeight: 1 }}>{totalUrgentes}</div>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '100%' }}>
@@ -17551,8 +17622,12 @@ function App() {
                       <tr>
                         <th>Furgoneta</th>
                         <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
+                        <th style={{ textAlign: 'center' }}>Fallidos</th>
                         <th style={{ textAlign: 'center' }}>PMs</th>
+                        <th style={{ textAlign: 'center' }}>Cuelgues</th>
                         <th style={{ textAlign: 'center' }}>Entregas</th>
+                        <th style={{ textAlign: 'center' }}>Recogidas</th>
+                        <th style={{ textAlign: 'center' }}>COD</th>
                         <th style={{ textAlign: 'center' }}>Kms</th>
                         <th style={{ textAlign: 'right' }}>Kilometraje €</th>
                         <th style={{ textAlign: 'right' }}>Base Imponible</th>
@@ -17563,7 +17638,7 @@ function App() {
                     </thead>
                     <tbody>
                       {furgos.map(fid => {
-                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0, mileageEarnings: 0, kms: 0, pms: 0, deliveries: 0 };
+                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0, mileageEarnings: 0, kms: 0, pms: 0, deliveries: 0, cuelgues: 0, recogidas: 0, failed: 0, cod: 0 };
                         const base = data.earnings;
                         const iva = base * 0.21;
                         const retencion = base * 0.01;
@@ -17573,12 +17648,16 @@ function App() {
                           <tr key={fid} className="interactive-row" onClick={() => setSelectedDrilldownFurgoId(fid)} title={`Ver detalle diario de ${label}`}>
                             <td style={{ fontWeight: '600' }}>{label}</td>
                             <td style={{ textAlign: 'center' }}>{data.successCount} / {data.count}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500', color: data.failed > 0 ? 'var(--danger)' : 'inherit' }}>{data.failed}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>
                               {data.pms > 0 ? (
                                 <span>{data.pms} <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>({data.pmsBasic} B. / {data.pmsComplex} C.)</span></span>
                               ) : '0'}
                             </td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.cuelgues}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.deliveries}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.recogidas}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.cod > 0 ? `${data.cod.toFixed(2)} €` : '-'}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.kms.toFixed(1)} km</td>
                             <td style={{ textAlign: 'right', fontWeight: '500', color: 'var(--text-muted)' }}>0.00 €</td>
                             <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{base.toFixed(2)} €</td>
