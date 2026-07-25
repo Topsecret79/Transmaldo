@@ -472,6 +472,26 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
       } catch (e) {}
 
+      // Fix: si el borrado remoto de un ticket falló una vez (red inestable), nunca
+      // se reintentaba automáticamente — el ticket solo quedaba oculto en ESTE
+      // dispositivo gracias al tombstone local. Un dispositivo nuevo (reinstalación,
+      // caché borrada) no tiene ese tombstone y podía ver "revivir" un ticket que ya
+      // se había borrado hace tiempo. Se reintenta aquí el borrado remoto pendiente
+      // en cada sincronización, no solo la vez que se pidió borrar.
+      const stillPendingDeleteIds = cloudTickets.filter(t => t && deletedIds.includes(t.id)).map(t => t.id);
+      if (stillPendingDeleteIds.length > 0) {
+        supabase.from('delivery_tickets').delete().in('id', stillPendingDeleteIds).then(({ error }) => {
+          if (error) {
+            console.error("Error reintentando borrado remoto pendiente de tickets:", error);
+          } else {
+            try {
+              const current = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+              localStorage.setItem('delivery_deleted_tickets', JSON.stringify(current.filter(id => !stillPendingDeleteIds.includes(id))));
+            } catch (e) {}
+          }
+        });
+      }
+
       const pendingLocal = localCurrent.filter(t => t && t._syncStatus === 'pending');
       const filteredCloud = cloudTickets.filter(t => t && !deletedIds.includes(t.id));
 
@@ -573,6 +593,23 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       try {
         deletedShiftIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
       } catch (e) {}
+
+      // Fix: mismo motivo que el reintento de borrado de tickets — si el borrado
+      // remoto de un turno falló una vez, nunca se reintentaba automáticamente.
+      const stillPendingDeleteShiftIds = cloudShifts.filter(s => s && deletedShiftIds.includes(s.id)).map(s => s.id);
+      if (stillPendingDeleteShiftIds.length > 0) {
+        supabase.from('delivery_shifts').delete().in('id', stillPendingDeleteShiftIds).then(({ error }) => {
+          if (error) {
+            console.error("Error reintentando borrado remoto pendiente de turnos:", error);
+          } else {
+            try {
+              const current = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
+              localStorage.setItem('delivery_deleted_shifts', JSON.stringify(current.filter(id => !stillPendingDeleteShiftIds.includes(id))));
+            } catch (e) {}
+          }
+        });
+      }
+
       const filteredCloudShifts = cloudShifts.filter(s => s && !deletedShiftIds.includes(s.id));
 
       // Merge: start from cloud, but if local version has richer metadata (non-empty driver/plate)
@@ -1784,6 +1821,17 @@ export async function saveDormityTariffs(tariffs) {
   }
 }
 
+// Fix: las sumas de precios de un ticket se guardaban tal cual las calcula
+// JavaScript, sin redondear, y la suma de números decimales en JS puede
+// acumular pequeños errores de precisión (p.ej. 0.1 + 0.2 !== 0.3). Con
+// muchos repartos combinando distintas tarifas, esto podía generar
+// discrepancias de céntimos entre lo que se ve en pantalla y lo que queda
+// guardado. Se usa este helper para redondear siempre a 2 decimales antes de
+// guardar cualquier precio calculado.
+function round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
 export function calculateDormityTaskPrice(tariffId, distanceKm = 0, extraOrders = 0, dormityTariffs = null) {
   const tariffs = dormityTariffs || getDormityTariffs();
   const tariff = tariffs.find(t => t.id === tariffId || t.id.startsWith(tariffId + '_'));
@@ -1830,11 +1878,17 @@ export function calculateTaskPrice(tariffId, tariffs = null, modulePrice = null)
   const tariff = activeTariffs.find(t => t.id === tariffId);
   if (!tariff) return 0;
 
-
+  // Fix: a diferencia de la rama equivalente para tarifas Dormity
+  // (calculateDormityTaskPrice), aquí no se comprobaba que tariff.value fuera
+  // realmente un número. Si llegaba corrupto o vacío, el precio de esa tarea
+  // se volvía inválido (NaN) y, como el total del ticket se calcula sumando
+  // cada tarea una a una, ese único valor inválido invalidaba el total
+  // completo del reparto sin ningún aviso. Se aplica la misma protección que
+  // ya usa la rama Dormity: convertir siempre a número con 0 por defecto.
   if (tariff.type === 'fixed') {
-    return tariff.value;
+    return Number(tariff.value) || 0;
   } else if (tariff.type === 'modules') {
-    return tariff.value * activeModulePrice;
+    return (Number(tariff.value) || 0) * activeModulePrice;
   }
   return 0;
 }
@@ -1895,8 +1949,8 @@ export async function addTicket(ticketData) {
       }
     }
 
-    const price = task.noCharge ? 0 : basePrice;
-    const subtotal = price * task.quantity;
+    const price = round2(task.noCharge ? 0 : basePrice);
+    const subtotal = round2(price * task.quantity);
     totalCalculado += subtotal;
 
     return {
@@ -1939,7 +1993,7 @@ export async function addTicket(ticketData) {
     codAmount: ticketData.codAmount || 0,
     provider: inferredProvider,
     tasks: detailedTasks,
-    totalPrice: totalCalculado,
+    totalPrice: round2(totalCalculado),
     status: ticketData.status || 'pending',
     createdAt: new Date().toISOString(),
     lat: ticketData.lat || null,
@@ -2008,8 +2062,8 @@ export async function updateTicket(updatedTicket) {
       }
     }
 
-    const price = task.noCharge ? 0 : basePrice;
-    const subtotal = price * task.quantity;
+    const price = round2(task.noCharge ? 0 : basePrice);
+    const subtotal = round2(price * task.quantity);
     totalCalculado += subtotal;
 
     return {
@@ -2050,7 +2104,7 @@ export async function updateTicket(updatedTicket) {
       codAmount: updatedTicket.codAmount || 0,
       provider: inferredProvider,
       tasks: detailedTasks,
-      totalPrice: totalCalculado,
+      totalPrice: round2(totalCalculado),
       status: updatedTicket.status || tickets[index].status || 'pending',
       lat: updatedTicket.lat !== undefined ? updatedTicket.lat : tickets[index].lat,
       lng: updatedTicket.lng !== undefined ? updatedTicket.lng : tickets[index].lng,
@@ -2874,7 +2928,12 @@ export function saveRouteKms(furgoId, date, kms) {
 // Agregar nueva tarifa
 export async function addTariff(tariff) {
   const tariffs = getTariffs();
-  const id = 'CUSTOM_' + Date.now();
+  // Fix: un id basado solo en Date.now() puede colisionar si dos administradores
+  // en dispositivos distintos crean una tarifa personalizada en el mismo
+  // milisegundo — una sustituiría silenciosamente a la otra. Se añade el mismo
+  // sufijo aleatorio que ya se usa en el resto de IDs generados en el cliente
+  // (ver addTicket en este mismo archivo).
+  const id = 'CUSTOM_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
   const newTariff = {
     ...tariff,
     id
@@ -3168,15 +3227,23 @@ export async function geocodeAddress(addressText) {
 }
 
 // Alternar el permiso de búsqueda del buscador general para un usuario
-export function toggleUserSearchPermission(userId) {
+// Fix: antes no se esperaba la confirmación real del guardado (saveUsers no se
+// "awaiteaba") y siempre se devolvía {success:true} de inmediato — un admin
+// podía ver el mensaje de éxito aunque el cambio nunca llegara al servidor.
+export async function toggleUserSearchPermission(userId) {
   const users = getUsers();
   const user = users.find(u => u.id === userId);
-  if (user) {
-    user.canSearch = !user.canSearch;
-    saveUsers(users);
-    return { success: true, user };
+  if (!user) {
+    return { success: false, error: 'Usuario no encontrado' };
   }
-  return { success: false, error: 'Usuario no encontrado' };
+  user.canSearch = !user.canSearch;
+  try {
+    await saveUsers(users);
+    return { success: true, user };
+  } catch (error) {
+    console.error("Error guardando el permiso de búsqueda:", error);
+    return { success: false, error };
+  }
 }
 
 // Obtener punto de inicio predeterminado

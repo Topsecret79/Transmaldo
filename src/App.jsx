@@ -671,7 +671,26 @@ function getDraftVal(key, defaultVal) {
     if (draft) {
       const parsed = JSON.parse(draft);
       if (parsed && parsed[key] !== undefined) {
-        return parsed[key];
+        const val = parsed[key];
+        // Fix: un borrador guardado con una forma antigua o distinta (p.ej.
+        // una lista que pasó a ser un objeto, o viceversa, tras una futura
+        // actualización) podía tumbar la pantalla "Nuevo Ticket" al usarse
+        // como si tuviera el tipo esperado. Se valida que el tipo recuperado
+        // coincida con el del valor por defecto antes de usarlo; si no,
+        // se descarta ese campo del borrador y se usa el valor por defecto.
+        const expectedIsArray = Array.isArray(defaultVal);
+        const expectedIsPlainObject = !expectedIsArray && defaultVal !== null && typeof defaultVal === 'object';
+        const valIsArray = Array.isArray(val);
+        const valIsPlainObject = !valIsArray && val !== null && typeof val === 'object';
+        const typeMatches = expectedIsArray
+          ? valIsArray
+          : expectedIsPlainObject
+            ? valIsPlainObject
+            : typeof val === typeof defaultVal;
+        if (typeMatches) {
+          return val;
+        }
+        console.error(`Borrador con tipo inesperado para "${key}", se usa el valor por defecto.`);
       }
     }
   } catch (e) {
@@ -2862,12 +2881,19 @@ function App() {
       return;
     }
 
+    // Fix: antes se guardaba la contraseña sin cifrar en la sesión local del
+    // navegador (aunque saveUsers() sí la cifra al subirla a la base de
+    // datos), algo que el resto de flujos de contraseña evita
+    // deliberadamente. Se cifra aquí también antes de usarla en cualquier
+    // parte, igual que ya hace el flujo de recuperación por correo.
+    const hashedNewPassword = await hashPassword(newPasswordVal.trim());
+
     const dbUsers = getUsers() || [];
     const updatedUsers = dbUsers.map(u => {
       if (u.id === forceChangePasswordUser.id) {
         return {
           ...u,
-          password: newPasswordVal.trim(),
+          password: hashedNewPassword,
           mustChangePassword: false
         };
       }
@@ -4140,7 +4166,13 @@ function App() {
       address: address.trim(),
       postcode: postcode.trim(),
       notes: finalNotes,
-      codAmount: parseFloat(codAmount) || 0,
+      // Fix: solo uno de los dos campos de importe COD del formulario (Dormity/ECI)
+      // tenía la validación min="0" a nivel de HTML, que además es fácil de saltar
+      // escribiendo el signo "-" a mano. Se fuerza aquí, en el único punto donde se
+      // construye el ticket final, a que nunca sea negativo — un valor negativo aquí
+      // restaría del total de reembolsos cobrados en el cierre de turno sin que se
+      // note de inmediato.
+      codAmount: Math.max(0, parseFloat(codAmount) || 0),
       provider: effectiveTicketProviderSubmit || 'eci',
       dormityRouteType: effectiveTicketProviderSubmit === 'dormity' ? dormityRouteType : undefined,
       tasks: tasksArray,
@@ -6255,7 +6287,7 @@ function App() {
     }
   };
 
-  const handleUpdateTicketTvSize = (ticketId, oldRange, newRange) => {
+  const handleUpdateTicketTvSize = async (ticketId, oldRange, newRange) => {
     const ticket = tickets.find(t => t.id === ticketId);
     if (!ticket) return;
 
@@ -6304,9 +6336,17 @@ function App() {
     // ticketId. Con la llamada anterior, updatedTicket.tasks llegaba como undefined
     // dentro de updateTicket() y el .map() lanzaba una excepción: editar la medida
     // de un TV rompía siempre, en cada intento, en producción.
-    updateTicket(updatedTicket);
-    triggerAlert('Medida de TV actualizada y módulos recalculados');
+    // Fix: a diferencia de otras funciones vecinas de este mismo archivo, esta no
+    // esperaba la confirmación del servidor antes de avisar "actualizada" — si la
+    // sincronización fallaba, el precio recalculado quedaba solo en este
+    // dispositivo sin que el resto del equipo lo viera.
+    const result = await updateTicket(updatedTicket);
     loadData();
+    if (!result || !result.success) {
+      triggerAlert('No se pudo confirmar el cambio en el servidor. Puede que la medida no se haya actualizado para el resto del equipo.', 'error');
+    } else {
+      triggerAlert('Medida de TV actualizada y módulos recalculados');
+    }
   };
 
   const openInGoogleMaps = (address, latitude, longitude) => {
@@ -7617,14 +7657,15 @@ function App() {
                   <span className="input-label" style={{ fontSize: '0.8rem', color: '#eab308', fontWeight: 'bold' }}>
                     Importe Exacto a Cobrar (€)
                   </span>
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    className="form-input" 
-                    placeholder="Ej: 150.00" 
-                    value={codAmount} 
-                    onChange={(e) => setCodAmount(e.target.value)} 
-                    disabled={isClosed} 
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="form-input"
+                    placeholder="Ej: 150.00"
+                    value={codAmount}
+                    onChange={(e) => setCodAmount(e.target.value)}
+                    disabled={isClosed}
                     style={{ borderColor: '#eab308', fontWeight: 'bold', fontSize: '1rem' }}
                   />
                 </div>
@@ -13498,6 +13539,22 @@ function App() {
       }
       const rate = parseFloat(editEmpRate) || 0;
       const newName = editEmpName.trim();
+      // Fix: la nómina identifica los turnos de un empleado comparando su NOMBRE
+      // (customDriver/helper/helper2), no un identificador único. Si dos empleados
+      // activos terminaban con el mismo nombre (aquí, al renombrar uno para que
+      // coincida con otro ya existente), ambos capturarían los mismos días
+      // trabajados en el cálculo, duplicando el pago. Se bloquea el renombrado si
+      // ya existe otro empleado ACTIVO con ese mismo nombre, igual que ya se hace
+      // al dar de alta un empleado nuevo.
+      const nameCollision = employeesList.some(e =>
+        e.id !== id &&
+        e.active !== false &&
+        e.name.trim().toLowerCase() === newName.toLowerCase()
+      );
+      if (nameCollision) {
+        triggerAlert('Ya existe otro empleado activo con ese nombre. La nómina no podría distinguirlos.', 'error');
+        return;
+      }
       const existingEmp = employeesList.find(e => e.id === id);
       const oldName = existingEmp ? existingEmp.name : null;
 
@@ -14828,6 +14885,18 @@ function App() {
           const totalDays = payrollList.reduce((sum, item) => sum + item.days, 0);
           const totalAmount = payrollList.reduce((sum, item) => sum + (item.days * item.rate), 0);
 
+          // Fix: aviso de defensa adicional para nombres duplicados ya existentes en los
+          // datos (creados antes de este arreglo, o coincidencia real de nombre y
+          // apellido). Como la nómina agrupa por nombre, un duplicado activo haría que
+          // ambos empleados capturen los mismos días trabajados.
+          const activeNameCounts = {};
+          employeesList.forEach(emp => {
+            if (emp.active === false) return;
+            const key = emp.name.trim().toLowerCase();
+            activeNameCounts[key] = (activeNameCounts[key] || 0) + 1;
+          });
+          const duplicateEmployeeNames = Object.keys(activeNameCounts).filter(k => activeNameCounts[k] > 1);
+
           const saveRate = (item, newRateStr) => {
             const newRate = parseFloat(newRateStr);
             if (isNaN(newRate) || newRate < 0) {
@@ -14852,7 +14921,22 @@ function App() {
 
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
+
+              {duplicateEmployeeNames.length > 0 && (
+                <div style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  color: 'var(--danger)',
+                  fontSize: '0.85rem'
+                }}>
+                  ⚠️ Hay más de un empleado ACTIVO con el mismo nombre ({duplicateEmployeeNames.join(', ')}).
+                  La nómina agrupa los turnos por nombre, así que ambos podrían estar capturando los mismos
+                  días trabajados. Revisa la lista de Empleados y renombra a uno de ellos para diferenciarlos.
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Días Trabajados (${monthNames[month]}):</span>
@@ -16320,6 +16404,8 @@ function App() {
     let totalPMs = 0;
     let totalPMsBasic = 0;
     let totalPMsComplex = 0;
+    let totalPMsBasicEarnings = 0;
+    let totalPMsComplexEarnings = 0;
     let totalCustomEarnings = 0;
     let totalCuelgues = 0;
     let totalCuelguesEarnings = 0;
@@ -16332,8 +16418,20 @@ function App() {
         const tid = task.tariffId || '';
         if (!isDormityTicket && tid.startsWith('PM_')) {
           totalPMs += task.quantity;
-          if (tid.startsWith('PM_COMP_')) totalPMsComplex += task.quantity;
-          else totalPMsBasic += task.quantity;
+          // Fix: el desglose del Dashboard multiplicaba estas cantidades por un
+          // precio fijo escrito en el código (11,43€/19,05€), que solo coincidía
+          // con la tarifa real por casualidad. Se suma ahora el precio real
+          // guardado en cada ticket (subtotal), igual que ya se hace para
+          // "Total Mes" y "Cuelgues" — así queda siempre consistente aunque se
+          // cambie el precio del módulo o de las tarifas de PM.
+          const pmEarnings = task.subtotal !== undefined ? task.subtotal : (task.unitPrice || task.price || 0) * task.quantity;
+          if (tid.startsWith('PM_COMP_')) {
+            totalPMsComplex += task.quantity;
+            totalPMsComplexEarnings += pmEarnings;
+          } else {
+            totalPMsBasic += task.quantity;
+            totalPMsBasicEarnings += pmEarnings;
+          }
         }
         if (tid.startsWith('CUSTOM_')) {
           totalCustomEarnings += (task.unitPrice || task.price || 0) * task.quantity;
@@ -17117,11 +17215,18 @@ function App() {
                                 <input 
                                   type="checkbox" 
                                   checked={!!u.canSearch} 
-                                  onChange={() => {
-                                    toggleUserSearchPermission(u.id);
-                                    triggerAlert(`Permiso de buscador modificado para ${u.label}`);
+                                  onChange={async () => {
+                                    // Fix: esperar la confirmación real del servidor antes de avisar
+                                    // "modificado" — evita que el admin crea que ya se guardó cuando
+                                    // en realidad el cambio se quedó solo en este dispositivo.
+                                    const result = await toggleUserSearchPermission(u.id);
                                     loadData();
-                                  }} 
+                                    if (!result || !result.success) {
+                                      triggerAlert('No se pudo confirmar el cambio en el servidor.', 'error');
+                                    } else {
+                                      triggerAlert(`Permiso de buscador modificado para ${u.label}`);
+                                    }
+                                  }}
                                 />
                                 Buscador General
                               </label>
@@ -17678,7 +17783,7 @@ function App() {
                 <p>Puestas en Marcha</p>
                 <div className="stat-val" style={{ lineHeight: 1 }}>{totalPMs}</div>
                 <span style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '4px' }}>
-                  {totalPMsBasic} Básicas ({ (totalPMsBasic * 11.43).toFixed(2) } €) / {totalPMsComplex} Complejas ({ (totalPMsComplex * 19.05).toFixed(2) } €)
+                  {totalPMsBasic} Básicas ({ totalPMsBasicEarnings.toFixed(2) } €) / {totalPMsComplex} Complejas ({ totalPMsComplexEarnings.toFixed(2) } €)
                 </span>
               </div>
               <div className="stat-card info" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
