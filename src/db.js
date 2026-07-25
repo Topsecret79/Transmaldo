@@ -311,7 +311,33 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     }
 
     // Pull Users
-    const { data: users, error: errUsers } = await supabase.from('delivery_users').select('*');
+    // Fix: mismo motivo que delivery_tickets/delivery_settings/delivery_shifts —
+    // select('*') sin paginar se corta en silencio a las 1000 filas que PostgREST
+    // devuelve por defecto. Hoy delivery_users tiene muchas menos filas que ese
+    // límite, pero crece con cada empleado/chofer nuevo, así que se pagina igual
+    // por consistencia y para blindarla antes de que se acerque al límite.
+    let users = [];
+    let errUsers = null;
+    {
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data: page, error: pageErr } = await supabase
+          .from('delivery_users')
+          .select('*')
+          .order('id', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (pageErr) {
+          console.error("Error paginando delivery_users:", pageErr);
+          errUsers = pageErr;
+          break;
+        }
+        if (!page || page.length === 0) break;
+        users = users.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+    }
     if (users && !errUsers) {
       let localCurrent = [];
       try {
@@ -369,7 +395,32 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     }
 
     // Pull Tariffs
-    const { data: tariffs, error: errTariffs } = await supabase.from('delivery_tariffs').select('*');
+    // Fix: mismo motivo que delivery_users justo arriba — delivery_tariffs crece
+    // con cada administrador nuevo (cada uno recibe su propia copia del
+    // catálogo), así que conviene protegerla antes de que se acerque al límite
+    // de 1000 filas por petición.
+    let tariffs = [];
+    let errTariffs = null;
+    {
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data: page, error: pageErr } = await supabase
+          .from('delivery_tariffs')
+          .select('*')
+          .order('id', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (pageErr) {
+          console.error("Error paginando delivery_tariffs:", pageErr);
+          errTariffs = pageErr;
+          break;
+        }
+        if (!page || page.length === 0) break;
+        tariffs = tariffs.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+    }
     if (tariffs && !errTariffs) {
       const localTariffs = tariffs.map(t => ({
         id: t.id,
@@ -2960,6 +3011,17 @@ export async function saveRouteKms(furgoId, date, kms) {
 
 // Agregar nueva tarifa
 export async function addTariff(tariff) {
+  // Fix: esta capa de datos no validaba nada contra un valor negativo, vacío o
+  // no numérico — un valor así se propagaría directamente al cálculo de
+  // precios de cualquier ticket que use esta tarifa, restando del total sin
+  // ningún aviso de error. Se valida aquí también (además de en la pantalla),
+  // por si algún otro punto de la app llega a llamar a addTariff() sin pasar
+  // por esa validación.
+  const safeValue = Number(tariff?.value);
+  if (!Number.isFinite(safeValue) || safeValue < 0) {
+    return { success: false, error: new Error('El valor de la tarifa debe ser un número mayor o igual a cero') };
+  }
+
   const tariffs = getTariffs();
   // Fix: un id basado solo en Date.now() puede colisionar si dos administradores
   // en dispositivos distintos crean una tarifa personalizada en el mismo
@@ -2969,6 +3031,7 @@ export async function addTariff(tariff) {
   const id = 'CUSTOM_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
   const newTariff = {
     ...tariff,
+    value: safeValue,
     id
   };
   tariffs.push(newTariff);

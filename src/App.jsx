@@ -5287,7 +5287,10 @@ function App() {
 
   const handleUpdateTariffValue = async (id, newValue) => {
     try {
-      const valueNum = parseFloat(newValue) || 0;
+      // Fix: nada impedía editar una tarifa a un valor negativo, que se
+      // propagaría directamente al cálculo de precios de cualquier ticket que la
+      // use, restando del total sin ningún aviso.
+      const valueNum = Math.max(0, parseFloat(newValue) || 0);
       const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
       // Fix: se espera la confirmación real del guardado de la tarifa antes de
       // recalcular y resubir TODOS los tickets con el valor nuevo — antes, si el
@@ -5303,7 +5306,7 @@ function App() {
     } catch (error) {
       console.error("Error updating tariff value:", error);
       triggerAlert('Error al guardar, intentando localmente', 'warning');
-      const valueNum = parseFloat(newValue) || 0;
+      const valueNum = Math.max(0, parseFloat(newValue) || 0);
       const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
       setTariffs(updated);
     }
@@ -5318,7 +5321,8 @@ function App() {
             name: (updatedDetails.name || '').trim(),
             block: updatedDetails.block || 'Otros',
             type: updatedDetails.type || 'fixed',
-            value: parseFloat(updatedDetails.value) || 0
+            // Fix: nada impedía guardar una tarifa con valor negativo aquí.
+            value: Math.max(0, parseFloat(updatedDetails.value) || 0)
           };
         }
         return t;
@@ -5344,7 +5348,8 @@ function App() {
             name: (updatedDetails.name || '').trim(),
             block: updatedDetails.block || 'Otros',
             type: updatedDetails.type || 'fixed',
-            value: parseFloat(updatedDetails.value) || 0
+            // Fix: nada impedía guardar una tarifa con valor negativo aquí.
+            value: Math.max(0, parseFloat(updatedDetails.value) || 0)
           };
         }
         return t;
@@ -5361,6 +5366,13 @@ function App() {
       return;
     }
     const valNum = parseFloat(newTariffValue) || 0;
+    // Fix: nada impedía crear una tarifa con un valor negativo, que se propagaría
+    // directamente al cálculo de precios de cualquier ticket que la use, restando
+    // del total sin ningún aviso.
+    if (valNum < 0) {
+      triggerAlert('El precio de la tarifa no puede ser negativo', 'error');
+      return;
+    }
     try {
       const res = await addTariff({
         name: newTariffName.trim(),
@@ -5373,6 +5385,8 @@ function App() {
         setNewTariffName('');
         setNewTariffValue('');
         loadData();
+      } else {
+        triggerAlert(res.error?.message || 'No se pudo añadir la tarifa', 'error');
       }
     } catch (err) {
       console.error(err);
@@ -5403,14 +5417,19 @@ function App() {
   };
 
   const handleUpdateKmPrice = (newPrice) => {
-    const val = parseFloat(newPrice) || 0;
+    // Fix: solo lo puede tocar un administrador, pero nada impedía guardar un valor
+    // negativo, que corrompería en silencio los cálculos de coste de flota que
+    // dependen de este precio en otras pantallas.
+    const val = Math.max(0, parseFloat(newPrice) || 0);
     const targetId = (currentUser && currentUser.role === 'repartidor') ? (currentUser.createdBy || 'admin') : (currentUser?.id);
     saveKmPrice(val, targetId);
     setKmPrice(val);
   };
 
   const handleUpdateFuelPrice = (newPrice) => {
-    const val = parseFloat(newPrice) || 0;
+    // Fix: misma protección que el precio por kilómetro — sin esto, un valor
+    // negativo aquí corrompería los cálculos de coste de combustible de la flota.
+    const val = Math.max(0, parseFloat(newPrice) || 0);
     const targetId = (currentUser && currentUser.role === 'repartidor') ? (currentUser.createdBy || 'admin') : (currentUser?.id);
     saveFuelPrice(val, targetId);
     setFuelPrice(val);
@@ -9347,15 +9366,14 @@ function App() {
                       >
                         <Edit size={12} color="#fbbf24" />
                       </button>
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          if (window.confirm('¿Estás seguro de que deseas eliminar permanentemente esta parada?')) {
-                            handleDeleteTicket(t.id);
-                            loadData();
-                          }
-                        }} 
-                        className="btn btn-danger btn-small" 
+                      <button
+                        type="button"
+                        // Fix: handleDeleteTicket() ya pide su propia confirmación y ya llama a
+                        // loadData() al terminar — este wrapper duplicaba ambas cosas (el usuario
+                        // tenía que confirmar dos veces, y los datos se refrescaban dos veces
+                        // seguidas por error).
+                        onClick={() => handleDeleteTicket(t.id)}
+                        className="btn btn-danger btn-small"
                         style={{ margin: 0, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', height: '28px', width: '28px' }}
                         title="Eliminar parada"
                       >
@@ -10472,15 +10490,13 @@ function App() {
                                     >
                                       <Edit size={14} color="#fbbf24" />
                                     </button>
-                                    <button 
-                                      type="button" 
-                                      onClick={() => {
-                                        if (window.confirm('¿Estás seguro de que deseas eliminar permanentemente esta parada?')) {
-                                          handleDeleteTicket(t.id);
-                                          loadData();
-                                        }
-                                      }} 
-                                      className="btn btn-danger btn-small" 
+                                    <button
+                                      type="button"
+                                      // Fix: handleDeleteTicket() ya pide su propia confirmación y ya
+                                      // llama a loadData() al terminar — este wrapper duplicaba ambas
+                                      // cosas (confirmación doble, refresco doble).
+                                      onClick={() => handleDeleteTicket(t.id)}
+                                      className="btn btn-danger btn-small"
                                       style={{ margin: 0, padding: '4px 6px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'auto' }}
                                       title="Eliminar parada"
                                     >
@@ -19391,12 +19407,12 @@ function App() {
                   </div>
                   <div className="block-section" style={{ marginBottom: 0 }}>
                     <div className="block-title">Precio por Kilómetro (€/km)</div>
-                    <input type="number" step="0.01" className="form-input" value={kmPrice} onChange={(e) => handleUpdateKmPrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
+                    <input type="number" step="0.01" min="0" className="form-input" value={kmPrice} onChange={(e) => handleUpdateKmPrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '10px' }}>Actualmente, cada km recorrido equivale a {kmPrice.toFixed(2)} €.</p>
                   </div>
                   <div className="block-section" style={{ marginBottom: 0 }}>
                     <div className="block-title">Precio Combustible (Gasoil €/L)</div>
-                    <input type="number" step="0.001" className="form-input" value={fuelPrice} onChange={(e) => handleUpdateFuelPrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
+                    <input type="number" step="0.001" min="0" className="form-input" value={fuelPrice} onChange={(e) => handleUpdateFuelPrice(e.target.value)} style={{ fontWeight: '700', fontSize: '1.2rem', color: 'var(--primary)', textAlign: 'center' }} />
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '10px' }}>Para calcular el coste del combustible consumido: {fuelPrice.toFixed(3)} €/L.</p>
                   </div>
                 </div>
