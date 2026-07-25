@@ -282,8 +282,33 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     return;
   }
   try {
-    // Pull settings first so we can use them for user permissions fallback if needed
-    const { data: settings, error: errSettings } = await supabase.from('delivery_settings').select('*');
+    // Pull settings first so we can use them for user permissions fallback if needed.
+    // Fix: paginado por el mismo motivo que delivery_tickets (ver más abajo) — hoy
+    // delivery_settings tiene muchas menos filas que el límite de 1000 por petición,
+    // pero crece con cada turno/ruta y en algún momento lo cruzaría igual, así que se
+    // blinda de una vez con el mismo patrón.
+    let settings = [];
+    let errSettings = null;
+    {
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data: page, error: pageErr } = await supabase
+          .from('delivery_settings')
+          .select('*')
+          .order('key', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (pageErr) {
+          console.error("Error paginando delivery_settings:", pageErr);
+          errSettings = pageErr;
+          break;
+        }
+        if (!page || page.length === 0) break;
+        settings = settings.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+    }
 
     // Pull Users
     const { data: users, error: errUsers } = await supabase.from('delivery_users').select('*');
