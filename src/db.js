@@ -490,7 +490,31 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     }
 
     // Pull Shifts
-    const { data: shifts, error: errShifts } = await supabase.from('delivery_shifts').select('*');
+    // Fix: mismo problema que delivery_tickets/delivery_settings — select('*') sin
+    // paginar se corta en silencio a las 1000 filas. delivery_shifts crece con cada
+    // turno abierto/cerrado por cada furgoneta, así que se pagina igual por seguridad.
+    let shifts = [];
+    let errShifts = null;
+    {
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data: page, error: pageErr } = await supabase
+          .from('delivery_shifts')
+          .select('*')
+          .order('id', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (pageErr) {
+          console.error("Error paginando delivery_shifts:", pageErr);
+          errShifts = pageErr;
+          break;
+        }
+        if (!page || page.length === 0) break;
+        shifts = shifts.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+    }
 
     if (shifts && !errShifts && settings && !errSettings) {
       // Load existing local shifts so we can preserve any pending/unsaved metadata
@@ -541,9 +565,19 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         };
       });
 
+      // Fix: los turnos borrados (deletePlannedShift/resetMonthlyShifts) no dejaban
+      // ningún rastro local, así que si el borrado remoto fallaba o llegaba tarde,
+      // el turno "borrado" volvía a aparecer solo en el siguiente sync. Se aplica
+      // ahora el mismo tombstone que ya usan los tickets.
+      let deletedShiftIds = [];
+      try {
+        deletedShiftIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
+      } catch (e) {}
+      const filteredCloudShifts = cloudShifts.filter(s => s && !deletedShiftIds.includes(s.id));
+
       // Merge: start from cloud, but if local version has richer metadata (non-empty driver/plate)
       // and the cloud version is empty, prefer the local data to avoid losing unsaved state
-      const mergedShifts = [...cloudShifts];
+      const mergedShifts = [...filteredCloudShifts];
 
       // Fix: antes esta protección solo miraba si customDriver/matricula estaban vacíos
       // en la nube. Cualquier otro cambio local pendiente (status, kms, fecha movida,
@@ -1365,8 +1399,17 @@ export function getTariffs() {
     }
   }
 
-  const rawTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
-  
+  // Fix: un valor corrupto en localStorage aquí tumbaba toda la pantalla de
+  // tarifas ECI (y con ella la creación/edición de tickets, que depende de
+  // getTariffs()). Se captura y se cae a [] en vez de propagar la excepción.
+  let rawTariffs;
+  try {
+    rawTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+  } catch (e) {
+    console.error('Error parsing delivery_tariffs:', e);
+    rawTariffs = [];
+  }
+
   let targetAdminId = 'admin';
   let isSuperAdmin = false;
   try {
@@ -1476,11 +1519,20 @@ export async function saveTariffs(tariffs) {
           created_by: t.createdBy || null
         }));
         const { error } = await supabase.from('delivery_tariffs').upsert(dbFormatted);
-        if (error) console.error("Supabase upsert failed:", error);
+        if (error) {
+          console.error("Supabase upsert failed:", error);
+          return { success: false, error };
+        }
       } catch (e) {
         console.error("Error saving tariffs to Supabase:", e);
+        return { success: false, error: e };
       }
     }
+    // Fix: antes esta función nunca informaba si el guardado en la nube funcionó,
+    // así que quien la llamaba (p.ej. al cambiar un precio de tarifa) recalculaba y
+    // resubía TODOS los tickets con el nuevo valor sin saber si la tarifa en sí
+    // había llegado a guardarse — devuelve ahora {success, error}.
+    return { success: true };
   } finally {
     isSaving = Math.max(0, isSaving - 1);
   }
@@ -1488,11 +1540,23 @@ export async function saveTariffs(tariffs) {
 
 export function getTickets() {
   initDB();
-  return JSON.parse(localStorage.getItem('delivery_tickets'));
+  // Fix: un valor corrupto en localStorage (o ausente, donde JSON.parse(null)
+  // devuelve null en vez de un array) rompía todo lo que llama a getTickets()
+  // esperando un array (.map/.filter/.forEach) y podía tumbar pantallas enteras.
+  try {
+    return JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+  } catch (e) {
+    console.error('Error parsing delivery_tickets:', e);
+    return [];
+  }
 }
 
 export async function saveTickets(tickets) {
   localStorage.setItem('delivery_tickets', JSON.stringify(tickets));
+  // Fix: antes esta función nunca informaba a quien la llamaba si el guardado en la
+  // nube realmente funcionó o falló (siempre "terminaba bien" aunque solo hubiera
+  // guardado en local) — devuelve ahora {success, error} para que el que llama pueda
+  // avisar de verdad al usuario en vez de asumir éxito.
   if (supabase) {
     isSaving++; // contador, no booleano (ver comentario junto a la declaración de isSaving)
     try {
@@ -1508,7 +1572,7 @@ export async function saveTickets(tickets) {
       const pendingTickets = tickets.filter(t => t && t._syncStatus === 'pending');
 
       if (pendingTickets.length === 0) {
-        return; // nada que subir; el finally de abajo igualmente libera isSaving
+        return { success: true }; // nada que subir; el finally de abajo igualmente libera isSaving
       }
 
       const formatted = pendingTickets.map(t => ({
@@ -1538,6 +1602,7 @@ export async function saveTickets(tickets) {
       const { error } = await supabase.from('delivery_tickets').upsert(formatted);
       if (error) {
         console.error("Supabase upsert failed in saveTickets:", error);
+        return { success: false, error };
       } else {
         // Clear _syncStatus flag on successful upsert
         try {
@@ -1553,20 +1618,33 @@ export async function saveTickets(tickets) {
         } catch (e) {
           console.error("Error clearing local sync status:", e);
         }
+        return { success: true };
       }
     } catch (e) {
       console.error("Error saving tickets to Supabase:", e);
+      return { success: false, error: e };
     } finally {
       setTimeout(() => {
         isSaving = Math.max(0, isSaving - 1);
       }, 1500);
     }
   }
+  return { success: true };
 }
 
 export function getDormityTariffs() {
   initDB();
-  const rawTariffs = JSON.parse(localStorage.getItem('delivery_dormity_tariffs')) || DEFAULT_DORMITY_TARIFFS;
+  // Fix: un valor corrupto en localStorage aquí tumbaba toda la pantalla de
+  // tarifas Dormity (JSON.parse lanza antes de que el `|| DEFAULT_...` pueda
+  // aplicarse). Se captura y se usa el valor por defecto, igual que ya hacía
+  // el caso de "no hay nada guardado".
+  let rawTariffs;
+  try {
+    rawTariffs = JSON.parse(localStorage.getItem('delivery_dormity_tariffs')) || DEFAULT_DORMITY_TARIFFS;
+  } catch (e) {
+    console.error('Error parsing delivery_dormity_tariffs:', e);
+    rawTariffs = DEFAULT_DORMITY_TARIFFS;
+  }
   
   const sanitizedRaw = (rawTariffs || []).filter(t => t && t.id && !t.id.includes('GRAN_LEJANIA') && t.id !== 'DORMITY_TOLEDO_EXTRA' && !t.id.startsWith('DORMITY_TOLEDO_EXTRA')).map(t => {
     if (t.id === 'DORMITY_TOLEDO' || t.id.startsWith('DORMITY_TOLEDO_')) {
@@ -1762,16 +1840,23 @@ export function calculateTaskPrice(tariffId, tariffs = null, modulePrice = null)
 }
 
 // Agregar un nuevo ticket (con lista flexible de tareas y cantidades)
-export function addTicket(ticketData) {
+// Fix: antes esta función guardaba en Supabase "en el aire" (sin await, sin
+// devolver si falló), así que la pantalla mostraba "Guardado con éxito" y borraba
+// el formulario aunque la subida a la nube hubiera fallado. Ahora es async y
+// devuelve {success, error, ticket} para que quien llame pueda confirmar de
+// verdad antes de avisar al usuario.
+export async function addTicket(ticketData) {
   const tickets = getTickets();
   const tariffs = getTariffs();
   const dormityTariffs = getDormityTariffs();
   const modulePrice = getModulePrice();
 
   let totalCalculado = 0;
+  let anyPriceNeedsReview = false;
   const detailedTasks = ticketData.tasks.map(task => {
     let basePrice = 0;
     let name = task.name;
+    let priceNeedsReview = false;
 
     if (task.tariffId && task.tariffId.startsWith('DORMITY_')) {
       const dormityT = dormityTariffs.find(t => t.id === task.tariffId || t.id.startsWith(task.tariffId + '_'));
@@ -1783,9 +1868,23 @@ export function addTicket(ticketData) {
     } else {
       const catalogTariff = tariffs.find(t => t.id === task.tariffId);
       const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_') && !catalogTariff;
-      basePrice = isCustom 
-        ? (task.price || task.unitPrice || 0) 
+      basePrice = isCustom
+        ? (task.price || task.unitPrice || 0)
         : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+      // Fix: si el tariffId no existe en el catálogo (borrado, editado o
+      // corrupto), calculateTaskPrice() devuelve 0 en silencio y el ticket se
+      // guardaría cobrando 0€ por esa tarea sin avisar a nadie. Si el propio
+      // formulario ya traía un precio calculado para esa tarea, se conserva
+      // ese precio en vez de ponerlo a 0€, y se marca la tarea/el ticket para
+      // revisión manual del admin.
+      if (basePrice === 0 && !isCustom && !catalogTariff && task.tariffId) {
+        const fallbackPrice = task.unitPrice || task.price || 0;
+        if (fallbackPrice > 0) {
+          basePrice = fallbackPrice;
+          priceNeedsReview = true;
+          anyPriceNeedsReview = true;
+        }
+      }
       const tariff = tariffs.find(t => t.id === task.tariffId);
       name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
       if (task.brand && task.inches) {
@@ -1811,7 +1910,8 @@ export function addTicket(ticketData) {
       action: task.action || null,
       noCharge: !!task.noCharge,
       distanceKm: task.distanceKm || null,
-      extraOrders: task.extraOrders || null
+      extraOrders: task.extraOrders || null,
+      ...(priceNeedsReview ? { priceNeedsReview: true } : {})
     };
   });
 
@@ -1846,25 +1946,29 @@ export function addTicket(ticketData) {
     lng: ticketData.lng || null,
     routeOrder: ticketData.routeOrder || null,
     createdBy: ticketData.createdBy || 'admin',
-    _syncStatus: 'pending'
+    _syncStatus: 'pending',
+    ...(anyPriceNeedsReview ? { priceNeedsReview: true } : {})
   };
 
   tickets.push(newTicket);
-  saveTickets(tickets);
-  return newTicket;
+  const result = await saveTickets(tickets);
+  return { ...result, ticket: newTicket };
 }
 
 // Actualizar un ticket existente
-export function updateTicket(updatedTicket) {
+// Fix: mismo motivo que addTicket — ahora es async y devuelve {success, error, ticket}.
+export async function updateTicket(updatedTicket) {
   const tickets = getTickets();
   const tariffs = getTariffs();
   const dormityTariffs = getDormityTariffs();
   const modulePrice = getModulePrice();
 
   let totalCalculado = 0;
+  let anyPriceNeedsReview = false;
   const detailedTasks = updatedTicket.tasks.map(task => {
     let basePrice = 0;
     let name = task.name;
+    let priceNeedsReview = false;
 
     if (task.tariffId && task.tariffId.startsWith('DORMITY_')) {
       const dormityT = dormityTariffs.find(t => t.id === task.tariffId || t.id.startsWith(task.tariffId + '_'));
@@ -1876,9 +1980,24 @@ export function updateTicket(updatedTicket) {
     } else {
       const catalogTariff = tariffs.find(t => t.id === task.tariffId);
       const isCustom = task.tariffId && task.tariffId.startsWith('CUSTOM_') && !catalogTariff;
-      basePrice = isCustom 
-        ? (task.price || task.unitPrice || 0) 
+      basePrice = isCustom
+        ? (task.price || task.unitPrice || 0)
         : calculateTaskPrice(task.tariffId, tariffs, modulePrice);
+      // Fix: si el tariffId ya no existe en el catálogo (borrado/editado desde
+      // que se creó el ticket), calculateTaskPrice() devuelve 0 en silencio y
+      // se reescribiría a 0€ una tarea que YA se había cobrado correctamente
+      // antes. Se conserva el precio anterior del propio ticket (unitPrice o
+      // subtotal/cantidad) en vez de ponerlo a 0€, y se marca para revisión.
+      if (basePrice === 0 && !isCustom && !catalogTariff && task.tariffId) {
+        const previousUnitPrice = (task.unitPrice !== undefined && task.unitPrice !== null)
+          ? task.unitPrice
+          : (task.subtotal && task.quantity ? task.subtotal / task.quantity : 0);
+        if (previousUnitPrice > 0) {
+          basePrice = previousUnitPrice;
+          priceNeedsReview = true;
+          anyPriceNeedsReview = true;
+        }
+      }
       const tariff = tariffs.find(t => t.id === task.tariffId);
       name = tariff ? tariff.name : (task.name || 'Servicio Adicional');
       if (task.brand && task.inches) {
@@ -1904,7 +2023,8 @@ export function updateTicket(updatedTicket) {
       action: task.action || null,
       noCharge: !!task.noCharge,
       distanceKm: task.distanceKm || null,
-      extraOrders: task.extraOrders || null
+      extraOrders: task.extraOrders || null,
+      ...(priceNeedsReview ? { priceNeedsReview: true } : {})
     };
   });
 
@@ -1938,12 +2058,13 @@ export function updateTicket(updatedTicket) {
       completedLng: updatedTicket.completedLng !== undefined ? updatedTicket.completedLng : tickets[index].completedLng,
       routeOrder: updatedTicket.routeOrder !== undefined ? updatedTicket.routeOrder : tickets[index].routeOrder,
       createdBy: updatedTicket.createdBy || tickets[index].createdBy || 'admin',
-      _syncStatus: 'pending'
+      _syncStatus: 'pending',
+      priceNeedsReview: anyPriceNeedsReview
     };
-    saveTickets(tickets);
-    return tickets[index];
+    const result = await saveTickets(tickets);
+    return { ...result, ticket: tickets[index] };
   }
-  return null;
+  return { success: false, error: new Error('Ticket no encontrado'), ticket: null };
 }
 
 // Actualizar el estado de un ticket
@@ -2023,7 +2144,11 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
 }
 
 // Eliminar un ticket (para el administrador)
-export function deleteTicket(ticketId) {
+// Fix: antes el borrado en la nube era "fire and forget" (sin await, sin avisar
+// si falló) — la pantalla ya mostraba "Eliminado" aunque el ticket siguiera vivo
+// en Supabase. Ahora es async y devuelve {success, error} para que quien llama
+// pueda confirmar antes de dar el borrado por hecho.
+export async function deleteTicket(ticketId) {
   const tickets = getTickets();
   const filtered = tickets.filter(t => t.id !== ticketId);
   saveTickets(filtered);
@@ -2036,24 +2161,54 @@ export function deleteTicket(ticketId) {
   } catch (e) {}
 
   if (supabase) {
-    supabase.from('delivery_tickets').delete().eq('id', ticketId).then(({ error }) => {
-      if (error) {
-        console.error("Error deleting ticket from Supabase:", error);
-      } else {
-        // Remove tombstone ID once confirmed deleted on the cloud
-        try {
-          const currentDeleted = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-          const updatedDeleted = currentDeleted.filter(id => id !== ticketId);
-          localStorage.setItem('delivery_deleted_tickets', JSON.stringify(updatedDeleted));
-        } catch (e) {}
-      }
-    });
+    const { error } = await supabase.from('delivery_tickets').delete().eq('id', ticketId);
+    if (error) {
+      console.error("Error deleting ticket from Supabase:", error);
+      return { success: false, error };
+    } else {
+      // Remove tombstone ID once confirmed deleted on the cloud
+      try {
+        const currentDeleted = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+        const updatedDeleted = currentDeleted.filter(id => id !== ticketId);
+        localStorage.setItem('delivery_deleted_tickets', JSON.stringify(updatedDeleted));
+      } catch (e) {}
+      return { success: true };
+    }
   }
+  return { success: true };
 }
 
 // Iniciar mes de cero
-export function resetMonthlyTickets() {
+// Fix: antes esto solo vaciaba la lista local (saveTickets([]) no borra nada en
+// la nube porque no hay ningún ticket marcado como "pendiente de subir" en un
+// array vacío) — los repartos "reseteados" volvían a aparecer solos en la
+// siguiente sincronización. Ahora se borran de verdad en Supabase y se registran
+// como tombstone, igual que el borrado individual de un ticket.
+export async function resetMonthlyTickets() {
+  const tickets = getTickets();
+  const idsToDelete = tickets.map(t => t.id).filter(Boolean);
+
   saveTickets([]);
+
+  if (idsToDelete.length === 0) return { success: true };
+
+  try {
+    const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+    localStorage.setItem('delivery_deleted_tickets', JSON.stringify([...new Set([...deletedIds, ...idsToDelete])]));
+  } catch (e) {}
+
+  if (supabase) {
+    const { error } = await supabase.from('delivery_tickets').delete().in('id', idsToDelete);
+    if (error) {
+      console.error("Error borrando tickets en el reset mensual:", error);
+      return { success: false, error };
+    }
+    try {
+      const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+      localStorage.setItem('delivery_deleted_tickets', JSON.stringify(deletedIds.filter(id => !idsToDelete.includes(id))));
+    } catch (e) {}
+  }
+  return { success: true };
 }
 
 // Obtener rango de TV según las pulgadas
@@ -2142,7 +2297,15 @@ export function encodeObservationsHelper(helper, matricula, customDriver, obsTex
 // Obtener turnos
 export function getShifts() {
   initDB();
-  return JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+  // Fix: un valor corrupto en localStorage aquí tumbaba cualquier pantalla que
+  // dependiera de los turnos (planificación, nómina, dashboard). Se captura y
+  // se cae a [] en vez de dejar que la excepción se propague sin control.
+  try {
+    return JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+  } catch (e) {
+    console.error('Error parsing delivery_shifts:', e);
+    return [];
+  }
 }
 
 // Guardar turnos
@@ -2163,6 +2326,7 @@ export async function saveShifts(shifts) {
       const { error } = await supabase.from('delivery_shifts').upsert(basicShifts);
       if (error) {
         console.error("Error saving basic shifts to Supabase:", error);
+        return { success: false, error };
       }
 
       // Save metadata for all shifts in settings in a single batch upsert
@@ -2210,10 +2374,12 @@ export async function saveShifts(shifts) {
       }
     } catch (e) {
       console.error("Error saving shifts or meta to Supabase:", e);
+      return { success: false, error: e };
     } finally {
       isSaving = Math.max(0, isSaving - 1);
     }
   }
+  return { success: true };
 }
 
 // Comprobar si el turno para una furgoneta en una fecha está cerrado
@@ -2322,36 +2488,88 @@ export function savePlannedShift(furgoId, date, helper, matricula, customDriver,
 }
 
 // Eliminar un turno planificado
-export function deletePlannedShift(furgoId, date) {
+// Fix: no dejaba tombstone (a diferencia de deleteTicket), así que un turno
+// borrado podía "revivir" solo con la siguiente sincronización si el borrado
+// remoto fallaba o llegaba tarde. Ahora registra el borrado igual que los tickets
+// y devuelve {success, error} en vez de ser fire-and-forget.
+export async function deletePlannedShift(furgoId, date) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const filtered = shifts.filter(s => s.id !== shiftId);
   saveShifts(filtered);
+
+  try {
+    const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
+    deletedIds.push(shiftId);
+    localStorage.setItem('delivery_deleted_shifts', JSON.stringify(deletedIds));
+  } catch (e) {}
+
   if (supabase) {
-    supabase.from('delivery_shifts').delete().eq('id', shiftId).then(({ error }) => {
-      if (error) console.error("Error deleting planned shift from Supabase:", error);
+    const { error } = await supabase.from('delivery_shifts').delete().eq('id', shiftId);
+    if (error) {
+      console.error("Error deleting planned shift from Supabase:", error);
+      return { success: false, error };
+    }
+    supabase.from('delivery_settings').delete().eq('key', `shift_meta_${shiftId}`).then(({ error: metaErr }) => {
+      if (metaErr) console.error("Error deleting shift meta from Supabase:", metaErr);
     });
-    supabase.from('delivery_settings').delete().eq('key', `shift_meta_${shiftId}`).then(({ error }) => {
-      if (error) console.error("Error deleting shift meta from Supabase:", error);
-    });
+    try {
+      const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
+      localStorage.setItem('delivery_deleted_shifts', JSON.stringify(deletedIds.filter(id => id !== shiftId)));
+    } catch (e) {}
   }
+  return { success: true };
 }
 
 // Reabrir un turno
-export function reopenShift(furgoId, date) {
+// Fix: antes no se esperaba la confirmación real de la nube — quien llamaba
+// refrescaba la pantalla a un tiempo fijo (100ms) asumiendo que ya había terminado,
+// lo que con una red lenta podía seguir mostrando "Cerrado" pese al aviso de éxito.
+export async function reopenShift(furgoId, date) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const index = shifts.findIndex(s => s.id === shiftId);
   if (index !== -1) {
     shifts[index].status = 'open';
     shifts[index].closedAt = null;
-    saveShifts(shifts);
+    const result = await saveShifts(shifts);
+    return result || { success: true };
   }
+  return { success: false, error: new Error('Turno no encontrado') };
 }
 
 // Resetear turnos mensuales
-export function resetMonthlyShifts() {
+// Fix: igual que resetMonthlyTickets, saveShifts([]) por sí solo no borra nada
+// en la nube (un array vacío no tiene turnos "pendientes de subir" que marcar
+// para borrado), así que los turnos "reseteados" volvían a aparecer en la
+// siguiente sincronización. Ahora se borran de verdad en Supabase y se
+// registran como tombstone en delivery_deleted_shifts, igual que
+// deletePlannedShift.
+export async function resetMonthlyShifts() {
+  const shifts = getShifts();
+  const idsToDelete = shifts.map(s => s.id).filter(Boolean);
+
   saveShifts([]);
+
+  if (idsToDelete.length === 0) return { success: true };
+
+  try {
+    const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
+    localStorage.setItem('delivery_deleted_shifts', JSON.stringify([...new Set([...deletedIds, ...idsToDelete])]));
+  } catch (e) {}
+
+  if (supabase) {
+    const { error } = await supabase.from('delivery_shifts').delete().in('id', idsToDelete);
+    if (error) {
+      console.error("Error borrando turnos en el reset mensual:", error);
+      return { success: false, error };
+    }
+    try {
+      const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
+      localStorage.setItem('delivery_deleted_shifts', JSON.stringify(deletedIds.filter(id => !idsToDelete.includes(id))));
+    } catch (e) {}
+  }
+  return { success: true };
 }
 
 // Crear nuevo usuario dinámicamente

@@ -741,16 +741,16 @@ function App() {
 
     // 2. Si no hay marcas en las notas, deducir por las tareas asignadas
     if (!isDormity && t.tasks && t.tasks.length > 0) {
-      const hasDelivery = t.tasks.some(task => 
-        task.tariffId.startsWith('TV_ENT_') || 
-        task.tariffId.startsWith('TV_COMB_') || 
-        task.tariffId.startsWith('ENTREGA_')
+      const hasDelivery = t.tasks.some(task =>
+        (task.tariffId || '').startsWith('TV_ENT_') ||
+        (task.tariffId || '').startsWith('TV_COMB_') ||
+        (task.tariffId || '').startsWith('ENTREGA_')
       );
-      const hasCuelgue = t.tasks.some(task => 
-        task.tariffId.startsWith('CUELGUE_')
+      const hasCuelgue = t.tasks.some(task =>
+        (task.tariffId || '').startsWith('CUELGUE_')
       );
-      const hasPM = t.tasks.some(task => 
-        task.tariffId.startsWith('PM_')
+      const hasPM = t.tasks.some(task =>
+        (task.tariffId || '').startsWith('PM_')
       );
 
       if (!hasDelivery) {
@@ -1182,6 +1182,9 @@ function App() {
   // Estado que controla si estamos editando
   const [editingTicketId, setEditingTicketId] = useState(null);
   const [editingFurgoId, setEditingFurgoId] = useState('');
+  // Fix: evita duplicados por doble clic/doble toque al guardar un ticket con
+  // mala conexión — bloquea el botón de guardar mientras la operación está en curso.
+  const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
 
   // Estados del Formulario
   const [customerName, setCustomerName] = useState(() => getDraftVal('customerName', ''));
@@ -2112,7 +2115,11 @@ function App() {
     const fallbackPollInterval = setInterval(() => {
       const supabaseClient = getSupabaseClient();
       if (supabaseClient) {
-        supabaseClient.from('delivery_settings').select('*')
+        // Fix: antes traía la tabla delivery_settings completa cada 15s sin paginar
+        // (mismo riesgo de corte silencioso a las 1000 filas que ya afectó a
+        // delivery_tickets/delivery_settings/delivery_shifts). Se filtra en el servidor
+        // solo por las claves de ubicación (loc_*), que además es mucho más liviano.
+        supabaseClient.from('delivery_settings').select('*').like('key', 'loc_%')
           .then(({ data, error }) => {
             if (data && !error) {
               const locations = {};
@@ -4164,50 +4171,66 @@ function App() {
       }
     }
 
-    if (editingTicketId) {
-      updateTicket(ticketData);
-      triggerAlert('Registro modificado con éxito');
-      cancelEditing();
-      loadData();
-    } else {
-      addTicket(ticketData);
-      triggerAlert('Registro guardado con éxito');
-      // Resetear
-      localStorage.removeItem('delivery_form_draft');
-      setCustomerName('');
-      setPhone('');
-      setAddress('');
-      setPostcode('');
-      setAddressVerification({ status: 'idle', message: '' });
-      setLastVerifiedAddress('');
-      setFormTvs([]);
-      setOtherQuantities({});
-      setOtherActions({});
-      setCustomExtras([]);
-      setCustomExtraName('');
-      setCustomExtraPrice('');
-      setUrgenteType('none');
-      setServiceType('entrega');
-      setNotes('');
-      setTimeSlot('any');
-      setEstimatedDuration(10);
-      setIsDurationManuallyEdited(false);
-      setCodAmount('');
-      setShowHelperRoute(false);
-      setShowCod(false);
-      setOriginalRouteLabel('');
-      if (activeRouteContext) {
-        setTicketDate(activeRouteContext.date);
-        setTicketRoute(activeRouteContext.furgoId);
-        setRouteName(activeRouteContext.name);
+    // Fix: se bloquea el botón desde aquí (protección contra doble clic/doble
+    // toque) y se espera la confirmación real del guardado antes de avisar éxito
+    // y limpiar el formulario — antes se asumía éxito sin comprobar la respuesta.
+    setIsSubmittingTicket(true);
+    try {
+      if (editingTicketId) {
+        const result = await updateTicket(ticketData);
+        if (!result || !result.success) {
+          triggerAlert('No se pudo guardar el cambio (sin conexión o error del servidor). Vuelve a intentarlo.', 'error');
+          return;
+        }
+        triggerAlert('Registro modificado con éxito');
+        cancelEditing();
+        loadData();
       } else {
-        setTicketDate(new Date().toISOString().split('T')[0]);
-        setTicketRoute('');
-        setRouteName('');
+        const result = await addTicket(ticketData);
+        if (!result || !result.success) {
+          triggerAlert('No se pudo guardar el reparto (sin conexión o error del servidor). Vuelve a intentarlo.', 'error');
+          return;
+        }
+        triggerAlert('Registro guardado con éxito');
+        // Resetear
+        localStorage.removeItem('delivery_form_draft');
+        setCustomerName('');
+        setPhone('');
+        setAddress('');
+        setPostcode('');
+        setAddressVerification({ status: 'idle', message: '' });
+        setLastVerifiedAddress('');
+        setFormTvs([]);
+        setOtherQuantities({});
+        setOtherActions({});
+        setCustomExtras([]);
+        setCustomExtraName('');
+        setCustomExtraPrice('');
+        setUrgenteType('none');
+        setServiceType('entrega');
+        setNotes('');
+        setTimeSlot('any');
+        setEstimatedDuration(10);
+        setIsDurationManuallyEdited(false);
+        setCodAmount('');
+        setShowHelperRoute(false);
+        setShowCod(false);
+        setOriginalRouteLabel('');
+        if (activeRouteContext) {
+          setTicketDate(activeRouteContext.date);
+          setTicketRoute(activeRouteContext.furgoId);
+          setRouteName(activeRouteContext.name);
+        } else {
+          setTicketDate(new Date().toISOString().split('T')[0]);
+          setTicketRoute('');
+          setRouteName('');
+        }
+        setSpellingSuggestions([]);
+        setFormStep(1);
+        loadData();
       }
-      setSpellingSuggestions([]);
-      setFormStep(1);
-      loadData();
+    } finally {
+      setIsSubmittingTicket(false);
     }
   };
 
@@ -5119,7 +5142,7 @@ function App() {
     let localUrgente = 'none';
 
     // Reconstruir otros artículos no-TV y sus descripciones de paquetería
-    ticket.tasks.forEach(t => {
+    (ticket.tasks || []).forEach(t => {
       if (t.tariffId === 'URGENTE_100') {
         localUrgente = '100';
         return;
@@ -5234,7 +5257,15 @@ function App() {
     try {
       const valueNum = parseFloat(newValue) || 0;
       const updated = tariffs.map(t => (t.id === id ? { ...t, value: valueNum } : t));
-      saveTariffs(updated);
+      // Fix: se espera la confirmación real del guardado de la tarifa antes de
+      // recalcular y resubir TODOS los tickets con el valor nuevo — antes, si el
+      // guardado de la tarifa fallaba en el servidor, igual se propagaba el precio
+      // "fantasma" a los totales de los tickets.
+      const result = await saveTariffs(updated);
+      if (!result || !result.success) {
+        triggerAlert('No se pudo guardar la tarifa en el servidor. No se recalcularon los tickets.', 'error');
+        return;
+      }
       setTariffs(updated);
       recalculateAllTickets(updated, modulePrice);
     } catch (error) {
@@ -5260,7 +5291,13 @@ function App() {
         }
         return t;
       });
-      saveTariffs(updated);
+      // Fix: mismo motivo que handleUpdateTariffValue — esperar confirmación real
+      // antes de recalcular y resubir todos los tickets.
+      const result = await saveTariffs(updated);
+      if (!result || !result.success) {
+        triggerAlert('No se pudo guardar la tarifa en el servidor. No se recalcularon los tickets.', 'error');
+        return;
+      }
       setTariffs(updated);
       recalculateAllTickets(updated, modulePrice);
       triggerAlert('Tarifa actualizada correctamente');
@@ -5354,7 +5391,7 @@ function App() {
       let totalCalculado = 0;
       let hasChanged = false;
       
-      const tasks = ticket.tasks.map(task => {
+      const tasks = (ticket.tasks || []).map(task => {
         if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) return task;
         const basePrice = calculateTaskPrice(task.tariffId, activeTariffs, activeModulePrice);
         const price = task.noCharge ? 0 : basePrice;
@@ -5439,9 +5476,9 @@ function App() {
     dayTickets.forEach(t => {
       totalCODAmount += t.codAmount || 0;
       const isDormityTicket = t.provider === 'dormity';
-      t.tasks.forEach(task => {
+      (t.tasks || []).forEach(task => {
         const tid = task.tariffId || '';
-        
+
         // Handle custom tasks
         if (tid.startsWith('CUSTOM_')) {
           totalOtros += task.quantity;
@@ -5738,9 +5775,15 @@ function App() {
     }
   };
 
-  const handleReopenShift = (furgoId, date) => {
+  const handleReopenShift = async (furgoId, date) => {
     if (window.confirm(`¿Estás seguro de que deseas reabrir el turno del día ${date} para esta furgoneta?`)) {
-      reopenShift(furgoId, date);
+      // Fix: se espera la confirmación real de la nube antes de refrescar y avisar
+      // éxito, en vez de un setTimeout fijo que podía adelantarse a la respuesta real.
+      const result = await reopenShift(furgoId, date);
+      if (!result || !result.success) {
+        triggerAlert('No se pudo confirmar la reapertura en el servidor (revisa tu conexión). Vuelve a intentarlo.', 'error');
+        return;
+      }
       triggerAlert('Turno reabierto correctamente');
       loadData();
     }
@@ -5887,7 +5930,7 @@ function App() {
     });
   };
 
-  const handleDeleteTicket = (id) => {
+  const handleDeleteTicket = async (id) => {
     const ticket = tickets.find(t => t.id === id);
     if (!ticket) return;
 
@@ -5898,9 +5941,15 @@ function App() {
     }
 
     if (window.confirm('¿Eliminar este registro de reparto?')) {
-      deleteTicket(id);
+      // Fix: se espera y comprueba el resultado real del borrado antes de avisar
+      // "Eliminado" — antes se asumía éxito aunque el borrado remoto fallara.
+      const result = await deleteTicket(id);
+      if (!result || !result.success) {
+        triggerAlert('No se pudo confirmar el borrado en el servidor (revisa tu conexión). El registro puede seguir existiendo.', 'error');
+      } else {
+        triggerAlert('Registro eliminado');
+      }
       loadData();
-      triggerAlert('Registro eliminado');
       if (editingTicketId === id) {
         cancelEditing();
       }
@@ -6210,8 +6259,8 @@ function App() {
     const ticket = tickets.find(t => t.id === ticketId);
     if (!ticket) return;
 
-    const updatedTasks = ticket.tasks.map(task => {
-      if (task.tariffId.endsWith(`_${oldRange}`)) {
+    const updatedTasks = (ticket.tasks || []).map(task => {
+      if ((task.tariffId || '').endsWith(`_${oldRange}`)) {
         const prefix = task.tariffId.substring(0, task.tariffId.length - oldRange.length - 1);
         const newTariffId = `${prefix}_${newRange}`;
         const tariff = tariffs.find(tar => tar.id === newTariffId);
@@ -6476,7 +6525,7 @@ function App() {
           : t.status === 'failed' 
             ? `Fallido${t.failureReason ? ` (${t.failureReason})` : ''}` 
             : 'Pendiente';
-        t.tasks.forEach(task => {
+        (t.tasks || []).forEach(task => {
           sheetRows.push([
             t.date,
             t.routeName || '',
@@ -8127,18 +8176,20 @@ function App() {
                   >
                     ← Atrás
                   </button>
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     className="btn btn-primary"
-                    style={{ 
-                      width: 'auto', 
+                    disabled={isSubmittingTicket}
+                    style={{
+                      width: 'auto',
                       background: 'linear-gradient(135deg, var(--primary) 0%, #10b981 100%)',
                       boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)',
                       color: '#fff',
-                      fontWeight: 'bold'
+                      fontWeight: 'bold',
+                      opacity: isSubmittingTicket ? 0.6 : 1
                     }}
                   >
-                    {editingTicketId ? '💾 Guardar Cambios' : '🚀 Registrar Reparto Dormity'}
+                    {isSubmittingTicket ? '⏳ Guardando...' : (editingTicketId ? '💾 Guardar Cambios' : '🚀 Registrar Reparto Dormity')}
                   </button>
                 </div>
               </div>
@@ -9040,18 +9091,19 @@ function App() {
                 >
                   ← Atrás
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="btn btn-primary"
-                  style={{ 
-                    width: 'auto', 
+                  style={{
+                    width: 'auto',
                     background: 'linear-gradient(135deg, var(--primary) 0%, #10b981 100%)',
                     boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)',
-                    fontWeight: '800'
+                    fontWeight: '800',
+                    opacity: isSubmittingTicket ? 0.6 : 1
                   }}
-                  disabled={isClosed}
+                  disabled={isClosed || isSubmittingTicket}
                 >
-                  💾 {editingTicketId ? 'Guardar Cambios' : 'Confirmar y Planificar Reparto'}
+                  {isSubmittingTicket ? '⏳ Guardando...' : `💾 ${editingTicketId ? 'Guardar Cambios' : 'Confirmar y Planificar Reparto'}`}
                 </button>
               </div>
             </div>
@@ -9077,16 +9129,24 @@ function App() {
                 type="button"
                 className="btn btn-danger btn-small"
                 style={{ width: 'auto', padding: '4px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-                onClick={() => {
+                onClick={async () => {
                   const isShiftClosed = getShiftStatus(activeRouteContext.furgoId, activeRouteContext.date) === 'closed';
                   if (isShiftClosed && !isAdminOrSuper) {
                     triggerAlert('El turno para esta ruta está cerrado. No puedes vaciarla.', 'error');
                     return;
                   }
                   if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente TODAS las (${sortedActiveRouteTickets.length}) paradas de la ruta ${activeRouteContext.furgoId} para el día ${activeRouteContext.date}? Esta acción no se puede deshacer.`)) {
-                    sortedActiveRouteTickets.forEach(t => deleteTicket(t.id));
+                    // Fix: antes se disparaban todos los borrados en paralelo sin esperar
+                    // ni comprobar el resultado — si fallaba alguno a mitad de camino, la
+                    // pantalla igual decía "todas eliminadas" sin forma de saber cuáles.
+                    const results = await Promise.all(sortedActiveRouteTickets.map(t => deleteTicket(t.id)));
+                    const failedCount = results.filter(r => !r || !r.success).length;
                     loadData();
-                    triggerAlert('Todas las paradas de la ruta han sido eliminadas');
+                    if (failedCount > 0) {
+                      triggerAlert(`${sortedActiveRouteTickets.length - failedCount} paradas eliminadas, pero ${failedCount} no se pudieron confirmar en el servidor (revisa la conexión).`, 'error');
+                    } else {
+                      triggerAlert('Todas las paradas de la ruta han sido eliminadas');
+                    }
                   }
                 }}
               >
@@ -9181,7 +9241,7 @@ function App() {
                           <span style={{ fontSize: '0.88rem', fontWeight: '700', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {t.customerName}
                           </span>
-                          {t.customerName.startsWith('Parada #') && (
+                          {(t.customerName || '').startsWith('Parada #') && (
                             <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '10px', fontWeight: '700' }}>
                               ⚠️ Faltan datos
                             </span>
@@ -9213,7 +9273,7 @@ function App() {
                     </div>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                      {t.customerName.startsWith('Parada #') && (
+                      {(t.customerName || '').startsWith('Parada #') && (
                         <button
                           type="button"
                           onClick={() => startEditing(t)}
@@ -10561,7 +10621,7 @@ function App() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '10px', marginTop: '10px' }}>
                               <div style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-muted)' }}>Servicios:</div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                {t.tasks.map((task, idx) => {
+                                {(t.tasks || []).map((task, idx) => {
                                   const tariff = tariffs.find(tar => tar.id === task.tariffId);
                                   const name = task.name || (tariff ? tariff.name : task.tariffId);
                                   return (
@@ -10576,9 +10636,9 @@ function App() {
                             {/* Selector de Medida de TV en Destino basado en Segmented Control / Botones de Píldora */}
                             {(() => {
                               const tvRanges = [];
-                              t.tasks.forEach(task => {
+                              (t.tasks || []).forEach(task => {
                                 ['49', '74', '115'].forEach(r => {
-                                  if (task.tariffId.endsWith(`_${r}`) && !tvRanges.includes(r)) {
+                                  if ((task.tariffId || '').endsWith(`_${r}`) && !tvRanges.includes(r)) {
                                     tvRanges.push(r);
                                   }
                                 });
@@ -11930,7 +11990,7 @@ function App() {
                         </td>
                         <td>
                           <ul style={{ margin: 0, paddingLeft: '15px', fontSize: '0.82rem', lineHeight: '1.4' }}>
-                            {ticket.tasks.map((task, idx) => {
+                            {(ticket.tasks || []).map((task, idx) => {
                               const tariff = tariffs.find(tar => tar.id === task.tariffId);
                               const name = task.name || (tariff ? tariff.name : task.tariffId);
                               return (
@@ -14301,13 +14361,17 @@ function App() {
                               {s.status === 'closed' && (
                                 <button
                                   type="button"
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (window.confirm(`¿Estás seguro de que deseas reabrir el turno del día ${s.date} para esta furgoneta?`)) {
-                                      reopenShift(s.furgoId, s.date);
-                                      setTimeout(() => {
-                                        loadData();
-                                        triggerAlert('Turno reabierto correctamente');
-                                      }, 100);
+                                      // Fix: se espera la confirmación real del servidor en vez de
+                                      // un setTimeout fijo que podía adelantarse a la respuesta real.
+                                      const result = await reopenShift(s.furgoId, s.date);
+                                      if (!result || !result.success) {
+                                        triggerAlert('No se pudo confirmar la reapertura en el servidor. Vuelve a intentarlo.', 'error');
+                                        return;
+                                      }
+                                      loadData();
+                                      triggerAlert('Turno reabierto correctamente');
                                     }
                                   }}
                                   style={{
@@ -14513,15 +14577,28 @@ function App() {
                             </div>
                           </div>
 
-                          <button 
-                            type="button" 
-                            onClick={() => {
-                              if (window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
-                                deletePlannedShift(s.furgoId, dayStr);
-                                setTimeout(() => {
-                                  loadData();
-                                  triggerAlert('Turno eliminado');
-                                }, 100);
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              // Fix: un turno ya CERRADO (trabajado, con kms/nómina) requiere
+                              // confirmación reforzada — antes se borraba igual de fácil que uno
+                              // "Planificado" sin trabajar, arriesgando perder historial real.
+                              if (s.status === 'closed') {
+                                const typed = window.prompt(`Este turno ya está CERRADO (trabajado). Para eliminarlo definitivamente, escribe la fecha exacta (${dayStr}):`);
+                                if (typed !== dayStr) {
+                                  if (typed !== null) triggerAlert('La fecha no coincide. Turno no eliminado.', 'error');
+                                  return;
+                                }
+                              } else if (!window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
+                                return;
+                              }
+                              // Fix: se espera y comprueba el resultado real del borrado.
+                              const result = await deletePlannedShift(s.furgoId, dayStr);
+                              loadData();
+                              if (!result || !result.success) {
+                                triggerAlert('No se pudo confirmar el borrado en el servidor. El turno puede seguir existiendo.', 'error');
+                              } else {
+                                triggerAlert('Turno eliminado');
                               }
                             }}
                             style={{ 
@@ -14565,7 +14642,10 @@ function App() {
                       style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar / Sin furgoneta</option>
-                      {activeRepartidores.map(d => (
+                      {/* Fix: antes se listaban TODAS las furgonetas aunque ya tuvieran turno
+                          ese día, permitiendo sobrescribir por error un turno ya cerrado/trabajado.
+                          Ahora solo se ofrecen las furgonetas realmente disponibles ese día. */}
+                      {availableDrivers.map(d => (
                         <option key={d.id} value={d.id} style={{ color: '#000000', background: '#ffffff' }}>{d.label}</option>
                       ))}
                     </select>
@@ -14654,6 +14734,14 @@ function App() {
                       let targetFurgoId = plannedFurgoId;
                       if (!targetFurgoId) {
                         targetFurgoId = `custom_temp_${Date.now()}`;
+                      } else {
+                        // Fix: red de seguridad adicional además de filtrar el desplegable —
+                        // nunca crear/sobrescribir un turno que ya está cerrado (trabajado) ese día.
+                        const existingClosed = dayShifts.find(s => s.furgoId === targetFurgoId && s.status === 'closed');
+                        if (existingClosed) {
+                          triggerAlert('Esa furgoneta ya tiene un turno CERRADO ese día. No se puede sobrescribir.', 'error');
+                          return;
+                        }
                       }
                       let targetCustom = '';
                       if (plannedDriverName === 'custom_input') {
@@ -14694,7 +14782,11 @@ function App() {
         {/* -------------------- 4. PAYROLL VIEW -------------------- */}
         {calendarViewMode === 'payroll' && (() => {
           const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-          const monthShifts = shifts.filter(s => s.date.startsWith(monthPrefix));
+          // Fix: solo se pagan turnos ya CERRADOS (trabajados de verdad). Antes se
+          // contaba cualquier turno con el nombre del empleado asignado, incluidos los
+          // "Planificados" que nunca llegaron a abrirse/cerrarse (ausencia, cancelación,
+          // planificación por adelantado), pagando días que no se trabajaron.
+          const monthShifts = shifts.filter(s => s.date.startsWith(monthPrefix) && s.status === 'closed');
 
           const payrollList = [];
 
@@ -14984,13 +15076,17 @@ function App() {
                                 {s.status === 'closed' && (
                                   <button
                                     type="button"
-                                    onClick={() => {
+                                    onClick={async () => {
                                       if (window.confirm(`¿Estás seguro de que deseas reabrir el turno del día ${s.date} para esta furgoneta?`)) {
-                                        reopenShift(s.furgoId, s.date);
-                                        setTimeout(() => {
-                                          loadData();
-                                          triggerAlert('Turno reabierto correctamente');
-                                        }, 100);
+                                        // Fix: se espera la confirmación real del servidor en vez de
+                                        // un setTimeout fijo que podía adelantarse a la respuesta real.
+                                        const result = await reopenShift(s.furgoId, s.date);
+                                        if (!result || !result.success) {
+                                          triggerAlert('No se pudo confirmar la reapertura en el servidor. Vuelve a intentarlo.', 'error');
+                                          return;
+                                        }
+                                        loadData();
+                                        triggerAlert('Turno reabierto correctamente');
                                       }
                                     }}
                                     style={{
@@ -15190,13 +15286,26 @@ function App() {
 
                             <button
                               type="button"
-                              onClick={() => {
-                                if (window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
-                                  deletePlannedShift(s.furgoId, selectedCalendarDay);
-                                  setTimeout(() => {
-                                    loadData();
-                                    triggerAlert('Turno eliminado');
-                                  }, 100);
+                              onClick={async () => {
+                                // Fix: un turno ya CERRADO (trabajado, con kms/nómina) requiere
+                                // confirmación reforzada, igual que en la vista de día.
+                                if (s.status === 'closed') {
+                                  const typed = window.prompt(`Este turno ya está CERRADO (trabajado). Para eliminarlo definitivamente, escribe la fecha exacta (${selectedCalendarDay}):`);
+                                  if (typed !== selectedCalendarDay) {
+                                    if (typed !== null) triggerAlert('La fecha no coincide. Turno no eliminado.', 'error');
+                                    return;
+                                  }
+                                } else if (!window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
+                                  return;
+                                }
+                                // Fix: esperar la confirmación real del servidor antes de avisar
+                                // "eliminado" — evita que el turno reaparezca si el borrado falló.
+                                const result = await deletePlannedShift(s.furgoId, selectedCalendarDay);
+                                loadData();
+                                if (!result || !result.success) {
+                                  triggerAlert('No se pudo confirmar el borrado en el servidor. El turno puede seguir existiendo.', 'error');
+                                } else {
+                                  triggerAlert('Turno eliminado');
                                 }
                               }}
                               style={{ 
@@ -15234,7 +15343,10 @@ function App() {
                         style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar / Sin furgoneta</option>
-                        {activeRepartidores.map(d => (
+                        {/* Fix: antes se listaban TODAS las furgonetas aunque ya tuvieran turno
+                            ese día, permitiendo sobrescribir por error un turno ya cerrado/trabajado.
+                            Ahora solo se ofrecen las furgonetas realmente disponibles ese día. */}
+                        {availableDrivers.map(d => (
                           <option key={d.id} value={d.id} style={{ color: '#000000', background: '#ffffff' }}>{d.label}</option>
                         ))}
                       </select>
@@ -15323,6 +15435,14 @@ function App() {
                         let targetFurgoId = plannedFurgoId;
                         if (!targetFurgoId) {
                           targetFurgoId = `custom_temp_${Date.now()}`;
+                        } else {
+                          // Fix: red de seguridad adicional además de filtrar el desplegable —
+                          // nunca crear/sobrescribir un turno que ya está cerrado (trabajado) ese día.
+                          const existingClosed = dateShifts.find(s => s.furgoId === targetFurgoId && s.status === 'closed');
+                          if (existingClosed) {
+                            triggerAlert('Esa furgoneta ya tiene un turno CERRADO ese día. No se puede sobrescribir.', 'error');
+                            return;
+                          }
                         }
                         let targetCustom = '';
                         if (plannedDriverName === 'custom_input') {
@@ -15871,7 +15991,7 @@ function App() {
         let deliveries = 0;
         fSuccess.forEach(t => {
           const isDormityTicket = t.provider === 'dormity';
-          t.tasks.forEach(task => {
+          (t.tasks || []).forEach(task => {
             const tid = task.tariffId || '';
             if (!isDormityTicket && tid.startsWith('PM_')) pms += task.quantity;
             if (tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_')) deliveries += task.quantity;
@@ -15969,7 +16089,7 @@ function App() {
         let deliveries = 0;
         fSuccess.forEach(t => {
           const isDormityTicket = t.provider === 'dormity';
-          t.tasks.forEach(task => {
+          (t.tasks || []).forEach(task => {
             const tid = task.tariffId || '';
             if (!isDormityTicket && tid.startsWith('PM_')) {
               pms += task.quantity;
@@ -16137,7 +16257,7 @@ function App() {
       let recogidas = 0;
       fSuccess.forEach(t => {
         const isDormityTicket = t.provider === 'dormity';
-        t.tasks.forEach(task => {
+        (t.tasks || []).forEach(task => {
           const tid = task.tariffId || '';
           if (!isDormityTicket && tid.startsWith('PM_')) {
             pms += task.quantity;
@@ -16208,7 +16328,7 @@ function App() {
     let totalUrgentes = 0;
     successTickets.forEach(t => {
       const isDormityTicket = t.provider === 'dormity';
-      t.tasks.forEach(task => {
+      (t.tasks || []).forEach(task => {
         const tid = task.tariffId || '';
         if (!isDormityTicket && tid.startsWith('PM_')) {
           totalPMs += task.quantity;
@@ -17322,7 +17442,13 @@ function App() {
             )}
 
             {/* Conexión a Supabase */}
-            {showSecurity && (
+            {/* Fix: antes este bloque (credenciales de conexión a la base de datos y el
+                botón de desconectar) se desbloqueaba con el mismo permiso "Seguridad" que
+                también da acceso a ajustes inofensivos de rutas/mapas, permitiendo que un
+                coordinador con ese permiso viera la clave de Supabase y pudiera desconectar
+                la sincronización de todo el equipo. Ahora, además del permiso, se exige que
+                el usuario sea admin o superadmin (nunca coordinador). */}
+            {showSecurity && (loggedInUserObj?.role === 'admin' || loggedInUserObj?.role === 'superadmin') && (
               <div className="block-section" style={{ padding: '20px', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)' }}>
                 <div className="block-title">☁️ Conexión de Base de Datos Cloud (Supabase)</div>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
