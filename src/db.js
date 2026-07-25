@@ -381,7 +381,35 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     // Pull Tickets (se omite si el cambio detectado por Realtime no afecta a delivery_tickets,
     // para no volver a descargar la tabla completa -principal causa de egress- en cada cambio menor)
     if (includeTickets) {
-    const { data: tickets, error: errTickets } = await supabase.from('delivery_tickets').select('*');
+    // Fix: `select('*')` sin paginar se corta en silencio en las 1000 filas que
+    // PostgREST devuelve por defecto por petición. Con más de 1000 repartos en la
+    // tabla (ya superado), esto hacía que la app cargara solo una porción parcial y
+    // variable de los repartos —nunca exactamente la misma— y cada pantalla (Informe
+    // del Día, Gestión de Repartos, Dashboard, etc.) mostrara un conteo distinto e
+    // incompleto sin ningún aviso. Se pagina explícitamente con .range() hasta traer
+    // todas las filas, ordenando por id para que la paginación sea estable.
+    let tickets = [];
+    let errTickets = null;
+    {
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data: page, error: pageErr } = await supabase
+          .from('delivery_tickets')
+          .select('*')
+          .order('id', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (pageErr) {
+          console.error("Error paginando delivery_tickets:", pageErr);
+          errTickets = pageErr;
+          break;
+        }
+        if (!page || page.length === 0) break;
+        tickets = tickets.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+    }
     if (tickets && !errTickets) {
       const cloudTickets = tickets.map(t => ({
         id: t.id,
