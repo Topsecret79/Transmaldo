@@ -1524,6 +1524,9 @@ function App() {
   const [endSuggestions, setEndSuggestions] = useState([]);
   const [otherDescriptions, setOtherDescriptions] = useState({});
   const [selectedDrilldownFurgoId, setSelectedDrilldownFurgoId] = useState(null);
+  // Estado para el desglose al hacer clic en una tarjeta del Dashboard (Entregas,
+  // Fallidos, Cuelgues, etc.) — guarda solo la clave de la tarjeta pulsada.
+  const [selectedStatCardKey, setSelectedStatCardKey] = useState(null);
 
   const [routeStartCoords, setRouteStartCoords] = useState(null);
   const [routeEndCoords, setRouteEndCoords] = useState(null);
@@ -1539,7 +1542,7 @@ function App() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (selectedDrilldownFurgoId) {
+    if (selectedDrilldownFurgoId || selectedStatCardKey) {
       document.body.style.overflow = 'hidden';
       document.body.style.height = '100vh';
     } else {
@@ -1550,7 +1553,7 @@ function App() {
       document.body.style.overflow = '';
       document.body.style.height = '';
     };
-  }, [selectedDrilldownFurgoId]);
+  }, [selectedDrilldownFurgoId, selectedStatCardKey]);
 
   useEffect(() => {
     let active = true;
@@ -16492,6 +16495,115 @@ function App() {
     const totalCOD = successTickets.reduce((sum, t) => sum + (t.codAmount || 0), 0);
     const avgTicketValue = successTickets.length > 0 ? totalEarnings / successTickets.length : 0;
 
+    // Fix: al hacer clic en una tarjeta del Dashboard se abre un desglose con los
+    // repartos individuales que componen esa cifra. Cada caso reutiliza EXACTAMENTE
+    // el mismo criterio de filtrado que ya usa la tarjeta correspondiente más arriba
+    // (successTickets/filteredAdminTickets + el mismo prefijo de tariffId), para que
+    // el desglose siempre coincida con el número mostrado en la tarjeta.
+    const getTicketsForStatCard = (key) => {
+      const hasTaskMatching = (t, predicate) => {
+        const isDormityTicket = t.provider === 'dormity';
+        return (t.tasks || []).some(task => predicate(task.tariffId || '', isDormityTicket));
+      };
+      switch (key) {
+        case 'total':
+          return { title: 'Total Mes — Repartos Exitosos', tickets: successTickets };
+        case 'entregas':
+          return { title: 'Entregas', tickets: successTickets };
+        case 'ticketPromedio':
+          return { title: 'Ticket Promedio — Repartos Exitosos', tickets: successTickets };
+        case 'pm':
+          return { title: 'Puestas en Marcha', tickets: successTickets.filter(t => hasTaskMatching(t, (tid, isDorm) => !isDorm && tid.startsWith('PM_'))) };
+        case 'cuelgues':
+          return { title: 'Cuelgues', tickets: successTickets.filter(t => hasTaskMatching(t, (tid, isDorm) => !isDorm && tid.startsWith('CUELGUE_'))) };
+        case 'adicionales':
+          return { title: 'Adicionales del Mes', tickets: successTickets.filter(t => hasTaskMatching(t, (tid) => tid.startsWith('CUSTOM_'))) };
+        case 'recogidas':
+          return { title: 'Recogidas TV Vieja', tickets: successTickets.filter(t => hasTaskMatching(t, (tid) => tid.startsWith('TV_VIEJA_'))) };
+        case 'fallidos':
+          return { title: 'Repartos Fallidos', tickets: filteredAdminTickets.filter(t => t.status === 'failed') };
+        case 'cod':
+          return { title: 'Contra Reembolso (COD)', tickets: successTickets.filter(t => (t.codAmount || 0) > 0) };
+        case 'barras':
+          return { title: 'Barras de Sonido', tickets: successTickets.filter(t => hasTaskMatching(t, (tid) => tid === 'BSND')) };
+        case 'urgentes':
+          return { title: 'Servicios Urgentes', tickets: successTickets.filter(t => hasTaskMatching(t, (tid) => tid.startsWith('URGENTE_'))) };
+        default:
+          return { title: '', tickets: [] };
+      }
+    };
+
+    const renderStatCardDrilldown = () => {
+      if (!selectedStatCardKey) return null;
+      const { title, tickets: cardTickets } = getTicketsForStatCard(selectedStatCardKey);
+      const sorted = [...cardTickets].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      const totalSum = sorted.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
+      const periodLabel = (adminStartDate || adminEndDate)
+        ? `${adminStartDate || '…'} → ${adminEndDate || '…'}`
+        : 'Todo el histórico';
+
+      return (
+        <div className="drilldown-overlay" onClick={() => setSelectedStatCardKey(null)}>
+          <div className="drilldown-content" onClick={(e) => e.stopPropagation()}>
+            <div className="drilldown-header">
+              <div className="drilldown-title" style={{ textAlign: 'left' }}>
+                <h3>🔎 {title}</h3>
+                <p>{sorted.length} reparto{sorted.length === 1 ? '' : 's'} · {totalSum.toFixed(2)} € · Periodo: {periodLabel}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedStatCardKey(null)}
+                className="btn btn-secondary btn-small"
+                style={{ width: 'auto', margin: 0, padding: '6px 10px' }}
+                title="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+
+            {sorted.length === 0 ? (
+              <p style={{ textAlign: 'center', padding: '30px 0', opacity: 0.7 }}>No hay repartos que coincidan con este filtro en el periodo seleccionado.</p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '8px 10px', fontSize: '0.8rem' }}>Fecha</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.8rem' }}>Cliente</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.8rem' }}>Furgoneta / Chofer</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.8rem', textAlign: 'right' }}>Precio</th>
+                      <th style={{ padding: '8px 10px', fontSize: '0.8rem', textAlign: 'center' }}>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map(t => {
+                      let badge = <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>🟡 Pendiente</span>;
+                      if (t.status === 'success' || !t.status) {
+                        badge = <span className="badge badge-success" style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff' }}>🟢 Entregado</span>;
+                      } else if (t.status === 'failed') {
+                        badge = <span className="badge badge-danger" style={{ fontSize: '0.7rem', background: '#ef4444', color: '#fff' }}>🔴 Fallido</span>;
+                      } else if (t.status === 'transit') {
+                        badge = <span className="badge" style={{ fontSize: '0.7rem', background: '#38bdf8', color: '#0f172a' }}>🔵 En Camino</span>;
+                      }
+                      return (
+                        <tr key={t.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                          <td style={{ padding: '8px 10px', fontSize: '0.85rem' }}>{t.date}</td>
+                          <td style={{ padding: '8px 10px', fontSize: '0.85rem' }}>{t.customerName}</td>
+                          <td style={{ padding: '8px 10px', fontSize: '0.85rem' }}>{t.furgoLabel || t.furgoId}</td>
+                          <td style={{ padding: '8px 10px', fontSize: '0.85rem', textAlign: 'right', fontWeight: 700 }}>{(t.totalPrice || 0).toFixed(2)} €</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center' }}>{badge}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
   const renderUsersSection = () => {
     return (
       <div className="glass-panel" style={{ textAlign: 'left' }}>
@@ -17808,61 +17920,65 @@ function App() {
             {/* Fix: rediseño minimalista de las tarjetas — ver comentario junto a
                 .dashboard-grid en index.css. Los estilos inline de centrado/lineHeight
                 que antes se repetían en cada tarjeta ya los aplica la clase base
-                .stat-card, así que se han quitado de aquí. */}
+                .stat-card, así que se han quitado de aquí.
+                Fix: cada tarjeta ahora es clicable y abre un desglose con los repartos
+                individuales que componen esa cifra (ver renderStatCardDrilldown /
+                getTicketsForStatCard más arriba), respetando el periodo/furgoneta/
+                proveedor que ya esté filtrado. */}
             <div className="dashboard-grid">
-              <div className="stat-card success">
+              <div className="stat-card success clickable" onClick={() => setSelectedStatCardKey('total')} title="Ver repartos de Total Mes">
                 <p>Total Mes</p>
                 <div className="stat-val">{totalEarnings.toFixed(2)} €</div>
                 <span>Km Flota (Odómetro): {totalKmsAllFurgos.toFixed(1)} km</span>
               </div>
-              <div className="stat-card info">
+              <div className="stat-card info clickable" onClick={() => setSelectedStatCardKey('entregas')} title="Ver repartos de Entregas">
                 <p>Entregas</p>
                 <div className="stat-val">{successTickets.length}</div>
                 <span>de {filteredAdminTickets.length} totales</span>
               </div>
-              <div className="stat-card warning">
+              <div className="stat-card warning clickable" onClick={() => setSelectedStatCardKey('pm')} title="Ver repartos de Puestas en Marcha">
                 <p>Puestas en Marcha</p>
                 <div className="stat-val">{totalPMs}</div>
                 <span>
                   {totalPMsBasic} Básicas ({ totalPMsBasicEarnings.toFixed(2) } €) / {totalPMsComplex} Complejas ({ totalPMsComplexEarnings.toFixed(2) } €)
                 </span>
               </div>
-              <div className="stat-card info">
+              <div className="stat-card info clickable" onClick={() => setSelectedStatCardKey('cuelgues')} title="Ver repartos de Cuelgues">
                 <p>Cuelgues</p>
                 <div className="stat-val">{totalCuelgues}</div>
                 <span>{totalCuelguesEarnings.toFixed(2)} € facturados</span>
               </div>
-              <div className="stat-card danger">
+              <div className="stat-card danger clickable" onClick={() => setSelectedStatCardKey('adicionales')} title="Ver repartos de Adicionales Mes">
                 <p>Adicionales Mes</p>
                 <div className="stat-val">{totalCustomEarnings.toFixed(2)} €</div>
               </div>
-              <div className="stat-card success">
+              <div className="stat-card success clickable" onClick={() => setSelectedStatCardKey('ticketPromedio')} title="Ver repartos exitosos">
                 <p>Ticket Promedio</p>
                 <div className="stat-val">{avgTicketValue.toFixed(2)} €</div>
                 <span>por reparto exitoso</span>
               </div>
-              <div className="stat-card warning">
+              <div className="stat-card warning clickable" onClick={() => setSelectedStatCardKey('recogidas')} title="Ver repartos de Recogidas TV Vieja">
                 <p>Recogidas TV Vieja</p>
                 <div className="stat-val">{totalRecogidas}</div>
               </div>
-              <div className="stat-card danger">
+              <div className="stat-card danger clickable" onClick={() => setSelectedStatCardKey('fallidos')} title="Ver repartos Fallidos">
                 <p>Fallidos</p>
                 <div className="stat-val">{totalFailed}</div>
                 <span>
                   {(filteredAdminTickets.length > 0 ? (totalFailed / filteredAdminTickets.length * 100) : 0).toFixed(1)}% del total
                 </span>
               </div>
-              <div className="stat-card info">
+              <div className="stat-card info clickable" onClick={() => setSelectedStatCardKey('cod')} title="Ver repartos con Contra Reembolso">
                 <p>Contra Reembolso (COD)</p>
                 <div className="stat-val">{totalCOD.toFixed(2)} €</div>
                 <span>cobrado en puerta</span>
               </div>
-              <div className="stat-card success">
+              <div className="stat-card success clickable" onClick={() => setSelectedStatCardKey('barras')} title="Ver repartos de Barras de Sonido">
                 <p>Barras de Sonido</p>
                 <div className="stat-val">{totalBarrasSonido}</div>
               </div>
               {totalUrgentes > 0 && (
-                <div className="stat-card warning">
+                <div className="stat-card warning clickable" onClick={() => setSelectedStatCardKey('urgentes')} title="Ver repartos de Servicios Urgentes">
                   <p>Servicios Urgentes</p>
                   <div className="stat-val">{totalUrgentes}</div>
                 </div>
@@ -19485,6 +19601,7 @@ function App() {
         {activeTab === 'fleet' && renderFleetSection()}
         {activeTab === 'changelog' && renderChangelog()}
         {renderDrilldownModal()}
+        {renderStatCardDrilldown()}
       </div>
     );
   };
