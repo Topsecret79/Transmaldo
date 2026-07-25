@@ -1406,17 +1406,20 @@ export function getModulePrice(userId) {
   return parseFloat(localStorage.getItem('delivery_module_price'));
 }
 
-export function saveModulePrice(price, userId) {
+export async function saveModulePrice(price, userId) {
   if (userId) {
     localStorage.setItem(`delivery_module_price_${userId}`, JSON.stringify(price));
   }
   localStorage.setItem('delivery_module_price', JSON.stringify(price));
   if (supabase) {
     const key = userId ? `module_price_${userId}` : 'module_price';
-    supabase.from('delivery_settings').upsert({ key, value: price.toString() }).then(({ error }) => {
-      if (error) console.error("Error saving module price to Supabase:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key, value: price.toString() });
+    if (error) {
+      console.error("Error saving module price to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 export function getTariffs() {
@@ -2450,7 +2453,11 @@ export function getShift(furgoId, date) {
 }
 
 // Guardar o cambiar el nombre de la ruta de una jornada
-export function saveShiftRoute(furgoId, date, routeName) {
+// Fix (hallazgo #22): esta función delegaba en saveShifts() sin esperar su
+// resultado ni devolverlo, así que quien llamaba nunca podía saber si el
+// guardado en la nube realmente funcionó. Ahora es async y devuelve el mismo
+// {success, error} que ya devuelve saveShifts().
+export async function saveShiftRoute(furgoId, date, routeName) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const index = shifts.findIndex(s => s.id === shiftId);
@@ -2467,11 +2474,15 @@ export function saveShiftRoute(furgoId, date, routeName) {
       summary: null
     });
   }
-  saveShifts(shifts);
+  return await saveShifts(shifts);
 }
 
 // Cerrar el turno de un día
-export function closeShift(furgoId, date, summary) {
+// Fix (hallazgo #22): igual que saveShiftRoute, no esperaba ni devolvía la
+// confirmación real de saveShifts(). Cerrar un turno es una operación
+// importante (dispara el cálculo de nómina/kms), así que conviene saber de
+// verdad si llegó a la nube.
+export async function closeShift(furgoId, date, summary) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const existingIndex = shifts.findIndex(s => s.id === shiftId);
@@ -2504,12 +2515,14 @@ export function closeShift(furgoId, date, summary) {
     shifts.push(newShift);
   }
 
-  saveShifts(shifts);
-  return newShift;
+  const result = await saveShifts(shifts);
+  return { ...(result || {}), shift: newShift };
 }
 
 // Guardar turno planificado (fecha, chofer, ayudante, matricula y chofer personalizado)
-export function savePlannedShift(furgoId, date, helper, matricula, customDriver, createdBy = 'admin', helper2 = '') {
+// Fix (hallazgo #22): mismo motivo — delegaba en saveShifts() sin esperar ni
+// devolver su resultado.
+export async function savePlannedShift(furgoId, date, helper, matricula, customDriver, createdBy = 'admin', helper2 = '') {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const index = shifts.findIndex(s => s.id === shiftId);
@@ -2818,17 +2831,25 @@ export function getAppName(userId) {
 }
 
 // Guardar nombre de la aplicación
-export function saveAppName(name, userId) {
+// Fix (hallazgo #22): esta y las siguientes funciones de ajustes enviaban el
+// cambio a la nube sin esperar su confirmación (fire-and-forget con .then()),
+// así que si la red fallaba, el cambio quedaba solo en este dispositivo sin
+// que nadie se enterara. Ahora son async y esperan (await) la confirmación
+// real, devolviendo {success, error}.
+export async function saveAppName(name, userId) {
   if (userId) {
     localStorage.setItem(`delivery_app_name_${userId}`, name.trim());
   }
   localStorage.setItem('delivery_app_name', name.trim());
   if (supabase) {
     const key = userId ? `app_name_${userId}` : 'app_name';
-    supabase.from('delivery_settings').upsert({ key, value: name.trim() }).then(({ error }) => {
-      if (error) console.error("Error saving app name to Supabase:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key, value: name.trim() });
+    if (error) {
+      console.error("Error saving app name to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Obtener tema visual (por cuenta, sincronizado entre dispositivos vía Supabase)
@@ -2841,17 +2862,20 @@ export function getAppTheme(userId) {
 }
 
 // Guardar tema visual
-export function saveAppTheme(theme, userId) {
+export async function saveAppTheme(theme, userId) {
   if (userId) {
     localStorage.setItem(`delivery_app_theme_${userId}`, theme);
   }
   localStorage.setItem('delivery_app_theme', theme);
   if (supabase) {
     const key = userId ? `app_theme_${userId}` : 'app_theme';
-    supabase.from('delivery_settings').upsert({ key, value: theme }).then(({ error }) => {
-      if (error) console.error("Error saving app theme to Supabase:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key, value: theme });
+    if (error) {
+      console.error("Error saving app theme to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Obtener precio de kilómetro
@@ -2865,7 +2889,7 @@ export function getKmPrice(userId) {
 }
 
 // Guardar precio de kilómetro
-export function saveKmPrice(price, userId) {
+export async function saveKmPrice(price, userId) {
   const pStr = price.toString();
   if (userId) {
     localStorage.setItem(`delivery_km_price_${userId}`, pStr);
@@ -2873,10 +2897,13 @@ export function saveKmPrice(price, userId) {
   localStorage.setItem('delivery_km_price', pStr);
   if (supabase) {
     const key = userId ? `km_price_${userId}` : 'km_price';
-    supabase.from('delivery_settings').upsert({ key, value: pStr }).then(({ error }) => {
-      if (error) console.error("Error saving km price to Supabase:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key, value: pStr });
+    if (error) {
+      console.error("Error saving km price to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Obtener precio de combustible (gasoil) por litro
@@ -2890,7 +2917,7 @@ export function getFuelPrice(userId) {
 }
 
 // Guardar precio de combustible (gasoil) por litro
-export function saveFuelPrice(price, userId) {
+export async function saveFuelPrice(price, userId) {
   const pStr = price.toString();
   if (userId) {
     localStorage.setItem(`delivery_fuel_price_${userId}`, pStr);
@@ -2898,10 +2925,13 @@ export function saveFuelPrice(price, userId) {
   localStorage.setItem('delivery_fuel_price', pStr);
   if (supabase) {
     const key = userId ? `fuel_price_${userId}` : 'fuel_price';
-    supabase.from('delivery_settings').upsert({ key, value: pStr }).then(({ error }) => {
-      if (error) console.error("Error saving fuel price to Supabase:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key, value: pStr });
+    if (error) {
+      console.error("Error saving fuel price to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 
@@ -2913,16 +2943,19 @@ export function getRouteKms(furgoId, date) {
 }
 
 // Guardar kms de una ruta
-export function saveRouteKms(furgoId, date, kms) {
+export async function saveRouteKms(furgoId, date, kms) {
   const key = `delivery_route_kms_${furgoId}_${date}`;
   const kStr = kms.toString();
   localStorage.setItem(key, kStr);
   if (supabase) {
     const dbKey = `route_kms_${furgoId}_${date}`;
-    supabase.from('delivery_settings').upsert({ key: dbKey, value: kStr }).then(({ error }) => {
-      if (error) console.error("Error saving route kms to Supabase:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key: dbKey, value: kStr });
+    if (error) {
+      console.error("Error saving route kms to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Agregar nueva tarifa
@@ -2989,7 +3022,12 @@ export async function deleteTariff(id) {
 }
 
 // Guardar ubicación en tiempo real de un repartidor
-export function saveDriverLocation(furgoId, lat, lng) {
+// Fix (hallazgo #22): se deja como función async con await interno para que
+// realmente confirme el guardado (en vez de un .then() suelto), pero se sigue
+// llamando sin esperar su resultado en el polling de ubicación (cada pocos
+// segundos) — aquí no tiene sentido bloquear ni avisar al chofer por un fallo
+// puntual de un solo ping de posición.
+export async function saveDriverLocation(furgoId, lat, lng) {
   try {
     const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
     locations[furgoId] = {
@@ -2999,15 +3037,19 @@ export function saveDriverLocation(furgoId, lat, lng) {
     };
     localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
     if (supabase) {
-      supabase.from('delivery_settings').upsert({
+      const { error } = await supabase.from('delivery_settings').upsert({
         key: `loc_${furgoId}`,
         value: JSON.stringify({ lat: parseFloat(lat), lng: parseFloat(lng), updatedAt: new Date().toISOString() })
-      }).then(({ error }) => {
-        if (error) console.error("Error pushing driver location to Supabase:", error);
       });
+      if (error) {
+        console.error("Error pushing driver location to Supabase:", error);
+        return { success: false, error };
+      }
     }
+    return { success: true };
   } catch (e) {
     console.error("Error saving driver location:", e);
+    return { success: false, error: e };
   }
 }
 
@@ -3256,17 +3298,20 @@ export function getRouteStartAddr(userId) {
 }
 
 // Guardar punto de inicio predeterminado
-export function saveRouteStartAddr(addr, userId) {
+export async function saveRouteStartAddr(addr, userId) {
   if (userId) {
     localStorage.setItem(`delivery_start_addr_${userId}`, addr.trim());
   }
   localStorage.setItem('delivery_default_start_addr', addr.trim());
   if (supabase) {
     const key = userId ? `default_start_addr_${userId}` : 'default_start_addr';
-    supabase.from('delivery_settings').upsert({ key, value: addr.trim() }).then(({ error }) => {
-      if (error) console.error("Error saving start address setting to cloud:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key, value: addr.trim() });
+    if (error) {
+      console.error("Error saving start address setting to cloud:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Obtener punto de fin predeterminado
@@ -3279,42 +3324,51 @@ export function getRouteEndAddr(userId) {
 }
 
 // Guardar punto de fin predeterminado
-export function saveRouteEndAddr(addr, userId) {
+export async function saveRouteEndAddr(addr, userId) {
   if (userId) {
     localStorage.setItem(`delivery_end_addr_${userId}`, addr.trim());
   }
   localStorage.setItem('delivery_default_end_addr', addr.trim());
   if (supabase) {
     const key = userId ? `default_end_addr_${userId}` : 'default_end_addr';
-    supabase.from('delivery_settings').upsert({ key, value: addr.trim() }).then(({ error }) => {
-      if (error) console.error("Error saving end address setting to cloud:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key, value: addr.trim() });
+    if (error) {
+      console.error("Error saving end address setting to cloud:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Obtener API Keys de mapas
 export function getGoogleMapsKey() {
   return localStorage.getItem('delivery_google_maps_api_key') || '';
 }
-export function saveGoogleMapsKey(key) {
+export async function saveGoogleMapsKey(key) {
   localStorage.setItem('delivery_google_maps_api_key', key.trim());
   if (supabase) {
-    supabase.from('delivery_settings').upsert({ key: 'google_maps_api_key', value: key.trim() }).then(({ error }) => {
-      if (error) console.error("Error saving google maps key to cloud:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key: 'google_maps_api_key', value: key.trim() });
+    if (error) {
+      console.error("Error saving google maps key to cloud:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 export function getMapboxToken() {
   return localStorage.getItem('delivery_mapbox_access_token') || '';
 }
-export function saveMapboxToken(token) {
+export async function saveMapboxToken(token) {
   localStorage.setItem('delivery_mapbox_access_token', token.trim());
   if (supabase) {
-    supabase.from('delivery_settings').upsert({ key: 'mapbox_access_token', value: token.trim() }).then(({ error }) => {
-      if (error) console.error("Error saving mapbox token to cloud:", error);
-    });
+    const { error } = await supabase.from('delivery_settings').upsert({ key: 'mapbox_access_token', value: token.trim() });
+    if (error) {
+      console.error("Error saving mapbox token to cloud:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Parsear información de franja horaria y duración codificada en las notas
@@ -3427,17 +3481,20 @@ export function getRouteStartTime(furgoId, date) {
 }
 
 // Guardar hora de inicio de una ruta
-export function saveRouteStartTime(furgoId, date, time) {
+export async function saveRouteStartTime(furgoId, date, time) {
   if (furgoId && date) {
     const key = `delivery_route_start_time_${furgoId}_${date}`;
     localStorage.setItem(key, time);
     if (supabase) {
       const dbKey = `route_start_time_${furgoId}_${date}`;
-      supabase.from('delivery_settings').upsert({ key: dbKey, value: time }).then(({ error }) => {
-        if (error) console.error("Error saving route start time to Supabase:", error);
-      });
+      const { error } = await supabase.from('delivery_settings').upsert({ key: dbKey, value: time });
+      if (error) {
+        console.error("Error saving route start time to Supabase:", error);
+        return { success: false, error };
+      }
     }
   }
+  return { success: true };
 }
 
 // Helper para obtener el ID del administrador activo en la sesión actual
@@ -3467,33 +3524,39 @@ export function getAllowDriverSupportTransfer() {
 }
 
 // Guardar si los repartidores pueden hacer transferencias de apoyo
-export function saveAllowDriverSupportTransfer(value) {
+export async function saveAllowDriverSupportTransfer(value) {
   const adminId = getActiveAdminId();
   const valStr = value ? 'true' : 'false';
   localStorage.setItem(`delivery_allow_driver_support_transfer_${adminId}`, valStr);
   localStorage.setItem('delivery_allow_driver_support_transfer', valStr);
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `allow_driver_support_transfer_${adminId}`,
       value: valStr
-    }).then(({ error }) => {
-      if (error) console.error("Error saving allow_driver_support_transfer to Supabase:", error);
     });
+    if (error) {
+      console.error("Error saving allow_driver_support_transfer to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Guardar estado manual de la ruta
-export function saveRouteManualStatus(furgoId, date, isManual) {
+export async function saveRouteManualStatus(furgoId, date, isManual) {
   if (furgoId && date) {
     const key = `manual_route_${furgoId}_${date}`;
     const value = isManual ? 'true' : 'false';
     localStorage.setItem(`delivery_${key}`, value);
     if (supabase) {
-      supabase.from('delivery_settings').upsert({ key: key, value: value }).then(({ error }) => {
-        if (error) console.error("Error saving manual route status to Supabase:", error);
-      });
+      const { error } = await supabase.from('delivery_settings').upsert({ key: key, value: value });
+      if (error) {
+        console.error("Error saving manual route status to Supabase:", error);
+        return { success: false, error };
+      }
     }
   }
+  return { success: true };
 }
 
 // Obtener si la ruta está configurada en modo manual
@@ -3664,7 +3727,7 @@ export function getHelpersList() {
 }
 
 // Guardar la lista de ayudantes configurados
-export function saveHelpersList(helpers) {
+export async function saveHelpersList(helpers) {
   const adminId = getActiveAdminId();
   const formatted = helpers.map(item => ({
     name: item.name.trim(),
@@ -3674,13 +3737,16 @@ export function saveHelpersList(helpers) {
   localStorage.setItem(`delivery_helpers_list_${adminId}`, helpersStr);
   localStorage.setItem('delivery_helpers_list', helpersStr);
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `delivery_helpers_list_${adminId}`,
       value: helpersStr
-    }).then(({ error }) => {
-      if (error) console.error("Error saving helpers list to Supabase:", error);
     });
+    if (error) {
+      console.error("Error saving helpers list to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Obtener la lista de matriculas configuradas
@@ -3698,19 +3764,22 @@ export function getPlatesList() {
 }
 
 // Guardar la lista de matriculas configuradas
-export function savePlatesList(plates) {
+export async function savePlatesList(plates) {
   const adminId = getActiveAdminId();
   const platesStr = JSON.stringify(plates);
   localStorage.setItem(`delivery_plates_list_${adminId}`, platesStr);
   localStorage.setItem('delivery_plates_list', platesStr);
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `delivery_plates_list_${adminId}`,
       value: platesStr
-    }).then(({ error }) => {
-      if (error) console.error("Error saving plates list to Supabase:", error);
     });
+    if (error) {
+      console.error("Error saving plates list to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Obtener la tarifa diaria de un chofer
@@ -3720,16 +3789,19 @@ export function getDriverDailyRate(driverId) {
 }
 
 // Guardar la tarifa diaria de un chofer
-export function saveDriverDailyRate(driverId, rate) {
+export async function saveDriverDailyRate(driverId, rate) {
   localStorage.setItem(`delivery_driver_daily_rate_${driverId}`, rate.toString());
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `driver_daily_rate_${driverId}`,
       value: rate.toString()
-    }).then(({ error }) => {
-      if (error) console.error(`Error saving driver rate ${driverId} to Supabase:`, error);
     });
+    if (error) {
+      console.error(`Error saving driver rate ${driverId} to Supabase:`, error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Obtener la lista de empleados configurados
@@ -3761,7 +3833,7 @@ export function getEmployeesList() {
 }
 
 // Guardar la lista de empleados configurados
-export function saveEmployeesList(employees) {
+export async function saveEmployeesList(employees) {
   const adminId = getActiveAdminId();
   const formatted = employees.map(item => ({
     id: item.id || `emp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -3774,13 +3846,16 @@ export function saveEmployeesList(employees) {
   localStorage.setItem(`delivery_employees_list_${adminId}`, empStr);
   localStorage.setItem('delivery_employees_list', empStr);
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `delivery_employees_list_${adminId}`,
       value: empStr
-    }).then(({ error }) => {
-      if (error) console.error("Error saving employees list to Supabase:", error);
     });
+    if (error) {
+      console.error("Error saving employees list to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 // Función auxiliar para verificar si un usuario tiene permiso para acceder a un módulo específico
@@ -3910,19 +3985,22 @@ export function getFleetVehicles() {
   }
 }
 
-export function saveFleetVehicles(vehicles) {
+export async function saveFleetVehicles(vehicles) {
   const adminId = getActiveAdminId();
   const valStr = JSON.stringify(vehicles);
   localStorage.setItem(`delivery_fleet_vehicles_${adminId}`, valStr);
   localStorage.setItem('delivery_fleet_vehicles', valStr); // fallback local
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `fleet_vehicles_${adminId}`,
       value: valStr
-    }).then(({ error }) => {
-      if (error) console.error("Error saving fleet vehicles to Supabase:", error);
     });
+    if (error) {
+      console.error("Error saving fleet vehicles to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 export function getFleetFuelLogs() {
@@ -3935,19 +4013,22 @@ export function getFleetFuelLogs() {
   }
 }
 
-export function saveFleetFuelLogs(logs) {
+export async function saveFleetFuelLogs(logs) {
   const adminId = getActiveAdminId();
   const valStr = JSON.stringify(logs);
   localStorage.setItem(`delivery_fleet_fuel_logs_${adminId}`, valStr);
   localStorage.setItem('delivery_fleet_fuel_logs', valStr); // fallback local
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `fleet_fuel_logs_${adminId}`,
       value: valStr
-    }).then(({ error }) => {
-      if (error) console.error("Error saving fleet fuel logs to Supabase:", error);
     });
+    if (error) {
+      console.error("Error saving fleet fuel logs to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 export function getFleetMaintenanceLogs() {
@@ -3960,19 +4041,22 @@ export function getFleetMaintenanceLogs() {
   }
 }
 
-export function saveFleetMaintenanceLogs(logs) {
+export async function saveFleetMaintenanceLogs(logs) {
   const adminId = getActiveAdminId();
   const valStr = JSON.stringify(logs);
   localStorage.setItem(`delivery_fleet_maintenance_logs_${adminId}`, valStr);
   localStorage.setItem('delivery_fleet_maintenance_logs', valStr); // fallback local
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `fleet_maintenance_logs_${adminId}`,
       value: valStr
-    }).then(({ error }) => {
-      if (error) console.error("Error saving fleet maintenance logs to Supabase:", error);
     });
+    if (error) {
+      console.error("Error saving fleet maintenance logs to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 export function getFleetDailyLogs() {
@@ -3985,19 +4069,22 @@ export function getFleetDailyLogs() {
   }
 }
 
-export function saveFleetDailyLogs(logs) {
+export async function saveFleetDailyLogs(logs) {
   const adminId = getActiveAdminId();
   const valStr = JSON.stringify(logs);
   localStorage.setItem(`delivery_fleet_daily_logs_${adminId}`, valStr);
   localStorage.setItem('delivery_fleet_daily_logs', valStr); // fallback local
   if (supabase) {
-    supabase.from('delivery_settings').upsert({
+    const { error } = await supabase.from('delivery_settings').upsert({
       key: `fleet_daily_logs_${adminId}`,
       value: valStr
-    }).then(({ error }) => {
-      if (error) console.error("Error saving fleet daily logs to Supabase:", error);
     });
+    if (error) {
+      console.error("Error saving fleet daily logs to Supabase:", error);
+      return { success: false, error };
+    }
   }
+  return { success: true };
 }
 
 

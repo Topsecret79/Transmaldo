@@ -5588,7 +5588,7 @@ function App() {
     };
   };
 
-  const handleConfirmCloseShift = (furgoId, date) => {
+  const handleConfirmCloseShift = async (furgoId, date) => {
     const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date);
     
     // Condicional de bloqueo: No permitir cerrar turno si existen paradas de ruta rápida incompletas (sin nombre real de cliente o sin mercancía/servicios)
@@ -5710,24 +5710,33 @@ function App() {
         }
       }
 
-      saveRouteKms(furgoId, date, kms);
-      closeShift(furgoId, date, summary);
+      await saveRouteKms(furgoId, date, kms);
+      // Fix (hallazgo #22): antes closeShift() no se esperaba, así que el modal se
+      // cerraba y avisaba "con éxito" aunque el guardado real en la nube todavía
+      // estuviera en curso (o hubiera fallado). Ahora se espera su confirmación
+      // real antes de avisar.
+      const closeResult = await closeShift(furgoId, date, summary);
+      loadData();
+      if (closeResult && closeResult.success === false) {
+        triggerAlert('No se pudo confirmar el cierre de turno en el servidor. Vuelve a intentarlo.', 'error');
+        return false;
+      }
       triggerAlert('Turno cerrado y resumen de flota actualizado con éxito ✓');
       setShowShiftModal(false);
-      loadData();
       return true;
     }
     return false;
   };
 
-  const handleAdminUpdateShift = (furgoId, date) => {
+  const handleAdminUpdateShift = async (furgoId, date) => {
     let kms = parseFloat(shiftKmsInput) || 0;
-    saveRouteKms(furgoId, date, kms);
+    await saveRouteKms(furgoId, date, kms);
 
     const shiftsList = getShifts();
     const shiftId = `${furgoId}_${date}`;
     const existingIndex = shiftsList.findIndex(s => s.id === shiftId);
 
+    let result;
     if (existingIndex !== -1) {
       const existingShift = shiftsList[existingIndex];
       const summary = getShiftSummary(furgoId, date);
@@ -5741,16 +5750,20 @@ function App() {
         }
       };
       shiftsList[existingIndex] = updatedShift;
-      saveShifts(shiftsList);
+      result = await saveShifts(shiftsList);
     } else {
       const summary = getShiftSummary(furgoId, date);
       summary.kms = kms;
-      closeShift(furgoId, date, summary);
+      result = await closeShift(furgoId, date, summary);
     }
 
+    loadData();
+    if (result && result.success === false) {
+      triggerAlert('No se pudo confirmar el guardado en el servidor.', 'error');
+      return;
+    }
     triggerAlert('Kilómetros del turno actualizados con éxito ✓');
     setShowShiftModal(false);
-    loadData();
   };
 
   const saveExcelToDisk = async (wb, filename) => {
@@ -7043,8 +7056,8 @@ function App() {
               <button
                 type="button"
                 className="btn btn-secondary btn-small"
-                onClick={() => {
-                  const success = handleConfirmCloseShift(activeRouteContext.furgoId, activeRouteContext.date);
+                onClick={async () => {
+                  const success = await handleConfirmCloseShift(activeRouteContext.furgoId, activeRouteContext.date);
                   if (success) {
                     const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
                     setActiveRoutes(remaining);
@@ -14787,7 +14800,7 @@ function App() {
 
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       let targetFurgoId = plannedFurgoId;
                       if (!targetFurgoId) {
                         targetFurgoId = `custom_temp_${Date.now()}`;
@@ -14806,17 +14819,21 @@ function App() {
                       } else {
                         targetCustom = plannedDriverName;
                       }
-                      savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom, currentUser?.id, plannedHelper2);
-                      setTimeout(() => {
-                        loadData();
-                        setPlannedFurgoId('');
-                        setPlannedHelper('');
-                        setPlannedHelper2('');
-                        setPlannedMatricula('');
-                        setPlannedDriverName('');
-                        setCustomDriverNameInput('');
+                      // Fix (hallazgo #22): esperar la confirmación real del servidor antes de
+                      // avisar "planificado con éxito" en vez del setTimeout fijo de antes.
+                      const result = await savePlannedShift(targetFurgoId, dayStr, plannedHelper, plannedMatricula, targetCustom, currentUser?.id, plannedHelper2);
+                      loadData();
+                      setPlannedFurgoId('');
+                      setPlannedHelper('');
+                      setPlannedHelper2('');
+                      setPlannedMatricula('');
+                      setPlannedDriverName('');
+                      setCustomDriverNameInput('');
+                      if (!result || result.success === false) {
+                        triggerAlert('No se pudo confirmar el guardado en el servidor. Puede que el turno no se haya planificado para el resto del equipo.', 'error');
+                      } else {
                         triggerAlert('Turno planificado con éxito');
-                      }, 100);
+                      }
                     }}
                     className="btn btn-primary"
                     style={{ width: '100%', marginTop: '5px', margin: 0 }}
@@ -15515,7 +15532,7 @@ function App() {
 
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         let targetFurgoId = plannedFurgoId;
                         if (!targetFurgoId) {
                           targetFurgoId = `custom_temp_${Date.now()}`;
@@ -15534,17 +15551,21 @@ function App() {
                         } else {
                           targetCustom = plannedDriverName;
                         }
-                        savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom, currentUser?.id, plannedHelper2);
-                        setTimeout(() => {
-                          loadData();
-                          setPlannedFurgoId('');
-                          setPlannedHelper('');
-                          setPlannedHelper2('');
-                          setPlannedMatricula('');
-                          setPlannedDriverName('');
-                          setCustomDriverNameInput('');
+                        // Fix (hallazgo #22): esperar la confirmación real del servidor antes de
+                        // avisar "planificado con éxito" en vez del setTimeout fijo de antes.
+                        const result = await savePlannedShift(targetFurgoId, selectedCalendarDay, plannedHelper, plannedMatricula, targetCustom, currentUser?.id, plannedHelper2);
+                        loadData();
+                        setPlannedFurgoId('');
+                        setPlannedHelper('');
+                        setPlannedHelper2('');
+                        setPlannedMatricula('');
+                        setPlannedDriverName('');
+                        setCustomDriverNameInput('');
+                        if (!result || result.success === false) {
+                          triggerAlert('No se pudo confirmar el guardado en el servidor. Puede que el turno no se haya planificado para el resto del equipo.', 'error');
+                        } else {
                           triggerAlert('Turno planificado con éxito');
-                        }, 100);
+                        }
                       }}
                       className="btn btn-primary"
                       style={{ width: '100%', marginTop: '4px', margin: 0 }}
