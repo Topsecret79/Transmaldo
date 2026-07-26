@@ -1862,8 +1862,8 @@ export async function saveDormityTariffs(tariffs) {
         block: t.block || 'General',
         type: t.type || 'fixed',
         value: Number(t.value) || 0,
-        provider: 'dormity',
-        createdBy: t.createdBy || 'admin'
+       
+        created_by: t.createdBy || 'admin'
       }));
       const { error } = await supabase.from('delivery_tariffs').upsert(dbFormatted);
       if (error) console.error("Error saving dormity tariffs to Supabase:", error);
