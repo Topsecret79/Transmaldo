@@ -5973,14 +5973,18 @@ function App() {
       triggerAlert('El nombre visible no puede estar vacío', 'error');
       return;
     }
-    if (!newPassword.trim()) {
-      triggerAlert('La contraseña no puede estar vacía', 'error');
-      return;
-    }
-    const updated = users.map(u => (u.id === id ? { ...u, label: newLabel.trim(), password: newPassword.trim() } : u));
+    // Fix: el campo de contraseña del formulario ya no llega precargado con el hash
+    // actual (ver el input más arriba, que ahora se deja siempre en blanco por
+    // seguridad), así que un envío con el campo vacío significa "no cambiar la
+    // contraseña", no "vaciar la contraseña". Antes esto obligaba a re-teclear
+    // siempre una contraseña solo para poder guardar el nombre visible.
+    const trimmedPassword = newPassword.trim();
+    const updated = users.map(u => (u.id === id
+      ? { ...u, label: newLabel.trim(), password: trimmedPassword ? trimmedPassword : u.password }
+      : u));
     saveUsers(updated);
     setUsers(updated);
-    triggerAlert('Datos de usuario actualizados correctamente');
+    triggerAlert(trimmedPassword ? 'Datos de usuario y contraseña actualizados correctamente' : 'Nombre visible actualizado correctamente');
   };
 
   const handleUpdateUserPermissions = (id, moduleId, isAllowed) => {
@@ -17212,16 +17216,19 @@ function App() {
                             </div>
                             <div className="input-group" style={{ marginBottom: 0 }}>
                               <span className="input-label" style={{ fontSize: '0.7rem' }}>Contraseña / PIN</span>
-                              {/* Fix: este campo mostraba la contraseña/hash actual del
-                                  usuario en texto plano (type="text") con solo abrir el
-                                  formulario de edición. Ahora está oculto por defecto. */}
+                              {/* Fix: aunque ya estaba oculto (type="password"), este campo seguía
+                                  precargando la contraseña cifrada (hash) real del usuario como
+                                  defaultValue -- visible en el DOM, en React DevTools y en
+                                  gestores de contraseñas del navegador, incluso al abrir el
+                                  formulario de edición del superadmin. Ahora se deja siempre en
+                                  blanco: si no se escribe nada nuevo, la contraseña actual no se
+                                  toca (ver handleUpdateUser). */}
                               <input
                                 type="password"
                                 name="user_password"
                                 className="form-input"
-                                defaultValue={u.password}
+                                placeholder="Dejar en blanco para no cambiarla"
                                 style={{ padding: '4px 8px', fontSize: '0.8rem', height: '28px' }}
-                                required
                                 autoComplete="new-password"
                               />
                             </div>
