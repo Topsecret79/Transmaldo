@@ -297,8 +297,13 @@
   const routeNext = document.getElementById('routeNext');
   const rangeRow = document.getElementById('rangeRow');
   let currentPeriod = 'semana';
-  let currentRoutes = [];
+  let currentFurgos = []; // array de ids, en el mismo orden que aparecen en el selector
   let searchDebounce = null;
+
+  function capitalize(s){
+    if (!s) return s;
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
 
   function periodDates(){
     if (currentPeriod === 'hoy') return { dateFrom: todayISO(), dateTo: todayISO() };
@@ -323,14 +328,14 @@
 
   routeSelect.addEventListener('change', loadData);
   routePrev.addEventListener('click', ()=>{
-    const idx = currentRoutes.indexOf(routeSelect.value);
-    routeSelect.value = idx > 0 ? currentRoutes[idx-1] : '';
+    const idx = currentFurgos.indexOf(routeSelect.value);
+    routeSelect.value = idx > 0 ? currentFurgos[idx-1] : '';
     loadData();
   });
   routeNext.addEventListener('click', ()=>{
-    const idx = currentRoutes.indexOf(routeSelect.value);
-    if (idx === -1) routeSelect.value = currentRoutes[0] || '';
-    else if (idx < currentRoutes.length - 1) routeSelect.value = currentRoutes[idx+1];
+    const idx = currentFurgos.indexOf(routeSelect.value);
+    if (idx === -1) routeSelect.value = currentFurgos[0] || '';
+    else if (idx < currentFurgos.length - 1) routeSelect.value = currentFurgos[idx+1];
     loadData();
   });
   searchInput.addEventListener('input', ()=>{
@@ -338,12 +343,14 @@
     searchDebounce = setTimeout(loadData, 350);
   });
 
-  function renderRoutes(routes){
-    currentRoutes = routes;
+  // furgos: [{id, label}] — las furgonetas/usuarios activos (Ruta 150, Ruta 151, Ruta 168,
+  // Sprinter, Boxer), no el texto libre de route_name que cambia cada día.
+  function renderFurgos(furgos){
+    currentFurgos = furgos.map(f => f.id);
     const prevVal = routeSelect.value;
     routeSelect.innerHTML = '<option value="">Todas las rutas</option>' +
-      routes.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
-    if (routes.includes(prevVal)) routeSelect.value = prevVal;
+      furgos.map(f => `<option value="${escapeHtml(f.id)}">${escapeHtml(capitalize(f.label))}</option>`).join('');
+    if (currentFurgos.includes(prevVal)) routeSelect.value = prevVal;
   }
 
   function escapeHtml(s){
@@ -366,8 +373,10 @@
     empty.style.display = 'none';
     body.innerHTML = tickets.map(t => {
       const detail = Array.isArray(t.tasks) ? t.tasks.map(task => escapeHtml(task.name || task.tariffId || '')).join(', ') : '';
+      const furgoChip = t.furgo_label ? `<span class="route-chip">${escapeHtml(capitalize(t.furgo_label))}</span>` : '';
+      const routeSub = t.route_name ? `<div class="tasks-detail">${escapeHtml(t.route_name)}</div>` : '';
       return `<tr class="row">
-        <td>${t.route_name ? `<span class="route-chip">${escapeHtml(t.route_name)}</span>` : ''}</td>
+        <td>${furgoChip}${routeSub}</td>
         <td>${fmtDate(t.date)}</td>
         <td><strong>${escapeHtml(t.customer_name || '')}</strong></td>
         <td>${escapeHtml(t.address || '')}</td>
@@ -390,19 +399,19 @@
         username: session.username,
         password: session.password,
         search: searchInput.value,
-        route: routeSelect.value,
+        furgo: routeSelect.value,
         dateFrom, dateTo
       });
-      renderRoutes(data.routes || []);
+      renderFurgos(data.furgos || []);
       renderTable(data.tickets || []);
       document.getElementById('totalAmount').textContent = fmtEUR(data.total);
       document.getElementById('totalCount').textContent = data.count;
       document.getElementById('pendingCount').textContent =
         (data.tickets || []).filter(t => t.status === 'pending').length;
 
-      const idx = currentRoutes.indexOf(routeSelect.value);
+      const idx = currentFurgos.indexOf(routeSelect.value);
       routePrev.disabled = (routeSelect.value === '');
-      routeNext.disabled = (idx === currentRoutes.length - 1);
+      routeNext.disabled = (idx === currentFurgos.length - 1);
     } catch(err){
       // Sesión inválida o error de red: volver a pedir credenciales.
       sessionStorage.removeItem(SESSION_KEY);
@@ -420,7 +429,7 @@
     document.getElementById('dateFrom').value = isoDaysAgo(6);
     document.getElementById('dateTo').value = todayISO();
     showScreen('panel');
-    renderRoutes(initialData.routes || []);
+    renderFurgos(initialData.furgos || []);
     renderTable(initialData.tickets || []);
     document.getElementById('totalAmount').textContent = fmtEUR(initialData.total);
     document.getElementById('totalCount').textContent = initialData.count;
