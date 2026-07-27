@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Delivery Team — Portal de empresas cliente</title>
+<style>
+  :root{
+    --bg:#F7F8FA; --surface:#FFFFFF; --ink:#15181D; --ink2:#4A5260; --ink3:#7A8394;
+    --line:#E2E6EC; --accent:#1F3864; --accent2:#2A5DA8;
+    --ok:#1E6B2E; --okbg:#EAF4EC; --warn:#A05A00; --warnbg:#FBF3E6;
+    --err:#B01515; --errbg:#FBEBEB;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 70px}
+  .screen{display:none}
+  .screen.active{display:block}
+
+  /* --- Pantalla de acceso --- */
+  .login-card{max-width:360px;margin:80px auto;background:var(--surface);
+              border:1px solid var(--line);border-radius:14px;padding:36px 32px;
+              box-shadow:0 1px 3px rgba(0,0,0,.04);text-align:center}
+  .login-logo{width:52px;height:52px;border-radius:12px;background:var(--accent);
+              color:#fff;display:flex;align-items:center;justify-content:center;
+              font-weight:700;font-size:1.3rem;margin:0 auto 14px}
+  .login-card h2{font-size:1.05rem;margin:0 0 4px}
+  .login-card p{color:var(--ink3);font-size:.85rem;margin:0 0 24px}
+  .field{text-align:left;margin-bottom:14px}
+  .field label{display:block;font-size:.76rem;color:var(--ink3);text-transform:uppercase;
+               letter-spacing:.05em;margin-bottom:5px}
+  .field input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+              font-size:.9rem;background:var(--bg);color:var(--ink)}
+  .btn{width:100%;padding:11px;border:none;border-radius:8px;background:var(--accent);
+       color:#fff;font-weight:600;font-size:.9rem;cursor:pointer;margin-top:8px}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
+  .btn-link{background:none;border:none;color:var(--ink3);font-size:.8rem;cursor:pointer;
+            text-decoration:underline;margin-top:14px}
+  .login-error{background:var(--errbg);color:var(--err);border-radius:8px;padding:9px 12px;
+              font-size:.83rem;margin-bottom:14px;display:none;text-align:left}
+
+  /* --- Panel principal --- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+  .topbar h1{font-size:1.15rem;margin:0}
+  .topbar .who{color:var(--ink3);font-size:.82rem}
+  .logout{background:none;border:1px solid var(--line);border-radius:8px;padding:7px 13px;
+          font-size:.82rem;color:var(--ink2);cursor:pointer}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px}
+  .search{flex:1 1 220px;min-width:200px;position:relative}
+  .search input{width:100%;padding:10px 14px 10px 36px;border:1px solid var(--line);
+                border-radius:9px;font-size:.88rem;background:var(--surface);color:var(--ink)}
+  .search::before{content:"⌕";position:absolute;left:13px;top:50%;transform:translateY(-50%);
+                  color:var(--ink3);font-size:1rem}
+
+  .routeNav{display:flex;align-items:center;gap:4px;background:var(--surface);
+            border:1px solid var(--line);border-radius:9px;padding:3px}
+  .routeNav button{width:30px;height:30px;border:none;background:transparent;color:var(--accent);
+                   font-size:1.05rem;font-weight:700;border-radius:6px;cursor:pointer}
+  .routeNav button:hover:not(:disabled){background:var(--bg)}
+  .routeNav button:disabled{color:var(--ink3);cursor:not-allowed}
+  .routeNav select{border:none;background:transparent;font-size:.86rem;font-weight:600;
+                   color:var(--ink);padding:6px 4px;cursor:pointer;max-width:180px}
+
+  .periods{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);
+           border-radius:9px;padding:3px}
+  .period{padding:7px 13px;border-radius:7px;font-size:.83rem;color:var(--ink2);
+          cursor:pointer;font-weight:600;user-select:none}
+  .period.active{background:var(--accent);color:#fff}
+
+  .rangeRow{display:none;gap:8px;align-items:center;margin:-6px 0 14px}
+  .rangeRow.active{display:flex}
+  .rangeRow input{padding:7px 10px;border:1px solid var(--line);border-radius:7px;font-size:.83rem}
+  .rangeRow button{padding:7px 14px;border:none;border-radius:7px;background:var(--accent);
+                   color:#fff;font-size:.82rem;font-weight:600;cursor:pointer}
+
+  .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;
+           margin-bottom:22px}
+  .summary .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+                 padding:16px 18px}
+  .summary .card.total{background:var(--accent);border-color:var(--accent)}
+  .summary .card dt{font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;
+                    color:var(--ink3);margin:0 0 6px}
+  .summary .card.total dt{color:#c9d6ec}
+  .summary .card dd{margin:0;font-size:1.5rem;font-weight:700;color:var(--ink)}
+  .summary .card.total dd{color:#fff}
+
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);
+        border-radius:12px;overflow:hidden;font-size:.86rem}
+  th{text-align:left;background:var(--bg);color:var(--ink3);font-size:.72rem;
+     text-transform:uppercase;letter-spacing:.05em;padding:11px 14px;border-bottom:1px solid var(--line)}
+  td{padding:12px 14px;border-bottom:1px solid var(--line);color:var(--ink2);vertical-align:top}
+  td strong{color:var(--ink)}
+  tr:last-child td{border-bottom:none}
+  tr.row:hover{background:var(--bg)}
+  .route-chip{display:inline-block;font-size:.76rem;font-weight:700;color:var(--accent2)}
+  .status{display:inline-block;font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:20px;white-space:nowrap}
+  .status.success{background:var(--okbg);color:var(--ok)}
+  .status.pending{background:var(--warnbg);color:var(--warn)}
+  .status.failed{background:var(--errbg);color:var(--err)}
+  .status.transit{background:#EAF0FA;color:var(--accent2)}
+  .amount{font-weight:700;color:var(--ink)}
+  .empty,.loading{padding:40px;text-align:center;color:var(--ink3);font-size:.88rem}
+  .tasks-detail{font-size:.78rem;color:var(--ink3);margin-top:2px}
+
+  .note{margin-top:18px;padding:14px 18px;border-left:3px solid var(--accent2);
+        background:#EAF0FA;border-radius:0 8px 8px 0;font-size:.85rem;color:var(--ink2)}
+  footer{margin-top:40px;color:var(--ink3);font-size:.78rem;text-align:center}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- PANTALLA 1: LOGIN -->
+  <div class="screen active" id="screen-login">
+    <form class="login-card" id="loginForm">
+      <div class="login-logo">MD</div>
+      <h2>My Delivery Team</h2>
+      <p>Acceso para empresas cliente</p>
+      <div class="login-error" id="loginError"></div>
+      <div class="field">
+        <label>Usuario</label>
+        <input type="text" id="loginUser" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" id="loginPass" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn" id="loginBtn">Entrar</button>
+    </form>
+  </div>
+
+  <!-- PANTALLA 2: PANEL PRINCIPAL -->
+  <div class="screen" id="screen-panel">
+    <div class="topbar">
+      <div>
+        <h1>Repartos y facturación</h1>
+        <div class="who" id="whoLabel"></div>
+      </div>
+      <button class="logout" id="logoutBtn">Cerrar sesión</button>
+    </div>
+
+    <div class="toolbar">
+      <div class="search">
+        <input id="searchInput" type="text" placeholder="Buscar por cliente, dirección o teléfono…">
+      </div>
+      <div class="routeNav">
+        <button id="routePrev" title="Ruta anterior">‹</button>
+        <select id="routeSelect"><option value="">Todas las rutas</option></select>
+        <button id="routeNext" title="Ruta siguiente">›</button>
+      </div>
+      <div class="periods">
+        <div class="period" data-p="hoy">Hoy</div>
+        <div class="period active" data-p="semana">Últimos 7 días</div>
+        <div class="period" data-p="mes">Este mes</div>
+        <div class="period" data-p="rango">Rango…</div>
+      </div>
+    </div>
+
+    <div class="rangeRow" id="rangeRow">
+      <input type="date" id="dateFrom">
+      <span style="color:var(--ink3)">hasta</span>
+      <input type="date" id="dateTo">
+      <button id="applyRange">Aplicar</button>
+    </div>
+
+    <div class="summary">
+      <dl class="card total">
+        <dt id="totalLabel">Total facturado</dt>
+        <dd id="totalAmount">—</dd>
+      </dl>
+      <dl class="card">
+        <dt>Repartos mostrados</dt>
+        <dd id="totalCount">—</dd>
+      </dl>
+      <dl class="card">
+        <dt>Pendientes</dt>
+        <dd id="pendingCount">—</dd>
+      </dl>
+    </div>
+
+    <div id="tableContainer">
+      <table>
+        <thead>
+          <tr><th>Ruta</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Detalle</th><th>Importe</th><th>Estado</th></tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="empty" id="emptyMsg" style="display:none">No se encontraron repartos con ese criterio.</div>
+      <div class="loading" id="loadingMsg" style="display:none">Cargando…</div>
+    </div>
+
+    <div class="note">
+      Esta pantalla es únicamente de consulta: no existe ninguna opción para crear, editar
+      ni borrar repartos desde aquí.
+    </div>
+  </div>
+
+  <footer>My Delivery Team · portal de solo lectura para empresas cliente</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const API_URL = "https://neskvzjfwjgbhasboxfh.supabase.co/functions/v1/client-portal";
+  const SESSION_KEY = "mdt_client_portal_session";
+
+  const screens = { login: document.getElementById('screen-login'), panel: document.getElementById('screen-panel') };
+  function showScreen(name){
+    Object.values(screens).forEach(s=>s.classList.remove('active'));
+    screens[name].classList.add('active');
+  }
+
+  function fmtEUR(n){
+    return Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
+  }
+  function fmtDate(iso){
+    if(!iso) return '';
+    const [y,m,d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  function todayISO(){
+    const d = new Date();
+    return d.toISOString().slice(0,10);
+  }
+  function isoDaysAgo(n){
+    const d = new Date();
+    d.setDate(d.getDate()-n);
+    return d.toISOString().slice(0,10);
+  }
+  function firstOfMonthISO(){
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().slice(0,10);
+  }
+
+  let session = null; // { username, password, company }
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (raw) session = JSON.parse(raw);
+  } catch(e){ session = null; }
+
+  const companyLabels = { corte_ingles: 'El Corte Inglés', dormity: 'Dormity' };
+
+  // --- Login ---
+  const loginForm = document.getElementById('loginForm');
+  const loginError = document.getElementById('loginError');
+  const loginBtn = document.getElementById('loginBtn');
+
+  async function callApi(payload){
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(()=>({error:'bad_response'}));
+    if (!res.ok) throw new Error(data.error || 'error');
+    return data;
+  }
+
+  loginForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    loginError.style.display = 'none';
+    const username = document.getElementById('loginUser').value.trim();
+    const password = document.getElementById('loginPass').value;
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Entrando…';
+    try {
+      const data = await callApi({ username, password, dateFrom: isoDaysAgo(6), dateTo: todayISO() });
+      session = { username, password, company: data.company };
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      enterPanel(data);
+    } catch(err){
+      loginError.textContent = 'Usuario o contraseña incorrectos.';
+      loginError.style.display = 'block';
+    } finally {
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Entrar';
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', ()=>{
+    sessionStorage.removeItem(SESSION_KEY);
+    session = null;
+    document.getElementById('loginUser').value = '';
+    document.getElementById('loginPass').value = '';
+    showScreen('login');
+  });
+
+  // --- Panel ---
+  const searchInput = document.getElementById('searchInput');
+  const routeSelect = document.getElementById('routeSelect');
+  const routePrev = document.getElementById('routePrev');
+  const routeNext = document.getElementById('routeNext');
+  const rangeRow = document.getElementById('rangeRow');
+  let currentPeriod = 'semana';
+  let currentRoutes = [];
+  let searchDebounce = null;
+
+  function periodDates(){
+    if (currentPeriod === 'hoy') return { dateFrom: todayISO(), dateTo: todayISO() };
+    if (currentPeriod === 'mes') return { dateFrom: firstOfMonthISO(), dateTo: todayISO() };
+    if (currentPeriod === 'rango') {
+      return { dateFrom: document.getElementById('dateFrom').value, dateTo: document.getElementById('dateTo').value };
+    }
+    return { dateFrom: isoDaysAgo(6), dateTo: todayISO() }; // semana
+  }
+
+  document.querySelectorAll('.period').forEach(p=>{
+    p.addEventListener('click', ()=>{
+      document.querySelectorAll('.period').forEach(x=>x.classList.remove('active'));
+      p.classList.add('active');
+      currentPeriod = p.dataset.p;
+      rangeRow.classList.toggle('active', currentPeriod === 'rango');
+      document.getElementById('totalLabel').textContent = 'Total facturado — ' + p.textContent.toLowerCase();
+      if (currentPeriod !== 'rango') loadData();
+    });
+  });
+  document.getElementById('applyRange').addEventListener('click', loadData);
+
+  routeSelect.addEventListener('change', loadData);
+  routePrev.addEventListener('click', ()=>{
+    const idx = currentRoutes.indexOf(routeSelect.value);
+    routeSelect.value = idx > 0 ? currentRoutes[idx-1] : '';
+    loadData();
+  });
+  routeNext.addEventListener('click', ()=>{
+    const idx = currentRoutes.indexOf(routeSelect.value);
+    if (idx === -1) routeSelect.value = currentRoutes[0] || '';
+    else if (idx < currentRoutes.length - 1) routeSelect.value = currentRoutes[idx+1];
+    loadData();
+  });
+  searchInput.addEventListener('input', ()=>{
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(loadData, 350);
+  });
+
+  function renderRoutes(routes){
+    currentRoutes = routes;
+    const prevVal = routeSelect.value;
+    routeSelect.innerHTML = '<option value="">Todas las rutas</option>' +
+      routes.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+    if (routes.includes(prevVal)) routeSelect.value = prevVal;
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function statusLabel(s){
+    const map = { success: 'Entregado', pending: 'Pendiente', failed: 'Incidencia', transit: 'En reparto' };
+    return map[s] || s;
+  }
+
+  function renderTable(tickets){
+    const body = document.getElementById('tableBody');
+    const empty = document.getElementById('emptyMsg');
+    if (!tickets.length) {
+      body.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    body.innerHTML = tickets.map(t => {
+      const detail = Array.isArray(t.tasks) ? t.tasks.map(task => escapeHtml(task.name || task.tariffId || '')).join(', ') : '';
+      return `<tr class="row">
+        <td>${t.route_name ? `<span class="route-chip">${escapeHtml(t.route_name)}</span>` : ''}</td>
+        <td>${fmtDate(t.date)}</td>
+        <td><strong>${escapeHtml(t.customer_name || '')}</strong></td>
+        <td>${escapeHtml(t.address || '')}</td>
+        <td>${detail}</td>
+        <td class="amount">${fmtEUR(t.total_price)}</td>
+        <td><span class="status ${escapeHtml(t.status||'')}">${escapeHtml(statusLabel(t.status))}</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function loadData(){
+    if (!session) return;
+    const { dateFrom, dateTo } = periodDates();
+    if (currentPeriod === 'rango' && (!dateFrom || !dateTo)) return;
+
+    document.getElementById('loadingMsg').style.display = 'block';
+    document.getElementById('emptyMsg').style.display = 'none';
+    try {
+      const data = await callApi({
+        username: session.username,
+        password: session.password,
+        search: searchInput.value,
+        route: routeSelect.value,
+        dateFrom, dateTo
+      });
+      renderRoutes(data.routes || []);
+      renderTable(data.tickets || []);
+      document.getElementById('totalAmount').textContent = fmtEUR(data.total);
+      document.getElementById('totalCount').textContent = data.count;
+      document.getElementById('pendingCount').textContent =
+        (data.tickets || []).filter(t => t.status === 'pending').length;
+
+      const idx = currentRoutes.indexOf(routeSelect.value);
+      routePrev.disabled = (routeSelect.value === '');
+      routeNext.disabled = (idx === currentRoutes.length - 1);
+    } catch(err){
+      // Sesión inválida o error de red: volver a pedir credenciales.
+      sessionStorage.removeItem(SESSION_KEY);
+      session = null;
+      showScreen('login');
+      loginError.textContent = 'Tu sesión ha caducado, entra de nuevo.';
+      loginError.style.display = 'block';
+    } finally {
+      document.getElementById('loadingMsg').style.display = 'none';
+    }
+  }
+
+  function enterPanel(initialData){
+    document.getElementById('whoLabel').textContent = companyLabels[session.company] || session.company;
+    document.getElementById('dateFrom').value = isoDaysAgo(6);
+    document.getElementById('dateTo').value = todayISO();
+    showScreen('panel');
+    renderRoutes(initialData.routes || []);
+    renderTable(initialData.tickets || []);
+    document.getElementById('totalAmount').textContent = fmtEUR(initialData.total);
+    document.getElementById('totalCount').textContent = initialData.count;
+    document.getElementById('pendingCount').textContent =
+      (initialData.tickets || []).filter(t => t.status === 'pending').length;
+  }
+
+  // Si ya había una sesión guardada en este navegador, recargar directamente el panel.
+  if (session) {
+    (async ()=>{
+      try {
+        const { dateFrom, dateTo } = periodDates();
+        const data = await callApi({ username: session.username, password: session.password, dateFrom, dateTo });
+        session.company = data.company;
+        enterPanel(data);
+      } catch(e){
+        sessionStorage.removeItem(SESSION_KEY);
+        session = null;
+      }
+    })();
+  }
+})();
+</script>
+
+</body>
+</html>
