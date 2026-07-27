@@ -162,7 +162,11 @@ export async function initializeSupabaseTables() {
     if (!cloudUsers || cloudUsers.length === 0) {
       const localUsers = JSON.parse(localStorage.getItem('delivery_users')) || [];
       if (localUsers.length > 0) {
-        await supabase.from('delivery_users').insert(localUsers.map(u => ({
+        // Fix: ningún envío de esta función comprobaba `error`. Un fallo aquí (columna
+        // inexistente, RLS, restricción de unicidad) pasaba completamente inadvertido:
+        // ni consola, ni excepción, nada. Se añade el mismo chequeo que ya usan
+        // saveTariffs()/saveTickets() en el resto del archivo.
+        const { error } = await supabase.from('delivery_users').insert(localUsers.map(u => ({
           id: u.id,
           username: u.username,
           password: u.password,
@@ -170,6 +174,7 @@ export async function initializeSupabaseTables() {
           role: u.role,
           can_search: u.canSearch || false
         })));
+        if (error) console.error("Error sembrando delivery_users en Supabase:", error);
       }
     }
 
@@ -178,7 +183,21 @@ export async function initializeSupabaseTables() {
     if (!cloudTariffs || cloudTariffs.length === 0) {
       const localTariffs = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
       if (localTariffs.length > 0) {
-        await supabase.from('delivery_tariffs').insert(localTariffs);
+        // Fix: se mandaba el objeto de tarifa tal cual venía de localStorage, que puede
+        // llevar el campo `createdBy` (camelCase) una vez ha pasado por saveTariffs() /
+        // syncFromCloud() — esa columna no existe en delivery_tariffs (la real es
+        // `created_by`), así que el envío entero fallaría. Se aplica el mismo whitelist
+        // explícito de columnas reales que ya usa saveTariffs().
+        const dbFormatted = localTariffs.map(t => ({
+          id: t.id,
+          name: t.name,
+          block: t.block,
+          type: t.type,
+          value: t.value,
+          created_by: t.createdBy || t.created_by || null
+        }));
+        const { error } = await supabase.from('delivery_tariffs').insert(dbFormatted);
+        if (error) console.error("Error sembrando delivery_tariffs en Supabase:", error);
       }
     }
 
@@ -208,9 +227,11 @@ export async function initializeSupabaseTables() {
           completed_lat: t.completedLat,
           completed_lng: t.completedLng,
           route_order: t.routeOrder,
-          created_at: t.createdAt
+          created_at: t.createdAt,
+          created_by: t.createdBy || null
         }));
-        await supabase.from('delivery_tickets').insert(formatted);
+        const { error } = await supabase.from('delivery_tickets').insert(formatted);
+        if (error) console.error("Error sembrando delivery_tickets en Supabase:", error);
       }
     }
 
@@ -228,7 +249,8 @@ export async function initializeSupabaseTables() {
           closed_at: s.closedAt || null,
           created_by: s.createdBy || 'admin'
         }));
-        await supabase.from('delivery_shifts').insert(formatted);
+        const { error } = await supabase.from('delivery_shifts').insert(formatted);
+        if (error) console.error("Error sembrando delivery_shifts en Supabase:", error);
       }
     }
 
@@ -239,12 +261,13 @@ export async function initializeSupabaseTables() {
       const appName = localStorage.getItem('delivery_app_name') || 'My Delivery Team';
       const startAddr = localStorage.getItem('delivery_default_start_addr') || 'Barcelona, España';
       const endAddr = localStorage.getItem('delivery_default_end_addr') || 'Barcelona, España';
-      await supabase.from('delivery_settings').insert([
+      const { error } = await supabase.from('delivery_settings').insert([
         { key: 'module_price', value: mPrice.toString() },
         { key: 'app_name', value: appName },
         { key: 'default_start_addr', value: startAddr },
         { key: 'default_end_addr', value: endAddr }
       ]);
+      if (error) console.error("Error sembrando delivery_settings en Supabase:", error);
     } else {
       const keys = cloudSettings.map(s => s.key);
       const toInsert = [];
@@ -261,7 +284,8 @@ export async function initializeSupabaseTables() {
         toInsert.push({ key: 'mapbox_access_token', value: '' });
       }
       if (toInsert.length > 0) {
-        await supabase.from('delivery_settings').insert(toInsert);
+        const { error } = await supabase.from('delivery_settings').insert(toInsert);
+        if (error) console.error("Error completando delivery_settings en Supabase:", error);
       }
     }
   } catch (e) {
@@ -1856,13 +1880,18 @@ export async function saveDormityTariffs(tariffs) {
     localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(mergedList));
     
     if (supabase) {
+      // Fix: esta función mandaba a Supabase un campo `provider` que no existe en la
+      // columna de delivery_tariffs, y `createdBy` en vez de `created_by`. La tabla
+      // sólo tiene id, name, block, type, value, created_by (mismo patrón que ya usan
+      // saveTariffs() y saveTickets()), así que cada guardado fallaba en silencio
+      // contra Supabase — se veía bien en local pero nunca llegaba a la nube. El
+      // catálogo de Dormity ha estado atrapado en el dispositivo de quien lo editara.
       const dbFormatted = formatted.map(t => ({
         id: t.id,
         name: t.name,
         block: t.block || 'General',
         type: t.type || 'fixed',
         value: Number(t.value) || 0,
-       
         created_by: t.createdBy || 'admin'
       }));
       const { error } = await supabase.from('delivery_tariffs').upsert(dbFormatted);
