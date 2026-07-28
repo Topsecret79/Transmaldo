@@ -2482,7 +2482,14 @@ function App() {
       extractedRoutes.sort((a, b) => a.date.localeCompare(b.date));
 
       setActiveRoutes(prev => {
-        const merged = [...prev];
+        // Fix: "Ruta Activa" acumulaba rutas para siempre porque solo se quitaban de
+        // la lista si el turno se cerraba desde el botón "Cerrar Turno" de este mismo
+        // desplegable. Si se cerraba por cualquier otro camino (p.ej. el propio
+        // repartidor cerrando su turno), la ruta se quedaba en la lista indefinidamente
+        // y el desplegable acababa mostrando todo el histórico. Ahora, cada vez que se
+        // cargan los datos, se eliminan de la lista las rutas cuyo turno ya esté cerrado.
+        const stillActive = prev.filter(r => getShiftStatus(r.furgoId, r.date) !== 'closed');
+        const merged = [...stillActive];
         extractedRoutes.forEach(ext => {
           const isClosed = getShiftStatus(ext.furgoId, ext.date) === 'closed';
           if (isClosed) return; // Evitar re-introducir rutas cerradas
