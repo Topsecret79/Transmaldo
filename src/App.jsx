@@ -2444,20 +2444,11 @@ function App() {
         }
       }
 
-      // Background migration for plain-text passwords to SHA-256
-      (async () => {
-        let needsMigration = false;
-        for (const usr of finalUsers) {
-          if (usr.password && !isSHA256(usr.password)) {
-            needsMigration = true;
-            break;
-          }
-        }
-        if (needsMigration) {
-          console.log("Migrating plain-text passwords to SHA-256 hashes...");
-          await saveUsers(finalUsers);
-        }
-      })();
+      // Nota: la migración de contraseñas en texto plano a SHA-256 ya no se hace
+      // aquí (en el navegador) — desde el arreglo de seguridad de hoy, la lista
+      // general de usuarios ya no lleva contraseñas reales, así que este bloque
+      // nunca tenía nada que migrar. Esa migración ahora ocurre dentro de la Edge
+      // Function "verify-login", en el momento de un login clásico exitoso.
       
       // Extraer rutas activas de los tickets para que se sincronicen entre dispositivos
       const extractedRoutes = [];
@@ -2715,7 +2706,7 @@ function App() {
           let errProfile = null;
           const byUid = await supabaseClient
             .from('delivery_users')
-            .select('*')
+            .select('id, username, label, role, can_search, created_by, must_change_password, permissions, allowed_providers, email, auth_uid, active')
             .eq('auth_uid', authUser.id);
           if (byUid.data && byUid.data.length > 0) {
             cloudProfile = byUid.data;
@@ -2723,7 +2714,7 @@ function App() {
           } else {
             const byEmail = await supabaseClient
               .from('delivery_users')
-              .select('*')
+              .select('id, username, label, role, can_search, created_by, must_change_password, permissions, allowed_providers, email, auth_uid, active')
               .ilike('email', inputIdentifier);
             cloudProfile = byEmail.data;
             errProfile = byEmail.error;
@@ -2734,7 +2725,6 @@ function App() {
             profile = {
               id: u.id,
               username: u.username,
-              password: u.password,
               label: u.label,
               role: u.role,
               canSearch: u.can_search || false,
@@ -2771,53 +2761,40 @@ function App() {
       }
     } else {
       // 2. AUTENTICACIÓN CLÁSICA POR NOMBRE DE USUARIO (REPARTIDORES O VINCULACIÓN PENDIENTE)
-      const hashedVal = await hashPassword(password);
-      
-      foundUser = dbUsers.find(
-        u => u.username.toLowerCase() === inputIdentifier.toLowerCase() && 
-        (u.password === password || u.password === hashedVal)
-      );
+      //
+      // Seguridad: la comprobación de la contraseña ya NO se hace en el navegador
+      // comparando contra la columna `password` (eso obligaba a tener esa columna
+      // legible con la clave pública, exponible por cualquiera con esa clave, sin
+      // necesidad de iniciar sesión). Ahora se delega en la Edge Function
+      // "verify-login", que compara la contraseña dentro de Supabase usando la
+      // clave de servicio, y solo devuelve un perfil seguro (sin la contraseña)
+      // si coincide. La columna `password` queda bloqueada para la clave pública
+      // (ver migración SQL de bloqueo de columna).
+      const supabaseClient = getSupabaseClient();
+      if (!supabaseClient) {
+        setLoginError('Error de red: no se pudo inicializar la base de datos.');
+        return;
+      }
 
-      if (!foundUser) {
-        const supabaseClient = getSupabaseClient();
-        if (supabaseClient) {
-          try {
-            // Seguridad: NO se construye un filtro .or() con la contraseña tecleada por
-            // el usuario (eso permitía inyectar condiciones PostgREST, ej. una contraseña
-            // como "x,id.neq.0" podía hacer que la fila coincidiera sin validar la
-            // contraseña real). Se trae solo por nombre de usuario y se compara en JS,
-            // igual que ya se hace con la lista local (dbUsers.find de más arriba).
-            const { data: cloudMatches, error } = await supabaseClient
-              .from('delivery_users')
-              .select('*')
-              .ilike('username', inputIdentifier);
+      try {
+        const { data: fnResult, error: fnError } = await supabaseClient.functions.invoke('verify-login', {
+          body: { username: inputIdentifier, password }
+        });
 
-            const cloudUsers = (cloudMatches || []).filter(
-              u => u.password === password || u.password === hashedVal
-            );
-
-            if (cloudUsers && cloudUsers.length > 0 && !error) {
-              const u = cloudUsers[0];
-              foundUser = {
-                id: u.id,
-                username: u.username,
-                password: u.password,
-                label: u.label,
-                role: u.role,
-                canSearch: u.can_search || false,
-                createdBy: u.created_by || 'admin',
-                mustChangePassword: !!u.must_change_password,
-                email: u.email || null,
-                auth_uid: u.auth_uid || null,
-                active: u.active !== false
-              };
-              const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
-              saveUsers(updatedUsers);
-            }
-          } catch (err) {
-            console.error("Live login query failed:", err);
-          }
+        if (fnError) {
+          setLoginError('Error de red al verificar el usuario. Comprueba tu conexión e inténtalo de nuevo.');
+          return;
         }
+
+        if (fnResult && fnResult.success && fnResult.user) {
+          foundUser = fnResult.user;
+          const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
+          saveUsers(updatedUsers);
+        }
+      } catch (err) {
+        console.error("Error llamando a verify-login:", err);
+        setLoginError('Error de red al verificar el usuario. Comprueba tu conexión e inténtalo de nuevo.');
+        return;
       }
     }
 
@@ -2904,21 +2881,26 @@ function App() {
     // parte, igual que ya hace el flujo de recuperación por correo.
     const hashedNewPassword = await hashPassword(newPasswordVal.trim());
 
-    const dbUsers = getUsers() || [];
-    const updatedUsers = dbUsers.map(u => {
-      if (u.id === forceChangePasswordUser.id) {
-        return {
-          ...u,
-          password: hashedNewPassword,
-          mustChangePassword: false
-        };
+    // Fix: antes esto guardaba de golpe TODA la lista general de usuarios
+    // (saveUsers(dbUsers.map(...))), y como esa lista ya no lleva la contraseña
+    // real de nadie (por seguridad), ese guardado masivo podía terminar borrando
+    // sin querer la contraseña de TODO el equipo con solo una persona cambiando
+    // la suya. Se usa una actualización específica de un único usuario/campo.
+    const supabaseClient = getSupabaseClient();
+    try {
+      if (supabaseClient) {
+        const { error } = await supabaseClient
+          .from('delivery_users')
+          .update({ password: hashedNewPassword, must_change_password: false })
+          .eq('id', forceChangePasswordUser.id);
+        if (error) {
+          console.error("Error forcing password change:", error);
+          triggerAlert('No se pudo cambiar la contraseña. Comprueba tu conexión e inténtalo de nuevo.', 'error');
+          return;
+        }
       }
-      return u;
-    });
 
-    const updatedUserObj = updatedUsers.find(u => u.id === forceChangePasswordUser.id);
-    if (updatedUserObj) {
-      saveUsers(updatedUsers);
+      const updatedUserObj = { ...forceChangePasswordUser, mustChangePassword: false };
       setCurrentUser(updatedUserObj);
       localStorage.setItem('delivery_session', JSON.stringify(updatedUserObj));
       setActiveTab((updatedUserObj.role === 'admin' || updatedUserObj.role === 'superadmin') ? 'dashboard' : 'new_ticket');
@@ -2928,6 +2910,9 @@ function App() {
       setConfirmPasswordVal('');
       await reinitSupabase();
       loadData();
+    } catch (err) {
+      console.error("Error forcing password change:", err);
+      triggerAlert('No se pudo cambiar la contraseña. Comprueba tu conexión e inténtalo de nuevo.', 'error');
     }
   };
 
@@ -3003,22 +2988,38 @@ function App() {
       }
       
       // 2. Actualizar el perfil local y remoto del usuario vinculándole el email y el auth_uid
-      const dbUsers = getUsers() || [];
-      const updatedUsers = dbUsers.map(u => {
-        if (u.id === emailLinkageUser.id) {
-          return {
-            ...u,
+      // Fix: antes esto reescribía TODA la lista general de usuarios vía saveUsers,
+      // arriesgando (por el mismo motivo que en los otros flujos de contraseña) borrar
+      // sin querer la de otros usuarios que ya no la llevan localmente. Actualización
+      // dirigida a un único usuario y únicamente a los campos que cambian.
+      const supabaseClient2 = getSupabaseClient();
+      if (supabaseClient2) {
+        const { error: linkUpdateErr } = await supabaseClient2
+          .from('delivery_users')
+          .update({
             email: email.toLowerCase(),
             auth_uid: authUser.id,
-            mustChangePassword: false
-          };
+            must_change_password: false
+          })
+          .eq('id', emailLinkageUser.id);
+        if (linkUpdateErr) {
+          setLinkageError('No se pudo enlazar la cuenta. Comprueba tu conexión e inténtalo de nuevo.');
+          setIsLinking(false);
+          return;
         }
-        return u;
-      });
-      
-      const updatedUserObj = updatedUsers.find(u => u.id === emailLinkageUser.id);
-      if (updatedUserObj) {
-        await saveUsers(updatedUsers);
+      }
+
+      const updatedUserObj = {
+        ...emailLinkageUser,
+        email: email.toLowerCase(),
+        auth_uid: authUser.id,
+        mustChangePassword: false
+      };
+      {
+        // Nota: no hace falta tocar aquí la caché local de usuarios — el
+        // reinitSupabase()+loadData() de más abajo la refresca ya con los datos
+        // correctos recién guardados en Supabase (ver arreglo de saveUsers más
+        // arriba, que evita el guardado masivo de toda la lista).
         
         // 3. Iniciar sesión automáticamente
         setCurrentUser(updatedUserObj);
@@ -3110,6 +3111,12 @@ function App() {
 
       // Sincronizar también la contraseña en la tabla propia delivery_users, para que
       // el inicio de sesión clásico por nombre de usuario deje de aceptar la contraseña antigua.
+      // Fix: antes esto reescribía TODA la lista general de usuarios vía saveUsers,
+      // arriesgando borrar sin querer la contraseña de otros usuarios que ya no la
+      // llevan localmente. Actualización dirigida a un único usuario/columna. Tampoco
+      // hace falta ya refrescar la caché local aquí: justo después se cierra la sesión
+      // y se vuelve al login, que en el próximo intento consulta la contraseña
+      // directamente en Supabase (nunca desde la caché local).
       try {
         const authUser = updateData?.user;
         const dbUsers = getUsers() || [];
@@ -3119,9 +3126,13 @@ function App() {
           (authUser?.email && u.email && u.email.toLowerCase() === authUser.email.toLowerCase())
         );
         if (match) {
-          const updatedUsers = dbUsers.map(u => u.id === match.id ? { ...u, password: hashedNew } : u);
-          saveUsers(updatedUsers);
-          setUsers(updatedUsers);
+          const { error: pwSyncErr } = await supabaseClient
+            .from('delivery_users')
+            .update({ password: hashedNew })
+            .eq('id', match.id);
+          if (pwSyncErr) {
+            console.error("Error sincronizando la contraseña local tras la recuperación:", pwSyncErr);
+          }
         }
       } catch (syncErr) {
         console.error("Error sincronizando la contraseña local tras la recuperación:", syncErr);
@@ -5970,34 +5981,82 @@ function App() {
     triggerAlert(alertMsg);
   };
 
-  const handleUpdateUserPassword = (id, newPassword) => {
+  const handleUpdateUserPassword = async (id, newPassword) => {
     if (!newPassword.trim()) {
       triggerAlert('La contraseña no puede estar vacía', 'error');
       return;
     }
-    const updated = users.map(u => (u.id === id ? { ...u, password: newPassword.trim() } : u));
-    saveUsers(updated);
-    setUsers(updated);
-    triggerAlert('Contraseña actualizada');
+    // Fix: antes esto guardaba de golpe TODA la lista local de usuarios (saveUsers),
+    // y como esa lista ya no lleva la contraseña real de nadie (por seguridad), el
+    // guardado masivo podía terminar borrando sin querer la contraseña de TODO el
+    // equipo, no solo de la persona a la que se le estaba reseteando. Se cambia a
+    // una actualización específica de un único campo, en una única fila.
+    const supabaseClient = getSupabaseClient();
+    try {
+      const hashedNew = await hashPassword(newPassword.trim());
+      if (supabaseClient) {
+        const { error } = await supabaseClient
+          .from('delivery_users')
+          .update({ password: hashedNew })
+          .eq('id', id);
+        if (error) {
+          console.error("Error updating user password:", error);
+          triggerAlert('No se pudo actualizar la contraseña. Comprueba tu conexión e inténtalo de nuevo.', 'error');
+          return;
+        }
+      }
+      triggerAlert('Contraseña actualizada');
+    } catch (err) {
+      console.error("Error updating user password:", err);
+      triggerAlert('No se pudo actualizar la contraseña. Comprueba tu conexión e inténtalo de nuevo.', 'error');
+    }
   };
 
-  const handleUpdateUser = (id, newLabel, newPassword) => {
+  const handleUpdateUser = async (id, newLabel, newPassword) => {
     if (!newLabel.trim()) {
       triggerAlert('El nombre visible no puede estar vacío', 'error');
       return;
     }
     // Fix: el campo de contraseña del formulario ya no llega precargado con el hash
-    // actual (ver el input más arriba, que ahora se deja siempre en blanco por
-    // seguridad), así que un envío con el campo vacío significa "no cambiar la
-    // contraseña", no "vaciar la contraseña". Antes esto obligaba a re-teclear
-    // siempre una contraseña solo para poder guardar el nombre visible.
+    // actual (por seguridad, la lista local de usuarios ya no guarda contraseñas),
+    // así que un envío con el campo vacío significa "no cambiar la contraseña", no
+    // "vaciar la contraseña". Antes, al no tener ya el valor real localmente, esto
+    // podía terminar guardando la contraseña como vacía/indefinida sin querer.
+    // Para evitarlo del todo, se hace una actualización PARCIAL y específica
+    // directamente contra Supabase: solo se toca la columna `password` si de verdad
+    // se ha escrito una nueva, dejando la existente intacta en cualquier otro caso.
     const trimmedPassword = newPassword.trim();
-    const updated = users.map(u => (u.id === id
-      ? { ...u, label: newLabel.trim(), password: trimmedPassword ? trimmedPassword : u.password }
-      : u));
-    saveUsers(updated);
-    setUsers(updated);
-    triggerAlert(trimmedPassword ? 'Datos de usuario y contraseña actualizados correctamente' : 'Nombre visible actualizado correctamente');
+    const supabaseClient = getSupabaseClient();
+
+    try {
+      const fieldsToUpdate = { label: newLabel.trim() };
+      if (trimmedPassword) {
+        fieldsToUpdate.password = await hashPassword(trimmedPassword);
+      }
+
+      if (supabaseClient) {
+        const { error } = await supabaseClient
+          .from('delivery_users')
+          .update(fieldsToUpdate)
+          .eq('id', id);
+        if (error) {
+          console.error("Error updating user:", error);
+          triggerAlert('No se pudo guardar el cambio. Comprueba tu conexión e inténtalo de nuevo.', 'error');
+          return;
+        }
+      }
+
+      const updated = users.map(u => (u.id === id ? { ...u, label: newLabel.trim() } : u));
+      setUsers(updated);
+      // No se llama a saveUsers(updated) aquí a propósito: ese guardado masivo
+      // reescribiría todos los usuarios locales (que ya no llevan password),
+      // arriesgando exactamente el problema que este arreglo evita.
+
+      triggerAlert(trimmedPassword ? 'Datos de usuario y contraseña actualizados correctamente' : 'Nombre visible actualizado correctamente');
+    } catch (err) {
+      console.error("Error updating user:", err);
+      triggerAlert('No se pudo guardar el cambio. Comprueba tu conexión e inténtalo de nuevo.', 'error');
+    }
   };
 
   const handleUpdateUserPermissions = (id, moduleId, isAllowed) => {
@@ -6012,13 +6071,33 @@ function App() {
       }
       return u;
     });
-    saveUsers(updated).then(() => {
-      setUsers(updated);
-      triggerAlert('Permisos de usuario actualizados correctamente');
-    }).catch((err) => {
-      // Si falla la nube, el estado local ya está guardado en localStorage
-      setUsers(updated);
-    });
+    setUsers(updated);
+
+    // Fix: esto llamaba a saveUsers(updated) con TODA la lista de usuarios. Como
+    // saveUsers() convierte cualquier contraseña ausente en una cadena VACÍA antes
+    // de subirla (`u.password || ''`), y la lista local ya no lleva contraseñas
+    // reales (por seguridad), esto vaciaba literalmente la contraseña de TODO el
+    // equipo en la base de datos con solo cambiar el permiso de una persona.
+    // Actualización dirigida a un único usuario/columna en su lugar.
+    const targetUser = updated.find(u => u.id === id);
+    const supabaseClient = getSupabaseClient();
+    if (supabaseClient && targetUser) {
+      const permString = typeof targetUser.permissions === 'object'
+        ? JSON.stringify(targetUser.permissions)
+        : (targetUser.permissions || null);
+      supabaseClient
+        .from('delivery_users')
+        .update({ permissions: permString })
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) {
+            console.error("Error updating user permissions:", error);
+            triggerAlert('No se pudieron guardar los permisos. Comprueba tu conexión.', 'error');
+            return;
+          }
+          triggerAlert('Permisos de usuario actualizados correctamente');
+        });
+    }
   };
 
   const handleDeleteTicket = async (id) => {
