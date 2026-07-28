@@ -1471,6 +1471,12 @@ function App() {
   const [obsModalFailReason, setObsModalFailReason] = useState('');
   const [obsModalFailedChargeType, setObsModalFailedChargeType] = useState('none');
 
+  // Modal de motivo al marcar un servicio como "Sin Coste" (para dejar constancia
+  // documentada de por qué no se cobró — ej. servicios incluidos en un Servicio
+  // Urgente que ya se factura con tarifa plana — de cara a auditorías futuras)
+  const [noChargeReasonModal, setNoChargeReasonModal] = useState(null); // { ticketId, taskIndex, taskName }
+  const [noChargeReasonText, setNoChargeReasonText] = useState('');
+
   // Estados de Ruta y Carga Dinámica de Usuarios
   const [routeName, setRouteName] = useState('');
   const [newUsername, setNewUsername] = useState('');
@@ -6295,7 +6301,7 @@ function App() {
     setObsModalTicketId(null);
   };
 
-  const toggleTaskCharge = async (ticketId, taskIndex) => {
+  const toggleTaskCharge = async (ticketId, taskIndex, reason = '') => {
     // Fix: esta función cambia directamente lo que se cobra por un servicio y no tenía
     // NINGUNA comprobación de permisos (solo dependía de que el botón no se mostrara en
     // la pestaña de un rol sin acceso a "Informe del Día", lo cual es solo una
@@ -6310,7 +6316,14 @@ function App() {
       if (!ticket) return;
       const updatedTasks = (ticket.tasks || []).map((t, idx) => {
         if (idx === taskIndex) {
-          return { ...t, noCharge: !t.noCharge };
+          const willBeNoCharge = !t.noCharge;
+          return {
+            ...t,
+            noCharge: willBeNoCharge,
+            // Al marcar "Sin Coste" se guarda el motivo (para auditorías futuras);
+            // al volver a hacerlo cobrable, se limpia el motivo.
+            noChargeReason: willBeNoCharge ? (reason || '') : ''
+          };
         }
         return t;
       });
@@ -15884,7 +15897,16 @@ function App() {
                                     <span>{name}</span>
                                     {ticket.status === 'success' && (isAdminOrSuper || currentUser?.role === 'coordinador') && (
                                       <span
-                                        onClick={() => toggleTaskCharge(ticket.id, sIdx)}
+                                        onClick={() => {
+                                          if (task.noCharge) {
+                                            // Volver a hacerlo cobrable: no hace falta motivo
+                                            toggleTaskCharge(ticket.id, sIdx);
+                                          } else {
+                                            // Marcarlo como Sin Coste: pedimos el motivo para dejarlo documentado
+                                            setNoChargeReasonText('');
+                                            setNoChargeReasonModal({ ticketId: ticket.id, taskIndex: sIdx, taskName: name });
+                                          }
+                                        }}
                                         style={{ 
                                           cursor: 'pointer', 
                                           fontSize: '0.7rem', 
@@ -15903,6 +15925,11 @@ function App() {
                                       >
                                         {task.noCharge ? '❌ Sin Coste' : '💶 Cobrar'}
                                       </span>
+                                    )}
+                                    {task.noCharge && task.noChargeReason && (
+                                      <div style={{ width: '100%', fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
+                                        Motivo: {task.noChargeReason}
+                                      </div>
                                     )}
                                   </div>
                                 </td>
@@ -20846,6 +20873,62 @@ function App() {
                   type="button"
                   onClick={() => {
                     setObsModalTicketId(null);
+                  }}
+                  className="btn btn-secondary"
+                  style={{ flex: 0.5, margin: 0, padding: '12px' }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: motivo al marcar un servicio como "Sin Coste" (queda documentado para auditorías) */}
+      {noChargeReasonModal && (
+        <div className="modal-overlay" style={{ zIndex: 1200 }}>
+          <div className="modal-content glass-panel" style={{ maxWidth: '400px', padding: '25px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: 'var(--danger)' }}>
+                ❌ Marcar "Sin Coste"
+              </h3>
+              <button onClick={() => setNoChargeReasonModal(null)} className="btn btn-secondary btn-small" style={{ padding: '4px', width: 'auto' }}><X size={16} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Vas a quitar el coste de <strong style={{ color: 'var(--text-main)' }}>{noChargeReasonModal.taskName}</strong>. Escribe el motivo para dejarlo documentado (por ejemplo: "Incluido en tarifa de Servicio Urgente").
+              </p>
+              <div className="input-group">
+                <span className="input-label" style={{ fontWeight: '700' }}>Motivo:</span>
+                <textarea
+                  className="form-input"
+                  placeholder="Ej: Incluido en tarifa de Servicio Urgente 100€"
+                  value={noChargeReasonText}
+                  onChange={(e) => setNoChargeReasonText(e.target.value)}
+                  style={{ minHeight: '70px', background: '#1e1e2e', color: '#fff', border: '1px solid var(--panel-border)', width: '100%', padding: '10px', borderRadius: '8px', resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleTaskCharge(noChargeReasonModal.ticketId, noChargeReasonModal.taskIndex, noChargeReasonText.trim());
+                    setNoChargeReasonModal(null);
+                    setNoChargeReasonText('');
+                  }}
+                  className="btn btn-primary"
+                  style={{ flex: 1, margin: 0, padding: '12px' }}
+                >
+                  Confirmar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNoChargeReasonModal(null);
+                    setNoChargeReasonText('');
                   }}
                   className="btn btn-secondary"
                   style={{ flex: 0.5, margin: 0, padding: '12px' }}
