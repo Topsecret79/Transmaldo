@@ -23,6 +23,28 @@ export function getSupabaseClient() {
   return supabase;
 }
 
+// Fix de seguridad: los borrados en delivery_tickets/delivery_shifts/
+// delivery_tariffs/delivery_settings ya no se hacen directamente desde el
+// navegador con la clave pública — se delegan en la Edge Function
+// "secure-delete" (clave de servicio, nunca expuesta). Esto permite proteger
+// esas 4 tablas con RLS sin conceder permiso de borrado a la clave pública:
+// nadie externo puede mandarle a Supabase un "borra todo", solo esta función,
+// y solo por IDs/keys concretos.
+async function secureDelete(table, values) {
+  if (!supabase) return { error: new Error('Supabase no inicializado') };
+  if (!values || values.length === 0) return { error: null };
+  try {
+    const { data, error } = await supabase.functions.invoke('secure-delete', {
+      body: { table, values }
+    });
+    if (error) return { error };
+    if (data && data.success === false) return { error: new Error(data.error || 'Error al borrar') };
+    return { error: null };
+  } catch (err) {
+    return { error: err };
+  }
+}
+
 let isSyncing = false;
 let realtimeChannel = null;
 
@@ -379,7 +401,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           // esa columna solo se lee dentro de la Edge Function "verify-login",
           // nunca en el navegador. Si se añaden columnas nuevas a delivery_users
           // en el futuro, hay que añadirlas aquí explícitamente (no usar '*').
-          .select('id, username, label, role, can_search, created_by, must_change_password, permissions, allowed_providers, email, auth_uid, active')
+          .select('id, username, label, role, can_search, created_by, email, auth_uid, active')
           .order('id', { ascending: true })
           .range(from, from + pageSize - 1);
         if (pageErr) {
@@ -586,7 +608,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       // en cada sincronización, no solo la vez que se pidió borrar.
       const stillPendingDeleteIds = cloudTickets.filter(t => t && deletedIds.includes(t.id)).map(t => t.id);
       if (stillPendingDeleteIds.length > 0) {
-        supabase.from('delivery_tickets').delete().in('id', stillPendingDeleteIds).then(({ error }) => {
+        secureDelete('delivery_tickets', stillPendingDeleteIds).then(({ error }) => {
           if (error) {
             console.error("Error reintentando borrado remoto pendiente de tickets:", error);
           } else {
@@ -704,7 +726,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       // remoto de un turno falló una vez, nunca se reintentaba automáticamente.
       const stillPendingDeleteShiftIds = cloudShifts.filter(s => s && deletedShiftIds.includes(s.id)).map(s => s.id);
       if (stillPendingDeleteShiftIds.length > 0) {
-        supabase.from('delivery_shifts').delete().in('id', stillPendingDeleteShiftIds).then(({ error }) => {
+        secureDelete('delivery_shifts', stillPendingDeleteShiftIds).then(({ error }) => {
           if (error) {
             console.error("Error reintentando borrado remoto pendiente de turnos:", error);
           } else {
@@ -1379,16 +1401,20 @@ export async function saveUsers(users) {
         }
       }
       try {
-        // Detectar dinámicamente las columnas que existen realmente en la base de datos
-        let dbColumns = null;
-        try {
-          const { data: colCheckData } = await supabase.from('delivery_users').select('id, username, label, role, can_search, created_by, must_change_password, permissions, allowed_providers, email, auth_uid, active').limit(1);
-          if (colCheckData && colCheckData.length > 0) {
-            dbColumns = Object.keys(colCheckData[0]);
-          }
-        } catch (colErr) {
-          console.warn("No se pudo detectar las columnas de delivery_users directamente, se usará fallback de errores:", colErr);
-        }
+        // Fix: antes esto intentaba detectar las columnas reales haciendo una
+        // consulta que las nombraba una a una — pero seleccionar por nombre una
+        // columna que NO existe hace que Postgres/PostgREST responda con un
+        // error (42703), en vez de simplemente omitirla. Como consecuencia, en
+        // el esquema real de producción (sin las columnas opcionales
+        // must_change_password/permissions/allowed_providers) esta detección
+        // fallaba siempre, y el guardado cambiaba constantemente a las rutas de
+        // recuperación por error. Se confirmó el esquema real directamente en
+        // Supabase (information_schema.columns, 28 jul 2026): id, username,
+        // password, label, role, can_search, created_by, email, auth_uid,
+        // active. Se usa ese conjunto conocido en vez de una sonda que puede
+        // fallar. Si en el futuro se añaden columnas nuevas a la tabla, hay que
+        // añadirlas también aquí.
+        let dbColumns = ['id', 'username', 'password', 'label', 'role', 'can_search', 'created_by', 'email', 'auth_uid', 'active'];
 
         const formatted = hashedUsers.map(u => {
           const row = {
@@ -2380,7 +2406,7 @@ export async function deleteTicket(ticketId) {
   } catch (e) {}
 
   if (supabase) {
-    const { error } = await supabase.from('delivery_tickets').delete().eq('id', ticketId);
+    const { error } = await secureDelete('delivery_tickets', [ticketId]);
     if (error) {
       console.error("Error deleting ticket from Supabase:", error);
       return { success: false, error };
@@ -2417,7 +2443,7 @@ export async function resetMonthlyTickets() {
   } catch (e) {}
 
   if (supabase) {
-    const { error } = await supabase.from('delivery_tickets').delete().in('id', idsToDelete);
+    const { error } = await secureDelete('delivery_tickets', idsToDelete);
     if (error) {
       console.error("Error borrando tickets en el reset mensual:", error);
       return { success: false, error };
@@ -2734,12 +2760,12 @@ export async function deletePlannedShift(furgoId, date) {
   } catch (e) {}
 
   if (supabase) {
-    const { error } = await supabase.from('delivery_shifts').delete().eq('id', shiftId);
+    const { error } = await secureDelete('delivery_shifts', [shiftId]);
     if (error) {
       console.error("Error deleting planned shift from Supabase:", error);
       return { success: false, error };
     }
-    supabase.from('delivery_settings').delete().eq('key', `shift_meta_${shiftId}`).then(({ error: metaErr }) => {
+    secureDelete('delivery_settings', [`shift_meta_${shiftId}`]).then(({ error: metaErr }) => {
       if (metaErr) console.error("Error deleting shift meta from Supabase:", metaErr);
     });
     try {
@@ -2788,7 +2814,7 @@ export async function resetMonthlyShifts() {
   } catch (e) {}
 
   if (supabase) {
-    const { error } = await supabase.from('delivery_shifts').delete().in('id', idsToDelete);
+    const { error } = await secureDelete('delivery_shifts', idsToDelete);
     if (error) {
       console.error("Error borrando turnos en el reset mensual:", error);
       return { success: false, error };
@@ -3187,7 +3213,7 @@ export async function deleteTariff(id) {
         }
       }
 
-      const { error } = await supabase.from('delivery_tariffs').delete().eq('id', realId);
+      const { error } = await secureDelete('delivery_tariffs', [realId]);
       if (error) console.error("Error deleting tariff from Supabase:", error);
     }
   } finally {
