@@ -67,7 +67,31 @@ export function setIsSaving(val) {
   }
 }
 
-export async function reinitSupabase() {
+// Fix (fuga de egress): reinitSupabase() se llamaba cada 15s (temporizador) + en cada
+// cambio de pestaña/foco de la ventana, y CADA vez reconstruía el cliente entero,
+// tiraba y recreaba el canal de Realtime, y volvía a descargar las 5 tablas completas
+// (incluida delivery_tickets, ~43 MB según el comentario de más abajo). Con varios
+// dispositivos con la app abierta (aunque fuera en segundo plano), esto se multiplicaba
+// sin parar, día y noche — es la causa confirmada de superar el límite de egress del
+// plan gratuito de Supabase. Realtime + el debounce ya existente (ver
+// scheduleSyncFromCloud) se encargan de mantener los datos al día ante cambios reales;
+// el temporizador y los eventos de foco/visibilidad solo necesitan actuar como red de
+// seguridad, no repetir el trabajo pesado constantemente. Por eso: solo se ejecuta la
+// reconstrucción completa si el canal de Realtime está realmente caído, o si ha pasado
+// al menos REINIT_MIN_INTERVAL_MS desde la última vez que se hizo de verdad.
+const REINIT_MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutos
+let lastFullReinitAt = 0;
+
+function isRealtimeChannelHealthy() {
+  return !!(realtimeChannel && realtimeChannel.state === 'joined');
+}
+
+export async function reinitSupabase(force = false) {
+  if (!force && isRealtimeChannelHealthy() && (Date.now() - lastFullReinitAt) < REINIT_MIN_INTERVAL_MS) {
+    // El canal en tiempo real está sano y ya hicimos una reconstrucción completa hace
+    // poco: no hay motivo para recrear cliente/canal/descargar todo otra vez.
+    return;
+  }
   if (isSyncing || isSaving > 0) return;
   isSyncing = true;
   try {
@@ -139,6 +163,7 @@ export async function reinitSupabase() {
     }
   } finally {
     isSyncing = false;
+    lastFullReinitAt = Date.now();
   }
 }
 
