@@ -373,7 +373,13 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       while (true) {
         const { data: page, error: pageErr } = await supabase
           .from('delivery_users')
-          .select('*')
+          // Seguridad: se excluye a propósito la columna `password` de esta
+          // sincronización general (se descargaba a TODOS los dispositivos, con
+          // las contraseñas —a veces en texto plano— de TODO el equipo). Ahora
+          // esa columna solo se lee dentro de la Edge Function "verify-login",
+          // nunca en el navegador. Si se añaden columnas nuevas a delivery_users
+          // en el futuro, hay que añadirlas aquí explícitamente (no usar '*').
+          .select('id, username, label, role, can_search, created_by, must_change_password, permissions, allowed_providers, email, auth_uid, active')
           .order('id', { ascending: true })
           .range(from, from + pageSize - 1);
         if (pageErr) {
@@ -1321,9 +1327,19 @@ export function getUsers() {
 export async function saveUsers(users) {
   setIsSaving(true);
   try {
-    // Automatically hash plain-text passwords
+    // Fix crítico de seguridad: antes, cualquier usuario SIN contraseña en el objeto
+    // (que es el caso normal ahora, ya que por seguridad la lista local de usuarios
+    // ya no lleva contraseñas reales) se guardaba con `password: ''` — una cadena
+    // VACÍA explícita, no ausente. Como esta función sube los datos con upsert
+    // (sobrescribe la fila), CUALQUIER llamada con la lista general de usuarios
+    // (por ejemplo, en cada inicio de sesión) habría vaciado silenciosamente la
+    // contraseña de TODO el equipo en la base de datos, dejando solo intacta la de
+    // la persona que se estuviera cambiando en ese momento concreto. Ahora, si un
+    // usuario no trae contraseña en el objeto, se omite esa columna por completo
+    // (en vez de vaciarla), dejando su valor real intacto en la base de datos.
     const hashedUsers = [];
     for (const u of users) {
+      const hasPassword = !!u.password;
       let pwd = u.password || '';
       if (pwd && !isSHA256(pwd)) {
         pwd = await hashPassword(pwd);
@@ -1333,7 +1349,13 @@ export async function saveUsers(users) {
       if (permissionsVal && typeof permissionsVal === 'object') {
         permissionsVal = JSON.stringify(permissionsVal);
       }
-      hashedUsers.push({ ...u, password: pwd, permissions: permissionsVal || null });
+      const entry = { ...u, permissions: permissionsVal || null };
+      if (hasPassword) {
+        entry.password = pwd;
+      } else {
+        delete entry.password;
+      }
+      hashedUsers.push(entry);
     }
 
     localStorage.setItem('delivery_users', JSON.stringify(hashedUsers));
@@ -1360,7 +1382,7 @@ export async function saveUsers(users) {
         // Detectar dinámicamente las columnas que existen realmente en la base de datos
         let dbColumns = null;
         try {
-          const { data: colCheckData } = await supabase.from('delivery_users').select('*').limit(1);
+          const { data: colCheckData } = await supabase.from('delivery_users').select('id, username, label, role, can_search, created_by, must_change_password, permissions, allowed_providers, email, auth_uid, active').limit(1);
           if (colCheckData && colCheckData.length > 0) {
             dbColumns = Object.keys(colCheckData[0]);
           }
@@ -1372,12 +1394,18 @@ export async function saveUsers(users) {
           const row = {
             id: u.id,
             username: u.username,
-            password: u.password,
             label: u.label,
             role: u.role,
             can_search: u.canSearch || false,
             created_by: u.createdBy || 'admin'
           };
+          // Solo se incluye la columna password en la fila si hay un valor real que
+          // escribir. Omitirla por completo (en vez de mandarla undefined) evita
+          // depender de que el recorte de JSON.stringify + el upsert de PostgREST se
+          // comporten "bien" con formas de fila distintas dentro del mismo lote.
+          if (u.password) {
+            row.password = u.password;
+          }
           
           if (!dbColumns || dbColumns.includes('must_change_password')) {
             row.must_change_password = u.mustChangePassword || false;
@@ -1424,12 +1452,14 @@ export async function saveUsers(users) {
               const row = {
                 id: u.id,
                 username: u.username,
-                password: u.password,
                 label: u.label,
                 role: u.role,
                 can_search: u.canSearch || false,
                 created_by: u.createdBy || 'admin'
               };
+              if (u.password) {
+                row.password = u.password;
+              }
               
               // Añadir condicionalmente solo si no fallaron en el primer intento
               if (!hasMustChangeErr) {
@@ -1457,15 +1487,20 @@ export async function saveUsers(users) {
                 localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
               }
               
-              const minimalFormatted = hashedUsers.map(u => ({
-                id: u.id,
-                username: u.username,
-                password: u.password,
-                label: u.label,
-                role: u.role,
-                can_search: u.canSearch || false,
-                created_by: u.createdBy || 'admin'
-              }));
+              const minimalFormatted = hashedUsers.map(u => {
+                const row = {
+                  id: u.id,
+                  username: u.username,
+                  label: u.label,
+                  role: u.role,
+                  can_search: u.canSearch || false,
+                  created_by: u.createdBy || 'admin'
+                };
+                if (u.password) {
+                  row.password = u.password;
+                }
+                return row;
+              });
               
               const { error: minimalError } = await supabase.from('delivery_users').upsert(minimalFormatted);
               if (minimalError) {
