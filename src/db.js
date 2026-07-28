@@ -3166,6 +3166,22 @@ export async function deleteTariff(id) {
 // llamando sin esperar su resultado en el polling de ubicación (cada pocos
 // segundos) — aquí no tiene sentido bloquear ni avisar al chofer por un fallo
 // puntual de un solo ping de posición.
+// Fix (fuga de egress, parte 2): watchPosition() en App.jsx llama a esta función en
+// CADA posición nueva que reporta el GPS del móvil, sin ningún límite. En muchos
+// dispositivos con alta precisión activada eso dispara varias veces por segundo,
+// y cada una mandaba un POST a Supabase de inmediato — confirmado en los logs
+// (un POST a delivery_settings prácticamente cada segundo mientras un repartidor
+// tenía la app abierta). El mapa en tiempo real no necesita esa frecuencia: con
+// actualizar la ubicación cada pocos segundos es más que suficiente para ver al
+// conductor moverse. Se añade aquí un límite de envío (throttle) por conductor:
+// - Si ha pasado suficiente tiempo desde el último envío real, se manda ya mismo.
+// - Si no, se guarda la posición más reciente y se programa un envío al final de
+//   la ventana, así nunca se pierde la posición más actual del conductor.
+// El localStorage (para el mapa local) se sigue actualizando siempre, al instante.
+const DRIVER_LOCATION_THROTTLE_MS = 8000; // 8 segundos entre envíos por conductor
+const lastLocationSentAt = {};
+const pendingLocationTimers = {};
+
 export async function saveDriverLocation(furgoId, lat, lng) {
   try {
     const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
@@ -3175,6 +3191,38 @@ export async function saveDriverLocation(furgoId, lat, lng) {
       updatedAt: new Date().toISOString()
     };
     localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+
+    const now = Date.now();
+    const lastSent = lastLocationSentAt[furgoId] || 0;
+    const elapsed = now - lastSent;
+
+    if (elapsed >= DRIVER_LOCATION_THROTTLE_MS) {
+      lastLocationSentAt[furgoId] = now;
+      return await pushDriverLocationToSupabase(furgoId, lat, lng);
+    }
+
+    // Aún dentro de la ventana de espera: guarda la última posición y programa
+    // un único envío diferido (si no hay ya uno pendiente para este conductor).
+    if (!pendingLocationTimers[furgoId]) {
+      const remaining = DRIVER_LOCATION_THROTTLE_MS - elapsed;
+      pendingLocationTimers[furgoId] = setTimeout(() => {
+        pendingLocationTimers[furgoId] = null;
+        const latestLoc = JSON.parse(localStorage.getItem('delivery_driver_locations') || '{}')[furgoId];
+        if (latestLoc) {
+          lastLocationSentAt[furgoId] = Date.now();
+          pushDriverLocationToSupabase(furgoId, latestLoc.lat, latestLoc.lng);
+        }
+      }, remaining);
+    }
+    return { success: true, throttled: true };
+  } catch (e) {
+    console.error("Error saving driver location:", e);
+    return { success: false, error: e };
+  }
+}
+
+async function pushDriverLocationToSupabase(furgoId, lat, lng) {
+  try {
     if (supabase) {
       const { error } = await supabase.from('delivery_settings').upsert({
         key: `loc_${furgoId}`,
