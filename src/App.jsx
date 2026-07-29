@@ -6095,6 +6095,14 @@ function App() {
             triggerAlert('No se pudieron guardar los permisos. Comprueba tu conexión.', 'error');
             return;
           }
+          // Fix: el aviso de "falta la columna permissions" se activaba (en
+          // saveUsers) al detectar el error de columna ausente, pero solo se
+          // limpiaba desde ESA misma función — nunca desde aquí. Si la columna
+          // ya se había añadido en Supabase, este guardado directo funcionaba
+          // bien, pero el aviso se quedaba pegado en el navegador para siempre
+          // porque nada volvía a borrar la bandera. Se limpia también aquí, en
+          // cuanto un guardado de permisos tiene éxito.
+          localStorage.removeItem('delivery_supabase_needs_permissions_col');
           triggerAlert('Permisos de usuario actualizados correctamente');
         });
     }
@@ -17403,6 +17411,11 @@ function App() {
                                             triggerAlert('Debe tener al menos un proveedor habilitado', 'warning');
                                             return;
                                           }
+                                          // Fix: la casilla tardaba en reflejar el cambio porque esperaba a que
+                                          // terminara todo el guardado (local + Supabase) antes de actualizar la
+                                          // pantalla. Se actualiza el estado local al instante (optimista) y el
+                                          // guardado real sigue en segundo plano.
+                                          setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, allowedProviders: next } : usr));
                                           await updateUserAllowedProviders(u.id, next);
                                           triggerAlert(`Proveedores actualizados para ${u.label}`);
                                           loadData();
@@ -17422,6 +17435,7 @@ function App() {
                                             triggerAlert('Debe tener al menos un proveedor habilitado', 'warning');
                                             return;
                                           }
+                                          setUsers(prev => prev.map(usr => usr.id === u.id ? { ...usr, allowedProviders: next } : usr));
                                           await updateUserAllowedProviders(u.id, next);
                                           triggerAlert(`Proveedores actualizados para ${u.label}`);
                                           loadData();
