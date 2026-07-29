@@ -1007,6 +1007,7 @@ function App() {
   const [plannedDriverName, setPlannedDriverName] = useState('');
   const [editingRates, setEditingRates] = useState({});
   const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useState(null);
+  const [showOpenShiftsModal, setShowOpenShiftsModal] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [editEmpName, setEditEmpName] = useState('');
 
@@ -14222,6 +14223,16 @@ function App() {
               💰 Nóminas y Fichas
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowOpenShiftsModal(true)}
+            className="btn btn-secondary btn-small"
+            style={{ margin: 0, padding: '8px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '5px' }}
+            title="Ver todos los turnos que aún no se han cerrado (planificados o en curso)"
+          >
+            🔓 Turnos Abiertos
+          </button>
           
           {/* Navigation Controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -15175,6 +15186,74 @@ function App() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Modal de Turnos Abiertos (planificados o en curso, sin cerrar) */}
+        {showOpenShiftsModal && (() => {
+          const openShifts = shifts
+            .filter(s => s.status !== 'closed' && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim()) || (s.helper2 && s.helper2.trim())))
+            .sort((a, b) => b.date.localeCompare(a.date));
+
+          return (
+            <div className="obs-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, padding: '15px', backdropFilter: 'blur(4px)' }}>
+              <div className="obs-modal" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '480px', padding: '24px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left' }}>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: 'var(--primary)' }}>
+                    🔓 Turnos Sin Cerrar ({openShifts.length})
+                  </h3>
+                  <button type="button" onClick={() => setShowOpenShiftsModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: 0 }}>✕</button>
+                </div>
+
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+                  Estos turnos tienen un chofer o ayudante asignado, pero todavía no se han cerrado — por eso no cuentan (todavía) como día trabajado en Nóminas.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '350px', overflowY: 'auto', marginBottom: '15px' }}>
+                  {openShifts.length === 0 ? (
+                    <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '10px' }}>
+                      No hay turnos pendientes de cerrar. Todo al día. 👍
+                    </div>
+                  ) : (
+                    openShifts.map(s => {
+                      const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
+                      const isActive = !!s.openedAt;
+                      return (
+                        <div
+                          key={s.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            background: isActive ? 'var(--shift-active-bg)' : 'var(--shift-planned-bg)',
+                            border: isActive ? '1px solid var(--shift-active-border)' : '1px solid var(--shift-planned-border)',
+                            borderRadius: '6px',
+                            fontSize: '0.85rem'
+                          }}
+                        >
+                          <div>
+                            <strong style={{ color: isActive ? 'var(--shift-active-text)' : 'var(--shift-planned-text)' }}>{driverName}</strong>
+                            {s.helper && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>+ {s.helper}</span>}
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{s.date.split('-').reverse().join('/')}</div>
+                            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: isActive ? 'var(--shift-active-text)' : 'var(--shift-planned-text)' }}>
+                              {isActive ? '🟢 En curso' : '⚪ Planificado'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <button type="button" onClick={() => setShowOpenShiftsModal(false)} className="btn btn-secondary" style={{ width: '100%', margin: 0 }}>
+                  Cerrar
+                </button>
               </div>
             </div>
           );
