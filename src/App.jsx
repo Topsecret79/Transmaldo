@@ -15163,7 +15163,7 @@ function App() {
                           <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                             <button 
                               type="button" 
-                              onClick={() => setSelectedPayrollEmployee(item)}
+                              onClick={() => setSelectedPayrollEmployee({ ...item, year, month })}
                               className="btn btn-secondary btn-small"
                               style={{ margin: 0, padding: '4px 10px', fontSize: '0.78rem' }}
                             >
@@ -15198,40 +15198,74 @@ function App() {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto', marginBottom: '15px' }}>
-                {selectedPayrollEmployee.dates.length === 0 ? (
-                  <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '10px' }}>
-                    No hay días registrados para este mes.
+              {(() => {
+                const year = selectedPayrollEmployee.year;
+                const month = selectedPayrollEmployee.month; // 0-indexado
+                const monthLabel = new Date(year, month, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+
+                const workedByDate = {};
+                selectedPayrollEmployee.dates.forEach(d => { workedByDate[d.date] = d.role; });
+
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                // Lunes=0 ... Domingo=6 (convención española de calendario)
+                const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+
+                const cells = [];
+                for (let i = 0; i < firstWeekday; i++) cells.push(null);
+                for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+                const weekdayLabels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+                return (
+                  <div style={{ marginBottom: '15px' }}>
+                    <div style={{ textAlign: 'center', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-main)', textTransform: 'capitalize', marginBottom: '10px' }}>
+                      {monthLabel}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
+                      {weekdayLabels.map(w => (
+                        <div key={w} style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '700' }}>{w}</div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                      {cells.map((d, idx) => {
+                        if (d === null) return <div key={`empty-${idx}`} />;
+                        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const worked = workedByDate[dateStr];
+                        return (
+                          <div
+                            key={dateStr}
+                            title={worked ? `${dateStr} — ${worked}` : dateStr}
+                            style={{
+                              aspectRatio: '1',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: worked ? '700' : '500',
+                              background: worked ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255,255,255,0.02)',
+                              color: worked ? '#10b981' : 'var(--text-muted)',
+                              border: worked ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--panel-border)'
+                            }}
+                          >
+                            {d}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', gap: '14px', justifyContent: 'center', marginTop: '12px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'rgba(16, 185, 129, 0.22)', border: '1px solid rgba(16, 185, 129, 0.4)', display: 'inline-block' }} />
+                        Día trabajado
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', display: 'inline-block' }} />
+                        No trabajado
+                      </span>
+                    </div>
                   </div>
-                ) : (
-                  selectedPayrollEmployee.dates.map(dObj => {
-                    const dateObj = new Date(dObj.date + 'T00:00:00');
-                    const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
-                    const capitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-                    return (
-                      <div 
-                        key={dObj.date}
-                        style={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
-                          padding: '8px 12px', 
-                          background: 'rgba(255,255,255,0.01)', 
-                          border: '1px solid var(--panel-border)', 
-                          borderRadius: '6px',
-                          fontSize: '0.85rem',
-                          color: 'var(--text-main)'
-                        }}
-                      >
-                        <div>
-                          <strong>{capitalized}</strong>
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '10px' }}>({dObj.role})</span>
-                        </div>
-                        <span style={{ color: 'var(--text-muted)' }}>{dObj.date.split('-').reverse().join('/')}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                );
+              })()}
 
               <button 
                 type="button" 
