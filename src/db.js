@@ -104,6 +104,12 @@ export function setIsSaving(val) {
 const REINIT_MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutos
 let lastFullReinitAt = 0;
 
+// Enfriamiento mínimo entre reconexiones forzadas por caída detectada del canal
+// (ver .subscribe() más abajo), para no entrar en un bucle de reconexión constante
+// si la red está teniendo problemas intermitentes.
+const FORCED_RECONNECT_COOLDOWN_MS = 5000; // 5 segundos
+let lastForcedReconnectAt = 0;
+
 function isRealtimeChannelHealthy() {
   return !!(realtimeChannel && realtimeChannel.state === 'joined');
 }
@@ -169,7 +175,25 @@ export async function reinitSupabase(force = false) {
               // vuelve a pedir la tabla de tickets si de verdad hubo un cambio en delivery_tickets.
               scheduleSyncFromCloud(payload.table);
             })
-            .subscribe();
+            .subscribe((status) => {
+              // Fix: el mapa (y cualquier vista en tiempo real) se quedaba "congelado"
+              // cuando el canal de Realtime se caía en silencio (móvil sin cobertura un
+              // instante, ordenador saliendo de reposo, etc.) — la comprobación de salud
+              // usada por el temporizador de 3 minutos (isRealtimeChannelHealthy) mira
+              // `realtimeChannel.state`, que no siempre se actualiza al momento en todos
+              // los tipos de desconexión. El propio canal SÍ avisa de estos estados aquí
+              // en cuanto ocurren, así que se reconecta de inmediato al detectarlos, en
+              // vez de esperar a que el usuario refresque la página a mano o pasen los
+              // 3 minutos del temporizador de respaldo.
+              if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                const now = Date.now();
+                if (now - lastForcedReconnectAt > FORCED_RECONNECT_COOLDOWN_MS) {
+                  lastForcedReconnectAt = now;
+                  console.warn(`Canal Realtime desconectado (${status}), reconectando...`);
+                  reinitSupabase(true);
+                }
+              }
+            });
         } catch (err) {
           console.error("Error subscribing to Supabase Realtime:", err);
         }
