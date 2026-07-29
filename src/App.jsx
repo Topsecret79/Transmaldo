@@ -15238,6 +15238,7 @@ function App() {
                           <div>
                             <strong style={{ color: isActive ? 'var(--shift-active-text)' : 'var(--shift-planned-text)' }}>{driverName}</strong>
                             {s.helper && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>+ {s.helper}</span>}
+                            {s.routeName && <div style={{ fontSize: '0.72rem', color: 'var(--primary)', marginTop: '2px' }}>📍 {s.routeName}</div>}
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{s.date.split('-').reverse().join('/')}</div>
