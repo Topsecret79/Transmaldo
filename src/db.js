@@ -425,7 +425,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           // esa columna solo se lee dentro de la Edge Function "verify-login",
           // nunca en el navegador. Si se añaden columnas nuevas a delivery_users
           // en el futuro, hay que añadirlas aquí explícitamente (no usar '*').
-          .select('id, username, label, role, can_search, created_by, email, auth_uid, active')
+          .select('id, username, label, role, can_search, created_by, email, auth_uid, active, permissions')
           .order('id', { ascending: true })
           .range(from, from + pageSize - 1);
         if (pageErr) {
@@ -1437,8 +1437,9 @@ export async function saveUsers(users) {
         // password, label, role, can_search, created_by, email, auth_uid,
         // active. Se usa ese conjunto conocido en vez de una sonda que puede
         // fallar. Si en el futuro se añaden columnas nuevas a la tabla, hay que
-        // añadirlas también aquí.
-        let dbColumns = ['id', 'username', 'password', 'label', 'role', 'can_search', 'created_by', 'email', 'auth_uid', 'active'];
+        // añadirlas también aquí. (29 jul 2026: se añadió la columna
+        // `permissions`, ver ALTER TABLE ejecutado ese día.)
+        let dbColumns = ['id', 'username', 'password', 'label', 'role', 'can_search', 'created_by', 'email', 'auth_uid', 'active', 'permissions'];
 
         const formatted = hashedUsers.map(u => {
           const row = {
