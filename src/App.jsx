@@ -7177,6 +7177,49 @@ function App() {
                 type="button"
                 className="btn btn-secondary btn-small"
                 onClick={() => {
+                  const currentName = activeRouteContext.name;
+                  const newName = window.prompt('Nuevo nombre de la ruta:', currentName);
+                  if (!newName || !newName.trim() || newName.trim() === currentName) return;
+                  const cleanNewName = newName.trim();
+                  const { date, furgoId } = activeRouteContext;
+
+                  // Actualiza también el nombre en todos los tickets y en el turno de
+                  // ese mismo día/furgoneta, para que quede coherente en toda la app
+                  // (no solo en la lista de "Ruta Activa").
+                  const updatedTickets = tickets.map(t =>
+                    (t.date === date && t.furgoId === furgoId)
+                      ? { ...t, routeName: cleanNewName, _syncStatus: 'pending' }
+                      : t
+                  );
+                  setTickets(updatedTickets);
+                  saveTickets(updatedTickets);
+
+                  const updatedShifts = shifts.map(s =>
+                    (s.date === date && s.furgoId === furgoId)
+                      ? { ...s, routeName: cleanNewName }
+                      : s
+                  );
+                  setShifts(updatedShifts);
+                  saveShifts(updatedShifts);
+
+                  const newRouteId = `${cleanNewName}|${date}|${furgoId}`;
+                  const updatedRoutes = activeRoutes.map(r =>
+                    r.id === currentRouteId ? { ...r, id: newRouteId, name: cleanNewName } : r
+                  );
+                  setActiveRoutes(updatedRoutes);
+                  setCurrentRouteId(newRouteId);
+                  setRouteName(cleanNewName);
+
+                  triggerAlert(`Ruta renombrada a "${cleanNewName}"`);
+                }}
+                style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(255, 255, 255, 0.05)', borderColor: 'var(--panel-border)' }}
+              >
+                ✏️ Renombrar Ruta
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => {
                   if (window.confirm(`¿Seguro que quieres quitar la ruta "${activeRouteContext.name}" de tu lista activa? Esto solo limpia tu vista de planificador, pero NO cerrará el turno del chofer (podrá empezar hoy).`)) {
                     const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
                     setActiveRoutes(remaining);
