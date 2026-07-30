@@ -6854,7 +6854,12 @@ function App() {
     };
 
     const handleQuickCreate = (targetDate, label) => {
-      const defaultName = `Ruta ${label} (${formatSpanishDate(targetDate)})`;
+      // Fix: los botones rápidos ("Ruta HOY"/"Ruta MAÑANA") generaban siempre un
+      // nombre automático, sin dar opción a personalizarlo. Ahora, si el usuario
+      // ya escribió algo en el campo "Nombre de la Ruta" antes de tocar el botón
+      // rápido, se usa ese nombre; si lo deja vacío, sigue generando el automático
+      // de siempre.
+      const defaultName = newRouteName.trim() || `Ruta ${label} (${formatSpanishDate(targetDate)})`;
       const selectedFurgoId = currentUser?.role === 'repartidor' 
         ? currentUser.id 
         : (newRouteFurgoId || (activeRepartidores[0]?.id || ''));
@@ -6925,6 +6930,17 @@ function App() {
           Crear Nueva Ruta
         </h2>
 
+        <div className="input-group">
+          <span className="input-label">Nombre de la Ruta (opcional — se usará también en los botones rápidos de abajo)</span>
+          <input 
+            type="text" 
+            className="form-input" 
+            placeholder={`Ej: Ruta ${formatSpanishDate(newRouteDate)}`}
+            value={newRouteName}
+            onChange={(e) => setNewRouteName(e.target.value)}
+          />
+        </div>
+
         {/* Botones de creación rápida */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '5px' }}>
           <button
@@ -6979,17 +6995,6 @@ function App() {
         </div>
 
         <form onSubmit={handleCreateRouteSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div className="input-group">
-            <span className="input-label">Nombre de la Ruta (Opcional)</span>
-            <input 
-              type="text" 
-              className="form-input" 
-              placeholder={`Ej: Ruta ${formatSpanishDate(newRouteDate)}`}
-              value={newRouteName}
-              onChange={(e) => setNewRouteName(e.target.value)}
-            />
-          </div>
-
           <div className="grid-2col">
             <div className="input-group">
               <span className="input-label">Fecha de la Ruta</span>
