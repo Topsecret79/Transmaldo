@@ -2905,8 +2905,50 @@ export async function addUser(username, label, password, role = 'repartidor', cr
     auth_uid: auth_uid || null,
     allowedProviders: allowedProviders && Array.isArray(allowedProviders) && allowedProviders.length > 0 ? allowedProviders : ['eci', 'dormity']
   };
+
+  // Fix: antes esto añadía el nuevo usuario a TODA la lista local y llamaba a
+  // saveUsers(users) (guardado masivo). Como el resto de usuarios ya no llevan
+  // contraseña en memoria (por seguridad), Supabase recibía un lote mezclado —
+  // el nuevo con contraseña, todos los demás sin ella — y esa mezcla en un
+  // mismo upsert hacía que la base de datos rechazase la operación ENTERA por
+  // la columna de contraseña obligatoria (ni siquiera se creaba el usuario
+  // nuevo). Se hace ahora una inserción dirigida de una sola fila, la del
+  // usuario nuevo, sin tocar a nadie más.
   users.push(newUser);
-  await saveUsers(users);
+  localStorage.setItem('delivery_users', JSON.stringify(users));
+
+  if (supabase) {
+    const hashedPassword = await hashPassword(newUser.password);
+    const { error: insertErr } = await supabase.from('delivery_users').insert({
+      id: newUser.id,
+      username: newUser.username,
+      label: newUser.label,
+      password: hashedPassword,
+      role: newUser.role,
+      can_search: false,
+      created_by: newUser.createdBy || 'admin',
+      email: newUser.email,
+      auth_uid: newUser.auth_uid,
+      active: true
+    });
+    if (insertErr) {
+      console.error("Error creando usuario en Supabase:", insertErr);
+      return { success: false, error: 'No se pudo crear el usuario en la nube. Comprueba tu conexión e inténtalo de nuevo.' };
+    }
+
+    // Los proveedores permitidos se guardan aparte, vía delivery_settings
+    // (igual que ya se hace en updateUserAllowedProviders), ya que no es una
+    // columna real de delivery_users.
+    try {
+      await supabase.from('delivery_settings').upsert({
+        key: `user_allowed_providers_${newUser.id}`,
+        value: JSON.stringify(newUser.allowedProviders)
+      });
+    } catch (e) {
+      console.warn("No se pudo guardar allowedProviders del nuevo usuario en settings:", e);
+    }
+  }
+
   return { success: true, user: newUser };
 }
 
