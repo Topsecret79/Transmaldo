@@ -1907,6 +1907,7 @@ function App() {
   const [newTariffBlock, setNewTariffBlock] = useState('Otros');
   const [newTariffType, setNewTariffType] = useState('fixed');
   const [newTariffValue, setNewTariffValue] = useState('');
+  const [newTariffProvider, setNewTariffProvider] = useState('eci');
 
   useEffect(() => {
     loadData();
@@ -4254,6 +4255,15 @@ function App() {
         triggerAlert('Registro guardado con éxito');
         // Resetear
         localStorage.removeItem('delivery_form_draft');
+        // Fix defensivo: el guardado automático de borrador (más abajo, en el
+        // useEffect que sigue a customerName/customExtras/etc.) podía volver a
+        // escribir un borrador con los datos ANTIGUOS justo después de este
+        // removeItem, si llegaba a ejecutarse con los valores de estado aún
+        // no actualizados (React agrupa las actualizaciones de estado, no son
+        // instantáneas). Se vuelve a vaciar una vez más, después de que React
+        // haya terminado de aplicar todos los cambios, para asegurar que la
+        // última palabra la tiene siempre "borrador vacío".
+        setTimeout(() => localStorage.removeItem('delivery_form_draft'), 0);
         setCustomerName('');
         setPhone('');
         setAddress('');
@@ -4266,6 +4276,14 @@ function App() {
         setCustomExtras([]);
         setCustomExtraName('');
         setCustomExtraPrice('');
+        // Fix: los artículos personalizados específicos de Dormity
+        // (customDormityItems) nunca se vaciaban aquí — se quedaban pegados y
+        // se colaban en TODAS las paradas siguientes de la misma sesión, hasta
+        // que se recargaba la página. Los genéricos (customExtras) sí se
+        // reseteaban, pero estos no.
+        setCustomDormityItems([]);
+        setCustomDormityEntregaName('');
+        setCustomDormityRecogidaName('');
         setUrgenteType('none');
         setServiceType('entrega');
         setNotes('');
@@ -5295,6 +5313,9 @@ function App() {
     setCustomExtras([]);
     setCustomExtraName('');
     setCustomExtraPrice('');
+    setCustomDormityItems([]);
+    setCustomDormityEntregaName('');
+    setCustomDormityRecogidaName('');
     setUrgenteType('none');
     setServiceType('entrega');
     setNotes('');
@@ -5406,7 +5427,8 @@ function App() {
         name: newTariffName.trim(),
         block: newTariffBlock,
         type: newTariffType,
-        value: valNum
+        value: valNum,
+        provider: newTariffProvider
       });
       if (res.success) {
         triggerAlert(`Tarifa "${newTariffName}" añadida correctamente`);
@@ -8453,6 +8475,7 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease' }}>
               
               {/* SECCIÓN A: TELEVISORES */}
+              {effectiveTicketProvider !== 'dormity' && (
               <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                 <div 
                   onClick={() => toggleSection('tv')} 
@@ -8817,8 +8840,10 @@ function App() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* SECCIÓN B: PAQUETERÍA */}
+              {effectiveTicketProvider !== 'dormity' && (
               <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                 <div 
                   onClick={() => toggleSection('paqueteria')} 
@@ -8886,9 +8911,10 @@ function App() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* SECCIÓN C: GAMA BLANCA */}
-              {itemsGamaBlanca.length > 0 && (
+              {itemsGamaBlanca.length > 0 && effectiveTicketProvider !== 'dormity' && (
                 <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                   <div 
                     onClick={() => toggleSection('gamablanca')} 
@@ -8944,7 +8970,7 @@ function App() {
               )}
 
               {/* SECCIÓN D: MUEBLES */}
-              {itemsMuebles.length > 0 && (
+              {itemsMuebles.length > 0 && effectiveTicketProvider !== 'dormity' && (
                 <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                   <div 
                     onClick={() => toggleSection('muebles')} 
@@ -9000,7 +9026,7 @@ function App() {
               )}
 
               {/* SECCIÓN E: ELECTRODOMÉSTICOS VARIOS */}
-              {itemsElectrodomesticosVarios.length > 0 && (
+              {itemsElectrodomesticosVarios.length > 0 && effectiveTicketProvider !== 'dormity' && (
                 <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                   <div 
                     onClick={() => toggleSection('electrodomesticos')} 
@@ -9105,6 +9131,7 @@ function App() {
               )}
 
               {/* SECCIÓN E: OTROS ELEMENTOS / ACCESORIOS */}
+              {effectiveTicketProvider !== 'dormity' && (
               <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                 <div 
                   onClick={() => toggleSection('otros')} 
@@ -9164,6 +9191,7 @@ function App() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* SECCIÓN F: CONCEPTOS ADICIONALES (EXTRAS PERSONALIZADOS) */}
               <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
@@ -19800,6 +19828,18 @@ function App() {
                       >
                         <option value="fixed">Precio Fijo (Euros)</option>
                         <option value="modules">Por Módulos (Multiplica precio del módulo)</option>
+                      </select>
+                    </div>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <span className="input-label">Proveedor</span>
+                      <select 
+                        className="form-input" 
+                        value={newTariffProvider} 
+                        onChange={(e) => setNewTariffProvider(e.target.value)}
+                      >
+                        <option value="eci">Solo El Corte Inglés</option>
+                        <option value="dormity">Solo Dormity</option>
+                        <option value="ambos">Ambos proveedores</option>
                       </select>
                     </div>
                     <div className="input-group" style={{ marginBottom: 0 }}>
