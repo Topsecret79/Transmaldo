@@ -4148,7 +4148,18 @@ function App() {
           });
         }
       } else if (dormityRouteType === 'toledo') {
-        if (!tasksArray.some(t => t.tariffId === 'DORMITY_TOLEDO')) {
+        // Fix (mismo hallazgo que "Servicio Día", 1 ago 2026): esta comprobación
+        // también miraba solo dentro del propio ticket, nunca en el resto de
+        // paradas de la misma ruta — el cargo fijo de Toledo (700€, pensado para
+        // toda la ruta) se estaba añadiendo en cada parada por separado.
+        const toledoAlreadyChargedInRoute = tickets.some(t =>
+          t.date === ticketDate &&
+          t.furgoId === assignedFurgoId &&
+          (!editingTicketId || t.id !== editingTicketId) &&
+          Array.isArray(t.tasks) &&
+          t.tasks.some(task => task.tariffId === 'DORMITY_TOLEDO')
+        );
+        if (!tasksArray.some(t => t.tariffId === 'DORMITY_TOLEDO') && !toledoAlreadyChargedInRoute) {
           const toledoTariff = dormityTariffs.find(t => t.id === 'DORMITY_TOLEDO');
           const toledoPrice = toledoTariff ? toledoTariff.value : 700;
           tasksArray.push({
@@ -4163,16 +4174,35 @@ function App() {
       }
 
       if (dormityServiceTariffId && !tasksArray.some(t => t.tariffId === dormityServiceTariffId)) {
-        const matchedT = dormityTariffs.find(t => t.id === dormityServiceTariffId);
-        const tVal = matchedT ? matchedT.value : 0;
-        tasksArray.push({
-          tariffId: dormityServiceTariffId,
-          name: dormityServiceTaskName,
-          quantity: 1,
-          unitPrice: tVal,
-          price: tVal,
-          subtotal: tVal
-        });
+        // Fix (hallazgo del 1 ago 2026): esta comprobación solo miraba dentro del
+        // propio ticket que se está guardando (tasksArray, que siempre empieza
+        // vacío en cada parada nueva) — nunca miraba si OTRA parada de la MISMA
+        // ruta ya llevaba este mismo cargo. Como resultado, un cargo pensado
+        // para cobrarse UNA SOLA VEZ por toda la ruta del día (p.ej. "Servicio
+        // Día - Tienda Express", 150€) se estaba añadiendo en TODAS y cada una
+        // de las paradas — en una ruta de 15 clientes, se facturaban 2.250€ en
+        // vez de 150€. El tipo "Madrid" ya hacía bien esta comprobación
+        // (mirando cuántas paradas lleva la ruta); se aplica aquí el mismo
+        // patrón para todos los demás tipos de servicio Dormity.
+        const alreadyChargedInRoute = tickets.some(t =>
+          t.date === ticketDate &&
+          t.furgoId === assignedFurgoId &&
+          (!editingTicketId || t.id !== editingTicketId) &&
+          Array.isArray(t.tasks) &&
+          t.tasks.some(task => task.tariffId === dormityServiceTariffId)
+        );
+        if (!alreadyChargedInRoute) {
+          const matchedT = dormityTariffs.find(t => t.id === dormityServiceTariffId);
+          const tVal = matchedT ? matchedT.value : 0;
+          tasksArray.push({
+            tariffId: dormityServiceTariffId,
+            name: dormityServiceTaskName,
+            quantity: 1,
+            unitPrice: tVal,
+            price: tVal,
+            subtotal: tVal
+          });
+        }
       }
     }
 
