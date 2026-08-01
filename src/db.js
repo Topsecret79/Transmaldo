@@ -1719,7 +1719,8 @@ export async function saveTariffs(tariffs) {
         block: t.block,
         type: t.type,
         value: parseFloat(t.value) || 0,
-        createdBy: createdBy
+        createdBy: createdBy,
+        provider: t.provider || 'eci'
       };
     });
 
@@ -1742,7 +1743,8 @@ export async function saveTariffs(tariffs) {
           block: t.block,
           type: t.type,
           value: t.value,
-          created_by: t.createdBy || null
+          created_by: t.createdBy || null,
+          provider: t.provider || 'eci'
         }));
         const { error } = await supabase.from('delivery_tariffs').upsert(dbFormatted);
         if (error) {
@@ -2914,7 +2916,17 @@ export async function addUser(username, label, password, role = 'repartidor', cr
   // la columna de contraseña obligatoria (ni siquiera se creaba el usuario
   // nuevo). Se hace ahora una inserción dirigida de una sola fila, la del
   // usuario nuevo, sin tocar a nadie más.
-  users.push(newUser);
+  // Fix (regresión detectada el 1 ago 2026): esta caché local se guardaba con el
+  // objeto newUser completo, INCLUIDA su contraseña en texto plano — justo lo
+  // que el resto de este archivo evita a propósito desde el arreglo de
+  // seguridad. Al quedar esa contraseña en la caché general, la siguiente vez
+  // que se guardaba cualquier otro cambio de usuario (p.ej. proveedores
+  // permitidos) mediante saveUsers() con la lista completa, volvía a
+  // producirse el mismo lote mezclado (un usuario con contraseña, el resto sin
+  // ella) que hacía fallar el guardado ENTERO por la columna obligatoria. Se
+  // guarda aquí una copia sin password en la caché local.
+  const { password: _newUserPassword, ...newUserWithoutPassword } = newUser;
+  users.push(newUserWithoutPassword);
   localStorage.setItem('delivery_users', JSON.stringify(users));
 
   if (supabase) {
