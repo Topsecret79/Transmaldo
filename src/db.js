@@ -1051,7 +1051,18 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
 }
 
 const DEFAULT_USERS = [
-  { id: 'admin', username: 'admin', label: 'Super Administrador', role: 'superadmin', password: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918' }
+  // Fix (causa raíz encontrada el 1 ago 2026): este usuario de emergencia se
+  // usa para sembrar la caché local SOLO si está completamente vacía (primer
+  // uso del navegador, o justo después de borrarla a mano para depurar). Antes
+  // llevaba aquí una contraseña ya calculada incrustada en el propio código —
+  // en cuanto la caché se vaciaba y se regeneraba, ese único usuario quedaba
+  // con contraseña mientras el resto (ya sincronizados sin ella, por
+  // seguridad) no la llevaban, y ese lote mezclado hacía fallar CUALQUIER
+  // guardado posterior de usuarios (proveedores, permisos, etc.) contra la
+  // restricción de columna obligatoria. Ya no hace falta: el login clásico se
+  // verifica siempre contra Supabase (Edge Function "verify-login"), nunca
+  // contra este valor local.
+  { id: 'admin', username: 'admin', label: 'Super Administrador', role: 'superadmin' }
 ];
 
 const DEFAULT_MODULE_PRICE = 3.81;
