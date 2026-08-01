@@ -1418,23 +1418,18 @@ export async function saveUsers(users) {
     localStorage.setItem('delivery_users', JSON.stringify(hashedUsers));
     
     if (supabase) {
-      // Guardar también en delivery_settings como plan de respaldo para sincronizar entre dispositivos
-      for (const u of hashedUsers) {
-        if (u.role === 'admin') {
-          const permString = typeof u.permissions === 'object' ? JSON.stringify(u.permissions) : (u.permissions || null);
-          supabase.from('delivery_settings').upsert({
-            key: `user_permissions_${u.id}`,
-            value: permString || '{}'
-          }).then(() => {}).catch(err => console.warn("Failed saving backup permissions to settings:", err));
-        }
-        if (u.allowedProviders && Array.isArray(u.allowedProviders)) {
-          const provString = JSON.stringify(u.allowedProviders);
-          supabase.from('delivery_settings').upsert({
-            key: `user_allowed_providers_${u.id}`,
-            value: provString
-          }).then(() => {}).catch(err => console.warn("Failed saving backup allowedProviders to settings:", err));
-        }
-      }
+      // Fix (causa raíz encontrada el 1 ago 2026): este bucle de "respaldo"
+      // volvía a subir a delivery_settings, en CADA guardado de usuarios (por
+      // cualquier motivo, no solo al cambiar permisos/proveedores), el valor
+      // que cada usuario tuviera en la caché LOCAL de ese dispositivo/sesión
+      // concretos. Si esa caché estaba desactualizada (p. ej. otro admin con
+      // el navegador abierto desde antes de un cambio reciente), este bucle
+      // sobrescribía en silencio el valor correcto recién guardado por otra
+      // persona con el valor viejo cacheado aquí — deshaciendo el cambio sin
+      // ningún aviso ni error. Las funciones específicas que sí deben
+      // persistir esto (updateUserAllowedProviders, handleUpdateUserPermissions)
+      // ya lo hacen de forma dirigida y correcta por su cuenta; este bucle
+      // genérico no aportaba nada más que ese riesgo, así que se retira.
       try {
         // Fix: antes esto intentaba detectar las columnas reales haciendo una
         // consulta que las nombraba una a una — pero seleccionar por nombre una
