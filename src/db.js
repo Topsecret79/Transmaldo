@@ -1123,15 +1123,15 @@ const DEFAULT_TARIFFS = [
 
 export const DEFAULT_DORMITY_TARIFFS = [
   // ☀️ Servicio Día
-  { id: 'DORMITY_SERVDIA_EXPRESS', name: 'Tienda', block: 'Servicio Día', type: 'fixed', value: 150.00, provider: 'dormity' },
-  { id: 'DORMITY_SERVDIA_CERCANIA', name: 'Servicio Día - Cercanía', block: 'Servicio Día', type: 'fixed', value: 210.00, provider: 'dormity' },
-  { id: 'DORMITY_SERVDIA_MEDIA', name: 'Servicio Día - Media Distancia', block: 'Servicio Día', type: 'fixed', value: 260.00, provider: 'dormity' },
-  { id: 'DORMITY_SERVDIA_LEJANIA', name: 'Servicio Día - Lejanía', block: 'Servicio Día', type: 'fixed', value: 310.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_EXPRESS', name: 'Tienda', block: 'Servicio Día', type: 'fixed', value: 209.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_CERCANIA', name: 'Servicio Día - Cercanía', block: 'Servicio Día', type: 'fixed', value: 230.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_MEDIA', name: 'Servicio Día - Media Distancia', block: 'Servicio Día', type: 'fixed', value: 280.00, provider: 'dormity' },
+  { id: 'DORMITY_SERVDIA_LEJANIA', name: 'Servicio Día - Lejanía', block: 'Servicio Día', type: 'fixed', value: 340.00, provider: 'dormity' },
 
   // 🚀 Ruta Distancia Express
-  { id: 'DORMITY_EXPRESS_CERCANIA', name: 'Ruta Express - Cercanía', block: 'Ruta Express', type: 'fixed', value: 180.00, provider: 'dormity' },
-  { id: 'DORMITY_EXPRESS_MEDIA', name: 'Ruta Express - Media Distancia', block: 'Ruta Express', type: 'fixed', value: 230.00, provider: 'dormity' },
-  { id: 'DORMITY_EXPRESS_LEJANIA', name: 'Ruta Express - Lejanía', block: 'Ruta Express', type: 'fixed', value: 280.00, provider: 'dormity' },
+  { id: 'DORMITY_EXPRESS_CERCANIA', name: 'Ruta Express - Cercanía', block: 'Ruta Express', type: 'fixed', value: 150.00, provider: 'dormity' },
+  { id: 'DORMITY_EXPRESS_MEDIA', name: 'Ruta Express - Media Distancia', block: 'Ruta Express', type: 'fixed', value: 180.00, provider: 'dormity' },
+  { id: 'DORMITY_EXPRESS_LEJANIA', name: 'Ruta Express - Lejanía', block: 'Ruta Express', type: 'fixed', value: 220.00, provider: 'dormity' },
 
   // 🚚 Ruta Madrid
   { id: 'DORMITY_MADRID', name: 'Ruta Madrid (700,00 € hasta 8 clientes)', block: 'Ruta Madrid', type: 'fixed', value: 700.00, provider: 'dormity' },
