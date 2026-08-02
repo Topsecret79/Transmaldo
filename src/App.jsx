@@ -871,6 +871,14 @@ function App() {
     };
     setCustomDormityItems(prev => [...prev, newItem]);
     setOtherQuantities(prev => ({ ...prev, [id]: 1 }));
+    // Fix: antes este artículo solo vivía en la sesión actual (para esta
+    // parada concreta) y se perdía después — el chofer tenía que volver a
+    // escribirlo entero cada vez que un cliente distinto llevaba lo mismo.
+    // Se guarda ahora también de forma permanente en el catálogo real de
+    // Dormity (mismo camino que "Tarifas Configurar Dormity"), para que a
+    // partir de ahora aparezca ya seleccionable para cualquier cliente,
+    // cualquier día, sin tener que volver a crearlo.
+    saveDormityTariffs([newItem]).catch(err => console.error('Error guardando artículo nuevo en el catálogo Dormity:', err));
     if (block === 'Recogidas') {
       setCustomDormityRecogidaName('');
     } else {
@@ -8278,7 +8286,22 @@ function App() {
         {/* PASO 2: ARTÍCULOS Y SERVICIOS */}
         {formStep === 2 && (() => {
           if (effectiveTicketProvider === 'dormity') {
-            const activeDormityItems = [...DEFAULT_DORMITY_CATALOG, ...customDormityItems];
+            // Fix: antes solo se mostraban los artículos por defecto más los
+            // creados en ESTA sesión — los ya guardados de forma permanente en
+            // sesiones/días anteriores (ver addCustomDormityItem) no aparecían
+            // aquí, así que "quedar fijo en el catálogo" no se notaba realmente
+            // al elegir artículos. Se añaden ahora los del catálogo persistido
+            // (dormityTariffs), filtrando solo los bloques informativos
+            // (Entregas/Recogidas) — las tarifas planas de ruta (Servicio Día,
+            // Madrid, Toledo...) usan otros nombres de bloque y no se cuelan.
+            const persistedCustomDormityItems = dormityTariffs.filter(t => t.block === 'Entregas' || t.block === 'Recogidas');
+            const seenDormityIds = new Set();
+            const activeDormityItems = [...DEFAULT_DORMITY_CATALOG, ...persistedCustomDormityItems, ...customDormityItems]
+              .filter(item => {
+                if (seenDormityIds.has(item.id)) return false;
+                seenDormityIds.add(item.id);
+                return true;
+              });
             const isChofer = currentUser?.role === 'repartidor';
 
             const getDormityItemIcon = (id) => {
