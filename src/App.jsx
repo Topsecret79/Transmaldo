@@ -7547,6 +7547,146 @@ function App() {
             </button>
           )}
         </div>
+            {/* Fix: este mismo selector solo se mostraba en el panel de "Ruta Activa",
+                que se oculta a propósito en cuanto se entra en modo edición
+                (!editingTicketId). Esto hacía imposible corregir el tipo de ruta
+                Dormity (o su sub-opción) de un ticket ya creado, ya que no había
+                ningún sitio donde volver a elegirlo. Se muestra aquí también,
+                específicamente cuando se está editando un ticket de Dormity. */}
+            {editingTicketId && effectiveTicketProvider === 'dormity' && (
+              <div style={{ background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)', padding: '14px 18px', borderRadius: '12px', marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🛏️ Modalidad de Servicio del Turno Dormity:
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                      Selecciona la modalidad y tramo de distancia para la jornada.
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'serv_dia' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('serv_dia')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      ☀️ Servicio Día
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'express' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('express')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      🚀 Ruta Distancia Express
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'madrid' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('madrid')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      🚚 Ruta Madrid
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${dormityRouteType === 'toledo' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setDormityRouteType('toledo')}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      🏢 Tiendas Toledo
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sub-opciones para ☀️ Servicio Día */}
+                {dormityRouteType === 'serv_dia' && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Opción de Servicio Día:</span>
+                      <button
+                        type="button"
+                        className={`btn ${dormityServDiaOption === 'express' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setDormityServDiaOption('express')}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', width: 'auto', margin: 0 }}
+                      >
+                        ⚡ Tienda
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${dormityServDiaOption === 'distancias' ? 'btn-primary' : 'btn-secondary'}`}
+                        onClick={() => setDormityServDiaOption('distancias')}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', width: 'auto', margin: 0 }}
+                      >
+                        📍 Ruta Distancias Día
+                      </button>
+                    </div>
+
+                    {dormityServDiaOption === 'distancias' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: '700' }}>📏 Seleccionar Tramo de Distancia:</span>
+                        <select
+                          className="form-input"
+                          value={dormityServDiaDist}
+                          onChange={(e) => setDormityServDiaDist(e.target.value)}
+                          style={{ width: '220px', padding: '6px 12px', fontSize: '0.85rem' }}
+                        >
+                          <option value="cercania">🟢 Cercanía</option>
+                          <option value="media">🟡 Media Distancia</option>
+                          <option value="lejania">🟠 Lejanía</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sub-opciones para 🚀 Ruta Distancia Express */}
+                {dormityRouteType === 'express' && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 14px', borderRadius: '10px', border: '1px solid var(--panel-border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: '700' }}>🚀 Seleccionar Tramo Express:</span>
+                    <select
+                      className="form-input"
+                      value={dormityExpressDist}
+                      onChange={(e) => setDormityExpressDist(e.target.value)}
+                      style={{ width: '240px', padding: '6px 12px', fontSize: '0.85rem' }}
+                    >
+                      <option value="cercania">🟢 Cercanía Express</option>
+                      <option value="media">🟡 Media Distancia Express</option>
+                      <option value="lejania">🟠 Lejanía Express</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Info para 🚚 Ruta Madrid */}
+                {dormityRouteType === 'madrid' && (() => {
+                  const activeFurgo = activeRouteContext ? activeRouteContext.furgoId : (currentUser?.id || 'admin');
+                  const activeDate = activeRouteContext ? activeRouteContext.date : ticketDate;
+                  const shiftStops = tickets.filter(t => t.date === activeDate && t.furgoId === activeFurgo).length;
+                  return (
+                    <div style={{ fontSize: '0.82rem', marginTop: '4px', background: shiftStops >= 9 ? 'rgba(251, 191, 36, 0.15)' : 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '8px', border: shiftStops >= 9 ? '1px solid #fbbf24' : '1px solid var(--panel-border)' }}>
+                      📍 Paradas creadas en esta jornada: <strong>{shiftStops} paradas</strong>.
+                      {shiftStops >= 9 ? (
+                        <div style={{ fontWeight: 'bold', marginTop: '4px', color: '#fbbf24' }}>
+                          ⭐ ¡Parada Nº {shiftStops} (≥ 9) alcanzada! Se contabilizará cliente adicional para la jornada.
+                        </div>
+                      ) : (
+                        <span style={{ display: 'block', marginTop: '2px', opacity: 0.85 }}>
+                          (Paradas 1 a 8 incluidas. A partir de la 9ª parada se contabiliza cliente adicional).
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Info para 🏢 Ruta Toledo */}
+                {dormityRouteType === 'toledo' && (
+                  <div style={{ fontSize: '0.82rem', marginTop: '4px', background: 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                    🏢 <strong>Ruta Toledo</strong>: Tarifa plana fija por servicio de ruta a Toledo (700,00 €).
+                  </div>
+                )}
+              </div>
+            )}
 
         {isClosed && (
           <div style={{
