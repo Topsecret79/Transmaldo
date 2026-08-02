@@ -1831,7 +1831,14 @@ export async function saveTickets(tickets) {
         completed_lng: t.completedLng,
         route_order: t.routeOrder,
         created_at: t.createdAt,
-        created_by: t.createdBy || 'admin'
+        created_by: t.createdBy || 'admin',
+        // Fix: sin estas dos columnas, la corrección de un tipo de ruta Dormity
+        // equivocado (p. ej. "Tienda" en vez de "Cercanía") solo se guardaba en
+        // el dispositivo donde se hizo la corrección — si el chofer creó los
+        // tickets desde su móvil y el admin corrige después desde otro
+        // dispositivo, la restauración nunca tenía nada que recuperar.
+        dormity_route_type: t.dormityRouteType || null,
+        dormity_serv_dia_option: t.dormityServDiaOption || null
       }));
       const { error } = await supabase.from('delivery_tickets').upsert(formatted);
       if (error) {
@@ -2213,6 +2220,11 @@ export async function addTicket(ticketData) {
     lng: ticketData.lng || null,
     routeOrder: ticketData.routeOrder || null,
     createdBy: ticketData.createdBy || 'admin',
+    // Fix: estos dos campos nunca se copiaban desde ticketData al crear el
+    // ticket — se perdían desde el primer guardado, así que la restauración al
+    // volver a editar nunca tenía nada real que recuperar.
+    dormityRouteType: ticketData.dormityRouteType,
+    dormityServDiaOption: ticketData.dormityServDiaOption,
     _syncStatus: 'pending',
     ...(anyPriceNeedsReview ? { priceNeedsReview: true } : {})
   };
@@ -2336,6 +2348,13 @@ export async function updateTicket(updatedTicket) {
       completedLng: updatedTicket.completedLng !== undefined ? updatedTicket.completedLng : tickets[index].completedLng,
       routeOrder: updatedTicket.routeOrder !== undefined ? updatedTicket.routeOrder : tickets[index].routeOrder,
       createdBy: updatedTicket.createdBy || tickets[index].createdBy || 'admin',
+      // Fix: estos dos campos nunca estaban en esta lista, así que aunque se
+      // cambiara el tipo de ruta Dormity (o su sub-opción) al editar un
+      // ticket ya creado, el cambio nunca llegaba a guardarse de verdad —
+      // el spread de arriba (...tickets[index]) conservaba siempre el valor
+      // ANTIGUO, silenciosamente.
+      dormityRouteType: updatedTicket.dormityRouteType !== undefined ? updatedTicket.dormityRouteType : tickets[index].dormityRouteType,
+      dormityServDiaOption: updatedTicket.dormityServDiaOption !== undefined ? updatedTicket.dormityServDiaOption : tickets[index].dormityServDiaOption,
       _syncStatus: 'pending',
       priceNeedsReview: anyPriceNeedsReview
     };
