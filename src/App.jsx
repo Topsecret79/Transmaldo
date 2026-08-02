@@ -3964,7 +3964,13 @@ function App() {
             });
           }
         } else {
-          const originalTariff = tariffs.find(t => t.id === tariffId) || dormityTariffs.find(t => t.id === tariffId) || DEFAULT_DORMITY_CATALOG.find(t => t.id === tariffId);
+          // Fix: esta búsqueda no incluía customDormityItems (los artículos
+          // personalizados de Dormity recién creados en la misma sesión por el
+          // chofer) — solo miraba en los catálogos ya guardados. Como resultado,
+          // un artículo personalizado nuevo se guardaba correctamente, pero su
+          // nombre no se encontraba en ningún sitio y se mostraba con el código
+          // interno (CUSTOM_DORMITY_ENT_...) en vez del nombre real escrito.
+          const originalTariff = tariffs.find(t => t.id === tariffId) || dormityTariffs.find(t => t.id === tariffId) || customDormityItems.find(t => t.id === tariffId) || DEFAULT_DORMITY_CATALOG.find(t => t.id === tariffId);
           const isElectrodomestico = originalTariff && getNormalizedBlock(originalTariff.block) === 'electrodomesticos varios';
           
           if (isElectrodomestico) {
