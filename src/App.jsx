@@ -2239,6 +2239,16 @@ function App() {
           const driverColor = COLORS[idx % COLORS.length];
           const isClosed = getShiftStatus(fid, targetDate) === 'closed';
           driverTickets.forEach((t, seqIndex) => {
+            // Fix: antes, si construir el marcador de UNA parada fallaba (por
+            // ejemplo, datos inesperados en esa parada concreta), la excepción
+            // interrumpía todo el bucle — y como los marcadores viejos ya se
+            // habían borrado justo antes de empezar a redibujar, el resultado
+            // era que esa parada Y TODAS LAS SIGUIENTES desaparecían del mapa
+            // de golpe (a veces una, a veces todas, según en qué punto del
+            // bucle fallara). Ahora cada parada se construye dentro de su
+            // propio bloque protegido: si una falla, se salta solo esa y el
+            // resto del mapa se sigue dibujando con normalidad.
+            try {
             const latNum = parseFloat(t.lat), lngNum = parseFloat(t.lng);
             allBounds.push([lngNum, latNum]);
             const statusColor = getTicketColor(t);
@@ -2282,6 +2292,9 @@ function App() {
             const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
             el.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
             mapMarkersRef.current.push(marker);
+            } catch (markerErr) {
+              console.error('Error dibujando el marcador de la parada', t?.id, markerErr);
+            }
           });
           if (driverTickets.length > 1) {
             const coords = driverTickets.map(t => ({ lat: parseFloat(t.lat), lng: parseFloat(t.lng) }));
