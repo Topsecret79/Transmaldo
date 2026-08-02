@@ -4253,6 +4253,13 @@ function App() {
       codAmount: Math.max(0, parseFloat(codAmount) || 0),
       provider: effectiveTicketProviderSubmit || 'eci',
       dormityRouteType: effectiveTicketProviderSubmit === 'dormity' ? dormityRouteType : undefined,
+      // Fix: esta sub-opción (Tienda/Cercanía/Media o Larga Distancia, dentro
+      // de "Servicio Día") nunca se guardaba en el ticket — solo vivía en la
+      // pantalla mientras se creaba. Al volver a abrir esa parada para editar
+      // (p. ej. para corregir "puso Tienda pero era Cercanía"), el selector
+      // siempre volvía a mostrar la opción por defecto en vez de la que
+      // realmente se había elegido, sin ninguna forma de saberlo desde la app.
+      dormityServDiaOption: (effectiveTicketProviderSubmit === 'dormity' && dormityRouteType === 'serv_dia') ? dormityServDiaOption : undefined,
       tasks: tasksArray,
       routeName: routeName || undefined,
       createdBy: editingTicketId ? undefined : (currentUser?.id || 'admin')
@@ -5092,6 +5099,9 @@ function App() {
     setSelectedTicketProvider(ticketProv);
     if (ticket.dormityRouteType) {
       setDormityRouteType(ticket.dormityRouteType);
+    }
+    if (ticket.dormityServDiaOption) {
+      setDormityServDiaOption(ticket.dormityServDiaOption);
     }
 
     setCustomerName(ticket.customerName);
@@ -6509,6 +6519,53 @@ function App() {
     } catch (e) {
       console.error("Error toggling task charge:", e);
       triggerAlert('Error al actualizar el cobro del servicio', 'error');
+    }
+  };
+
+  const handleEditTaskPrice = async (ticketId, taskIndex, taskName, currentPrice) => {
+    // Misma restricción de permisos que toggleTaskCharge, ya que también cambia
+    // directamente lo que se cobra por un servicio.
+    if (!isAdminOrSuper && !(currentUser && currentUser.role === 'coordinador')) {
+      triggerAlert('No tienes permisos para cambiar el precio de un servicio', 'error');
+      return;
+    }
+    const input = window.prompt(`Corregir precio unitario de "${taskName}" (€):`, currentPrice.toFixed(2));
+    if (input === null) return; // Cancelado por el usuario
+    const newPrice = parseFloat(input.replace(',', '.'));
+    if (isNaN(newPrice) || newPrice < 0) {
+      triggerAlert('Precio no válido', 'error');
+      return;
+    }
+    try {
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (!ticket) return;
+      const updatedTasks = (ticket.tasks || []).map((t, idx) => {
+        if (idx === taskIndex) {
+          const qty = t.quantity || 1;
+          // Se actualizan unitPrice, price Y subtotal a la vez: calcTaskPrice()
+          // mira subtotal primero si existe, así que corregir solo unitPrice
+          // sin tocar subtotal dejaría el total mostrado sin cambiar.
+          return {
+            ...t,
+            unitPrice: newPrice,
+            price: newPrice,
+            subtotal: t.noCharge ? 0 : newPrice * qty
+          };
+        }
+        return t;
+      });
+      const recalculatedTotalPrice = updatedTasks.reduce((sum, t) => sum + calcTaskPrice(t), 0);
+      const updatedTicket = {
+        ...ticket,
+        tasks: updatedTasks,
+        totalPrice: recalculatedTotalPrice
+      };
+      await updateTicket(updatedTicket);
+      triggerAlert('Precio del servicio corregido correctamente', 'success');
+      loadData();
+    } catch (e) {
+      console.error("Error editing task price:", e);
+      triggerAlert('Error al corregir el precio', 'error');
     }
   };
 
@@ -16275,7 +16332,18 @@ function App() {
                                 </td>
                                 <td style={{ padding: '9px 16px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: '600' }}>{task.quantity}</td>
                                 <td style={{ padding: '9px 16px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                                  {unitP > 0 ? `${unitP.toFixed(2)} €` : '—'}
+                                  {ticket.status === 'success' && (isAdminOrSuper || currentUser?.role === 'coordinador') && task.tariffId && (task.tariffId.startsWith('CUSTOM_') || task.tariffId.startsWith('DORMITY_')) ? (
+                                    <span
+                                      onClick={() => handleEditTaskPrice(ticket.id, sIdx, name, unitP)}
+                                      style={{ cursor: 'pointer', borderBottom: '1px dashed var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                      title="Tocar para corregir el precio de este servicio"
+                                    >
+                                      {unitP > 0 ? `${unitP.toFixed(2)} €` : '0.00 €'}
+                                      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>✏️</span>
+                                    </span>
+                                  ) : (
+                                    unitP > 0 ? `${unitP.toFixed(2)} €` : '—'
+                                  )}
                                 </td>
                                 <td style={{ padding: '9px 16px', textAlign: 'right', color: 'var(--primary)', fontWeight: '700', fontVariantNumeric: 'tabular-nums' }}>
                                   {totalP > 0 ? `${totalP.toFixed(2)} €` : '—'}
