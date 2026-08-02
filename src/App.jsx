@@ -15001,7 +15001,7 @@ function App() {
                                     saveShifts(updatedShifts);
                                     triggerAlert('Chofer actualizado');
                                   }}
-                                  disabled={s.status === 'closed'}
+                                  disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ 
                                     padding: '2px 6px', 
                                     fontSize: '0.75rem', 
@@ -15048,7 +15048,7 @@ function App() {
                                       saveShifts(updatedShifts);
                                       triggerAlert('Ayudante actualizado');
                                     }}
-                                    disabled={s.status === 'closed'}
+                                    disabled={s.status === 'closed' && !isAdminOrSuper}
                                     style={{ 
                                       padding: '2px 6px', 
                                       fontSize: '0.75rem', 
@@ -15095,7 +15095,7 @@ function App() {
                                       saveShifts(updatedShifts);
                                       triggerAlert('Segundo ayudante actualizado');
                                     }}
-                                    disabled={s.status === 'closed'}
+                                    disabled={s.status === 'closed' && !isAdminOrSuper}
                                     style={{ 
                                       padding: '2px 6px', 
                                       fontSize: '0.75rem', 
@@ -15135,7 +15135,7 @@ function App() {
                                     saveShifts(updatedShifts);
                                     triggerAlert('Matrícula actualizada');
                                   }}
-                                  disabled={s.status === 'closed'}
+                                  disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ 
                                     padding: '2px 6px', 
                                     fontSize: '0.75rem', 
@@ -15849,7 +15849,7 @@ function App() {
                                     saveShifts(updatedShifts);
                                     triggerAlert('Chofer actualizado');
                                   }}
-                                  disabled={s.status === 'closed'}
+                                  disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ 
                                     padding: '2px 6px', 
                                     fontSize: '0.75rem', 
@@ -15894,7 +15894,7 @@ function App() {
                                     saveShifts(updatedShifts);
                                     triggerAlert('Ayudante actualizado');
                                   }}
-                                  disabled={s.status === 'closed'}
+                                  disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ 
                                     padding: '2px 6px', 
                                     fontSize: '0.75rem', 
@@ -15939,7 +15939,7 @@ function App() {
                                     saveShifts(updatedShifts);
                                     triggerAlert('Segundo ayudante actualizado');
                                   }}
-                                  disabled={s.status === 'closed'}
+                                  disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ 
                                     padding: '2px 6px', 
                                     fontSize: '0.75rem', 
@@ -15977,7 +15977,7 @@ function App() {
                                     saveShifts(updatedShifts);
                                     triggerAlert('Matrícula actualizada');
                                   }}
-                                  disabled={s.status === 'closed'}
+                                  disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ 
                                     padding: '2px 6px', 
                                     fontSize: '0.75rem', 
