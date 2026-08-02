@@ -5311,6 +5311,26 @@ function App() {
         });
         return;
       }
+      // Fix: las tarifas planas de ruta Dormity (Servicio Día, Ruta Express,
+      // Toledo, Madrid Extra) no son artículos que el chofer marque con una
+      // cantidad — se determinan automáticamente según el selector de
+      // "Modalidad de Servicio" (dormityRouteType/dormityServDiaOption, que ya
+      // se restauran aparte más arriba). Antes, este bucle las trataba igual
+      // que cualquier otro artículo normal y las metía en otherQuantities con
+      // cantidad 1 — así que al volver a guardar, el sistema añadía OTRA VEZ
+      // la tarifa plana (la vieja, vía este camino genérico) además de la
+      // nueva que añade el selector, duplicando el cargo cada vez que se
+      // editaba. Se excluyen aquí por completo.
+      const isProgrammaticDormityRouteFee = t.tariffId && (
+        t.tariffId.startsWith('DORMITY_SERVDIA_') ||
+        t.tariffId.startsWith('DORMITY_EXPRESS_') ||
+        t.tariffId === 'DORMITY_TOLEDO' ||
+        t.tariffId === 'DORMITY_MADRID' ||
+        t.tariffId === 'DORMITY_MADRID_EXTRA'
+      );
+      if (isProgrammaticDormityRouteFee) {
+        return;
+      }
       const isTVRelated = (t.tariffId.startsWith('TV_ENT_') || 
                           t.tariffId.startsWith('TV_COMB_') || 
                           t.tariffId.startsWith('PM_') || 
