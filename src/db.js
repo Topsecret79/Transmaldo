@@ -1985,15 +1985,19 @@ export async function saveDormityTariffs(tariffs) {
     } catch (e) {}
 
     const formatted = tariffs.map(t => {
-      let finalId = t.id;
-      let createdBy = t.createdBy || activeAdminId;
-      if (!isSuperAdmin && activeAdminId && !t.id.endsWith(`_${activeAdminId}`)) {
-        finalId = `${t.id}_${activeAdminId}`;
-      }
+      // Fix: antes, al guardar cualquier tarifa Dormity se creaba una COPIA con
+      // el id del administrador como sufijo (DORMITY_TOLEDO -> DORMITY_TOLEDO_admin)
+      // sin eliminar nunca la original. El resultado era que el catálogo se iba
+      // duplicando solo, y como el superadmin ve la lista sin agrupar (más
+      // arriba, en getDormityTariffs), veía las dos versiones de cada tarifa a la
+      // vez — además de poder editar una y que la otra conservara el precio
+      // viejo, con el riesgo de facturar con el importe equivocado.
+      // Este mecanismo de "una copia de tarifas por cada administrador" no aporta
+      // nada en la práctica (una sola empresa gestiona el catálogo), así que se
+      // conserva el id tal cual y se deja de duplicar.
       return {
         ...t,
-        id: finalId,
-        createdBy: createdBy || 'admin'
+        createdBy: t.createdBy || activeAdminId || 'admin'
       };
     });
 
