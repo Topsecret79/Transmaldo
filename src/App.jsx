@@ -2267,10 +2267,14 @@ function App() {
             const markerBorderColor = parsedNotesObj.timeSlot === 'morning' ? '#fbbf24' : (parsedNotesObj.timeSlot === 'afternoon' ? '#2563eb' : '#ffffff');
             
             const el = document.createElement('div');
-            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;transition:transform 0.15s ease;';
+            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;transition:scale 0.15s ease,box-shadow 0.15s ease;';
             el.textContent = seqIndex + 1;
-            el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
-            el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
+            // IMPORTANT: Do NOT use el.style.transform here — Mapbox GL JS uses
+            // the `transform` property internally to position the marker on the map.
+            // Overwriting it causes the marker to jump to the top-left corner (0,0).
+            // Use the independent CSS `scale` property instead.
+            el.addEventListener('mouseenter', () => { el.style.scale = '1.2'; el.style.boxShadow = '0 4px 18px rgba(0,0,0,0.6)'; });
+            el.addEventListener('mouseleave', () => { el.style.scale = '1';   el.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)'; });
             let optHtml = '';
             for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
             // Seguridad: escapar nombre/dirección antes de insertarlos en el HTML del
@@ -3692,6 +3696,10 @@ function App() {
   const handleSelectMapTicket = (ticket) => {
     setSelectedMapTicket(ticket);
     setIsMapPanelExpanded(true);
+    // Reset panel position each time a new ticket is selected so the
+    // floating panel always appears in its default position (bottom-centre /
+    // bottom-left) instead of wherever it was last dragged to.
+    setFloatingPos({ x: 0, y: 0, isDragged: false });
     if (mapSelectTimerRef.current) {
       clearTimeout(mapSelectTimerRef.current);
     }
@@ -11607,7 +11615,8 @@ function App() {
         startX: clientX,
         startY: clientY,
         offsetX: floatingPos.x,
-        offsetY: floatingPos.y
+        offsetY: floatingPos.y,
+        moved: false
       };
 
       const handleDragMove = (moveEvent) => {
@@ -11617,6 +11626,13 @@ function App() {
         
         const deltaX = curX - dragStartRef.current.startX;
         const deltaY = curY - dragStartRef.current.startY;
+        
+        // Require at least 8px of movement before treating this as a drag.
+        // This prevents accidental panel-drift when the user simply taps a
+        // map marker (touch events propagate to the panel below).
+        const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        if (dist < 8 && !dragStartRef.current.moved) return;
+        dragStartRef.current.moved = true;
         
         setFloatingPos({
           x: dragStartRef.current.offsetX + deltaX,
