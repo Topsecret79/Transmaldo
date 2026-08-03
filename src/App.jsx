@@ -12652,9 +12652,10 @@ function App() {
       ? fleetMaintenanceLogs 
       : fleetMaintenanceLogs.filter(item => item.plate === selectedFleetVehicleFilter);
 
-    const filteredDailyLogs = selectedFleetVehicleFilter === 'all' 
+    const filteredDailyLogs = (selectedFleetVehicleFilter === 'all' 
       ? fleetDailyLogs 
-      : fleetDailyLogs.filter(item => item.plate === selectedFleetVehicleFilter);
+      : fleetDailyLogs.filter(item => item.plate === selectedFleetVehicleFilter))
+      .slice().sort((a, b) => a.date.localeCompare(b.date) || a.plate.localeCompare(b.plate));
 
     // Cálculos de resumen
     const totalVehicles = fleetVehicles.length;
