@@ -2266,21 +2266,11 @@ function App() {
             const parsedNotesObj = parseTicketNotes(t.notes);
             const markerBorderColor = parsedNotesObj.timeSlot === 'morning' ? '#fbbf24' : (parsedNotesObj.timeSlot === 'afternoon' ? '#2563eb' : '#ffffff');
             
-            // PATRÓN WRAPPER/INNER — solución definitiva al desplazamiento de marcadores:
-            // Mapbox GL JS aplica su transform de posicionamiento directamente sobre el
-            // elemento raíz que se le pasa. Si además modificamos ese mismo transform
-            // (o propiedades CSS que se componen con él, como `scale`) el marcador salta.
-            // Solución: el `wrapper` lo posiciona Mapbox (no lo tocamos nunca); el `inner`
-            // es el círculo visual al que aplicamos el efecto hover de forma segura.
-            const wrapper = document.createElement('div');
-            wrapper.style.cssText = 'width:26px;height:26px;cursor:pointer;';
             const el = document.createElement('div');
-            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);transition:transform 0.15s ease,box-shadow 0.15s ease;transform-origin:center center;';
+            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;transition:transform 0.15s ease;';
             el.textContent = seqIndex + 1;
-            wrapper.appendChild(el);
-            // Hover sobre wrapper → escala el inner. Mapbox solo toca wrapper.style.transform.
-            wrapper.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; el.style.boxShadow = '0 4px 18px rgba(0,0,0,0.6)'; });
-            wrapper.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)';   el.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)'; });
+            el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
+            el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
             let optHtml = '';
             for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
             // Seguridad: escapar nombre/dirección antes de insertarlos en el HTML del
@@ -2307,8 +2297,8 @@ function App() {
             
             const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + badgeHtml + posBlock + '</div>';
             const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
-            const marker = new mapboxgl.Marker({ element: wrapper }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
-            wrapper.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
+            const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
+            el.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
             mapMarkersRef.current.push(marker);
             } catch (markerErr) {
               console.error('Error dibujando el marcador de la parada', t?.id, markerErr);
@@ -3702,10 +3692,6 @@ function App() {
   const handleSelectMapTicket = (ticket) => {
     setSelectedMapTicket(ticket);
     setIsMapPanelExpanded(true);
-    // Reset panel position each time a new ticket is selected so the
-    // floating panel always appears in its default position (bottom-centre /
-    // bottom-left) instead of wherever it was last dragged to.
-    setFloatingPos({ x: 0, y: 0, isDragged: false });
     if (mapSelectTimerRef.current) {
       clearTimeout(mapSelectTimerRef.current);
     }
@@ -5845,7 +5831,17 @@ function App() {
           notes: `Registrado por chofer: ${driverCustomDriver || currentUser.label}`
         };
         const currentDailyLogs = getFleetDailyLogs() || [];
-        const updatedDailyLogs = [newDailyLog, ...currentDailyLogs];
+        // Fix: cada cierre de turno creaba un registro nuevo, aunque ya existiera
+        // uno para esa fecha y matrícula — si el turno se reabre y se vuelve a
+        // cerrar, el registro se duplicaba sin parar. Ahora se reemplaza el
+        // existente (si lo hay) en vez de añadir uno nuevo encima.
+        const existingIdx = currentDailyLogs.findIndex(l => l.date === date && l.plate === (driverMatricula || 'DESCONOCIDO'));
+        let updatedDailyLogs;
+        if (existingIdx !== -1) {
+          updatedDailyLogs = currentDailyLogs.map((l, i) => i === existingIdx ? newDailyLog : l);
+        } else {
+          updatedDailyLogs = [newDailyLog, ...currentDailyLogs];
+        }
         saveFleetDailyLogs(updatedDailyLogs);
 
         // 2. Actualizar kilometraje actual del vehículo
@@ -11621,8 +11617,7 @@ function App() {
         startX: clientX,
         startY: clientY,
         offsetX: floatingPos.x,
-        offsetY: floatingPos.y,
-        moved: false
+        offsetY: floatingPos.y
       };
 
       const handleDragMove = (moveEvent) => {
@@ -11632,13 +11627,6 @@ function App() {
         
         const deltaX = curX - dragStartRef.current.startX;
         const deltaY = curY - dragStartRef.current.startY;
-        
-        // Require at least 8px of movement before treating this as a drag.
-        // This prevents accidental panel-drift when the user simply taps a
-        // map marker (touch events propagate to the panel below).
-        const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        if (dist < 8 && !dragStartRef.current.moved) return;
-        dragStartRef.current.moved = true;
         
         setFloatingPos({
           x: dragStartRef.current.offsetX + deltaX,
