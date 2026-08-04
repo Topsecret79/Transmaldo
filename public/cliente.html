@@ -161,8 +161,8 @@
       </div>
       <div class="periods">
         <div class="period" data-p="hoy">Hoy</div>
-        <div class="period active" data-p="semana">Últimos 7 días</div>
-        <div class="period" data-p="mes">Este mes</div>
+        <div class="period" data-p="semana">Últimos 7 días</div>
+        <div class="period active" data-p="mes">Este mes</div>
         <div class="period" data-p="rango">Rango…</div>
       </div>
     </div>
@@ -303,7 +303,7 @@
   const routePrev = document.getElementById('routePrev');
   const routeNext = document.getElementById('routeNext');
   const rangeRow = document.getElementById('rangeRow');
-  let currentPeriod = 'semana';
+  let currentPeriod = 'mes';
   let currentFurgos = []; // array de ids, en el mismo orden que aparecen en el selector
   let searchDebounce = null;
 

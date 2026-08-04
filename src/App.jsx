@@ -2266,11 +2266,21 @@ function App() {
             const parsedNotesObj = parseTicketNotes(t.notes);
             const markerBorderColor = parsedNotesObj.timeSlot === 'morning' ? '#fbbf24' : (parsedNotesObj.timeSlot === 'afternoon' ? '#2563eb' : '#ffffff');
             
+            // PATRÓN WRAPPER/INNER — solución definitiva al desplazamiento de marcadores:
+            // Mapbox GL JS aplica su transform de posicionamiento directamente sobre el
+            // elemento raíz que se le pasa. Si además modificamos ese mismo transform
+            // (o propiedades CSS que se componen con él, como `scale`) el marcador salta.
+            // Solución: el `wrapper` lo posiciona Mapbox (no lo tocamos nunca); el `inner`
+            // es el círculo visual al que aplicamos el efecto hover de forma segura.
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'width:26px;height:26px;cursor:pointer;position:absolute;display:block;';
             const el = document.createElement('div');
-            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;transition:transform 0.15s ease;';
+            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);transition:transform 0.15s ease,box-shadow 0.15s ease;transform-origin:center center;';
             el.textContent = seqIndex + 1;
-            el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
-            el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
+            wrapper.appendChild(el);
+            // Hover sobre wrapper → escala el inner. Mapbox solo toca wrapper.style.transform.
+            wrapper.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; el.style.boxShadow = '0 4px 18px rgba(0,0,0,0.6)'; });
+            wrapper.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)';   el.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)'; });
             let optHtml = '';
             for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
             // Seguridad: escapar nombre/dirección antes de insertarlos en el HTML del
@@ -2297,8 +2307,8 @@ function App() {
             
             const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + badgeHtml + posBlock + '</div>';
             const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
-            const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
-            el.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
+            const marker = new mapboxgl.Marker({ element: wrapper, anchor: 'top-left', offset: [-13, -13] }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
+            wrapper.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
             mapMarkersRef.current.push(marker);
             } catch (markerErr) {
               console.error('Error dibujando el marcador de la parada', t?.id, markerErr);
@@ -2344,11 +2354,11 @@ function App() {
             if (isNaN(locTime) || Date.now() - locTime > 48 * 3600 * 1000) return;
             const furgoLabel = escapeHtml(users.find(u => u.id === fid)?.label || fid);
             const dEl = document.createElement('div');
-            dEl.style.cssText = 'width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.2);border:2px solid #a78bfa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px #a78bfa;animation:gpsPulse 2s infinite ease-in-out;font-size:17px;cursor:pointer;';
+            dEl.style.cssText = 'width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.2);border:2px solid #a78bfa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px #a78bfa;animation:gpsPulse 2s infinite ease-in-out;font-size:17px;cursor:pointer;position:absolute;display:block;';
             dEl.textContent = '🚚';
             const dPopupHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.83rem;color:#fff;padding:4px;"><strong style="color:#a78bfa;">🚚 ' + furgoLabel + ' (En Vivo)</strong><div style="margin-top:4px;">Última señal: <strong>' + new Date(locTime).toLocaleTimeString() + '</strong></div><div style="margin-top:2px;font-size:0.73rem;color:#9ca3af;">GPS: ' + latNum.toFixed(5) + ', ' + lngNum.toFixed(5) + '</div></div>';
             const dPopup = new mapboxgl.Popup({ offset: 18, className: 'mapbox-custom-popup' }).setHTML(dPopupHtml);
-            const dMarker = new mapboxgl.Marker({ element: dEl }).setLngLat([lngNum, latNum]).setPopup(dPopup).addTo(map);
+            const dMarker = new mapboxgl.Marker({ element: dEl, anchor: 'top-left', offset: [-17, -17] }).setLngLat([lngNum, latNum]).setPopup(dPopup).addTo(map);
             mapDriverMarkersRef.current.push(dMarker);
           });
         };
@@ -2657,8 +2667,8 @@ function App() {
       const map = new mapboxgl.Map({ container: 'form-mini-map', style: 'mapbox://styles/mapbox/streets-v12', center: [lng, lat], zoom: 16, attributionControl: false });
       map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
       const markerEl = document.createElement('div');
-      markerEl.style.cssText = 'width:28px;height:28px;border-radius:50%;background:#6366f1;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:grab;';
-      const marker = new mapboxgl.Marker({ element: markerEl, draggable: true }).setLngLat([lng, lat]).addTo(map);
+      markerEl.style.cssText = 'width:28px;height:28px;border-radius:50%;background:#6366f1;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:grab;position:absolute;display:block;';
+      const marker = new mapboxgl.Marker({ element: markerEl, draggable: true, anchor: 'top-left', offset: [-14, -14] }).setLngLat([lng, lat]).addTo(map);
       marker.on('dragend', () => {
         const pos = marker.getLngLat();
         setAddressVerification(prev => ({ ...prev, coords: { ...prev.coords, lat: parseFloat(pos.lat.toFixed(6)), lng: parseFloat(pos.lng.toFixed(6)) } }));
@@ -12041,7 +12051,7 @@ function App() {
                   const latNum = parseFloat(t.lat);
                   const lngNum = parseFloat(t.lng);
                   if (mapInstanceRef.current && !isNaN(latNum) && !isNaN(lngNum)) {
-                    mapInstanceRef.current.setView([latNum, lngNum], 16);
+                    mapInstanceRef.current.flyTo({ center: [lngNum, latNum], zoom: 16 });
                   }
                 }}
                 className="glass-panel"
@@ -21123,7 +21133,12 @@ function App() {
                                   type="number" 
                                   className="form-input" 
                                   value={driverKmStart} 
-                                  onChange={(e) => setDriverKmStart(e.target.value)} 
+                                  onChange={(e) => {
+                                    const startVal = e.target.value;
+                                    setDriverKmStart(startVal);
+                                    const diff = Number(driverKmEnd) - Number(startVal);
+                                    setShiftKmsInput(diff > 0 ? diff.toString() : '0');
+                                  }} 
                                   style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }} 
                                 />
                               </div>
@@ -21134,7 +21149,12 @@ function App() {
                                   className="form-input" 
                                   placeholder="Lectura final" 
                                   value={driverKmEnd} 
-                                  onChange={(e) => setDriverKmEnd(e.target.value)} 
+                                  onChange={(e) => {
+                                    const endVal = e.target.value;
+                                    setDriverKmEnd(endVal);
+                                    const diff = Number(endVal) - Number(driverKmStart);
+                                    setShiftKmsInput(diff > 0 ? diff.toString() : '0');
+                                  }} 
                                   style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px', border: '1px solid var(--primary)' }} 
                                 />
                               </div>
