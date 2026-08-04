@@ -1006,6 +1006,14 @@ function App() {
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarViewMode, setCalendarViewMode] = useState('month'); // 'month', 'week', 'day'
   const [assignmentsSearch, setAssignmentsSearch] = useState('');
+  const [editingAssignment, setEditingAssignment] = useState(null);
+  const [editAssignDriver, setEditAssignDriver] = useState('');
+  const [editAssignPlate, setEditAssignPlate] = useState('');
+  const [editAssignHelper, setEditAssignHelper] = useState('');
+  const [editAssignHelper2, setEditAssignHelper2] = useState('');
+  const [editAssignKmStart, setEditAssignKmStart] = useState('');
+  const [editAssignKmEnd, setEditAssignKmEnd] = useState('');
+  const [editAssignKmL, setEditAssignKmL] = useState('');
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [plannedShiftModalOpen, setPlannedShiftModalOpen] = useState(false);
   const [plannedFurgoId, setPlannedFurgoId] = useState('');
@@ -6002,6 +6010,90 @@ function App() {
     } else {
       triggerAlert('Excel para Circuit generado con éxito');
     }
+  };
+
+  const handleSaveAssignmentEdit = async () => {
+    if (!editingAssignment) return;
+    const shift = editingAssignment;
+    
+    if (!editAssignDriver || !editAssignDriver.trim()) {
+      triggerAlert('El Chofer es un campo obligatorio', 'error');
+      return;
+    }
+    
+    const start = Number(editAssignKmStart);
+    const end = Number(editAssignKmEnd);
+    if (editAssignKmStart !== '' || editAssignKmEnd !== '') {
+      if (isNaN(start) || isNaN(end) || start < 0 || end < 0) {
+        triggerAlert('Por favor introduce lecturas de odómetro válidas y positivas.', 'error');
+        return;
+      }
+      if (end <= start) {
+        triggerAlert('El Kilometraje de Fin debe ser estrictamente mayor que el de Inicio.', 'error');
+        return;
+      }
+    }
+
+    const traveled = end - start;
+
+    // 1. Guardar metadata del turno (Chofer, vehículo, ayudantes)
+    const updatedShifts = await saveDriverShiftMeta(
+      shift.id,
+      shift.furgoId,
+      shift.date,
+      editAssignDriver,
+      editAssignPlate,
+      editAssignHelper,
+      editAssignHelper2
+    );
+    setShifts(updatedShifts);
+
+    // 2. Guardar registro diario si se introdujeron kilómetros
+    if (editAssignKmStart !== '' && editAssignKmEnd !== '') {
+      const currentDailyLogs = getFleetDailyLogs() || [];
+      const newDailyLog = {
+        id: `daily_${Date.now()}`,
+        plate: editAssignPlate || 'DESCONOCIDO',
+        date: shift.date,
+        kmStart: start,
+        kmEnd: end,
+        kmTraveled: traveled,
+        kmL: editAssignKmL ? Number(editAssignKmL) : null,
+        notes: `Editado por administrador en control de flota`
+      };
+
+      const existingIdx = currentDailyLogs.findIndex(l => l.date === shift.date && l.plate === (editAssignPlate || 'DESCONOCIDO'));
+      let updatedDailyLogs;
+      if (existingIdx !== -1) {
+        updatedDailyLogs = currentDailyLogs.map((l, i) => i === existingIdx ? newDailyLog : l);
+      } else {
+        updatedDailyLogs = [newDailyLog, ...currentDailyLogs];
+      }
+      
+      setFleetDailyLogs(updatedDailyLogs);
+      await saveFleetDailyLogs(updatedDailyLogs);
+
+      // Guardar kms de la ruta para que coincida el resumen de turno
+      await saveRouteKms(shift.furgoId, shift.date, traveled);
+
+      // 3. Actualizar odómetro del vehículo en la lista de furgonetas
+      const currentVehicles = getFleetVehicles() || [];
+      const vehIndex = currentVehicles.findIndex(v => v.plate === editAssignPlate);
+      if (vehIndex !== -1) {
+        if (end > Number(currentVehicles[vehIndex].currentKm)) {
+          currentVehicles[vehIndex] = {
+            ...currentVehicles[vehIndex],
+            currentKm: end.toString()
+          };
+          setFleetVehicles(currentVehicles);
+          await saveFleetVehicles(currentVehicles);
+        }
+      }
+    }
+
+    setEditingAssignment(null);
+    triggerAlert('Asignación y kilometraje actualizados correctamente');
+    loadData();
   };
 
   const handleReopenShift = async (furgoId, date) => {
@@ -15658,12 +15750,13 @@ function App() {
                       <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'left' }}>Ayudante(s)</th>
                       <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'center' }}>Km Recorridos</th>
                       <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'center' }}>Estado</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'center' }}>Acción</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredShifts.length === 0 ? (
                       <tr>
-                        <td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.9rem' }}>
+                        <td colSpan={8} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.9rem' }}>
                           No se encontraron asignaciones para la búsqueda o mes seleccionado.
                         </td>
                       </tr>
@@ -15737,6 +15830,34 @@ function App() {
                                 {s.status === 'closed' ? '🔒 Cerrado' : s.openedAt ? '🔓 Activo' : '📅 Planificado'}
                               </span>
                             </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  setEditingAssignment(s);
+                                  setEditAssignDriver(s.customDriver || '');
+                                  setEditAssignPlate(s.matricula || '');
+                                  setEditAssignHelper(s.helper || '');
+                                  setEditAssignHelper2(s.helper2 || '');
+                                  
+                                  const logs = getFleetDailyLogs() || [];
+                                  const matchingLog = logs.find(l => l.date === s.date && l.plate === s.matricula);
+                                  if (matchingLog) {
+                                    setEditAssignKmStart(matchingLog.kmStart !== undefined && matchingLog.kmStart !== null ? matchingLog.kmStart.toString() : '');
+                                    setEditAssignKmEnd(matchingLog.kmEnd !== undefined && matchingLog.kmEnd !== null ? matchingLog.kmEnd.toString() : '');
+                                    setEditAssignKmL(matchingLog.kmL !== null && matchingLog.kmL !== undefined ? matchingLog.kmL.toString() : '');
+                                  } else {
+                                    setEditAssignKmStart('');
+                                    setEditAssignKmEnd('');
+                                    setEditAssignKmL('');
+                                  }
+                                }}
+                                className="btn btn-secondary btn-small"
+                                style={{ margin: 0, padding: '4px 8px', fontSize: '0.72rem', border: '1px solid var(--primary)', color: 'var(--primary)', background: 'transparent' }}
+                              >
+                                ✏️ Editar
+                              </button>
+                            </td>
                           </tr>
                         );
                       })
@@ -15744,6 +15865,173 @@ function App() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Modal de Edición de Asignación */}
+              {editingAssignment && (() => {
+                const targetShift = editingAssignment;
+                const routeLabel = users.find(usr => usr.id === targetShift.furgoId)?.label || targetShift.furgoId;
+                
+                return (
+                  <div className="modal-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, padding: '15px', backdropFilter: 'blur(4px)' }}>
+                    <div className="modal-content" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '450px', padding: '24px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', color: 'var(--primary)' }}>
+                          ✏️ Editar Asignación
+                        </h3>
+                        <button type="button" onClick={() => setEditingAssignment(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: 0 }}>✕</button>
+                      </div>
+
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div><strong>Ruta:</strong> {routeLabel}</div>
+                        <div><strong>Fecha:</strong> {targetShift.date.split('-').reverse().join('/')}</div>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {/* Selector de Chofer */}
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <span className="input-label" style={{ fontSize: '0.78rem' }}>Chofer *</span>
+                          <select
+                            className="form-input"
+                            value={editAssignDriver}
+                            onChange={(e) => setEditAssignDriver(e.target.value)}
+                            style={{ color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
+                          >
+                            <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar chofer...</option>
+                            {employeesList.filter(emp => emp.active !== false && (emp.role === 'chofer' || emp.role === 'ambos')).map(emp => (
+                              <option key={emp.id} value={emp.name} style={{ color: '#000', background: '#fff' }}>{emp.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Selector de Vehículo */}
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <span className="input-label" style={{ fontSize: '0.78rem' }}>Vehículo (Matrícula)</span>
+                          <select
+                            className="form-input"
+                            value={editAssignPlate}
+                            onChange={(e) => setEditAssignPlate(e.target.value)}
+                            style={{ color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
+                          >
+                            <option value="" style={{ color: '#000', background: '#fff' }}>Sin vehículo / matrícula</option>
+                            {platesList.map(plate => (
+                              <option key={plate} value={plate} style={{ color: '#000', background: '#fff' }}>{plate}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Selector de Ayudante 1 */}
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <span className="input-label" style={{ fontSize: '0.78rem' }}>Ayudante 1</span>
+                          <select
+                            className="form-input"
+                            value={editAssignHelper}
+                            onChange={(e) => setEditAssignHelper(e.target.value)}
+                            style={{ color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
+                          >
+                            <option value="" style={{ color: '#000', background: '#fff' }}>Sin ayudante</option>
+                            {employeesList.filter(emp => emp.active !== false).map(emp => (
+                              <option key={emp.id} value={emp.name} style={{ color: '#000', background: '#fff' }}>{emp.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Selector de Ayudante 2 */}
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <span className="input-label" style={{ fontSize: '0.78rem' }}>Ayudante 2</span>
+                          <select
+                            className="form-input"
+                            value={editAssignHelper2}
+                            onChange={(e) => setEditAssignHelper2(e.target.value)}
+                            style={{ color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
+                          >
+                            <option value="" style={{ color: '#000', background: '#fff' }}>Sin segundo ayudante</option>
+                            {employeesList.filter(emp => emp.active !== false).map(emp => (
+                              <option key={emp.id} value={emp.name} style={{ color: '#000', background: '#fff' }}>{emp.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div style={{ borderBottom: '1px dashed var(--panel-border)', margin: '5px 0' }}></div>
+
+                        {/* Sección de Kilómetros */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <span style={{ fontWeight: '700', fontSize: '0.85rem', color: 'var(--primary)' }}>Odometer / Telemetría</span>
+                          
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <div>
+                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Inicio</label>
+                              <input 
+                                type="number" 
+                                className="form-input" 
+                                placeholder="Lectura inicial"
+                                value={editAssignKmStart}
+                                onChange={(e) => setEditAssignKmStart(e.target.value)}
+                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Fin</label>
+                              <input 
+                                type="number" 
+                                className="form-input" 
+                                placeholder="Lectura final"
+                                value={editAssignKmEnd}
+                                onChange={(e) => setEditAssignKmEnd(e.target.value)}
+                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }}
+                              />
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '4px' }}>
+                            <div>
+                              <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km/L Promedio</label>
+                              <input 
+                                type="number" 
+                                step="0.1"
+                                className="form-input" 
+                                placeholder="Rendimiento (ej. 13.5)"
+                                value={editAssignKmL}
+                                onChange={(e) => setEditAssignKmL(e.target.value)}
+                                style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }}
+                              />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Recorrido:</span>
+                              <strong style={{ fontSize: '0.9rem', color: '#60a5fa' }}>
+                                {Number(editAssignKmEnd) - Number(editAssignKmStart) > 0 
+                                  ? `+${Number(editAssignKmEnd) - Number(editAssignKmStart)} km` 
+                                  : '0 km'}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '10px' }}>
+                        <button 
+                          type="button" 
+                          onClick={() => setEditingAssignment(null)} 
+                          className="btn btn-secondary btn-small"
+                          style={{ margin: 0 }}
+                        >
+                          Cancelar
+                        </button>
+                        <button 
+                          type="button" 
+                          onClick={handleSaveAssignmentEdit} 
+                          className="btn btn-primary btn-small"
+                          style={{ margin: 0 }}
+                        >
+                          💾 Guardar Cambios
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
