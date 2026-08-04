@@ -1005,6 +1005,7 @@ function App() {
   const [newPlateVal, setNewPlateVal] = useState('');
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarViewMode, setCalendarViewMode] = useState('month'); // 'month', 'week', 'day'
+  const [assignmentsSearch, setAssignmentsSearch] = useState('');
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [plannedShiftModalOpen, setPlannedShiftModalOpen] = useState(false);
   const [plannedFurgoId, setPlannedFurgoId] = useState('');
@@ -14610,6 +14611,14 @@ function App() {
             >
               💰 Nóminas y Fichas
             </button>
+            <button 
+              type="button" 
+              onClick={() => setCalendarViewMode('routes_history')} 
+              className={`btn btn-small ${calendarViewMode === 'routes_history' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ margin: 0, padding: '6px 12px', fontSize: '0.78rem', borderRadius: '6px', border: 'none', background: calendarViewMode === 'routes_history' ? '' : 'transparent' }}
+            >
+              📋 Asignaciones
+            </button>
           </div>
 
           <button
@@ -15572,6 +15581,166 @@ function App() {
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
+
+        {calendarViewMode === 'routes_history' && (() => {
+          const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+          
+          // Get shifts in selected month
+          const monthShifts = shifts.filter(s => s.date.startsWith(monthPrefix));
+          
+          // Sort shifts by date descending
+          const sortedMonthShifts = [...monthShifts].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+          
+          // Apply search filter
+          const filteredShifts = sortedMonthShifts.filter(s => {
+            if (!assignmentsSearch) return true;
+            const query = assignmentsSearch.toLowerCase();
+            const driver = (s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId).toLowerCase();
+            const plate = (s.matricula || '').toLowerCase();
+            const helper = (s.helper || '').toLowerCase();
+            const helper2 = (s.helper2 || '').toLowerCase();
+            const route = (s.furgoId || '').toLowerCase();
+            const date = s.date.toLowerCase();
+            return driver.includes(query) || plate.includes(query) || helper.includes(query) || helper2.includes(query) || route.includes(query) || date.includes(query);
+          });
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+              
+              {/* Search and summary panel */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '15px',
+                background: 'rgba(255, 255, 255, 0.01)',
+                padding: '16px',
+                borderRadius: '12px',
+                border: '1px solid var(--panel-border)'
+              }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: '300px' }}>
+                  <input 
+                    type="text" 
+                    placeholder="🔍 Buscar por matrícula, chofer, ruta..." 
+                    className="form-input" 
+                    value={assignmentsSearch}
+                    onChange={(e) => setAssignmentsSearch(e.target.value)}
+                    style={{ margin: 0, paddingLeft: '12px', fontSize: '0.85rem', height: '36px' }}
+                  />
+                </div>
+
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  Mostrando <strong>{filteredShifts.length}</strong> de <strong>{monthShifts.length}</strong> asignaciones para este mes.
+                </div>
+              </div>
+
+              {/* Table */}
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.01)',
+                border: '1px solid var(--panel-border)',
+                borderRadius: '12px',
+                overflowX: 'auto'
+              }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(255, 255, 255, 0.02)', borderBottom: '1px solid var(--panel-border)' }}>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'left' }}>Fecha</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'left' }}>Vehículo (Matrícula)</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'left' }}>Ruta / Dispositivo</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'left' }}>Chofer</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'left' }}>Ayudante(s)</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'center' }}>Km Recorridos</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '700', textAlign: 'center' }}>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredShifts.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.9rem' }}>
+                          No se encontraron asignaciones para la búsqueda o mes seleccionado.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredShifts.map((s, idx) => {
+                        const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
+                        const routeLabel = users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
+                        
+                        // Calculate traveled kms
+                        let kmText = '-';
+                        if (s.status === 'closed') {
+                          const routeKms = getRouteKms(s.furgoId, s.date);
+                          kmText = routeKms > 0 ? `${routeKms} km` : 'Sin Kms';
+                        } else if (s.openedAt) {
+                          kmText = 'En curso';
+                        } else {
+                          kmText = 'Planificado';
+                        }
+
+                        // Helpers combined
+                        const helpers = [s.helper, s.helper2].filter(Boolean).join(' y ') || '-';
+
+                        const rowBg = idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.005)';
+
+                        return (
+                          <tr 
+                            key={s.id} 
+                            style={{ 
+                              background: rowBg, 
+                              borderBottom: '1px solid var(--panel-border)',
+                              transition: 'background 0.2s ease' 
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = rowBg}
+                          >
+                            <td style={{ padding: '12px 16px', fontSize: '0.85rem', fontWeight: '700', color: '#fff' }}>
+                              {s.date.split('-').reverse().join('/')}
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: '0.85rem' }}>
+                              {s.matricula ? (
+                                <span className="badge" style={{ padding: '4px 8px', borderRadius: '6px', background: 'rgba(96, 165, 250, 0.1)', color: '#60a5fa', border: '1px solid rgba(96, 165, 250, 0.2)', fontWeight: '700' }}>
+                                  🚐 {s.matricula}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>Sin vehículo</span>
+                              )}
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>
+                              🗺️ {routeLabel}
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--primary)' }}>
+                              👤 {driverName}
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                              {helpers !== '-' ? `🤝 ${helpers}` : '-'}
+                            </td>
+                            <td style={{ padding: '12px 16px', fontSize: '0.85rem', textAlign: 'center', fontWeight: '600' }}>
+                              {kmText}
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              <span style={{
+                                fontSize: '0.72rem',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                fontWeight: '700',
+                                display: 'inline-block',
+                                background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.15)' : s.openedAt ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
+                                color: s.status === 'closed' ? 'var(--danger)' : s.openedAt ? 'var(--success)' : 'var(--text-muted)',
+                                border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.25)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid rgba(255,255,255,0.1)'
+                              }}>
+                                {s.status === 'closed' ? '🔒 Cerrado' : s.openedAt ? '🔓 Activo' : '📅 Planificado'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
