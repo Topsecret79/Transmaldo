@@ -12653,19 +12653,21 @@ function App() {
     const activeDrivers = users.filter(usr => usr && usr.role === 'repartidor');
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // Filtrado de registros según el vehículo seleccionado
-    const filteredFuelLogs = selectedFleetVehicleFilter === 'all' 
+    // Filtrado de registros según el vehículo seleccionado (ordenados de más reciente a más antiguo)
+    const filteredFuelLogs = (selectedFleetVehicleFilter === 'all' 
       ? fleetFuelLogs 
-      : fleetFuelLogs.filter(item => item.plate === selectedFleetVehicleFilter);
+      : fleetFuelLogs.filter(item => item.plate === selectedFleetVehicleFilter))
+      .slice().sort((a, b) => b.date.localeCompare(a.date));
 
-    const filteredMaintLogs = selectedFleetVehicleFilter === 'all' 
+    const filteredMaintLogs = (selectedFleetVehicleFilter === 'all' 
       ? fleetMaintenanceLogs 
-      : fleetMaintenanceLogs.filter(item => item.plate === selectedFleetVehicleFilter);
+      : fleetMaintenanceLogs.filter(item => item.plate === selectedFleetVehicleFilter))
+      .slice().sort((a, b) => b.date.localeCompare(a.date));
 
     const filteredDailyLogs = (selectedFleetVehicleFilter === 'all' 
       ? fleetDailyLogs 
       : fleetDailyLogs.filter(item => item.plate === selectedFleetVehicleFilter))
-      .slice().sort((a, b) => a.date.localeCompare(b.date) || a.plate.localeCompare(b.plate));
+      .slice().sort((a, b) => b.date.localeCompare(a.date) || a.plate.localeCompare(b.plate));
 
     // Cálculos de resumen
     const totalVehicles = fleetVehicles.length;
