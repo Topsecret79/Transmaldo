@@ -5787,12 +5787,12 @@ function App() {
     if (adminAllowsFleetInput && currentUser && currentUser.role === 'repartidor') {
       const start = Number(driverKmStart);
       const end = Number(driverKmEnd);
-      if (isNaN(start) || start <= 0) {
-        triggerAlert('Por favor introduce un Kilometraje de Inicio válido.', 'error');
+      if (isNaN(start) || isNaN(end) || start < 0 || end < 0) {
+        triggerAlert('Por favor introduce lecturas de odómetro válidas y positivas.', 'error');
         return false;
       }
-      if (isNaN(end) || end < start) {
-        triggerAlert('El Kilometraje de Fin no puede ser menor que el de Inicio.', 'error');
+      if (end <= start) {
+        triggerAlert('El Kilometraje de Fin debe ser estrictamente mayor que el de Inicio.', 'error');
         return false;
       }
 
@@ -12885,12 +12885,12 @@ function App() {
       }
       const start = Number(kmStart);
       const end = Number(kmEnd);
-      if (isNaN(start) || isNaN(end)) {
-        setAlertMsg({ text: 'Los kilómetros deben ser numéricos', type: 'error' });
+      if (isNaN(start) || isNaN(end) || start < 0 || end < 0) {
+        setAlertMsg({ text: 'Los kilómetros deben ser valores numéricos y positivos', type: 'error' });
         return;
       }
-      if (end < start) {
-        setAlertMsg({ text: 'Los kilómetros finales no pueden ser menores que los iniciales', type: 'error' });
+      if (end <= start) {
+        setAlertMsg({ text: 'Los kilómetros finales deben ser estrictamente mayores que los iniciales', type: 'error' });
         return;
       }
       const traveled = end - start;
