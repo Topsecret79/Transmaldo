@@ -35,7 +35,7 @@ const fleetopsClient = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${fleetopsKey}`
+          'x-sync-token': fleetopsKey
         },
         body: JSON.stringify({
           table,
