@@ -1061,16 +1061,34 @@ function App() {
   const [syncLogs, setSyncLogs] = useState([]);
   const [isSyncingInProgress, setIsSyncingInProgress] = useState(false);
   const [isFleetopsConnected, setIsFleetopsConnected] = useState(false);
+  const [syncUsers, setSyncUsers] = useState([]);
+  const [selectedSyncUserId, setSelectedSyncUserId] = useState(() => getPrimeDriveCarSyncSettings().userId || '');
 
   useEffect(() => {
     const checkConnection = async () => {
-      if (getFleetopsClient()) {
+      let client = getFleetopsClient();
+      if (!client) {
+        const creds = await loadFleetopsCredentialsFromSettings();
+        if (creds) {
+          setIsFleetopsConnected(true);
+          client = getFleetopsClient();
+        }
+      } else {
         setIsFleetopsConnected(true);
-        return;
       }
-      const creds = await loadFleetopsCredentialsFromSettings();
-      if (creds) {
-        setIsFleetopsConnected(true);
+
+      if (client) {
+        try {
+          const usersList = await client.select('users', 'select=id,name,email');
+          setSyncUsers(usersList);
+          const currentSettings = getPrimeDriveCarSyncSettings();
+          if (!currentSettings.userId && usersList.length > 0) {
+            setSelectedSyncUserId(usersList[0].id);
+            savePrimeDriveCarSyncSettings({ ...currentSettings, userId: usersList[0].id });
+          }
+        } catch (e) {
+          console.error("Error cargando usuarios de PrimeDriveCar:", e);
+        }
       }
     };
     checkConnection();
@@ -14163,7 +14181,7 @@ function App() {
                       onChange={(e) => {
                         const val = e.target.checked;
                         setSyncAutoEnabled(val);
-                        savePrimeDriveCarSyncSettings({ autoSync: val });
+                        savePrimeDriveCarSyncSettings({ autoSync: val, userId: selectedSyncUserId });
                         setAlertMsg({ text: val ? 'Sincronización automática activada' : 'Sincronización automática desactivada', type: 'success' });
                       }}
                       style={{ opacity: 0, width: 0, height: 0 }}
@@ -14189,6 +14207,44 @@ function App() {
                     </span>
                   </label>
                 </div>
+
+                {/* Selección de usuario destinatario en PrimeDriveCar */}
+                {syncUsers.length > 0 && (
+                  <div className="glass-panel" style={{ background: 'rgba(255,255,255,0.01)', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <label style={{ display: 'block', fontSize: '0.9rem', color: '#fff', marginBottom: '8px', fontWeight: 'bold' }}>
+                      👤 Atribuir registros al administrador / usuario en PrimeDriveCar:
+                    </label>
+                    <p style={{ margin: '0 0 10px 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Selecciona qué usuario de la plataforma PrimeDriveCar quedará registrado como autor de los repostajes y diarios de km.
+                    </p>
+                    <select
+                      value={selectedSyncUserId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedSyncUserId(val);
+                        savePrimeDriveCarSyncSettings({ autoSync: syncAutoEnabled, userId: val });
+                        setAlertMsg({ text: 'Usuario de atribución actualizado', type: 'success' });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        fontSize: '0.85rem',
+                        background: '#222',
+                        color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '6px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {syncUsers.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Resumen de Datos Locales */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '20px' }}>

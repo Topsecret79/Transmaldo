@@ -4520,9 +4520,9 @@ export function getPrimeDriveCarSyncSettings() {
   const adminId = getActiveAdminId();
   const data = localStorage.getItem(`delivery_primedrivecar_sync_settings_${adminId}`);
   try {
-    return data ? JSON.parse(data) : { autoSync: false };
+    return data ? JSON.parse(data) : { autoSync: false, userId: '' };
   } catch (e) {
-    return { autoSync: false };
+    return { autoSync: false, userId: '' };
   }
 }
 
@@ -4549,8 +4549,12 @@ export async function syncSingleFuelLogToFleetops(log) {
       if (matchDriver) driverId = matchDriver.id;
     }
 
-    const users = await fleetopsClient.select('users', 'select=id');
-    const defaultUserId = users && users.length > 0 ? users[0].id : null;
+    const syncSettings = getPrimeDriveCarSyncSettings();
+    let defaultUserId = syncSettings.userId;
+    if (!defaultUserId) {
+      const users = await fleetopsClient.select('users', 'select=id');
+      defaultUserId = users && users.length > 0 ? users[0].id : null;
+    }
     if (!defaultUserId) return { success: false, error: 'No se encontraron usuarios en PrimeDriveCar para atribuir el registro.' };
 
     let kmAtRefuel = matchVeh.current_km || 0;
@@ -4668,8 +4672,12 @@ export async function syncAllWithPrimeDriveCar(onProgress) {
     // 2. Obtener choferes y usuarios
     logProgress('Obteniendo choferes y usuarios de PrimeDriveCar...');
     const drivers = await fleetopsClient.select('drivers', 'select=id,name');
-    const users = await fleetopsClient.select('users', 'select=id');
-    const defaultUserId = users && users.length > 0 ? users[0].id : null;
+    const syncSettings = getPrimeDriveCarSyncSettings();
+    let defaultUserId = syncSettings.userId;
+    if (!defaultUserId) {
+      const users = await fleetopsClient.select('users', 'select=id');
+      defaultUserId = users && users.length > 0 ? users[0].id : null;
+    }
     if (!defaultUserId) throw new Error('No hay usuarios configurados en PrimeDriveCar para atribuir registros.');
 
     // 3. Sincronizar Diarios de Kilómetros
