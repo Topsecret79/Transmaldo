@@ -19,24 +19,70 @@ if (activeUrl && activeKey) {
   }
 }
 
-const fleetopsUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_URL : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_URL : undefined);
-const fleetopsKey = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_KEY : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_KEY : undefined);
-let supabaseFleetops = null;
+let fleetopsUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_URL : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_URL : undefined);
+let fleetopsKey = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_KEY : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_KEY : undefined);
 
-if (fleetopsUrl && fleetopsKey) {
-  try {
-    supabaseFleetops = createClient(fleetopsUrl, fleetopsKey);
-  } catch (e) {
-    console.error("Error initializing Fleetops Supabase client:", e);
+const fleetopsClient = {
+  getHeaders: () => ({
+    'apikey': fleetopsKey,
+    'Authorization': `Bearer ${fleetopsKey}`,
+    'Content-Type': 'application/json'
+  }),
+  
+  select: async (table, queryParams = '') => {
+    const url = `${fleetopsUrl}/rest/v1/${table}${queryParams ? '?' + queryParams : ''}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: fleetopsClient.getHeaders()
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Error en select de ${table}: ${res.statusText} - ${errText}`);
+    }
+    return await res.json();
+  },
+  
+  insert: async (table, payload) => {
+    const url = `${fleetopsUrl}/rest/v1/${table}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...fleetopsClient.getHeaders(),
+        'Prefer': 'return=representation'
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Error en insert de ${table}: ${res.statusText} - ${errText}`);
+    }
+    return await res.json();
+  },
+  
+  update: async (table, id, payload) => {
+    const url = `${fleetopsUrl}/rest/v1/${table}?id=eq.${id}`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: fleetopsClient.getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Error en update de ${table}: ${res.statusText} - ${errText}`);
+    }
+    return { success: true };
   }
-}
+};
 
 export function getSupabaseClient() {
   return supabase;
 }
 
 export function getFleetopsClient() {
-  return supabaseFleetops;
+  if (fleetopsUrl && fleetopsKey) {
+    return fleetopsClient;
+  }
+  return null;
 }
 
 // Fix de seguridad: los borrados en delivery_tickets/delivery_shifts/
@@ -4487,20 +4533,15 @@ export function savePrimeDriveCarSyncSettings(settings) {
 
 // Sincroniza un único repostaje a PrimeDriveCar
 export async function syncSingleFuelLogToFleetops(log) {
-  if (!supabaseFleetops) return { success: false, error: 'La conexión con PrimeDriveCar no está configurada.' };
+  if (!fleetopsUrl || !fleetopsKey) return { success: false, error: 'La conexión con PrimeDriveCar no está configurada.' };
 
   try {
-    const { data: fVehicles, error: fErr } = await supabaseFleetops
-      .from('vehicles')
-      .select('id, plate, current_km');
-
-    if (fErr) return { success: false, error: fErr.message };
-
+    const fVehicles = await fleetopsClient.select('vehicles', 'select=id,plate,current_km');
     const normPlate = log.plate.replace(/\s+/g, '').toUpperCase();
     const matchVeh = fVehicles.find(v => v.plate.replace(/\s+/g, '').toUpperCase() === normPlate);
     if (!matchVeh) return { success: false, error: `Vehículo con matrícula ${log.plate} no encontrado en PrimeDriveCar.` };
 
-    const { data: drivers } = await supabaseFleetops.from('drivers').select('id, name');
+    const drivers = await fleetopsClient.select('drivers', 'select=id,name');
     let driverId = null;
     if (log.driver && drivers) {
       const normDriver = log.driver.toLowerCase();
@@ -4508,7 +4549,7 @@ export async function syncSingleFuelLogToFleetops(log) {
       if (matchDriver) driverId = matchDriver.id;
     }
 
-    const { data: users } = await supabaseFleetops.from('users').select('id');
+    const users = await fleetopsClient.select('users', 'select=id');
     const defaultUserId = users && users.length > 0 ? users[0].id : null;
     if (!defaultUserId) return { success: false, error: 'No se encontraron usuarios en PrimeDriveCar para atribuir el registro.' };
 
@@ -4524,20 +4565,16 @@ export async function syncSingleFuelLogToFleetops(log) {
     const startOfDay = new Date(logDate.setHours(0,0,0,0)).toISOString();
     const endOfDay = new Date(logDate.setHours(23,59,59,999)).toISOString();
 
-    const { data: existingFuel } = await supabaseFleetops
-      .from('fuel_logs')
-      .select('id')
-      .eq('vehicle_id', matchVeh.id)
-      .eq('liters', log.liters)
-      .gte('date', startOfDay)
-      .lte('date', endOfDay)
-      .maybeSingle();
+    const existingFuel = await fleetopsClient.select(
+      'fuel_logs',
+      `select=id&vehicle_id=eq.${matchVeh.id}&liters=eq.${log.liters}&date=gte.${startOfDay}&date=lte.${endOfDay}`
+    );
 
-    if (existingFuel) {
+    if (existingFuel && existingFuel.length > 0) {
       return { success: true, message: 'El registro de combustible ya existe en PrimeDriveCar.' };
     }
 
-    const { error: insErr } = await supabaseFleetops.from('fuel_logs').insert({
+    await fleetopsClient.insert('fuel_logs', {
       id: generateUUID(),
       vehicle_id: matchVeh.id,
       driver_id: driverId,
@@ -4552,7 +4589,6 @@ export async function syncSingleFuelLogToFleetops(log) {
       notes: log.notes || 'Sincronizado automáticamente desde mydeliveryteam'
     });
 
-    if (insErr) return { success: false, error: insErr.message };
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -4561,15 +4597,10 @@ export async function syncSingleFuelLogToFleetops(log) {
 
 // Sincroniza un único diario de km a PrimeDriveCar
 export async function syncSingleDailyLogToFleetops(log) {
-  if (!supabaseFleetops) return { success: false, error: 'La conexión con PrimeDriveCar no está configurada.' };
+  if (!fleetopsUrl || !fleetopsKey) return { success: false, error: 'La conexión con PrimeDriveCar no está configurada.' };
 
   try {
-    const { data: fVehicles, error: fErr } = await supabaseFleetops
-      .from('vehicles')
-      .select('id, plate, current_km');
-
-    if (fErr) return { success: false, error: fErr.message };
-
+    const fVehicles = await fleetopsClient.select('vehicles', 'select=id,plate,current_km');
     const normPlate = log.plate.replace(/\s+/g, '').toUpperCase();
     const matchVeh = fVehicles.find(v => v.plate.replace(/\s+/g, '').toUpperCase() === normPlate);
     if (!matchVeh) return { success: false, error: `Vehículo con matrícula ${log.plate} no encontrado en PrimeDriveCar.` };
@@ -4578,25 +4609,19 @@ export async function syncSingleDailyLogToFleetops(log) {
     const startOfDay = new Date(logDateStr + 'T00:00:00.000Z').toISOString();
     const endOfDay = new Date(logDateStr + 'T23:59:59.999Z').toISOString();
 
-    const { data: existingDaily } = await supabaseFleetops
-      .from('daily_logs')
-      .select('id')
-      .eq('vehicle_id', matchVeh.id)
-      .gte('date', startOfDay)
-      .lte('date', endOfDay)
-      .maybeSingle();
+    const existingDaily = await fleetopsClient.select(
+      'daily_logs',
+      `select=id&vehicle_id=eq.${matchVeh.id}&date=gte.${startOfDay}&date=lte.${endOfDay}`
+    );
 
-    if (existingDaily) {
+    if (existingDaily && existingDaily.length > 0) {
       if (log.kmEnd && log.kmEnd > matchVeh.current_km) {
-        await supabaseFleetops
-          .from('vehicles')
-          .update({ current_km: Number(log.kmEnd) })
-          .eq('id', matchVeh.id);
+        await fleetopsClient.update('vehicles', matchVeh.id, { current_km: Number(log.kmEnd) });
       }
       return { success: true, message: 'El registro diario ya existe en PrimeDriveCar.' };
     }
 
-    const { error: insErr } = await supabaseFleetops.from('daily_logs').insert({
+    await fleetopsClient.insert('daily_logs', {
       id: generateUUID(),
       vehicle_id: matchVeh.id,
       date: new Date(log.date).toISOString(),
@@ -4607,13 +4632,8 @@ export async function syncSingleDailyLogToFleetops(log) {
       notes: log.notes || 'Sincronizado automáticamente desde mydeliveryteam'
     });
 
-    if (insErr) return { success: false, error: insErr.message };
-
     if (log.kmEnd && log.kmEnd > matchVeh.current_km) {
-      await supabaseFleetops
-        .from('vehicles')
-        .update({ current_km: Number(log.kmEnd) })
-        .eq('id', matchVeh.id);
+      await fleetopsClient.update('vehicles', matchVeh.id, { current_km: Number(log.kmEnd) });
     }
 
     return { success: true };
@@ -4624,7 +4644,7 @@ export async function syncSingleDailyLogToFleetops(log) {
 
 // Sincroniza todos los repostajes y diarios de km pendientes
 export async function syncAllWithPrimeDriveCar(onProgress) {
-  if (!supabaseFleetops) {
+  if (!fleetopsUrl || !fleetopsKey) {
     return { success: false, error: 'La conexión con PrimeDriveCar no está inicializada.' };
   }
 
@@ -4638,11 +4658,7 @@ export async function syncAllWithPrimeDriveCar(onProgress) {
 
     // 1. Obtener vehículos
     logProgress('Obteniendo vehículos de PrimeDriveCar...');
-    const { data: fVehicles, error: fErr } = await supabaseFleetops
-      .from('vehicles')
-      .select('id, plate, current_km');
-
-    if (fErr) throw new Error(`Error obteniendo vehículos: ${fErr.message}`);
+    const fVehicles = await fleetopsClient.select('vehicles', 'select=id,plate,current_km');
 
     const vehicleMap = {};
     fVehicles.forEach(v => {
@@ -4651,20 +4667,15 @@ export async function syncAllWithPrimeDriveCar(onProgress) {
 
     // 2. Obtener choferes y usuarios
     logProgress('Obteniendo choferes y usuarios de PrimeDriveCar...');
-    const { data: drivers } = await supabaseFleetops.from('drivers').select('id, name');
-    const { data: users } = await supabaseFleetops.from('users').select('id');
+    const drivers = await fleetopsClient.select('drivers', 'select=id,name');
+    const users = await fleetopsClient.select('users', 'select=id');
     const defaultUserId = users && users.length > 0 ? users[0].id : null;
     if (!defaultUserId) throw new Error('No hay usuarios configurados en PrimeDriveCar para atribuir registros.');
 
     // 3. Sincronizar Diarios de Kilómetros
     logProgress('Sincronizando diarios de kilómetros...');
     const localDailyLogs = getFleetDailyLogs() || [];
-    
-    const { data: fDaily, error: fdErr } = await supabaseFleetops
-      .from('daily_logs')
-      .select('vehicle_id, date, km_start, km_end');
-
-    if (fdErr) throw new Error(`Error obteniendo diarios remotos: ${fdErr.message}`);
+    const fDaily = await fleetopsClient.select('daily_logs', 'select=vehicle_id,date,km_start,km_end');
 
     const existingDailyMap = {};
     fDaily.forEach(log => {
@@ -4682,36 +4693,30 @@ export async function syncAllWithPrimeDriveCar(onProgress) {
       if (existingDailyMap[key]) continue;
 
       logProgress(`Subiendo diario km para ${log.plate} el ${log.date}...`);
-      const { error: insErr } = await supabaseFleetops.from('daily_logs').insert({
-        id: generateUUID(),
-        vehicle_id: fVeh.id,
-        date: new Date(log.date).toISOString(),
-        km_start: Number(log.kmStart),
-        km_end: Number(log.kmEnd),
-        km_traveled: Number(log.kmTraveled),
-        km_l: log.kmL ? Number(log.kmL) : 10.0,
-        notes: log.notes || 'Sincronizado desde mydeliveryteam (Manual)'
-      });
-
-      if (insErr) {
-        logProgress(`❌ Error subiendo diario km ${log.date}: ${insErr.message}`);
-      } else {
+      try {
+        await fleetopsClient.insert('daily_logs', {
+          id: generateUUID(),
+          vehicle_id: fVeh.id,
+          date: new Date(log.date).toISOString(),
+          km_start: Number(log.kmStart),
+          km_end: Number(log.kmEnd),
+          km_traveled: Number(log.kmTraveled),
+          km_l: log.kmL ? Number(log.kmL) : 10.0,
+          notes: log.notes || 'Sincronizado desde mydeliveryteam (Manual)'
+        });
         dailySynced++;
         if (log.kmEnd && log.kmEnd > fVeh.current_km) {
           fVeh.current_km = Number(log.kmEnd);
         }
+      } catch (insErr) {
+        logProgress(`❌ Error subiendo diario km ${log.date}: ${insErr.message}`);
       }
     }
 
     // 4. Sincronizar Repostajes
     logProgress('Sincronizando repostajes...');
     const localFuelLogs = getFleetFuelLogs() || [];
-
-    const { data: fFuel, error: ffErr } = await supabaseFleetops
-      .from('fuel_logs')
-      .select('vehicle_id, date, liters');
-
-    if (ffErr) throw new Error(`Error obteniendo repostajes remotos: ${ffErr.message}`);
+    const fFuel = await fleetopsClient.select('fuel_logs', 'select=vehicle_id,date,liters');
 
     const existingFuelMap = {};
     fFuel.forEach(log => {
@@ -4739,29 +4744,28 @@ export async function syncAllWithPrimeDriveCar(onProgress) {
 
       const kmAtRefuel = fVeh.current_km || 0;
 
-      const { error: insErr } = await supabaseFleetops.from('fuel_logs').insert({
-        id: generateUUID(),
-        vehicle_id: fVeh.id,
-        driver_id: driverId,
-        user_id: defaultUserId,
-        date: new Date(log.date).toISOString(),
-        liters: Number(log.liters),
-        cost_per_liter: Number(log.costPerLiter),
-        total_cost: Number(log.totalCost),
-        km_at_refuel: kmAtRefuel,
-        fuel_type: 'diesel',
-        gas_station: log.gasStation || 'Desconocido',
-        notes: log.notes || 'Sincronizado desde mydeliveryteam (Manual)'
-      });
-
-      if (insErr) {
-        logProgress(`❌ Error subiendo repostaje ${log.date}: ${insErr.message}`);
-      } else {
+      try {
+        await fleetopsClient.insert('fuel_logs', {
+          id: generateUUID(),
+          vehicle_id: fVeh.id,
+          driver_id: driverId,
+          user_id: defaultUserId,
+          date: new Date(log.date).toISOString(),
+          liters: Number(log.liters),
+          cost_per_liter: Number(log.costPerLiter),
+          total_cost: Number(log.totalCost),
+          km_at_refuel: kmAtRefuel,
+          fuel_type: 'diesel',
+          gas_station: log.gasStation || 'Desconocido',
+          notes: log.notes || 'Sincronizado desde mydeliveryteam (Manual)'
+        });
         fuelSynced++;
+      } catch (insErr) {
+        logProgress(`❌ Error subiendo repostaje ${log.date}: ${insErr.message}`);
       }
     }
 
-    // 5. Actualizar odómetro
+    // 5. Odómetro
     logProgress('Actualizando kilómetros de los vehículos en PrimeDriveCar...');
     for (const plate in vehicleMap) {
       const fVeh = vehicleMap[plate];
@@ -4769,12 +4773,9 @@ export async function syncAllWithPrimeDriveCar(onProgress) {
       const localVeh = localVehs.find(v => v.plate.replace(/\s+/g, '').toUpperCase() === plate);
       if (localVeh && localVeh.currentKm && Number(localVeh.currentKm) > fVeh.current_km) {
         logProgress(`Actualizando odómetro de ${plate}: ${fVeh.current_km} km -> ${localVeh.currentKm} km...`);
-        const { error: updErr } = await supabaseFleetops
-          .from('vehicles')
-          .update({ current_km: Number(localVeh.currentKm) })
-          .eq('id', fVeh.id);
-
-        if (updErr) {
+        try {
+          await fleetopsClient.update('vehicles', fVeh.id, { current_km: Number(localVeh.currentKm) });
+        } catch (updErr) {
           logProgress(`❌ Error actualizando odómetro de ${plate}: ${updErr.message}`);
         }
       }
@@ -4801,7 +4802,8 @@ export async function loadFleetopsCredentialsFromSettings() {
     const { data: keyData } = await supabase.from('delivery_settings').select('value').eq('key', 'fleetops_supabase_key').maybeSingle();
     
     if (urlData && urlData.value && keyData && keyData.value) {
-      supabaseFleetops = createClient(urlData.value, keyData.value);
+      fleetopsUrl = urlData.value;
+      fleetopsKey = keyData.value;
       return { url: urlData.value, key: keyData.value };
     }
   } catch (e) {
