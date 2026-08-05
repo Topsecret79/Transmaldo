@@ -19,8 +19,24 @@ if (activeUrl && activeKey) {
   }
 }
 
+const fleetopsUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_URL : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_URL : undefined);
+const fleetopsKey = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_KEY : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_KEY : undefined);
+let supabaseFleetops = null;
+
+if (fleetopsUrl && fleetopsKey) {
+  try {
+    supabaseFleetops = createClient(fleetopsUrl, fleetopsKey);
+  } catch (e) {
+    console.error("Error initializing Fleetops Supabase client:", e);
+  }
+}
+
 export function getSupabaseClient() {
   return supabase;
+}
+
+export function getFleetopsClient() {
+  return supabaseFleetops;
 }
 
 // Fix de seguridad: los borrados en delivery_tickets/delivery_shifts/
@@ -4441,6 +4457,357 @@ export async function saveFleetDailyLogs(logs) {
     }
   }
   return { success: true };
+}
+
+// ==========================================
+// SINCRONIZACIÓN CON PRIMEDRIVECAR (FLEETOPS)
+// ==========================================
+
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+export function getPrimeDriveCarSyncSettings() {
+  const adminId = getActiveAdminId();
+  const data = localStorage.getItem(`delivery_primedrivecar_sync_settings_${adminId}`);
+  try {
+    return data ? JSON.parse(data) : { autoSync: false };
+  } catch (e) {
+    return { autoSync: false };
+  }
+}
+
+export function savePrimeDriveCarSyncSettings(settings) {
+  const adminId = getActiveAdminId();
+  localStorage.setItem(`delivery_primedrivecar_sync_settings_${adminId}`, JSON.stringify(settings));
+}
+
+// Sincroniza un único repostaje a PrimeDriveCar
+export async function syncSingleFuelLogToFleetops(log) {
+  if (!supabaseFleetops) return { success: false, error: 'La conexión con PrimeDriveCar no está configurada.' };
+
+  try {
+    const { data: fVehicles, error: fErr } = await supabaseFleetops
+      .from('vehicles')
+      .select('id, plate, current_km');
+
+    if (fErr) return { success: false, error: fErr.message };
+
+    const normPlate = log.plate.replace(/\s+/g, '').toUpperCase();
+    const matchVeh = fVehicles.find(v => v.plate.replace(/\s+/g, '').toUpperCase() === normPlate);
+    if (!matchVeh) return { success: false, error: `Vehículo con matrícula ${log.plate} no encontrado en PrimeDriveCar.` };
+
+    const { data: drivers } = await supabaseFleetops.from('drivers').select('id, name');
+    let driverId = null;
+    if (log.driver && drivers) {
+      const normDriver = log.driver.toLowerCase();
+      const matchDriver = drivers.find(d => normDriver.includes(d.name.toLowerCase()) || d.name.toLowerCase().includes(normDriver));
+      if (matchDriver) driverId = matchDriver.id;
+    }
+
+    const { data: users } = await supabaseFleetops.from('users').select('id');
+    const defaultUserId = users && users.length > 0 ? users[0].id : null;
+    if (!defaultUserId) return { success: false, error: 'No se encontraron usuarios en PrimeDriveCar para atribuir el registro.' };
+
+    let kmAtRefuel = matchVeh.current_km || 0;
+    const deliveryVehs = getFleetVehicles();
+    const localVeh = deliveryVehs.find(v => v.plate.replace(/\s+/g, '').toUpperCase() === normPlate);
+    if (localVeh && localVeh.currentKm) {
+      kmAtRefuel = Number(localVeh.currentKm) || kmAtRefuel;
+    }
+
+    // Verificar duplicado
+    const logDate = new Date(log.date);
+    const startOfDay = new Date(logDate.setHours(0,0,0,0)).toISOString();
+    const endOfDay = new Date(logDate.setHours(23,59,59,999)).toISOString();
+
+    const { data: existingFuel } = await supabaseFleetops
+      .from('fuel_logs')
+      .select('id')
+      .eq('vehicle_id', matchVeh.id)
+      .eq('liters', log.liters)
+      .gte('date', startOfDay)
+      .lte('date', endOfDay)
+      .maybeSingle();
+
+    if (existingFuel) {
+      return { success: true, message: 'El registro de combustible ya existe en PrimeDriveCar.' };
+    }
+
+    const { error: insErr } = await supabaseFleetops.from('fuel_logs').insert({
+      id: generateUUID(),
+      vehicle_id: matchVeh.id,
+      driver_id: driverId,
+      user_id: defaultUserId,
+      date: new Date(log.date).toISOString(),
+      liters: Number(log.liters),
+      cost_per_liter: Number(log.costPerLiter),
+      total_cost: Number(log.totalCost),
+      km_at_refuel: kmAtRefuel,
+      fuel_type: 'diesel',
+      gas_station: log.gasStation || 'Desconocido',
+      notes: log.notes || 'Sincronizado automáticamente desde mydeliveryteam'
+    });
+
+    if (insErr) return { success: false, error: insErr.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// Sincroniza un único diario de km a PrimeDriveCar
+export async function syncSingleDailyLogToFleetops(log) {
+  if (!supabaseFleetops) return { success: false, error: 'La conexión con PrimeDriveCar no está configurada.' };
+
+  try {
+    const { data: fVehicles, error: fErr } = await supabaseFleetops
+      .from('vehicles')
+      .select('id, plate, current_km');
+
+    if (fErr) return { success: false, error: fErr.message };
+
+    const normPlate = log.plate.replace(/\s+/g, '').toUpperCase();
+    const matchVeh = fVehicles.find(v => v.plate.replace(/\s+/g, '').toUpperCase() === normPlate);
+    if (!matchVeh) return { success: false, error: `Vehículo con matrícula ${log.plate} no encontrado en PrimeDriveCar.` };
+
+    const logDateStr = log.date;
+    const startOfDay = new Date(logDateStr + 'T00:00:00.000Z').toISOString();
+    const endOfDay = new Date(logDateStr + 'T23:59:59.999Z').toISOString();
+
+    const { data: existingDaily } = await supabaseFleetops
+      .from('daily_logs')
+      .select('id')
+      .eq('vehicle_id', matchVeh.id)
+      .gte('date', startOfDay)
+      .lte('date', endOfDay)
+      .maybeSingle();
+
+    if (existingDaily) {
+      if (log.kmEnd && log.kmEnd > matchVeh.current_km) {
+        await supabaseFleetops
+          .from('vehicles')
+          .update({ current_km: Number(log.kmEnd) })
+          .eq('id', matchVeh.id);
+      }
+      return { success: true, message: 'El registro diario ya existe en PrimeDriveCar.' };
+    }
+
+    const { error: insErr } = await supabaseFleetops.from('daily_logs').insert({
+      id: generateUUID(),
+      vehicle_id: matchVeh.id,
+      date: new Date(log.date).toISOString(),
+      km_start: Number(log.kmStart),
+      km_end: Number(log.kmEnd),
+      km_traveled: Number(log.kmTraveled),
+      km_l: log.kmL ? Number(log.kmL) : 10.0,
+      notes: log.notes || 'Sincronizado automáticamente desde mydeliveryteam'
+    });
+
+    if (insErr) return { success: false, error: insErr.message };
+
+    if (log.kmEnd && log.kmEnd > matchVeh.current_km) {
+      await supabaseFleetops
+        .from('vehicles')
+        .update({ current_km: Number(log.kmEnd) })
+        .eq('id', matchVeh.id);
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+// Sincroniza todos los repostajes y diarios de km pendientes
+export async function syncAllWithPrimeDriveCar(onProgress) {
+  if (!supabaseFleetops) {
+    return { success: false, error: 'La conexión con PrimeDriveCar no está inicializada.' };
+  }
+
+  const logProgress = (msg) => {
+    if (onProgress) onProgress(msg);
+    console.log(msg);
+  };
+
+  try {
+    logProgress('Iniciando sincronización completa con PrimeDriveCar...');
+
+    // 1. Obtener vehículos
+    logProgress('Obteniendo vehículos de PrimeDriveCar...');
+    const { data: fVehicles, error: fErr } = await supabaseFleetops
+      .from('vehicles')
+      .select('id, plate, current_km');
+
+    if (fErr) throw new Error(`Error obteniendo vehículos: ${fErr.message}`);
+
+    const vehicleMap = {};
+    fVehicles.forEach(v => {
+      vehicleMap[v.plate.replace(/\s+/g, '').toUpperCase()] = v;
+    });
+
+    // 2. Obtener choferes y usuarios
+    logProgress('Obteniendo choferes y usuarios de PrimeDriveCar...');
+    const { data: drivers } = await supabaseFleetops.from('drivers').select('id, name');
+    const { data: users } = await supabaseFleetops.from('users').select('id');
+    const defaultUserId = users && users.length > 0 ? users[0].id : null;
+    if (!defaultUserId) throw new Error('No hay usuarios configurados en PrimeDriveCar para atribuir registros.');
+
+    // 3. Sincronizar Diarios de Kilómetros
+    logProgress('Sincronizando diarios de kilómetros...');
+    const localDailyLogs = getFleetDailyLogs() || [];
+    
+    const { data: fDaily, error: fdErr } = await supabaseFleetops
+      .from('daily_logs')
+      .select('vehicle_id, date, km_start, km_end');
+
+    if (fdErr) throw new Error(`Error obteniendo diarios remotos: ${fdErr.message}`);
+
+    const existingDailyMap = {};
+    fDaily.forEach(log => {
+      const dStr = new Date(log.date).toISOString().split('T')[0];
+      existingDailyMap[`${log.vehicle_id}_${dStr}`] = true;
+    });
+
+    let dailySynced = 0;
+    for (const log of localDailyLogs) {
+      const normPlate = log.plate.replace(/\s+/g, '').toUpperCase();
+      const fVeh = vehicleMap[normPlate];
+      if (!fVeh) continue;
+
+      const key = `${fVeh.id}_${log.date}`;
+      if (existingDailyMap[key]) continue;
+
+      logProgress(`Subiendo diario km para ${log.plate} el ${log.date}...`);
+      const { error: insErr } = await supabaseFleetops.from('daily_logs').insert({
+        id: generateUUID(),
+        vehicle_id: fVeh.id,
+        date: new Date(log.date).toISOString(),
+        km_start: Number(log.kmStart),
+        km_end: Number(log.kmEnd),
+        km_traveled: Number(log.kmTraveled),
+        km_l: log.kmL ? Number(log.kmL) : 10.0,
+        notes: log.notes || 'Sincronizado desde mydeliveryteam (Manual)'
+      });
+
+      if (insErr) {
+        logProgress(`❌ Error subiendo diario km ${log.date}: ${insErr.message}`);
+      } else {
+        dailySynced++;
+        if (log.kmEnd && log.kmEnd > fVeh.current_km) {
+          fVeh.current_km = Number(log.kmEnd);
+        }
+      }
+    }
+
+    // 4. Sincronizar Repostajes
+    logProgress('Sincronizando repostajes...');
+    const localFuelLogs = getFleetFuelLogs() || [];
+
+    const { data: fFuel, error: ffErr } = await supabaseFleetops
+      .from('fuel_logs')
+      .select('vehicle_id, date, liters');
+
+    if (ffErr) throw new Error(`Error obteniendo repostajes remotos: ${ffErr.message}`);
+
+    const existingFuelMap = {};
+    fFuel.forEach(log => {
+      const dStr = new Date(log.date).toISOString().split('T')[0];
+      existingFuelMap[`${log.vehicle_id}_${dStr}_${log.liters}`] = true;
+    });
+
+    let fuelSynced = 0;
+    for (const log of localFuelLogs) {
+      const normPlate = log.plate.replace(/\s+/g, '').toUpperCase();
+      const fVeh = vehicleMap[normPlate];
+      if (!fVeh) continue;
+
+      const key = `${fVeh.id}_${log.date}_${log.liters}`;
+      if (existingFuelMap[key]) continue;
+
+      logProgress(`Subiendo repostaje para ${log.plate} el ${log.date} (${log.liters}L)...`);
+      
+      let driverId = null;
+      if (log.driver && drivers) {
+        const normDriver = log.driver.toLowerCase();
+        const matchDriver = drivers.find(d => normDriver.includes(d.name.toLowerCase()) || d.name.toLowerCase().includes(normDriver));
+        if (matchDriver) driverId = matchDriver.id;
+      }
+
+      const kmAtRefuel = fVeh.current_km || 0;
+
+      const { error: insErr } = await supabaseFleetops.from('fuel_logs').insert({
+        id: generateUUID(),
+        vehicle_id: fVeh.id,
+        driver_id: driverId,
+        user_id: defaultUserId,
+        date: new Date(log.date).toISOString(),
+        liters: Number(log.liters),
+        cost_per_liter: Number(log.costPerLiter),
+        total_cost: Number(log.totalCost),
+        km_at_refuel: kmAtRefuel,
+        fuel_type: 'diesel',
+        gas_station: log.gasStation || 'Desconocido',
+        notes: log.notes || 'Sincronizado desde mydeliveryteam (Manual)'
+      });
+
+      if (insErr) {
+        logProgress(`❌ Error subiendo repostaje ${log.date}: ${insErr.message}`);
+      } else {
+        fuelSynced++;
+      }
+    }
+
+    // 5. Actualizar odómetro
+    logProgress('Actualizando kilómetros de los vehículos en PrimeDriveCar...');
+    for (const plate in vehicleMap) {
+      const fVeh = vehicleMap[plate];
+      const localVehs = getFleetVehicles();
+      const localVeh = localVehs.find(v => v.plate.replace(/\s+/g, '').toUpperCase() === plate);
+      if (localVeh && localVeh.currentKm && Number(localVeh.currentKm) > fVeh.current_km) {
+        logProgress(`Actualizando odómetro de ${plate}: ${fVeh.current_km} km -> ${localVeh.currentKm} km...`);
+        const { error: updErr } = await supabaseFleetops
+          .from('vehicles')
+          .update({ current_km: Number(localVeh.currentKm) })
+          .eq('id', fVeh.id);
+
+        if (updErr) {
+          logProgress(`❌ Error actualizando odómetro de ${plate}: ${updErr.message}`);
+        }
+      }
+    }
+
+    logProgress('🎉 ¡Sincronización finalizada con éxito!');
+    return {
+      success: true,
+      dailySynced,
+      fuelSynced
+    };
+
+  } catch (err) {
+    logProgress(`❌ Error general: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+}
+
+// Carga las credenciales de PrimeDriveCar desde la base de datos de reparto
+export async function loadFleetopsCredentialsFromSettings() {
+  if (!supabase) return null;
+  try {
+    const { data: urlData } = await supabase.from('delivery_settings').select('value').eq('key', 'fleetops_supabase_url').maybeSingle();
+    const { data: keyData } = await supabase.from('delivery_settings').select('value').eq('key', 'fleetops_supabase_key').maybeSingle();
+    
+    if (urlData && urlData.value && keyData && keyData.value) {
+      supabaseFleetops = createClient(urlData.value, keyData.value);
+      return { url: urlData.value, key: keyData.value };
+    }
+  } catch (e) {
+    console.error("Error loading fleetops credentials from settings:", e);
+  }
+  return null;
 }
 
 

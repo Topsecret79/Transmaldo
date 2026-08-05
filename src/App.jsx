@@ -454,7 +454,14 @@ import {
   getFleetMaintenanceLogs,
   saveFleetMaintenanceLogs,
   getFleetDailyLogs,
-  saveFleetDailyLogs
+  saveFleetDailyLogs,
+  getPrimeDriveCarSyncSettings,
+  savePrimeDriveCarSyncSettings,
+  syncSingleFuelLogToFleetops,
+  syncSingleDailyLogToFleetops,
+  syncAllWithPrimeDriveCar,
+  getFleetopsClient,
+  loadFleetopsCredentialsFromSettings
 } from './db';
 
 
@@ -1048,6 +1055,26 @@ function App() {
   const [navModalOpen, setNavModalOpen] = useState(false);
   const [navTarget, setNavTarget] = useState({ address: '', latitude: null, longitude: null, ticketId: null });
   const [navRememberChoice, setNavRememberChoice] = useState(false);
+
+  // Estados para la sincronización con PrimeDriveCar
+  const [syncAutoEnabled, setSyncAutoEnabled] = useState(() => getPrimeDriveCarSyncSettings().autoSync);
+  const [syncLogs, setSyncLogs] = useState([]);
+  const [isSyncingInProgress, setIsSyncingInProgress] = useState(false);
+  const [isFleetopsConnected, setIsFleetopsConnected] = useState(false);
+
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (getFleetopsClient()) {
+        setIsFleetopsConnected(true);
+        return;
+      }
+      const creds = await loadFleetopsCredentialsFromSettings();
+      if (creds) {
+        setIsFleetopsConnected(true);
+      }
+    };
+    checkConnection();
+  }, []);
 
   // Sincronizar automáticamente el proveedor seleccionado con los proveedores habilitados del usuario
   useEffect(() => {
@@ -5863,6 +5890,18 @@ function App() {
         }
         saveFleetDailyLogs(updatedDailyLogs);
 
+        // Auto-sincronización con PrimeDriveCar si está activa
+        const syncSettings = getPrimeDriveCarSyncSettings();
+        if (syncSettings && syncSettings.autoSync) {
+          syncSingleDailyLogToFleetops(newDailyLog).then(res => {
+            if (res.success) {
+              console.log("Diario de kilómetros sincronizado automáticamente con PrimeDriveCar");
+            } else {
+              console.error("Error en auto-sincronización de diario km:", res.error);
+            }
+          });
+        }
+
         // 2. Actualizar kilometraje actual del vehículo
         const currentVehicles = getFleetVehicles() || [];
         const vehIndex = currentVehicles.findIndex(v => v.plate === driverMatricula);
@@ -6072,6 +6111,18 @@ function App() {
       
       setFleetDailyLogs(updatedDailyLogs);
       await saveFleetDailyLogs(updatedDailyLogs);
+
+      // Auto-sincronización con PrimeDriveCar si está activa
+      const syncSettings = getPrimeDriveCarSyncSettings();
+      if (syncSettings && syncSettings.autoSync) {
+        syncSingleDailyLogToFleetops(newDailyLog).then(res => {
+          if (res.success) {
+            console.log("Diario de kilómetros sincronizado automáticamente con PrimeDriveCar");
+          } else {
+            console.error("Error en auto-sincronización de diario km:", res.error);
+          }
+        });
+      }
 
       // Guardar kms de la ruta para que coincida el resumen de turno
       await saveRouteKms(shift.furgoId, shift.date, traveled);
@@ -12883,10 +12934,21 @@ function App() {
         costPerLiter: Number(calculatedPrice.toFixed(3)),
         totalCost: Number(fuelForm.totalCost)
       };
-
       const updated = [newLog, ...fleetFuelLogs];
       setFleetFuelLogs(updated);
       saveFleetFuelLogs(updated);
+
+      // Auto-sincronización con PrimeDriveCar si está activa
+      const syncSettings = getPrimeDriveCarSyncSettings();
+      if (syncSettings && syncSettings.autoSync) {
+        syncSingleFuelLogToFleetops(newLog).then(res => {
+          if (res.success) {
+            console.log("Repostaje sincronizado automáticamente con PrimeDriveCar");
+          } else {
+            console.error("Error en auto-sincronización de repostaje:", res.error);
+          }
+        });
+      }
 
       if (calculatedPrice > 0) {
         handleUpdateFuelPrice(calculatedPrice);
@@ -13004,6 +13066,18 @@ function App() {
       setFleetDailyLogs(updated);
       saveFleetDailyLogs(updated);
 
+      // Auto-sincronización con PrimeDriveCar si está activa
+      const syncSettings = getPrimeDriveCarSyncSettings();
+      if (syncSettings && syncSettings.autoSync) {
+        syncSingleDailyLogToFleetops(newLog).then(res => {
+          if (res.success) {
+            console.log("Diario de kilómetros sincronizado automáticamente con PrimeDriveCar");
+          } else {
+            console.error("Error en auto-sincronización de diario km:", res.error);
+          }
+        });
+      }
+
       const vehicle = fleetVehicles.find(v => v.plate === plate);
       if (vehicle && end > (Number(vehicle.currentKm) || 0)) {
         const updatedVehicles = fleetVehicles.map(v =>
@@ -13088,7 +13162,8 @@ function App() {
             { id: 'vehicles', label: '🚐 Vehículos', icon: '🚙' },
             { id: 'daily', label: '📅 Diario Km', icon: '📅' },
             { id: 'fuel', label: '⛽ Gasoil / Repostajes', icon: '⛽' },
-            { id: 'maintenance', label: '🔧 Taller / Mantenimiento', icon: '⚙️' }
+            { id: 'maintenance', label: '🔧 Taller / Mantenimiento', icon: '⚙️' },
+            { id: 'sync', label: '🔌 Sincronizar PrimeDriveCar', icon: '🔌' }
           ].map(tab => (
             <button
               key={tab.id}
@@ -14015,6 +14090,203 @@ function App() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5. SINCRONIZACIÓN CON PRIMEDRIVECAR */}
+        {fleetSubTab === 'sync' && (
+          <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', textAlign: 'left' }}>
+            <style>{`
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+              @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+              }
+            `}</style>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '15px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🔌 Sincronización con PrimeDriveCar.com
+                </h3>
+                <p style={{ margin: '5px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Enlaza los datos de repostaje y diarios de kilómetros con la plataforma principal de control de flotas.
+                </p>
+              </div>
+              <div style={{
+                background: isFleetopsConnected ? 'rgba(76, 175, 80, 0.1)' : 'rgba(244, 67, 54, 0.1)',
+                color: isFleetopsConnected ? '#4CAF50' : '#F44336',
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                border: isFleetopsConnected ? '1px solid rgba(76, 175, 80, 0.2)' : '1px solid rgba(244, 67, 54, 0.2)'
+              }}>
+                <span style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: isFleetopsConnected ? '#4CAF50' : '#F44336',
+                  display: 'inline-block'
+                }}></span>
+                {isFleetopsConnected ? 'CONECTADO' : 'SIN CONFIGURAR'}
+              </div>
+            </div>
+
+            {!isFleetopsConnected ? (
+              <div style={{ background: 'rgba(244, 67, 54, 0.05)', border: '1px solid rgba(244, 67, 54, 0.2)', padding: '15px', borderRadius: '8px', color: '#ff7970', fontSize: '0.85rem' }}>
+                <p style={{ margin: '0 0 10px 0', fontWeight: 'bold' }}>⚠️ Credenciales de conexión ausentes</p>
+                <p style={{ margin: 0 }}>
+                  No se han encontrado las credenciales de conexión con PrimeDriveCar (en el archivo <code>.env</code> o en los ajustes del sistema en la base de datos). Asegúrate de configurarlas para habilitar la sincronización.
+                </p>
+              </div>
+            ) : (
+              <div>
+                {/* Panel de Configuración */}
+                <div className="glass-panel" style={{ background: 'rgba(255,255,255,0.01)', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h4 style={{ margin: '0 0 5px 0', fontSize: '0.9rem', color: '#fff' }}>Sincronización Automática</h4>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Los kilómetros al cerrar turno y los repostajes de gasoil se subirán automáticamente a PrimeDriveCar.
+                    </p>
+                  </div>
+                  <label className="switch" style={{ position: 'relative', display: 'inline-block', width: '46px', height: '24px' }}>
+                    <input
+                      type="checkbox"
+                      checked={syncAutoEnabled}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setSyncAutoEnabled(val);
+                        savePrimeDriveCarSyncSettings({ autoSync: val });
+                        setAlertMsg({ text: val ? 'Sincronización automática activada' : 'Sincronización automática desactivada', type: 'success' });
+                      }}
+                      style={{ opacity: 0, width: 0, height: 0 }}
+                    />
+                    <span style={{
+                      position: 'absolute',
+                      cursor: 'pointer',
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      backgroundColor: syncAutoEnabled ? 'var(--primary)' : '#444',
+                      transition: '.3s',
+                      borderRadius: '24px'
+                    }}>
+                      <span style={{
+                        position: 'absolute',
+                        content: '""',
+                        height: '18px', width: '18px',
+                        left: syncAutoEnabled ? '24px' : '4px',
+                        bottom: '3px',
+                        backgroundColor: 'white',
+                        transition: '.3s',
+                        borderRadius: '50%'
+                      }}></span>
+                    </span>
+                  </label>
+                </div>
+
+                {/* Resumen de Datos Locales */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+                  <div className="glass-panel" style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Registros Diarios de Km</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#fff' }}>
+                      {fleetDailyLogs.length} <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>totales locales</span>
+                    </div>
+                  </div>
+
+                  <div className="glass-panel" style={{ background: 'rgba(255,255,255,0.02)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Repostajes de Gasoil</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#fff' }}>
+                      {fleetFuelLogs.length} <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>totales locales</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Botón de Sincronización Manual */}
+                <div style={{ marginBottom: '20px' }}>
+                  <button
+                    onClick={async () => {
+                      setIsSyncingInProgress(true);
+                      setSyncLogs([]);
+                      try {
+                        const res = await syncAllWithPrimeDriveCar((msg) => {
+                          setSyncLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`]);
+                        });
+                        if (res.success) {
+                          setAlertMsg({
+                            text: `Sincronización exitosa: ${res.dailySynced} diarios y ${res.fuelSynced} repostajes subidos.`,
+                            type: 'success'
+                          });
+                        } else {
+                          setAlertMsg({ text: `Error de sincronización: ${res.error}`, type: 'error' });
+                        }
+                      } catch (err) {
+                        setAlertMsg({ text: `Fallo inesperado: ${err.message}`, type: 'error' });
+                      } finally {
+                        setIsSyncingInProgress(false);
+                      }
+                    }}
+                    disabled={isSyncingInProgress}
+                    style={{
+                      background: isSyncingInProgress ? '#555' : 'var(--primary)',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold',
+                      cursor: isSyncingInProgress ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 12px rgba(var(--primary-rgb), 0.3)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {isSyncingInProgress ? (
+                      <>
+                        <span className="spinner" style={{
+                          width: '16px',
+                          height: '16px',
+                          border: '2px solid #fff',
+                          borderTopColor: 'transparent',
+                          borderRadius: '50%',
+                          display: 'inline-block',
+                          animation: 'spin 1s linear infinite'
+                        }}></span>
+                        Sincronizando...
+                      </>
+                    ) : (
+                      <>
+                        🔄 Sincronizar Datos Ahora
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Consola de logs en tiempo real */}
+                {(syncLogs.length > 0 || isSyncingInProgress) && (
+                  <div style={{ background: '#111', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '15px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#00FF00', maxHeight: '200px', overflowY: 'auto' }}>
+                    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '5px', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                      CONSOLA DE SALIDA
+                    </div>
+                    {syncLogs.map((log, idx) => (
+                      <div key={idx} style={{ marginBottom: '4px', lineHeight: '1.4' }}>
+                        {log}
+                      </div>
+                    ))}
+                    {isSyncingInProgress && (
+                      <div style={{ color: '#00bcff', animation: 'pulse 1.5s infinite', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '5px' }}>
+                        <span>▋</span> Procesando peticiones en la nube...
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
