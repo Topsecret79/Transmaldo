@@ -21,7 +21,7 @@ if (activeUrl && activeKey) {
 
 let fleetopsUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_URL : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_URL : undefined);
 let fleetopsKey = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_KEY : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_KEY : undefined);
-let fleetopsAppUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_APP_URL || 'https://primedrivecar.com' : 'https://primedrivecar.com';
+let fleetopsAppUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_APP_URL || 'https://www.primedrivecar.com' : 'https://www.primedrivecar.com';
 
 const fleetopsClient = {
   callProxy: async (action, table, params = {}) => {
