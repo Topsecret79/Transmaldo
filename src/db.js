@@ -21,6 +21,7 @@ if (activeUrl && activeKey) {
 
 let fleetopsUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_URL : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_URL : undefined);
 let fleetopsKey = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_KEY : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_KEY : undefined);
+let fleetopsAppUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_APP_URL || 'https://primedrivecar.com' : 'https://primedrivecar.com';
 
 const fleetopsClient = {
   callProxy: async (action, table, params = {}) => {
@@ -30,24 +31,18 @@ const fleetopsClient = {
     }
     
     try {
-      const response = await fetch('/api/sync', {
+      const response = await fetch(`${fleetopsAppUrl}/api/sync`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${fleetopsKey}`
         },
         body: JSON.stringify({
-          url: fleetopsUrl,
-          key: fleetopsKey,
           table,
           action,
           ...params
         })
       });
-
-      if (response.status === 404) {
-        console.warn('Proxy /api/sync no encontrado. Usando conexión directa.');
-        return await fleetopsClient.callDirect(action, table, params);
-      }
 
       const text = await response.text();
       if (!response.ok) {
@@ -4843,11 +4838,15 @@ export async function loadFleetopsCredentialsFromSettings() {
   try {
     const { data: urlData } = await supabase.from('delivery_settings').select('value').eq('key', 'fleetops_supabase_url').maybeSingle();
     const { data: keyData } = await supabase.from('delivery_settings').select('value').eq('key', 'fleetops_supabase_key').maybeSingle();
+    const { data: appUrlData } = await supabase.from('delivery_settings').select('value').eq('key', 'fleetops_app_url').maybeSingle();
     
     if (urlData && urlData.value && keyData && keyData.value) {
       fleetopsUrl = urlData.value;
       fleetopsKey = keyData.value;
-      return { url: urlData.value, key: keyData.value };
+      if (appUrlData && appUrlData.value) {
+        fleetopsAppUrl = appUrlData.value;
+      }
+      return { url: urlData.value, key: keyData.value, appUrl: fleetopsAppUrl };
     }
   } catch (e) {
     console.error("Error loading fleetops credentials from settings:", e);
