@@ -23,54 +23,89 @@ let fleetopsUrl = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_
 let fleetopsKey = typeof import.meta.env !== 'undefined' ? import.meta.env.VITE_FLEETOPS_SUPABASE_KEY : (typeof process !== 'undefined' ? process.env.VITE_FLEETOPS_SUPABASE_KEY : undefined);
 
 const fleetopsClient = {
-  getHeaders: () => ({
-    'apikey': fleetopsKey,
-    'Authorization': `Bearer ${fleetopsKey}`,
-    'Content-Type': 'application/json'
-  }),
-  
+  callProxy: async (action, table, params = {}) => {
+    const isBrowser = typeof window !== 'undefined';
+    if (!isBrowser) {
+      return await fleetopsClient.callDirect(action, table, params);
+    }
+    
+    try {
+      const response = await fetch('/api/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: fleetopsUrl,
+          key: fleetopsKey,
+          table,
+          action,
+          ...params
+        })
+      });
+
+      if (response.status === 404) {
+        console.warn('Proxy /api/sync no encontrado. Usando conexión directa.');
+        return await fleetopsClient.callDirect(action, table, params);
+      }
+
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text);
+      }
+      return JSON.parse(text);
+    } catch (err) {
+      console.warn('Error en proxy, reintentando conexión directa:', err.message);
+      return await fleetopsClient.callDirect(action, table, params);
+    }
+  },
+
+  callDirect: async (action, table, params = {}) => {
+    const headers = {
+      'apikey': fleetopsKey,
+      'Authorization': `Bearer ${fleetopsKey}`,
+      'Content-Type': 'application/json'
+    };
+
+    let url = `${fleetopsUrl}/rest/v1/${table}`;
+    let method = 'GET';
+    let options = { headers };
+
+    if (action === 'select') {
+      method = 'GET';
+      if (params.queryParams) {
+        url += `?${params.queryParams}`;
+      }
+    } else if (action === 'insert') {
+      method = 'POST';
+      headers['Prefer'] = 'return=representation';
+      options.body = JSON.stringify(params.payload);
+    } else if (action === 'update') {
+      method = 'PATCH';
+      url += `?id=eq.${params.id}`;
+      options.body = JSON.stringify(params.payload);
+    }
+
+    options.method = method;
+
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Direct REST error: ${res.statusText} - ${errText}`);
+    }
+    return await res.json();
+  },
+
   select: async (table, queryParams = '') => {
-    const url = `${fleetopsUrl}/rest/v1/${table}${queryParams ? '?' + queryParams : ''}`;
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: fleetopsClient.getHeaders()
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Error en select de ${table}: ${res.statusText} - ${errText}`);
-    }
-    return await res.json();
+    return await fleetopsClient.callProxy('select', table, { queryParams });
   },
-  
+
   insert: async (table, payload) => {
-    const url = `${fleetopsUrl}/rest/v1/${table}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        ...fleetopsClient.getHeaders(),
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Error en insert de ${table}: ${res.statusText} - ${errText}`);
-    }
-    return await res.json();
+    return await fleetopsClient.callProxy('insert', table, { payload });
   },
-  
+
   update: async (table, id, payload) => {
-    const url = `${fleetopsUrl}/rest/v1/${table}?id=eq.${id}`;
-    const res = await fetch(url, {
-      method: 'PATCH',
-      headers: fleetopsClient.getHeaders(),
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Error en update de ${table}: ${res.statusText} - ${errText}`);
-    }
-    return { success: true };
+    return await fleetopsClient.callProxy('update', table, { id, payload });
   }
 };
 
