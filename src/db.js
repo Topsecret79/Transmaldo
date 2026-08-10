@@ -4855,3 +4855,49 @@ export async function loadFleetopsCredentialsFromSettings() {
 }
 
 
+// ===== CATÁLOGO PV/GV COMPARTIDO =====
+// Carga el catálogo de artículos PV/GV desde Supabase (compartido entre todos los choferes)
+export async function loadPvgvCatalog() {
+  // Primero intentar desde Supabase
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('delivery_settings')
+        .select('value')
+        .eq('key', 'pvgv_catalog')
+        .maybeSingle();
+      if (!error && data && data.value) {
+        const catalog = JSON.parse(data.value);
+        // Actualizar también localStorage como caché local
+        try { localStorage.setItem('pvgv_catalog', data.value); } catch {}
+        return catalog;
+      }
+    } catch (e) {
+      console.warn('Error cargando catálogo PV/GV desde Supabase, usando localStorage:', e);
+    }
+  }
+  // Fallback: localStorage
+  try {
+    return JSON.parse(localStorage.getItem('pvgv_catalog') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+// Guarda el catálogo de artículos PV/GV en Supabase (compartido entre todos los choferes)
+export async function savePvgvCatalog(catalog) {
+  const value = JSON.stringify(catalog);
+  // Guardar siempre en localStorage como caché
+  try { localStorage.setItem('pvgv_catalog', value); } catch {}
+  // Guardar en Supabase si está disponible
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('delivery_settings')
+        .upsert({ key: 'pvgv_catalog', value });
+      if (error) console.error('Error guardando catálogo PV/GV en Supabase:', error);
+    } catch (e) {
+      console.error('Error guardando catálogo PV/GV en Supabase:', e);
+    }
+  }
+}

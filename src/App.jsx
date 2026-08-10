@@ -461,7 +461,9 @@ import {
   syncSingleDailyLogToFleetops,
   syncAllWithPrimeDriveCar,
   getFleetopsClient,
-  loadFleetopsCredentialsFromSettings
+  loadFleetopsCredentialsFromSettings,
+  loadPvgvCatalog,
+  savePvgvCatalog
 } from './db';
 
 
@@ -1597,6 +1599,12 @@ function App() {
   });
   const [pvgvModal, setPvgvModal] = useState(null); // { tariffId, inputValue, suggestions }
   const [selectedDrilldownFurgoId, setSelectedDrilldownFurgoId] = useState(null);
+  // Cargar catálogo PV/GV desde Supabase al iniciar (compartido entre todos los choferes)
+  useEffect(() => {
+    loadPvgvCatalog().then(catalog => {
+      if (catalog && catalog.length > 0) setPvgvCatalog(catalog);
+    }).catch(e => console.warn('Error cargando catálogo PV/GV:', e));
+  }, []);
   // Estado para el desglose al hacer clic en una tarjeta del Dashboard (Entregas,
   // Fallidos, Cuelgues, etc.) — guarda solo la clave de la tarjeta pulsada.
   const [selectedStatCardKey, setSelectedStatCardKey] = useState(null);
@@ -22668,7 +22676,7 @@ function App() {
                   if (finalDesc !== 'Mercancía genérica' && !pvgvCatalog.includes(finalDesc)) {
                     const newCatalog = [finalDesc, ...pvgvCatalog].slice(0, 100);
                     setPvgvCatalog(newCatalog);
-                    try { localStorage.setItem('pvgv_catalog', JSON.stringify(newCatalog)); } catch {}
+                    savePvgvCatalog(newCatalog).catch(e => console.warn('Error guardando catálogo PV/GV:', e));
                   }
                   // Añadir descripción y cantidad
                   setOtherDescriptions(prev => {
@@ -22745,7 +22753,7 @@ function App() {
                   if (finalDesc !== 'Mercancía genérica' && !pvgvCatalog.includes(finalDesc)) {
                     const newCatalog = [finalDesc, ...pvgvCatalog].slice(0, 100);
                     setPvgvCatalog(newCatalog);
-                    try { localStorage.setItem('pvgv_catalog', JSON.stringify(newCatalog)); } catch {}
+                    savePvgvCatalog(newCatalog).catch(e => console.warn('Error guardando catálogo PV/GV:', e));
                   }
                   // Añadir descripción y cantidad
                   setOtherDescriptions(prev => {
