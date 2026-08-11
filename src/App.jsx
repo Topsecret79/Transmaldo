@@ -1598,6 +1598,10 @@ function App() {
     try { return JSON.parse(localStorage.getItem('pvgv_catalog') || '[]'); } catch { return []; }
   });
   const [pvgvModal, setPvgvModal] = useState(null); // { tariffId, inputValue, suggestions }
+  // Estados del panel admin de catálogo PV/GV (deben estar en el cuerpo del componente, no en IIFE)
+  const [catalogNewItem, setCatalogNewItem] = useState('');
+  const [catalogEditingIdx, setCatalogEditingIdx] = useState(null);
+  const [catalogEditingValue, setCatalogEditingValue] = useState('');
   const [selectedDrilldownFurgoId, setSelectedDrilldownFurgoId] = useState(null);
   // Cargar catálogo PV/GV desde Supabase al iniciar (compartido entre todos los choferes)
   useEffect(() => {
@@ -21067,37 +21071,33 @@ function App() {
         {activeTab === 'changelog' && renderChangelog()}
 
         {activeTab === 'pvgv_catalog' && (() => {
-          const [newCatalogItem, setNewCatalogItem] = React.useState('');
-          const [editingIdx, setEditingIdx] = React.useState(null);
-          const [editingValue, setEditingValue] = React.useState('');
-
           const handleDeleteCatalogItem = (idx) => {
             const updated = pvgvCatalog.filter((_, i) => i !== idx);
             setPvgvCatalog(updated);
             savePvgvCatalog(updated).catch(e => console.warn('Error:', e));
           };
           const handleAddCatalogItem = () => {
-            const item = newCatalogItem.trim();
+            const item = catalogNewItem.trim();
             if (!item || pvgvCatalog.includes(item)) return;
             const updated = [item, ...pvgvCatalog].slice(0, 100);
             setPvgvCatalog(updated);
             savePvgvCatalog(updated).catch(e => console.warn('Error:', e));
-            setNewCatalogItem('');
+            setCatalogNewItem('');
           };
           const handleStartEdit = (idx) => {
-            setEditingIdx(idx);
-            setEditingValue(pvgvCatalog[idx]);
+            setCatalogEditingIdx(idx);
+            setCatalogEditingValue(pvgvCatalog[idx]);
           };
           const handleSaveEdit = () => {
-            const newVal = editingValue.trim();
-            if (!newVal || (newVal !== pvgvCatalog[editingIdx] && pvgvCatalog.includes(newVal))) {
-              setEditingIdx(null);
+            const newVal = catalogEditingValue.trim();
+            if (!newVal || (newVal !== pvgvCatalog[catalogEditingIdx] && pvgvCatalog.includes(newVal))) {
+              setCatalogEditingIdx(null);
               return;
             }
-            const updated = pvgvCatalog.map((item, i) => i === editingIdx ? newVal : item);
+            const updated = pvgvCatalog.map((item, i) => i === catalogEditingIdx ? newVal : item);
             setPvgvCatalog(updated);
             savePvgvCatalog(updated).catch(e => console.warn('Error:', e));
-            setEditingIdx(null);
+            setCatalogEditingIdx(null);
           };
           const handleClearCatalog = () => {
             if (!window.confirm('Seguro que quieres borrar todo el catalogo PV/GV?')) return;
@@ -21126,8 +21126,8 @@ function App() {
                 <input
                   type="text"
                   placeholder="Añadir articulo al catalogo..."
-                  value={newCatalogItem}
-                  onChange={e => setNewCatalogItem(e.target.value)}
+                  value={catalogNewItem}
+                  onChange={e => setCatalogNewItem(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCatalogItem(); } }}
                   style={{ flex: 1, padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--panel-border, rgba(255,255,255,0.15))', background: 'rgba(255,255,255,0.05)', color: 'var(--text)', fontSize: '0.9rem', outline: 'none' }}
                 />
@@ -21148,17 +21148,17 @@ function App() {
                     <div key={idx} style={{
                       display: 'flex', alignItems: 'center', gap: '8px',
                       padding: '8px 12px', borderRadius: '10px',
-                      background: editingIdx === idx ? 'rgba(99,102,241,0.08)' : 'rgba(255,255,255,0.04)',
-                      border: editingIdx === idx ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--panel-border, rgba(255,255,255,0.08))'
+                      background: catalogEditingIdx === idx ? 'rgba(99,102,241,0.08)' : 'rgba(255,255,255,0.04)',
+                      border: catalogEditingIdx === idx ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--panel-border, rgba(255,255,255,0.08))'
                     }}>
                       <span style={{ fontSize: '1rem', flexShrink: 0 }}>📦</span>
-                      {editingIdx === idx ? (
+                      {catalogEditingIdx === idx ? (
                         <>
-                          <input autoFocus type="text" value={editingValue}
-                            onChange={e => setEditingValue(e.target.value)}
+                          <input autoFocus type="text" value={catalogEditingValue}
+                            onChange={e => setCatalogEditingValue(e.target.value)}
                             onKeyDown={e => {
                               if (e.key === 'Enter') { e.preventDefault(); handleSaveEdit(); }
-                              if (e.key === 'Escape') setEditingIdx(null);
+                              if (e.key === 'Escape') setCatalogEditingIdx(null);
                             }}
                             style={{ flex: 1, padding: '6px 10px', borderRadius: '7px', border: '1px solid rgba(99,102,241,0.5)', background: 'rgba(99,102,241,0.08)', color: 'var(--text)', fontSize: '0.9rem', outline: 'none' }}
                           />
@@ -21166,7 +21166,7 @@ function App() {
                             style={{ padding: '5px 12px', borderRadius: '7px', border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: '600' }}>
                             ✓ Guardar
                           </button>
-                          <button type="button" onClick={() => setEditingIdx(null)}
+                          <button type="button" onClick={() => setCatalogEditingIdx(null)}
                             style={{ padding: '5px 10px', borderRadius: '7px', border: '1px solid var(--panel-border, rgba(255,255,255,0.1))', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.82rem' }}>
                             ✕
                           </button>
