@@ -3319,8 +3319,11 @@ function App() {
     const isPaqueteria = ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(tariffId);
     
     if (change > 0 && isPaqueteria) {
-      // Abrir modal de descripción con catálogo de autocompletado
+      // Abrir modal de descripción con catálogo de autocompletado.
+      // IMPORTANTE: el modal se encarga de incrementar otherQuantities al confirmar,
+      // así que salimos aquí para no duplicar el contador.
       setPvgvModal({ tariffId, inputValue: '', suggestions: pvgvCatalog });
+      return; // <-- evita que setOtherQuantities de abajo se ejecute también
     } else if (change < 0 && isPaqueteria) {
       setOtherDescriptions(prev => {
         const curList = prev[tariffId] || [];
