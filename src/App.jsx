@@ -22664,120 +22664,101 @@ function App() {
               </div>
             </div>
 
-            <input
-              id="pvgv_catalog_input"
-              autoFocus
-              list="pvgv_catalog_list"
-              placeholder="Ej: silla de bebé, ventilador, colchón..."
-              value={pvgvModal.inputValue}
-              onChange={e => setPvgvModal(prev => ({ ...prev, inputValue: e.target.value }))}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  const finalDesc = (pvgvModal.inputValue || '').trim() || 'Mercancía genérica';
-                  // Guardar en catálogo si es nuevo
-                  if (finalDesc !== 'Mercancía genérica' && !pvgvCatalog.includes(finalDesc)) {
-                    const newCatalog = [finalDesc, ...pvgvCatalog].slice(0, 100);
-                    setPvgvCatalog(newCatalog);
-                    savePvgvCatalog(newCatalog).catch(e => console.warn('Error guardando catálogo PV/GV:', e));
-                  }
-                  // Añadir descripción y cantidad
-                  setOtherDescriptions(prev => {
-                    const curList = prev[pvgvModal.tariffId] || [];
-                    return { ...prev, [pvgvModal.tariffId]: [...curList, finalDesc] };
-                  });
-                  setOtherQuantities(prev => {
-                    const cur = prev[pvgvModal.tariffId] || 0;
-                    return { ...prev, [pvgvModal.tariffId]: cur + 1 };
-                  });
-                  setPvgvModal(null);
-                }
-              }}
-              style={{
-                width: '100%', padding: '12px 14px', borderRadius: '10px',
-                border: '1px solid var(--panel-border, rgba(255,255,255,0.15))',
-                background: 'rgba(255,255,255,0.05)', color: 'var(--text, #fff)',
-                fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
-                marginBottom: '8px'
-              }}
-            />
-            <datalist id="pvgv_catalog_list">
-              {pvgvCatalog
-                .filter(item => !pvgvModal.inputValue || item.toLowerCase().includes(pvgvModal.inputValue.toLowerCase()))
-                .map((item, i) => <option key={i} value={item} />)
+            {/* Usamos <form> para que Enter y el botón llamen al MISMO onSubmit, evitando doble ejecución */}
+            <form onSubmit={e => {
+              e.preventDefault();
+              const finalDesc = (pvgvModal.inputValue || '').trim() || 'Mercancía genérica';
+              // Guardar en catálogo si es nuevo
+              if (finalDesc !== 'Mercancía genérica' && !pvgvCatalog.includes(finalDesc)) {
+                const newCatalog = [finalDesc, ...pvgvCatalog].slice(0, 100);
+                setPvgvCatalog(newCatalog);
+                savePvgvCatalog(newCatalog).catch(err => console.warn('Error guardando catálogo PV/GV:', err));
               }
-            </datalist>
+              // Añadir descripción y cantidad (una sola vez)
+              setOtherDescriptions(prev => {
+                const curList = prev[pvgvModal.tariffId] || [];
+                return { ...prev, [pvgvModal.tariffId]: [...curList, finalDesc] };
+              });
+              setOtherQuantities(prev => {
+                const cur = prev[pvgvModal.tariffId] || 0;
+                return { ...prev, [pvgvModal.tariffId]: cur + 1 };
+              });
+              setPvgvModal(null);
+            }}>
+              <input
+                id="pvgv_catalog_input"
+                autoFocus
+                list="pvgv_catalog_list"
+                placeholder="Ej: silla de bebé, ventilador, colchón..."
+                value={pvgvModal.inputValue}
+                onChange={e => setPvgvModal(prev => ({ ...prev, inputValue: e.target.value }))}
+                style={{
+                  width: '100%', padding: '12px 14px', borderRadius: '10px',
+                  border: '1px solid var(--panel-border, rgba(255,255,255,0.15))',
+                  background: 'rgba(255,255,255,0.05)', color: 'var(--text, #fff)',
+                  fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box',
+                  marginBottom: '8px'
+                }}
+              />
+              <datalist id="pvgv_catalog_list">
+                {pvgvCatalog
+                  .filter(item => !pvgvModal.inputValue || item.toLowerCase().includes(pvgvModal.inputValue.toLowerCase()))
+                  .map((item, i) => <option key={i} value={item} />)
+                }
+              </datalist>
 
-            {pvgvCatalog.length > 0 && (
-              <div style={{ marginBottom: '14px' }}>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #aaa)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Artículos recientes:
+              {pvgvCatalog.length > 0 && (
+                <div style={{ marginBottom: '14px' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted, #aaa)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Artículos recientes:
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {pvgvCatalog
+                      .filter(item => !pvgvModal.inputValue || item.toLowerCase().includes(pvgvModal.inputValue.toLowerCase()))
+                      .slice(0, 8)
+                      .map((item, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setPvgvModal(prev => ({ ...prev, inputValue: item }))}
+                          style={{
+                            padding: '4px 10px', borderRadius: '20px', fontSize: '0.78rem',
+                            border: '1px solid rgba(99,102,241,0.4)',
+                            background: pvgvModal.inputValue === item ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.1)',
+                            color: 'var(--primary, #6366f1)', cursor: 'pointer', transition: 'all 0.15s'
+                          }}
+                        >
+                          {item}
+                        </button>
+                      ))
+                    }
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {pvgvCatalog
-                    .filter(item => !pvgvModal.inputValue || item.toLowerCase().includes(pvgvModal.inputValue.toLowerCase()))
-                    .slice(0, 8)
-                    .map((item, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setPvgvModal(prev => ({ ...prev, inputValue: item }))}
-                        style={{
-                          padding: '4px 10px', borderRadius: '20px', fontSize: '0.78rem',
-                          border: '1px solid rgba(99,102,241,0.4)',
-                          background: pvgvModal.inputValue === item ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.1)',
-                          color: 'var(--primary, #6366f1)', cursor: 'pointer', transition: 'all 0.15s'
-                        }}
-                      >
-                        {item}
-                      </button>
-                    ))
-                  }
-                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPvgvModal(null)}
+                  style={{
+                    flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid var(--panel-border, rgba(255,255,255,0.1))',
+                    background: 'transparent', color: 'var(--text-muted, #aaa)', cursor: 'pointer', fontSize: '0.88rem'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 2, padding: '11px', borderRadius: '10px', border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600'
+                  }}
+                >
+                  ✅ Añadir artículo
+                </button>
               </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setPvgvModal(null)}
-                style={{
-                  flex: 1, padding: '11px', borderRadius: '10px', border: '1px solid var(--panel-border, rgba(255,255,255,0.1))',
-                  background: 'transparent', color: 'var(--text-muted, #aaa)', cursor: 'pointer', fontSize: '0.88rem'
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const finalDesc = (pvgvModal.inputValue || '').trim() || 'Mercancía genérica';
-                  // Guardar en catálogo si es nuevo
-                  if (finalDesc !== 'Mercancía genérica' && !pvgvCatalog.includes(finalDesc)) {
-                    const newCatalog = [finalDesc, ...pvgvCatalog].slice(0, 100);
-                    setPvgvCatalog(newCatalog);
-                    savePvgvCatalog(newCatalog).catch(e => console.warn('Error guardando catálogo PV/GV:', e));
-                  }
-                  // Añadir descripción y cantidad
-                  setOtherDescriptions(prev => {
-                    const curList = prev[pvgvModal.tariffId] || [];
-                    return { ...prev, [pvgvModal.tariffId]: [...curList, finalDesc] };
-                  });
-                  setOtherQuantities(prev => {
-                    const cur = prev[pvgvModal.tariffId] || 0;
-                    return { ...prev, [pvgvModal.tariffId]: cur + 1 };
-                  });
-                  setPvgvModal(null);
-                }}
-                style={{
-                  flex: 2, padding: '11px', borderRadius: '10px', border: 'none',
-                  background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600'
-                }}
-              >
-                ✅ Añadir artículo
-              </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
