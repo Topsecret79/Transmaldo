@@ -21068,117 +21068,129 @@ function App() {
 
         {activeTab === 'pvgv_catalog' && (() => {
           const [newCatalogItem, setNewCatalogItem] = React.useState('');
+          const [editingIdx, setEditingIdx] = React.useState(null);
+          const [editingValue, setEditingValue] = React.useState('');
+
           const handleDeleteCatalogItem = (idx) => {
             const updated = pvgvCatalog.filter((_, i) => i !== idx);
             setPvgvCatalog(updated);
-            savePvgvCatalog(updated).catch(e => console.warn('Error guardando catálogo:', e));
+            savePvgvCatalog(updated).catch(e => console.warn('Error:', e));
           };
           const handleAddCatalogItem = () => {
             const item = newCatalogItem.trim();
             if (!item || pvgvCatalog.includes(item)) return;
             const updated = [item, ...pvgvCatalog].slice(0, 100);
             setPvgvCatalog(updated);
-            savePvgvCatalog(updated).catch(e => console.warn('Error guardando catálogo:', e));
+            savePvgvCatalog(updated).catch(e => console.warn('Error:', e));
             setNewCatalogItem('');
           };
+          const handleStartEdit = (idx) => {
+            setEditingIdx(idx);
+            setEditingValue(pvgvCatalog[idx]);
+          };
+          const handleSaveEdit = () => {
+            const newVal = editingValue.trim();
+            if (!newVal || (newVal !== pvgvCatalog[editingIdx] && pvgvCatalog.includes(newVal))) {
+              setEditingIdx(null);
+              return;
+            }
+            const updated = pvgvCatalog.map((item, i) => i === editingIdx ? newVal : item);
+            setPvgvCatalog(updated);
+            savePvgvCatalog(updated).catch(e => console.warn('Error:', e));
+            setEditingIdx(null);
+          };
           const handleClearCatalog = () => {
-            if (!window.confirm('¿Seguro que quieres borrar todo el catálogo PV/GV?')) return;
+            if (!window.confirm('Seguro que quieres borrar todo el catalogo PV/GV?')) return;
             setPvgvCatalog([]);
-            savePvgvCatalog([]).catch(e => console.warn('Error vaciando catálogo:', e));
+            savePvgvCatalog([]).catch(e => console.warn('Error:', e));
           };
           return (
             <div style={{ padding: '24px', maxWidth: '700px', margin: '0 auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--text)' }}>📦 Catálogo PV / GV</h2>
+                  <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--text)' }}>📦 Catalogo PV / GV</h2>
                   <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                    Artículos guardados por los choferes. Compartido con todos.
+                    Articulos compartidos con todos los choferes. El admin puede añadir, editar y eliminar.
                   </p>
                 </div>
                 {pvgvCatalog.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleClearCatalog}
-                    style={{
-                      padding: '8px 16px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.4)',
-                      background: 'rgba(239,68,68,0.1)', color: '#ef4444',
-                      cursor: 'pointer', fontSize: '0.82rem', fontWeight: '600'
-                    }}
-                  >
-                    🗑️ Vaciar catálogo
+                  <button type="button" onClick={handleClearCatalog}
+                    style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer', fontSize: '0.82rem', fontWeight: '600' }}>
+                    🗑️ Vaciar catalogo
                   </button>
                 )}
               </div>
 
-              {/* Añadir artículo manualmente */}
+              {/* Añadir articulo manualmente */}
               <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                 <input
                   type="text"
-                  placeholder="Añadir artículo al catálogo..."
+                  placeholder="Añadir articulo al catalogo..."
                   value={newCatalogItem}
                   onChange={e => setNewCatalogItem(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCatalogItem(); } }}
-                  style={{
-                    flex: 1, padding: '10px 14px', borderRadius: '10px',
-                    border: '1px solid var(--panel-border, rgba(255,255,255,0.15))',
-                    background: 'rgba(255,255,255,0.05)', color: 'var(--text)',
-                    fontSize: '0.9rem', outline: 'none'
-                  }}
+                  style={{ flex: 1, padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--panel-border, rgba(255,255,255,0.15))', background: 'rgba(255,255,255,0.05)', color: 'var(--text)', fontSize: '0.9rem', outline: 'none' }}
                 />
-                <button
-                  type="button"
-                  onClick={handleAddCatalogItem}
-                  style={{
-                    padding: '10px 18px', borderRadius: '10px', border: 'none',
-                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                    color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
+                <button type="button" onClick={handleAddCatalogItem}
+                  style={{ padding: '10px 18px', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
                   ➕ Añadir
                 </button>
               </div>
 
-              {/* Lista del catálogo */}
+              {/* Lista del catalogo */}
               {pvgvCatalog.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  El catálogo está vacío. Los artículos aparecerán aquí cuando los choferes los añadan.
+                  El catalogo esta vacio. Los articulos apareceran aqui cuando los choferes los añadan.
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {pvgvCatalog.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '10px 14px', borderRadius: '10px',
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid var(--panel-border, rgba(255,255,255,0.08))'
-                      }}
-                    >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)', fontSize: '0.9rem' }}>
-                        <span style={{ fontSize: '1rem' }}>📦</span>
-                        {item}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCatalogItem(idx)}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: 'var(--text-muted)', fontSize: '1rem', padding: '2px 6px',
-                          borderRadius: '6px', transition: 'color 0.15s'
-                        }}
-                        title="Eliminar artículo"
-                      >
-                        ✕
-                      </button>
+                    <div key={idx} style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '8px 12px', borderRadius: '10px',
+                      background: editingIdx === idx ? 'rgba(99,102,241,0.08)' : 'rgba(255,255,255,0.04)',
+                      border: editingIdx === idx ? '1px solid rgba(99,102,241,0.4)' : '1px solid var(--panel-border, rgba(255,255,255,0.08))'
+                    }}>
+                      <span style={{ fontSize: '1rem', flexShrink: 0 }}>📦</span>
+                      {editingIdx === idx ? (
+                        <>
+                          <input autoFocus type="text" value={editingValue}
+                            onChange={e => setEditingValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') { e.preventDefault(); handleSaveEdit(); }
+                              if (e.key === 'Escape') setEditingIdx(null);
+                            }}
+                            style={{ flex: 1, padding: '6px 10px', borderRadius: '7px', border: '1px solid rgba(99,102,241,0.5)', background: 'rgba(99,102,241,0.08)', color: 'var(--text)', fontSize: '0.9rem', outline: 'none' }}
+                          />
+                          <button type="button" onClick={handleSaveEdit}
+                            style={{ padding: '5px 12px', borderRadius: '7px', border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', cursor: 'pointer', fontSize: '0.82rem', fontWeight: '600' }}>
+                            ✓ Guardar
+                          </button>
+                          <button type="button" onClick={() => setEditingIdx(null)}
+                            style={{ padding: '5px 10px', borderRadius: '7px', border: '1px solid var(--panel-border, rgba(255,255,255,0.1))', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.82rem' }}>
+                            ✕
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ flex: 1, color: 'var(--text)', fontSize: '0.9rem' }}>{item}</span>
+                          <button type="button" onClick={() => handleStartEdit(idx)} title="Editar articulo"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1rem', padding: '3px 7px', borderRadius: '6px' }}>
+                            ✏️
+                          </button>
+                          <button type="button" onClick={() => handleDeleteCatalogItem(idx)} title="Eliminar articulo"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1rem', padding: '3px 7px', borderRadius: '6px' }}>
+                            🗑️
+                          </button>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
 
               <div style={{ marginTop: '16px', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-                {pvgvCatalog.length} artículo{pvgvCatalog.length !== 1 ? 's' : ''} en el catálogo
+                {pvgvCatalog.length} articulo{pvgvCatalog.length !== 1 ? 's' : ''} en el catalogo
               </div>
             </div>
           );
