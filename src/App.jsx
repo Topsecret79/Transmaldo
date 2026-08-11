@@ -19256,6 +19256,9 @@ function App() {
           {showVanPricing && (
             <button className={`tab-btn ${activeTab === 'tariffs' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('tariffs'); }}>🏷️ Tarifas</button>
           )}
+          {showVanPricing && (
+            <button className={`tab-btn ${activeTab === 'pvgv_catalog' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('pvgv_catalog'); }}>📦 Catálogo PV/GV</button>
+          )}
           {(showStaff || showSecurity || loggedInUserObj?.role === 'admin' || loggedInUserObj?.role === 'superadmin') && (
             <button className={`tab-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}>Furgonetas y Seguridad</button>
           )}
@@ -21062,6 +21065,124 @@ function App() {
         {activeTab === 'search' && renderSearchSection()}
         {activeTab === 'fleet' && renderFleetSection()}
         {activeTab === 'changelog' && renderChangelog()}
+
+        {activeTab === 'pvgv_catalog' && (() => {
+          const [newCatalogItem, setNewCatalogItem] = React.useState('');
+          const handleDeleteCatalogItem = (idx) => {
+            const updated = pvgvCatalog.filter((_, i) => i !== idx);
+            setPvgvCatalog(updated);
+            savePvgvCatalog(updated).catch(e => console.warn('Error guardando catálogo:', e));
+          };
+          const handleAddCatalogItem = () => {
+            const item = newCatalogItem.trim();
+            if (!item || pvgvCatalog.includes(item)) return;
+            const updated = [item, ...pvgvCatalog].slice(0, 100);
+            setPvgvCatalog(updated);
+            savePvgvCatalog(updated).catch(e => console.warn('Error guardando catálogo:', e));
+            setNewCatalogItem('');
+          };
+          const handleClearCatalog = () => {
+            if (!window.confirm('¿Seguro que quieres borrar todo el catálogo PV/GV?')) return;
+            setPvgvCatalog([]);
+            savePvgvCatalog([]).catch(e => console.warn('Error vaciando catálogo:', e));
+          };
+          return (
+            <div style={{ padding: '24px', maxWidth: '700px', margin: '0 auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--text)' }}>📦 Catálogo PV / GV</h2>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    Artículos guardados por los choferes. Compartido con todos.
+                  </p>
+                </div>
+                {pvgvCatalog.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearCatalog}
+                    style={{
+                      padding: '8px 16px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.4)',
+                      background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                      cursor: 'pointer', fontSize: '0.82rem', fontWeight: '600'
+                    }}
+                  >
+                    🗑️ Vaciar catálogo
+                  </button>
+                )}
+              </div>
+
+              {/* Añadir artículo manualmente */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <input
+                  type="text"
+                  placeholder="Añadir artículo al catálogo..."
+                  value={newCatalogItem}
+                  onChange={e => setNewCatalogItem(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCatalogItem(); } }}
+                  style={{
+                    flex: 1, padding: '10px 14px', borderRadius: '10px',
+                    border: '1px solid var(--panel-border, rgba(255,255,255,0.15))',
+                    background: 'rgba(255,255,255,0.05)', color: 'var(--text)',
+                    fontSize: '0.9rem', outline: 'none'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCatalogItem}
+                  style={{
+                    padding: '10px 18px', borderRadius: '10px', border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  ➕ Añadir
+                </button>
+              </div>
+
+              {/* Lista del catálogo */}
+              {pvgvCatalog.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  El catálogo está vacío. Los artículos aparecerán aquí cuando los choferes los añadan.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {pvgvCatalog.map((item, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '10px 14px', borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid var(--panel-border, rgba(255,255,255,0.08))'
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)', fontSize: '0.9rem' }}>
+                        <span style={{ fontSize: '1rem' }}>📦</span>
+                        {item}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCatalogItem(idx)}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--text-muted)', fontSize: '1rem', padding: '2px 6px',
+                          borderRadius: '6px', transition: 'color 0.15s'
+                        }}
+                        title="Eliminar artículo"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ marginTop: '16px', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right' }}>
+                {pvgvCatalog.length} artículo{pvgvCatalog.length !== 1 ? 's' : ''} en el catálogo
+              </div>
+            </div>
+          );
+        })()}
         {renderDrilldownModal()}
         {renderStatCardDrilldown()}
       </div>
