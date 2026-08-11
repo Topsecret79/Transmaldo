@@ -709,6 +709,57 @@ function getDraftVal(key, defaultVal) {
 }
 
 function App() {
+  const getSourceFromNotes = (notes) => {
+    if (!notes) return null;
+    let parsedNotes = notes;
+    if (parsedNotes.startsWith('[Ruta Original: ')) {
+      const endIdx = parsedNotes.indexOf(']');
+      if (endIdx !== -1) {
+        parsedNotes = parsedNotes.substring(endIdx + 1).trim();
+      }
+    }
+    if (parsedNotes.startsWith('[Origen: ')) {
+      const endIdx = parsedNotes.indexOf(']');
+      if (endIdx !== -1) {
+        return parsedNotes.substring(9, endIdx).trim();
+      }
+    }
+    return null;
+  };
+
+  const renderSourceBadge = (notes) => {
+    const source = getSourceFromNotes(notes);
+    if (!source) return null;
+    let bg = 'rgba(168, 85, 247, 0.15)'; // Purple for Urbantz
+    let border = '1px solid rgba(168, 85, 247, 0.3)';
+    let color = '#c084fc';
+    if (source.toLowerCase() === 'pda') {
+      bg = 'rgba(59, 130, 246, 0.15)'; // Blue for PDA
+      border = '1px solid rgba(59, 130, 246, 0.3)';
+      color = '#60a5fa';
+    } else if (source.toLowerCase() === 'ambos') {
+      bg = 'rgba(234, 179, 8, 0.15)'; // Yellow for Ambos
+      border = '1px solid rgba(234, 179, 8, 0.3)';
+      color = '#facc15';
+    }
+    return (
+      <span className="badge" style={{ 
+        fontSize: '0.72rem', 
+        padding: '2px 8px', 
+        background: bg, 
+        border: border, 
+        color: color,
+        borderRadius: '6px',
+        fontWeight: 'bold',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '4px'
+      }}>
+        🏷️ ${source}
+      </span>
+    );
+  };
+
   const formatCustomerName = (name) => {
     if (!name) return '';
     return name
@@ -1290,6 +1341,7 @@ function App() {
   const formMarkerRef = useRef(null);
   const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState(() => getDraftVal('notes', ''));
+  const [ticketSource, setTicketSource] = useState(() => getDraftVal('ticketSource', ''));
   const [timeSlot, setTimeSlot] = useState(() => getDraftVal('timeSlot', 'any'));
   const [estimatedDuration, setEstimatedDuration] = useState(() => getDraftVal('estimatedDuration', 10));
   const [routeStartTime, setRouteStartTime] = useState(() => getDraftVal('routeStartTime', '09:00'));
@@ -2369,8 +2421,25 @@ function App() {
             }
             const slotBadge = getTimeSlotBadge(parsedNotesObj.timeSlot);
             if (slotBadge) {
-              badgeHtml += '<span class="badge-service ' + slotBadge.className + '" style="display:inline-block;">' + slotBadge.label + '</span>';
+              badgeHtml += '<span class="badge-service ' + slotBadge.className + '" style="display:inline-block;margin-right:4px;">' + slotBadge.label + '</span>';
             }
+            const sourceVal = getSourceFromNotes(t.notes);
+            if (sourceVal) {
+              let color = '#c084fc';
+              let border = 'rgba(168, 85, 247, 0.3)';
+              let bg = 'rgba(168, 85, 247, 0.15)';
+              if (sourceVal.toLowerCase() === 'pda') {
+                color = '#60a5fa';
+                border = 'rgba(59, 130, 246, 0.3)';
+                bg = 'rgba(59, 130, 246, 0.15)';
+              } else if (sourceVal.toLowerCase() === 'ambos') {
+                color = '#facc15';
+                border = 'rgba(234, 179, 8, 0.3)';
+                bg = 'rgba(234, 179, 8, 0.15)';
+              }
+              badgeHtml += '<span class="badge-service" style="display:inline-block;margin-right:4px;font-size:0.7rem;padding:1px 6px;border-radius:4px;font-weight:bold;color:' + color + ';border:1px solid ' + border + ';background:' + bg + ';">🏷️ ' + sourceVal + '</span>';
+            }
+
             if (badgeHtml) {
               badgeHtml = '<div style="margin-top:3px;margin-bottom:3px;display:flex;flex-wrap:wrap;gap:4px;">' + badgeHtml + '</div>';
             }
@@ -4205,6 +4274,10 @@ function App() {
     if (originalRouteLabel) {
       finalNotes = `[Ruta Original: ${originalRouteLabel}] ${finalNotes}`.trim();
     }
+    if (ticketSource) {
+      const srcLabel = ticketSource === 'urbantz' ? 'Urbantz' : ticketSource === 'pda' ? 'PDA' : 'Ambos';
+      finalNotes = `[Origen: ${srcLabel}] ${finalNotes}`.trim();
+    }
 
     // Lógica Automática para Dormity (Asignación de modo de servicio y distancias)
     if (selectedTicketProvider === 'dormity') {
@@ -4429,6 +4502,7 @@ function App() {
         setUrgenteType('none');
         setServiceType('entrega');
         setNotes('');
+    setTicketSource('');
         setTimeSlot('any');
         setEstimatedDuration(10);
         setIsDurationManuallyEdited(false);
@@ -5234,6 +5308,7 @@ function App() {
     }
     setServiceType(sType);
     setNotes(cleanNotesText);
+    setTicketSource(parsed.source ? (parsed.source.toLowerCase() === 'ambos' ? 'both' : parsed.source.toLowerCase()) : '');
     setShowCod(ticket.codAmount > 0);
     setTicketRoute(ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId);
 
@@ -6464,7 +6539,9 @@ function App() {
         parsed.cleanNotes,
         parsed.driverObservations,
         parsed.failedChargeType,
-        originalRoute
+        originalRoute,
+        parsed.completedAt,
+        parsed.source
       );
 
       const targetDayTickets = tickets.filter(t => t.date === ticket.date && t.furgoId === targetUser.id);
@@ -6591,7 +6668,9 @@ function App() {
         cleanNotesText,
         parsed.driverObservations,
         parsed.failedChargeType,
-        ''
+        '',
+        parsed.completedAt,
+        parsed.source
       );
 
       const targetDayTickets = tickets.filter(t => t.date === ticket.date && t.furgoId === targetUser.id);
@@ -6647,7 +6726,9 @@ function App() {
         parsed.cleanNotes, 
         observations, 
         failedChargeType,
-        parsed.originalRouteLabel
+        parsed.originalRouteLabel,
+        parsed.completedAt,
+        parsed.source
       );
       localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
     }
@@ -8449,6 +8530,41 @@ function App() {
                     <option value="morning">☀️ Mañana (09:00 - 14:00)</option>
                     <option value="afternoon">🌙 Tarde (16:00 - 20:00)</option>
                   </select>
+                </div>
+
+                <div className="input-group" style={{ gridColumn: 'span 2', marginTop: '10px' }}>
+                  <span className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    🏷️ Origen del pedido (Opcional)
+                  </span>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className={`btn ${ticketSource === 'urbantz' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setTicketSource(ticketSource === 'urbantz' ? '' : 'urbantz')}
+                      disabled={isClosed}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', flex: 1 }}
+                    >
+                      🟣 Urbantz
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${ticketSource === 'pda' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setTicketSource(ticketSource === 'pda' ? '' : 'pda')}
+                      disabled={isClosed}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', flex: 1 }}
+                    >
+                      🔵 PDA
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${ticketSource === 'both' ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setTicketSource(ticketSource === 'both' ? '' : 'both')}
+                      disabled={isClosed}
+                      style={{ padding: '8px 14px', fontSize: '0.82rem', margin: 0, width: 'auto', flex: 1 }}
+                    >
+                      🟡 Ambos
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -11115,6 +11231,11 @@ function App() {
                                   )}
                                 </div>
                                 <div className="driver-card-title">{t.customerName}</div>
+                                 {!t.notes?.startsWith('[Ruta Original: ') && (
+                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                     {renderSourceBadge(t.notes)}
+                                   </div>
+                                 )}
                                 {t.notes && t.notes.startsWith('[Ruta Original: ') && (() => {
                                    const endIdx = t.notes.indexOf(']');
                                    const label = endIdx !== -1 ? t.notes.substring(16, endIdx) : 'Otra';
@@ -12277,15 +12398,17 @@ function App() {
                       const sType = getTicketServiceType(t);
                       const svcBadge = getServiceTypeBadge(sType);
                       const slotBadge = getTimeSlotBadge(parsed.timeSlot);
-                      if (!svcBadge && !slotBadge) return null;
+                      const sourceBadge = renderSourceBadge(t.notes);
+                      if (!svcBadge && !slotBadge && !sourceBadge) return null;
                       return (
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginLeft: '34px', marginTop: '2px' }}>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginLeft: '34px', marginTop: '2px', alignItems: 'center' }}>
                           {svcBadge && (
                             <span className={`badge-service ${svcBadge.className}`}>{svcBadge.label}</span>
                           )}
                           {slotBadge && (
                             <span className={`badge-service ${slotBadge.className}`}>{slotBadge.label}</span>
                           )}
+                          {sourceBadge}
                         </div>
                       );
                     })()}
@@ -19904,6 +20027,7 @@ function App() {
                                   {slotBadge && (
                                     <span className={`badge-service ${slotBadge.className}`}>{slotBadge.label}</span>
                                   )}
+                                  {renderSourceBadge(t.notes)}
                                   <span className="badge" style={{
                                     fontSize: '0.65rem',
                                     padding: '1px 5px',

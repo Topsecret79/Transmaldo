@@ -3820,6 +3820,7 @@ export async function saveMapboxToken(token) {
 }
 
 // Parsear información de franja horaria y duración codificada en las notas
+// Parsear información de franja horaria y duración codificada en las notas
 export function parseTicketNotes(notesText) {
   let timeSlot = 'any';
   let estimatedDuration = 10; // 10 minutos por defecto
@@ -3828,6 +3829,14 @@ export function parseTicketNotes(notesText) {
   let failedChargeType = 'none';
   let originalRouteLabel = '';
   let completedAt = '';
+  let source = '';
+
+  // Extraer [Origen: ...] si existe en cualquier parte del texto
+  const sourceMatch = cleanNotes.match(/\[Origen:\s*([^\]]+)\]/);
+  if (sourceMatch) {
+    source = sourceMatch[1].trim();
+    cleanNotes = cleanNotes.replace(/\[Origen:\s*[^\]]+\]\s*/g, '');
+  }
 
   // 1. Extraer [Ruta Original: ...] si existe en cualquier parte del texto
   const routeMatch = cleanNotes.match(/\[Ruta Original:\s*([^\]]+)\]/);
@@ -3894,12 +3903,13 @@ export function parseTicketNotes(notesText) {
     driverObservations, 
     failedChargeType,
     originalRouteLabel,
-    completedAt
+    completedAt,
+    source
   };
 }
 
 // Codificar franja horaria y duración como prefijo en las notas
-export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none', originalRouteLabel = '', completedAt = '') {
+export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none', originalRouteLabel = '', completedAt = '', source = '') {
   const slotStr = timeSlot === 'morning' ? 'Mañana' : timeSlot === 'afternoon' ? 'Tarde' : 'Cualquiera';
   const prefix = `[Horario: ${slotStr}] [Duracion: ${estimatedDuration || 10} min] `;
   let finalNotes = (prefix + (cleanNotesText || '').trim()).trim();
@@ -3911,6 +3921,9 @@ export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, d
   }
   if (originalRouteLabel && originalRouteLabel.trim()) {
     finalNotes = `[Ruta Original: ${originalRouteLabel.trim()}] ${finalNotes}`;
+  }
+  if (source && source.trim()) {
+    finalNotes = `[Origen: ${source.trim()}] ${finalNotes}`;
   }
   if (completedAt && completedAt.trim()) {
     finalNotes += ` [CompletadoEn: ${completedAt.trim()}]`;
