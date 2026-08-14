@@ -7198,7 +7198,11 @@ function App() {
 
   const getFilteredTickets = () => {
     return visibleTickets.filter(t => {
-      if (currentUser && isAdminOrSuper) {
+      // Fix: el filtro de corte de facturacion (adminStartDate/adminEndDate) solo
+      // se aplica cuando NO hay una fecha concreta seleccionada. Si el admin elige
+      // una fecha especifica en "Repartos del Periodo", puede ver cualquier dia del
+      // historial sin que el corte de facturacion lo bloquee.
+      if (currentUser && isAdminOrSuper && !ticketFilterDate) {
         if (adminStartDate && t.date < adminStartDate) return false;
         if (adminEndDate && t.date > adminEndDate) return false;
       }
