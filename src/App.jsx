@@ -6043,6 +6043,17 @@ function App() {
           const updatedFuelLogs = [newFuelLog, ...currentFuelLogs];
           saveFleetFuelLogs(updatedFuelLogs);
 
+          const syncSettings = getPrimeDriveCarSyncSettings();
+          if (syncSettings && syncSettings.autoSync) {
+            syncSingleFuelLogToFleetops(newFuelLog).then(res => {
+              if (res.success) {
+                console.log("Repostaje sincronizado automáticamente con PrimeDriveCar");
+              } else {
+                console.error("Error en auto-sincronización de repostaje:", res.error);
+              }
+            });
+          }
+
           if (calculatedPrice > 0) {
             handleUpdateFuelPrice(calculatedPrice);
           }
@@ -13832,6 +13843,7 @@ function App() {
                         <th style={{ padding: '10px', textAlign: 'right' }}>Km/L Promedio</th>
                         <th style={{ padding: '10px', textAlign: 'right' }}>Coste (€)</th>
                         <th style={{ padding: '10px' }}>Notas</th>
+                        <th style={{ padding: '10px', textAlign: 'center' }}>Sync</th>
                         <th style={{ padding: '10px', textAlign: 'center' }}>Acciones</th>
                       </tr>
                     </thead>
@@ -13860,6 +13872,13 @@ function App() {
                             })()}
                           </td>
                           <td style={{ padding: '10px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{log.notes || '-'}</td>
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            {log.synced_fleetops ? (
+                              <span title="Sincronizado con PrimeDriveCar" style={{ color: '#10b981', fontSize: '1rem', cursor: 'help' }}>☁️✅</span>
+                            ) : (
+                              <span title="Pendiente de sincronizar" style={{ color: 'var(--text-muted)', fontSize: '1rem', cursor: 'help' }}>☁️⏳</span>
+                            )}
+                          </td>
                           <td style={{ padding: '10px', textAlign: 'center' }}>
                             <button
                               onClick={() => handleDeleteDailyLog(log.id)}
@@ -14032,6 +14051,7 @@ function App() {
                       <th style={{ textAlign: 'right' }}>Total (€)</th>
                       <th>Gasolinera</th>
                       <th>Notas</th>
+                      <th>Sync</th>
                       <th>Acciones</th>
                     </tr>
                   </thead>
@@ -14046,6 +14066,13 @@ function App() {
                         <td style={{ textAlign: 'right', fontWeight: 'bold', color: 'var(--danger)' }}>{Number(log.totalCost).toFixed(2)} €</td>
                         <td>{log.gasStation || '-'}</td>
                         <td style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={log.notes}>{log.notes || '-'}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          {log.synced_fleetops ? (
+                            <span title="Sincronizado con PrimeDriveCar" style={{ color: '#10b981', fontSize: '1rem', cursor: 'help' }}>☁️✅</span>
+                          ) : (
+                            <span title="Pendiente de sincronizar" style={{ color: 'var(--text-muted)', fontSize: '1rem', cursor: 'help' }}>☁️⏳</span>
+                          )}
+                        </td>
                         <td>
                           <button
                             onClick={() => handleDeleteFuelLog(log.id)}
@@ -14416,6 +14443,7 @@ function App() {
                             text: `Sincronización exitosa: ${res.dailySynced} diarios y ${res.fuelSynced} repostajes subidos.`,
                             type: 'success'
                           });
+                          loadData();
                         } else {
                           setAlertMsg({ text: `Error de sincronización: ${res.error}`, type: 'error' });
                         }

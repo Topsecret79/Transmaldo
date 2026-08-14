@@ -4618,6 +4618,14 @@ export async function syncSingleFuelLogToFleetops(log) {
     );
 
     if (existingFuel && existingFuel.length > 0) {
+      // Marcar localmente como sincronizado
+      log.synced_fleetops = true;
+      const localFuel = getFleetFuelLogs();
+      const idx = localFuel.findIndex(l => l.id === log.id);
+      if (idx !== -1) {
+        localFuel[idx].synced_fleetops = true;
+        await saveFleetFuelLogs(localFuel);
+      }
       return { success: true, message: 'El registro de combustible ya existe en PrimeDriveCar.' };
     }
 
@@ -4635,6 +4643,15 @@ export async function syncSingleFuelLogToFleetops(log) {
       gas_station: log.gasStation || 'Desconocido',
       notes: log.notes || 'Sincronizado automáticamente desde mydeliveryteam'
     });
+
+    // Marcar localmente como sincronizado
+    log.synced_fleetops = true;
+    const localFuel = getFleetFuelLogs();
+    const idx = localFuel.findIndex(l => l.id === log.id);
+    if (idx !== -1) {
+      localFuel[idx].synced_fleetops = true;
+      await saveFleetFuelLogs(localFuel);
+    }
 
     return { success: true };
   } catch (err) {
@@ -4665,6 +4682,14 @@ export async function syncSingleDailyLogToFleetops(log) {
       if (log.kmEnd && log.kmEnd > matchVeh.current_km) {
         await fleetopsClient.update('vehicles', matchVeh.id, { current_km: Number(log.kmEnd) });
       }
+      // Marcar localmente como sincronizado
+      log.synced_fleetops = true;
+      const localDaily = getFleetDailyLogs();
+      const idx = localDaily.findIndex(l => l.id === log.id);
+      if (idx !== -1) {
+        localDaily[idx].synced_fleetops = true;
+        await saveFleetDailyLogs(localDaily);
+      }
       return { success: true, message: 'El registro diario ya existe en PrimeDriveCar.' };
     }
 
@@ -4681,6 +4706,15 @@ export async function syncSingleDailyLogToFleetops(log) {
 
     if (log.kmEnd && log.kmEnd > matchVeh.current_km) {
       await fleetopsClient.update('vehicles', matchVeh.id, { current_km: Number(log.kmEnd) });
+    }
+
+    // Marcar localmente como sincronizado
+    log.synced_fleetops = true;
+    const localDaily = getFleetDailyLogs();
+    const idx = localDaily.findIndex(l => l.id === log.id);
+    if (idx !== -1) {
+      localDaily[idx].synced_fleetops = true;
+      await saveFleetDailyLogs(localDaily);
     }
 
     return { success: true };
@@ -4726,97 +4760,44 @@ export async function syncAllWithPrimeDriveCar(onProgress) {
     // 3. Sincronizar Diarios de Kilómetros
     logProgress('Sincronizando diarios de kilómetros...');
     const localDailyLogs = getFleetDailyLogs() || [];
-    const fDaily = await fleetopsClient.select('daily_logs', 'select=vehicle_id,date,km_start,km_end');
-
-    const existingDailyMap = {};
-    fDaily.forEach(log => {
-      const dStr = new Date(log.date).toISOString().split('T')[0];
-      existingDailyMap[`${log.vehicle_id}_${dStr}`] = true;
-    });
+    const pendingDailyLogs = localDailyLogs.filter(log => !log.synced_fleetops);
 
     let dailySynced = 0;
-    for (const log of localDailyLogs) {
-      const normPlate = log.plate.replace(/\s+/g, '').toUpperCase();
-      const fVeh = vehicleMap[normPlate];
-      if (!fVeh) continue;
-
-      const key = `${fVeh.id}_${log.date}`;
-      if (existingDailyMap[key]) continue;
-
-      logProgress(`Subiendo diario km para ${log.plate} el ${log.date}...`);
-      try {
-        await fleetopsClient.insert('daily_logs', {
-          id: generateUUID(),
-          vehicle_id: fVeh.id,
-          date: new Date(log.date).toISOString(),
-          km_start: Number(log.kmStart),
-          km_end: Number(log.kmEnd),
-          km_traveled: Number(log.kmTraveled),
-          km_l: log.kmL ? Number(log.kmL) : 10.0,
-          notes: log.notes || 'Sincronizado desde mydeliveryteam (Manual)'
-        });
-        dailySynced++;
-        if (log.kmEnd && log.kmEnd > fVeh.current_km) {
-          fVeh.current_km = Number(log.kmEnd);
+    if (pendingDailyLogs.length === 0) {
+      logProgress('No hay diarios de kilómetros pendientes de sincronización.');
+    } else {
+      for (const log of pendingDailyLogs) {
+        logProgress(`Sincronizando diario km para ${log.plate} el ${log.date}...`);
+        const res = await syncSingleDailyLogToFleetops(log);
+        if (res.success) {
+          dailySynced++;
+        } else {
+          logProgress(`❌ Error sincronizando diario km ${log.date}: ${res.error}`);
         }
-      } catch (insErr) {
-        logProgress(`❌ Error subiendo diario km ${log.date}: ${insErr.message}`);
       }
     }
 
     // 4. Sincronizar Repostajes
     logProgress('Sincronizando repostajes...');
     const localFuelLogs = getFleetFuelLogs() || [];
-    const fFuel = await fleetopsClient.select('fuel_logs', 'select=vehicle_id,date,liters');
-
-    const existingFuelMap = {};
-    fFuel.forEach(log => {
-      const dStr = new Date(log.date).toISOString().split('T')[0];
-      existingFuelMap[`${log.vehicle_id}_${dStr}_${log.liters}`] = true;
-    });
+    const pendingFuelLogs = localFuelLogs.filter(log => !log.synced_fleetops);
 
     let fuelSynced = 0;
-    for (const log of localFuelLogs) {
-      const normPlate = log.plate.replace(/\s+/g, '').toUpperCase();
-      const fVeh = vehicleMap[normPlate];
-      if (!fVeh) continue;
-
-      const key = `${fVeh.id}_${log.date}_${log.liters}`;
-      if (existingFuelMap[key]) continue;
-
-      logProgress(`Subiendo repostaje para ${log.plate} el ${log.date} (${log.liters}L)...`);
-      
-      let driverId = null;
-      if (log.driver && drivers) {
-        const normDriver = log.driver.toLowerCase();
-        const matchDriver = drivers.find(d => normDriver.includes(d.name.toLowerCase()) || d.name.toLowerCase().includes(normDriver));
-        if (matchDriver) driverId = matchDriver.id;
-      }
-
-      const kmAtRefuel = fVeh.current_km || 0;
-
-      try {
-        await fleetopsClient.insert('fuel_logs', {
-          id: generateUUID(),
-          vehicle_id: fVeh.id,
-          driver_id: driverId,
-          user_id: defaultUserId,
-          date: new Date(log.date).toISOString(),
-          liters: Number(log.liters),
-          cost_per_liter: Number(log.costPerLiter),
-          total_cost: Number(log.totalCost),
-          km_at_refuel: kmAtRefuel,
-          fuel_type: 'diesel',
-          gas_station: log.gasStation || 'Desconocido',
-          notes: log.notes || 'Sincronizado desde mydeliveryteam (Manual)'
-        });
-        fuelSynced++;
-      } catch (insErr) {
-        logProgress(`❌ Error subiendo repostaje ${log.date}: ${insErr.message}`);
+    if (pendingFuelLogs.length === 0) {
+      logProgress('No hay repostajes pendientes de sincronización.');
+    } else {
+      for (const log of pendingFuelLogs) {
+        logProgress(`Sincronizando repostaje para ${log.plate} el ${log.date} (${log.liters}L)...`);
+        const res = await syncSingleFuelLogToFleetops(log);
+        if (res.success) {
+          fuelSynced++;
+        } else {
+          logProgress(`❌ Error sincronizando repostaje ${log.date}: ${res.error}`);
+        }
       }
     }
 
-    // 5. Odómetro
+    // 5. Odómetro (Sincronizar cambios de odómetros locales que sean mayores)
     logProgress('Actualizando kilómetros de los vehículos en PrimeDriveCar...');
     for (const plate in vehicleMap) {
       const fVeh = vehicleMap[plate];
