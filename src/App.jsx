@@ -13053,9 +13053,10 @@ function App() {
       setFleetVehicles(updatedVehicles);
       saveFleetVehicles(updatedVehicles);
 
-      // Integración con platesList global
-      if (!platesList.some(p => p.plate === plateUpper)) {
-        const updatedPlates = [...platesList, { plate: plateUpper, description: `${vehicleForm.brand} ${vehicleForm.model}` }];
+      // Integración con platesList global (platesList es array de strings)
+      const plateExists = platesList.some(p => (typeof p === 'object' ? p.plate : p) === plateUpper);
+      if (!plateExists) {
+        const updatedPlates = [...platesList, plateUpper];
         setPlatesList(updatedPlates);
         savePlatesList(updatedPlates);
       }
