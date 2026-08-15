@@ -4218,11 +4218,27 @@ export function getPlatesList() {
     platesStr = localStorage.getItem('delivery_plates_list');
   }
   try {
-    return platesStr ? JSON.parse(platesStr) : [];
+    const parsed = platesStr ? JSON.parse(platesStr) : [];
+    // Migración: si algún elemento es un objeto {plate, description} en vez de un
+    // string, lo normalizamos a string. Esto limpia datos corruptos guardados por
+    // una versión anterior del código que guardaba objetos en platesList.
+    const normalized = parsed.map(p => {
+      if (typeof p === 'object' && p !== null && p.plate) return p.plate;
+      return p;
+    });
+    const hadObjects = parsed.some(p => typeof p === 'object' && p !== null);
+    if (hadObjects) {
+      // Persistir la versión limpia para que no se repita la migración
+      const clean = JSON.stringify(normalized);
+      localStorage.setItem(`delivery_plates_list_${adminId}`, clean);
+      localStorage.setItem('delivery_plates_list', clean);
+    }
+    return normalized;
   } catch (e) {
     return [];
   }
 }
+
 
 // Guardar la lista de matriculas configuradas
 export async function savePlatesList(plates) {
