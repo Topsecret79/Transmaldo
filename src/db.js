@@ -4926,7 +4926,8 @@ export function getPayrollDayRates(arg1, arg2, arg3, arg4) {
     year = arg2;
     month = arg3;
   }
-  const key = payroll_day_rates____;
+  const monthStr = String(Number(month) + 1).padStart(2, '0');
+  const key = 'payroll_day_rates_' + adminId + '_' + employeeId + '_' + year + '_' + monthStr;
   try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; }
 }
 
@@ -4945,7 +4946,8 @@ export async function savePayrollDayRates(arg1, arg2, arg3, arg4, arg5) {
     month = arg3;
     rates = arg4;
   }
-  const key = payroll_day_rates____;
+  const monthStr = String(Number(month) + 1).padStart(2, '0');
+  const key = 'payroll_day_rates_' + adminId + '_' + employeeId + '_' + year + '_' + monthStr;
   const val = JSON.stringify(rates || {});
   localStorage.setItem(key, val);
   if (supabase) {
@@ -4968,7 +4970,8 @@ export function getPayrollAdvances(arg1, arg2, arg3, arg4) {
     year = arg2;
     month = arg3;
   }
-  const key = payroll_advances____;
+  const monthStr = String(Number(month) + 1).padStart(2, '0');
+  const key = 'payroll_advances_' + adminId + '_' + employeeId + '_' + year + '_' + monthStr;
   const val = localStorage.getItem(key);
   return val ? parseFloat(val) : 0;
 }
@@ -4988,7 +4991,8 @@ export async function savePayrollAdvances(arg1, arg2, arg3, arg4, arg5) {
     month = arg3;
     amount = arg4;
   }
-  const key = payroll_advances____;
+  const monthStr = String(Number(month) + 1).padStart(2, '0');
+  const key = 'payroll_advances_' + adminId + '_' + employeeId + '_' + year + '_' + monthStr;
   const val = String(amount || 0);
   localStorage.setItem(key, val);
   if (supabase) {
