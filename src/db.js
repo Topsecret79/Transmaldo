@@ -4911,3 +4911,36 @@ export async function savePvgvCatalog(catalog) {
     }
   }
 }
+
+// ── NÓMINAS: Tarifa por día ───────────────────────────────────────────────────
+export function getPayrollDayRates(adminId, employeeId, year, month) {
+  const key = `payroll_day_rates_${adminId}_${employeeId}_${year}_${String(month + 1).padStart(2, '0')}`;
+  try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; }
+}
+
+export async function savePayrollDayRates(adminId, employeeId, year, month, rates) {
+  const key = `payroll_day_rates_${adminId}_${employeeId}_${year}_${String(month + 1).padStart(2, '0')}`;
+  const val = JSON.stringify(rates);
+  localStorage.setItem(key, val);
+  if (supabase) {
+    await supabase.from('delivery_settings').upsert({ key, value: val });
+  }
+  return { success: true };
+}
+
+// ── NÓMINAS: Adelantos por mes ────────────────────────────────────────────────
+export function getPayrollAdvances(adminId, employeeId, year, month) {
+  const key = `payroll_advances_${adminId}_${employeeId}_${year}_${String(month + 1).padStart(2, '0')}`;
+  const val = localStorage.getItem(key);
+  return val ? parseFloat(val) : 0;
+}
+
+export async function savePayrollAdvances(adminId, employeeId, year, month, amount) {
+  const key = `payroll_advances_${adminId}_${employeeId}_${year}_${String(month + 1).padStart(2, '0')}`;
+  const val = String(amount);
+  localStorage.setItem(key, val);
+  if (supabase) {
+    await supabase.from('delivery_settings').upsert({ key, value: val });
+  }
+  return { success: true };
+}

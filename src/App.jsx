@@ -463,7 +463,11 @@ import {
   getFleetopsClient,
   loadFleetopsCredentialsFromSettings,
   loadPvgvCatalog,
-  savePvgvCatalog
+  savePvgvCatalog,
+  getPayrollDayRates,
+  savePayrollDayRates,
+  getPayrollAdvances,
+  savePayrollAdvances
 } from './db';
 
 
@@ -1084,6 +1088,10 @@ function App() {
   const [plannedDriverName, setPlannedDriverName] = useState('');
   const [editingRates, setEditingRates] = useState({});
   const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useState(null);
+  // Nominas: tarifas por dia y adelantos
+  const [payrollAdvances, setPayrollAdvances] = useState({});
+  const [editingAdvances, setEditingAdvances] = useState({});
+  const [editingDayRateMap, setEditingDayRateMap] = useState({});
   const [showOpenShiftsModal, setShowOpenShiftsModal] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [editEmpName, setEditEmpName] = useState('');
@@ -16035,8 +16043,22 @@ function App() {
             });
           });
 
+          // Cargar tarifas por dia y adelantos
+          const adminIdPayroll = getActiveAdminId ? getActiveAdminId() : 'admin';
+          const loadedDayRates = {};
+          const loadedAdvances = {};
+          employeesList.forEach(emp => {
+            loadedDayRates[emp.id] = getPayrollDayRates(adminIdPayroll, emp.id, year, month);
+            loadedAdvances[emp.id] = getPayrollAdvances(adminIdPayroll, emp.id, year, month);
+          });
+          const calcEmpTotal = (item) => {
+            const dr = loadedDayRates[item.id] || {};
+            return item.dates.reduce((s, d) => s + (dr[d.date] !== undefined ? dr[d.date] : item.rate), 0);
+          };
           const totalDays = payrollList.reduce((sum, item) => sum + item.days, 0);
-          const totalAmount = payrollList.reduce((sum, item) => sum + (item.days * item.rate), 0);
+          const totalAmount = payrollList.reduce((sum, item) => sum + calcEmpTotal(item), 0);
+          const totalAdvances = payrollList.reduce((sum, item) => sum + (loadedAdvances[item.id] || 0), 0);
+          const totalNeto = totalAmount - totalAdvances;
 
           // Fix: aviso de defensa adicional para nombres duplicados ya existentes en los
           // datos (creados antes de este arreglo, o coincidencia real de nombre y
@@ -16090,14 +16112,22 @@ function App() {
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '15px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Días Trabajados (${monthNames[month]}):</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Días ({monthNames[month]}):</span>
                   <strong style={{ fontSize: '1.6rem', color: 'var(--primary)' }}>{totalDays} jornadas</strong>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Nóminas a Pagar:</span>
-                  <strong style={{ fontSize: '1.6rem', color: '#10b981' }}>{totalAmount.toFixed(2)} €</strong>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Base Bruta:</span>
+                  <strong style={{ fontSize: '1.6rem', color: '#60a5fa' }}>{totalAmount.toFixed(2)} €</strong>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(251,146,60,0.35)', borderRadius: '12px', padding: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Total Adelantos:</span>
+                  <strong style={{ fontSize: '1.6rem', color: '#fb923c' }}>-{totalAdvances.toFixed(2)} €</strong>
+                </div>
+                <div style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '15px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Neto a Pagar:</span>
+                  <strong style={{ fontSize: '1.6rem', color: '#10b981' }}>{totalNeto.toFixed(2)} €</strong>
                 </div>
               </div>
 
@@ -16112,10 +16142,12 @@ function App() {
                     <tr style={{ background: 'rgba(255, 255, 255, 0.03)', borderBottom: '1px solid var(--panel-border)' }}>
                       <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600' }}>Empleado</th>
                       <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600' }}>Rol</th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600' }}>Tarifa por Día (€)</th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'center' }}>Días Trabajados</th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'right' }}>Total a Pagar</th>
-                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'center' }}>Acciones</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600' }}>Tarifa base/día (€)</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'center' }}>Días</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'right' }}>Base Bruta</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'right' }}>Adelantos (€)</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'right' }}>Neto a Pagar</th>
+                      <th style={{ padding: '12px 16px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: '600', textAlign: 'center' }}>Fechas</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -16156,17 +16188,37 @@ function App() {
                           <td style={{ padding: '12px 16px', fontSize: '0.9rem', textAlign: 'center', fontWeight: '600', color: 'var(--primary)' }}>
                             {item.days} días
                           </td>
+                          <td style={{ padding: '12px 16px', fontSize: '0.95rem', textAlign: 'right', fontWeight: '700', color: '#60a5fa' }}>
+                            {calcEmpTotal(item).toFixed(2)} €
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
+                              <input
+                                type="number" min="0" step="0.01" placeholder="0.00"
+                                value={editingAdvances[item.id] !== undefined ? editingAdvances[item.id] : (loadedAdvances[item.id] || '')}
+                                onChange={e => setEditingAdvances(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                onBlur={async (e) => {
+                                  const amt = parseFloat(e.target.value) || 0;
+                                  await savePayrollAdvances(adminIdPayroll, item.id, year, month, amt);
+                                  setEditingAdvances(prev => { const n = {...prev}; delete n[item.id]; return n; });
+                                  triggerAlert('Adelanto guardado: ' + amt.toFixed(2) + ' €');
+                                }}
+                                style={{ width: '75px', padding: '3px 6px', fontSize: '0.8rem', margin: 0, height: '26px', background: '#1e1e2e', border: '1px solid rgba(251,146,60,0.5)', borderRadius: '6px', color: '#fb923c', textAlign: 'right' }}
+                              />
+                              <span style={{ fontSize: '0.75rem', color: '#fb923c' }}>€</span>
+                            </div>
+                          </td>
                           <td style={{ padding: '12px 16px', fontSize: '0.95rem', textAlign: 'right', fontWeight: '700', color: '#10b981' }}>
-                            {(item.days * item.rate).toFixed(2)} €
+                            {(calcEmpTotal(item) - (loadedAdvances[item.id] || 0)).toFixed(2)} €
                           </td>
                           <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                             <button 
                               type="button" 
-                              onClick={() => setSelectedPayrollEmployee({ ...item, year, month })}
+                              onClick={() => setSelectedPayrollEmployee({ ...item, year, month, dayRates: loadedDayRates[item.id] || {} })}
                               className="btn btn-secondary btn-small"
                               style={{ margin: 0, padding: '4px 10px', fontSize: '0.78rem' }}
                             >
-                              👁️ Ver Fechas
+                              📅 Ver Fechas
                             </button>
                           </td>
                         </tr>
@@ -16655,38 +16707,73 @@ function App() {
                         if (d === null) return <div key={`empty-${idx}`} />;
                         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                         const worked = workedByDate[dateStr];
+                        const empIdP = selectedPayrollEmployee.id;
+                        const drP = selectedPayrollEmployee.dayRates || {};
+                        const baseRateP = selectedPayrollEmployee.rate;
+                        const drKey = empIdP + '_' + dateStr;
+                        const curDayRate = editingDayRateMap[drKey] !== undefined
+                          ? editingDayRateMap[drKey]
+                          : (drP[dateStr] !== undefined ? String(drP[dateStr]) : '');
+                        const adminIdP = getActiveAdminId ? getActiveAdminId() : 'admin';
                         return (
                           <div
                             key={dateStr}
-                            title={worked ? `${dateStr} — ${worked}` : dateStr}
+                            title={worked ? dateStr + ' — ' + worked : dateStr}
                             style={{
-                              aspectRatio: '1',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: '6px',
-                              fontSize: '0.75rem',
-                              fontWeight: worked ? '700' : '500',
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                              borderRadius: '6px', fontSize: '0.75rem', fontWeight: worked ? '700' : '500',
                               background: worked ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255,255,255,0.02)',
                               color: worked ? '#10b981' : 'var(--text-muted)',
-                              border: worked ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid var(--panel-border)'
+                              border: worked ? (drP[dateStr] !== undefined ? '1px solid rgba(251,191,36,0.6)' : '1px solid rgba(16,185,129,0.4)') : '1px solid var(--panel-border)',
+                              padding: '4px 2px', minHeight: '44px', gap: '2px'
                             }}
                           >
-                            {d}
+                            <span>{d}</span>
+                            {worked && (
+                              <input type="number" min="0" step="0.5" placeholder={String(baseRateP)}
+                                value={curDayRate}
+                                onClick={e => e.stopPropagation()}
+                                onChange={e => setEditingDayRateMap(prev => ({ ...prev, [drKey]: e.target.value }))}
+                                onBlur={async (e) => {
+                                  const val = e.target.value.trim();
+                                  const nr = { ...(selectedPayrollEmployee.dayRates || {}) };
+                                  if (val === '') { delete nr[dateStr]; } else { nr[dateStr] = parseFloat(val); }
+                                  await savePayrollDayRates(adminIdP, empIdP, selectedPayrollEmployee.year, selectedPayrollEmployee.month, nr);
+                                  setSelectedPayrollEmployee(prev => ({ ...prev, dayRates: nr }));
+                                  setEditingDayRateMap(prev => { const n = {...prev}; delete n[drKey]; return n; });
+                                }}
+                                style={{ width: '100%', padding: '1px 2px', fontSize: '0.6rem', textAlign: 'center',
+                                  background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '3px',
+                                  color: drP[dateStr] !== undefined ? '#fbbf24' : '#10b981', margin: 0, height: '16px' }}
+                              />
+                            )}
                           </div>
                         );
                       })}
                     </div>
-                    <div style={{ display: 'flex', gap: '14px', justifyContent: 'center', marginTop: '12px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '12px', fontSize: '0.7rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'rgba(16, 185, 129, 0.22)', border: '1px solid rgba(16, 185, 129, 0.4)', display: 'inline-block' }} />
-                        Día trabajado
+                        Trabajado — edita el campo para ajustar el importe
                       </span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', display: 'inline-block' }} />
-                        No trabajado
+                        <span style={{ width: '10px', height: '10px', borderRadius: '3px', background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.6)', display: 'inline-block' }} />
+                        Importe ajustado manualmente
                       </span>
                     </div>
+                    {(() => {
+                      const drTotal = selectedPayrollEmployee.dayRates || {};
+                      const baseTotal = selectedPayrollEmployee.rate;
+                      const total = selectedPayrollEmployee.dates.reduce((s, d) => {
+                        return s + (drTotal[d.date] !== undefined ? drTotal[d.date] : baseTotal);
+                      }, 0);
+                      return (
+                        <div style={{ marginTop: '12px', padding: '10px', background: 'rgba(16,185,129,0.08)', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center' }}>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Total bruto del mes ({selectedPayrollEmployee.days} días)</div>
+                          <div style={{ fontSize: '1.3rem', fontWeight: '700', color: '#10b981' }}>{total.toFixed(2)} €</div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}
