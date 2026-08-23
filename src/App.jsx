@@ -1093,6 +1093,10 @@ function App() {
   const [payrollAdvances, setPayrollAdvances] = useState({});
   const [editingAdvances, setEditingAdvances] = useState({});
   const [editingDayRateMap, setEditingDayRateMap] = useState({});
+  // Estados para el Simulador de Ganancias en Nóminas
+  const [payrollModalTab, setPayrollModalTab] = useState('real'); // 'real' | 'simulator'
+  const [simulatedDays, setSimulatedDays] = useState([]);
+  const [simulatedDailyRate, setSimulatedDailyRate] = useState('');
   const [showOpenShiftsModal, setShowOpenShiftsModal] = useState(false);
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [editEmpName, setEditEmpName] = useState('');
@@ -16215,7 +16219,7 @@ function App() {
                           <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                             <button 
                               type="button" 
-                              onClick={() => setSelectedPayrollEmployee({ ...item, year, month, dayRates: loadedDayRates[item.id] || {} })}
+                              onClick={() => { setSelectedPayrollEmployee({ ...item, year, month, dayRates: loadedDayRates[item.id] || {} }); setPayrollModalTab('real'); setSimulatedDailyRate(String(item.rate || 0)); setSimulatedDays(item.dates.map(d => d.date)); }}
                               className="btn btn-secondary btn-small"
                               style={{ margin: 0, padding: '4px 10px', fontSize: '0.78rem' }}
                             >
@@ -16660,12 +16664,17 @@ function App() {
         {/* Modal de Detalle de Fechas de Empleado */}
         {selectedPayrollEmployee && (
           <div className="obs-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, padding: '15px', backdropFilter: 'blur(4px)' }}>
-            <div className="obs-modal" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '400px', padding: '24px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left' }}>
+            <div className="obs-modal" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '440px', padding: '20px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left' }}>
               
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: 'var(--primary)' }}>
-                  📅 Fechas: {selectedPayrollEmployee.name}
-                </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: 'var(--primary)' }}>
+                    📅 {selectedPayrollEmployee.name}
+                  </h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {selectedPayrollEmployee.role === 'chofer' ? '🚚 Chofer' : '🤝 Ayudante'} • Tarifa base: {selectedPayrollEmployee.rate} €/día
+                  </span>
+                </div>
                 <button 
                   type="button" 
                   onClick={() => setSelectedPayrollEmployee(null)}
@@ -16675,7 +16684,48 @@ function App() {
                 </button>
               </div>
 
-              {(() => {
+              {/* Selector de Pestañas del Modal */}
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: 'rgba(255,255,255,0.03)', padding: '3px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                <button
+                  type="button"
+                  onClick={() => setPayrollModalTab('real')}
+                  className="btn btn-small"
+                  style={{
+                    flex: 1,
+                    margin: 0,
+                    padding: '6px 8px',
+                    fontSize: '0.78rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: payrollModalTab === 'real' ? 'var(--primary)' : 'transparent',
+                    color: payrollModalTab === 'real' ? '#fff' : 'var(--text-muted)',
+                    fontWeight: payrollModalTab === 'real' ? '700' : '500'
+                  }}
+                >
+                  📅 Días Reales ({selectedPayrollEmployee.days})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayrollModalTab('simulator')}
+                  className="btn btn-small"
+                  style={{
+                    flex: 1,
+                    margin: 0,
+                    padding: '6px 8px',
+                    fontSize: '0.78rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: payrollModalTab === 'simulator' ? '#6366f1' : 'transparent',
+                    color: payrollModalTab === 'simulator' ? '#fff' : 'var(--text-muted)',
+                    fontWeight: payrollModalTab === 'simulator' ? '700' : '500'
+                  }}
+                >
+                  🔮 Simulador
+                </button>
+              </div>
+
+              {/* VISTA 1: DÍAS REALES TRABAJADOS */}
+              {payrollModalTab === 'real' && (() => {
                 const year = selectedPayrollEmployee.year;
                 const month = selectedPayrollEmployee.month; // 0-indexado
                 const monthLabel = new Date(year, month, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
@@ -16775,6 +16825,209 @@ function App() {
                         </div>
                       );
                     })()}
+                  </div>
+                );
+              })()}
+              {/* VISTA 2: SIMULADOR DE GANANCIAS */}
+              {payrollModalTab === 'simulator' && (() => {
+                const year = selectedPayrollEmployee.year;
+                const month = selectedPayrollEmployee.month;
+                const monthLabel = new Date(year, month, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+
+                const cells = [];
+                for (let i = 0; i < firstWeekday; i++) cells.push(null);
+                for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+                const weekdayLabels = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+                const rateNum = parseFloat(simulatedDailyRate) || 0;
+                const simCount = simulatedDays.length;
+                const simTotal = simCount * rateNum;
+
+                // Funciones de selección rápida
+                const selectAll = () => {
+                  const all = [];
+                  for (let d = 1; d <= daysInMonth; d++) {
+                    all.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+                  }
+                  setSimulatedDays(all);
+                };
+
+                const selectWeekdays = (includeSat = false) => {
+                  const selected = [];
+                  for (let d = 1; d <= daysInMonth; d++) {
+                    const dateObj = new Date(year, month, d);
+                    const dayOfWeek = (dateObj.getDay() + 6) % 7; // 0=Lun ... 6=Dom
+                    if (includeSat ? (dayOfWeek >= 0 && dayOfWeek <= 5) : (dayOfWeek >= 0 && dayOfWeek <= 4)) {
+                      selected.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+                    }
+                  }
+                  setSimulatedDays(selected);
+                };
+
+                const toggleDay = (dateStr) => {
+                  if (simulatedDays.includes(dateStr)) {
+                    setSimulatedDays(simulatedDays.filter(d => d !== dateStr));
+                  } else {
+                    setSimulatedDays([...simulatedDays, dateStr]);
+                  }
+                };
+
+                return (
+                  <div style={{ marginBottom: '15px' }}>
+                    {/* Barra de Tarifa Estimada */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'rgba(99, 102, 241, 0.08)',
+                      border: '1px solid rgba(99, 102, 241, 0.25)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      marginBottom: '12px',
+                      gap: '10px'
+                    }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-main)', margin: 0 }}>
+                        Tarifa estimada / día:
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="0"
+                          value={simulatedDailyRate}
+                          onChange={e => setSimulatedDailyRate(e.target.value)}
+                          style={{
+                            width: '75px',
+                            padding: '4px 8px',
+                            fontSize: '0.85rem',
+                            fontWeight: '700',
+                            textAlign: 'right',
+                            background: '#1e1e2e',
+                            border: '1px solid #6366f1',
+                            borderRadius: '6px',
+                            color: '#818cf8',
+                            margin: 0,
+                            height: '28px'
+                          }}
+                        />
+                        <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#818cf8' }}>€</span>
+                      </div>
+                    </div>
+
+                    {/* Botones de Selección Rápida */}
+                    <div style={{ display: 'flex', gap: '5px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => selectWeekdays(false)}
+                        className="btn btn-secondary btn-small"
+                        style={{ margin: 0, padding: '3px 7px', fontSize: '0.7rem', flex: '1 1 auto' }}
+                        title="Seleccionar de Lunes a Viernes"
+                      >
+                        ⚡ Lun-Vie
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => selectWeekdays(true)}
+                        className="btn btn-secondary btn-small"
+                        style={{ margin: 0, padding: '3px 7px', fontSize: '0.7rem', flex: '1 1 auto' }}
+                        title="Seleccionar de Lunes a Sábado"
+                      >
+                        ⚡ Lun-Sáb
+                      </button>
+                      <button
+                        type="button"
+                        onClick={selectAll}
+                        className="btn btn-secondary btn-small"
+                        style={{ margin: 0, padding: '3px 7px', fontSize: '0.7rem', flex: '1 1 auto' }}
+                        title="Seleccionar todos los días del mes"
+                      >
+                        ⚡ Todo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSimulatedDays([])}
+                        className="btn btn-secondary btn-small"
+                        style={{ margin: 0, padding: '3px 7px', fontSize: '0.7rem', color: 'var(--danger)', flex: '1 1 auto' }}
+                        title="Limpiar selección"
+                      >
+                        🧹 Borrar
+                      </button>
+                    </div>
+
+                    {/* Título del Mes */}
+                    <div style={{ textAlign: 'center', fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-main)', textTransform: 'capitalize', marginBottom: '8px' }}>
+                      {monthLabel} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '400' }}>(haz clic en los días a simular)</span>
+                    </div>
+
+                    {/* Cabecera Días de la Semana */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', marginBottom: '4px' }}>
+                      {weekdayLabels.map(w => (
+                        <div key={w} style={{ textAlign: 'center', fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '700' }}>{w}</div>
+                      ))}
+                    </div>
+
+                    {/* Rejilla de Días Interactivos */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                      {cells.map((d, idx) => {
+                        if (d === null) return <div key={`sim-empty-${idx}`} />;
+                        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const isSelected = simulatedDays.includes(dateStr);
+                        return (
+                          <div
+                            key={dateStr}
+                            onClick={() => toggleDay(dateStr)}
+                            title={isSelected ? `${dateStr} (Simulado: ${rateNum} €)` : `${dateStr} (Clic para añadir a simulación)`}
+                            style={{
+                              aspectRatio: '1',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: '6px',
+                              fontSize: '0.78rem',
+                              fontWeight: isSelected ? '700' : '500',
+                              background: isSelected ? 'rgba(99, 102, 241, 0.28)' : 'rgba(255,255,255,0.02)',
+                              color: isSelected ? '#a5b4fc' : 'var(--text-muted)',
+                              border: isSelected ? '1px solid #6366f1' : '1px solid var(--panel-border)',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              userSelect: 'none'
+                            }}
+                            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                            onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+                          >
+                            <span>{d}</span>
+                            {isSelected && <span style={{ fontSize: '0.55rem', color: '#6366f1' }}>✓</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Resumen de Ganancia Simulada */}
+                    <div style={{
+                      marginTop: '12px',
+                      padding: '12px',
+                      background: 'rgba(99, 102, 241, 0.08)',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(99, 102, 241, 0.3)',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        <div>Días simulados: <strong style={{ color: 'var(--text-main)' }}>{simCount} jornadas</strong></div>
+                        <div>Tarifa: <strong style={{ color: '#818cf8' }}>{rateNum} €/día</strong></div>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>Ganancia Estimada Simulada:</div>
+                      <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#818cf8' }}>
+                        {simTotal.toFixed(2)} €
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        * Cálculo puramente informativo. No altera los registros reales.
+                      </div>
+                    </div>
                   </div>
                 );
               })()}
