@@ -4913,14 +4913,40 @@ export async function savePvgvCatalog(catalog) {
 }
 
 // ── NÓMINAS: Tarifa por día ───────────────────────────────────────────────────
-export function getPayrollDayRates(adminId, employeeId, year, month) {
-  const key = `payroll_day_rates_${adminId}_${employeeId}_${year}_${String(month + 1).padStart(2, '0')}`;
+export function getPayrollDayRates(arg1, arg2, arg3, arg4) {
+  let employeeId, year, month;
+  let adminId = getActiveAdminId();
+  if (arg4 !== undefined) {
+    adminId = arg1 || adminId;
+    employeeId = arg2;
+    year = arg3;
+    month = arg4;
+  } else {
+    employeeId = arg1;
+    year = arg2;
+    month = arg3;
+  }
+  const key = payroll_day_rates____;
   try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; }
 }
 
-export async function savePayrollDayRates(adminId, employeeId, year, month, rates) {
-  const key = `payroll_day_rates_${adminId}_${employeeId}_${year}_${String(month + 1).padStart(2, '0')}`;
-  const val = JSON.stringify(rates);
+export async function savePayrollDayRates(arg1, arg2, arg3, arg4, arg5) {
+  let employeeId, year, month, rates;
+  let adminId = getActiveAdminId();
+  if (arg5 !== undefined) {
+    adminId = arg1 || adminId;
+    employeeId = arg2;
+    year = arg3;
+    month = arg4;
+    rates = arg5;
+  } else {
+    employeeId = arg1;
+    year = arg2;
+    month = arg3;
+    rates = arg4;
+  }
+  const key = payroll_day_rates____;
+  const val = JSON.stringify(rates || {});
   localStorage.setItem(key, val);
   if (supabase) {
     await supabase.from('delivery_settings').upsert({ key, value: val });
@@ -4929,15 +4955,41 @@ export async function savePayrollDayRates(adminId, employeeId, year, month, rate
 }
 
 // ── NÓMINAS: Adelantos por mes ────────────────────────────────────────────────
-export function getPayrollAdvances(adminId, employeeId, year, month) {
-  const key = `payroll_advances_${adminId}_${employeeId}_${year}_${String(month + 1).padStart(2, '0')}`;
+export function getPayrollAdvances(arg1, arg2, arg3, arg4) {
+  let employeeId, year, month;
+  let adminId = getActiveAdminId();
+  if (arg4 !== undefined) {
+    adminId = arg1 || adminId;
+    employeeId = arg2;
+    year = arg3;
+    month = arg4;
+  } else {
+    employeeId = arg1;
+    year = arg2;
+    month = arg3;
+  }
+  const key = payroll_advances____;
   const val = localStorage.getItem(key);
   return val ? parseFloat(val) : 0;
 }
 
-export async function savePayrollAdvances(adminId, employeeId, year, month, amount) {
-  const key = `payroll_advances_${adminId}_${employeeId}_${year}_${String(month + 1).padStart(2, '0')}`;
-  const val = String(amount);
+export async function savePayrollAdvances(arg1, arg2, arg3, arg4, arg5) {
+  let employeeId, year, month, amount;
+  let adminId = getActiveAdminId();
+  if (arg5 !== undefined) {
+    adminId = arg1 || adminId;
+    employeeId = arg2;
+    year = arg3;
+    month = arg4;
+    amount = arg5;
+  } else {
+    employeeId = arg1;
+    year = arg2;
+    month = arg3;
+    amount = arg4;
+  }
+  const key = payroll_advances____;
+  const val = String(amount || 0);
   localStorage.setItem(key, val);
   if (supabase) {
     await supabase.from('delivery_settings').upsert({ key, value: val });

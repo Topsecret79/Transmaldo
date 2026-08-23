@@ -464,6 +464,7 @@ import {
   loadFleetopsCredentialsFromSettings,
   loadPvgvCatalog,
   savePvgvCatalog,
+  getActiveAdminId,
   getPayrollDayRates,
   savePayrollDayRates,
   getPayrollAdvances,
@@ -16044,7 +16045,7 @@ function App() {
           });
 
           // Cargar tarifas por dia y adelantos
-          const adminIdPayroll = getActiveAdminId ? getActiveAdminId() : 'admin';
+          const adminIdPayroll = typeof getActiveAdminId === 'function' ? getActiveAdminId() : 'admin';
           const loadedDayRates = {};
           const loadedAdvances = {};
           employeesList.forEach(emp => {
@@ -16714,7 +16715,7 @@ function App() {
                         const curDayRate = editingDayRateMap[drKey] !== undefined
                           ? editingDayRateMap[drKey]
                           : (drP[dateStr] !== undefined ? String(drP[dateStr]) : '');
-                        const adminIdP = getActiveAdminId ? getActiveAdminId() : 'admin';
+                        const adminIdP = typeof getActiveAdminId === 'function' ? getActiveAdminId() : 'admin';
                         return (
                           <div
                             key={dateStr}
