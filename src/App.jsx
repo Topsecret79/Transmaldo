@@ -4459,6 +4459,25 @@ function App() {
       }
     }
 
+    // Fix: si la ruta ya tiene un orden manual establecido, la nueva parada
+    // se coloca automáticamente al FINAL de ese orden (maxOrder + 1) en lugar
+    // de quedar sin posición (null), lo que antes causaba que se mezclara con
+    // el orden existente o lo perturbara al cargar el mapa.
+    if (!editingTicketId && ticketData.furgoId && ticketData.date) {
+      const isManualRoute = getRouteManualStatus(ticketData.furgoId, ticketData.date);
+      if (isManualRoute) {
+        const existingDayTickets = tickets.filter(
+          t => t && t.furgoId === ticketData.furgoId && t.date === ticketData.date
+        );
+        const maxOrder = existingDayTickets.reduce((max, t) => {
+          const ord = (t.routeOrder !== undefined && t.routeOrder !== null && t.routeOrder !== '')
+            ? Number(t.routeOrder) : 0;
+          return ord > max ? ord : max;
+        }, 0);
+        ticketData.routeOrder = maxOrder + 1;
+      }
+    }
+
     // Fix: se bloquea el botón desde aquí (protección contra doble clic/doble
     // toque) y se espera la confirmación real del guardado antes de avisar éxito
     // y limpiar el formulario — antes se asumía éxito sin comprobar la respuesta.
@@ -5153,10 +5172,40 @@ function App() {
       successCount++;
     }
 
-    try {
-      await autoOptimizeRemainingRoute(targetFurgo, targetDate);
-    } catch (e) {
-      console.warn("Error optimizando ruta en lote:", e);
+    // Fix: si la ruta ya tiene un orden manual, NO auto-optimizar — preservar
+    // el orden manual del administrador y colocar las nuevas paradas al final.
+    const isBatchRouteManual = getRouteManualStatus(targetFurgo, targetDate);
+    if (isBatchRouteManual) {
+      // Reasignar posiciones a las nuevas paradas añadidas al final
+      const updatedAllTickets = getTickets();
+      const dayTicketsAfterBatch = updatedAllTickets.filter(
+        t => t && t.furgoId === targetFurgo && t.date === targetDate
+      );
+      const needsOrder = dayTicketsAfterBatch.filter(
+        t => t.routeOrder === null || t.routeOrder === undefined || t.routeOrder === ''
+      );
+      if (needsOrder.length > 0) {
+        const maxExisting = dayTicketsAfterBatch.reduce((max, t) => {
+          const ord = (t.routeOrder !== undefined && t.routeOrder !== null && t.routeOrder !== '')
+            ? Number(t.routeOrder) : 0;
+          return ord > max ? ord : max;
+        }, 0);
+        let counter = maxExisting + 1;
+        const patchedTickets = updatedAllTickets.map(t => {
+          if (t && t.furgoId === targetFurgo && t.date === targetDate &&
+              (t.routeOrder === null || t.routeOrder === undefined || t.routeOrder === '')) {
+            return { ...t, routeOrder: counter++, _syncStatus: 'pending' };
+          }
+          return t;
+        });
+        saveTickets(patchedTickets);
+      }
+    } else {
+      try {
+        await autoOptimizeRemainingRoute(targetFurgo, targetDate);
+      } catch (e) {
+        console.warn("Error optimizando ruta en lote:", e);
+      }
     }
 
     setIsBatchProcessing(false);
