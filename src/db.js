@@ -3919,11 +3919,14 @@ export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, d
   if (failedChargeType && failedChargeType !== 'none') {
     finalNotes += ` [CobroFallo: ${failedChargeType}]`;
   }
-  if (originalRouteLabel && originalRouteLabel.trim()) {
-    finalNotes = `[Ruta Original: ${originalRouteLabel.trim()}] ${finalNotes}`;
-  }
+  // Fix: [Origen] se añade antes que [Ruta Original] para que [Ruta Original]
+  // quede siempre como el PRIMER prefijo en el string de notas. Esto es crítico
+  // porque la UI detecta paradas de apoyo con startsWith('[Ruta Original:').
   if (source && source.trim()) {
     finalNotes = `[Origen: ${source.trim()}] ${finalNotes}`;
+  }
+  if (originalRouteLabel && originalRouteLabel.trim()) {
+    finalNotes = `[Ruta Original: ${originalRouteLabel.trim()}] ${finalNotes}`;
   }
   if (completedAt && completedAt.trim()) {
     finalNotes += ` [CompletadoEn: ${completedAt.trim()}]`;

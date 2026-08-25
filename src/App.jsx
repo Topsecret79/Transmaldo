@@ -6723,7 +6723,10 @@ function App() {
     const origLabel = parsed.originalRouteLabel;
     if (!origLabel) return;
 
-    const targetUser = users.find(u => u.label === origLabel);
+    // Fix: comparación insensible a mayúsculas para que pequeñas diferencias de
+    // capitalización en el label guardado no impidan encontrar al chofer original.
+    const origLabelLower = origLabel.trim().toLowerCase();
+    const targetUser = users.find(u => u.label && u.label.trim().toLowerCase() === origLabelLower);
     if (!targetUser) {
       triggerAlert(`No se pudo encontrar al chofer original (${origLabel})`, 'error');
       return;
@@ -11308,14 +11311,19 @@ function App() {
                                   )}
                                 </div>
                                 <div className="driver-card-title">{t.customerName}</div>
-                                 {!t.notes?.startsWith('[Ruta Original: ') && (
-                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                                     {renderSourceBadge(t.notes)}
-                                   </div>
-                                 )}
-                                {t.notes && t.notes.startsWith('[Ruta Original: ') && (() => {
-                                   const endIdx = t.notes.indexOf(']');
-                                   const label = endIdx !== -1 ? t.notes.substring(16, endIdx) : 'Otra';
+                                 {(() => {
+                                   const pnotes = parseTicketNotes(t.notes);
+                                   if (!pnotes.originalRouteLabel) return (
+                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                       {renderSourceBadge(t.notes)}
+                                     </div>
+                                   );
+                                   return null;
+                                 })()}
+                                {(() => {
+                                   const pnotes = parseTicketNotes(t.notes);
+                                   if (!pnotes.originalRouteLabel) return null;
+                                   const label = pnotes.originalRouteLabel;
                                    return (
                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
                                        <span className="badge" style={{ 
