@@ -2511,7 +2511,7 @@ function App() {
             if (isNaN(locTime) || Date.now() - locTime > 48 * 3600 * 1000) return;
             const furgoLabel = escapeHtml(users.find(u => u.id === fid)?.label || fid);
             const dEl = document.createElement('div');
-            dEl.style.cssText = 'width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.2);border:2px solid #a78bfa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px #a78bfa;animation:gpsPulse 2s infinite ease-in-out;font-size:17px;cursor:pointer;position:absolute;display:block;';
+            dEl.style.cssText = 'width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.2);border:2px solid #a78bfa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px #a78bfa;animation:gpsPulse 2s infinite ease-in-out;font-size:17px;cursor:pointer;position:absolute;';
             dEl.textContent = '🚚';
             const dPopupHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.83rem;color:#fff;padding:4px;"><strong style="color:#a78bfa;">🚚 ' + furgoLabel + ' (En Vivo)</strong><div style="margin-top:4px;">Última señal: <strong>' + new Date(locTime).toLocaleTimeString() + '</strong></div><div style="margin-top:2px;font-size:0.73rem;color:#9ca3af;">GPS: ' + latNum.toFixed(5) + ', ' + lngNum.toFixed(5) + '</div></div>';
             const dPopup = new mapboxgl.Popup({ offset: 18, className: 'mapbox-custom-popup' }).setHTML(dPopupHtml);
