@@ -739,7 +739,35 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       const pendingLocal = localCurrent.filter(t => t && t._syncStatus === 'pending');
       const filteredCloud = cloudTickets.filter(t => t && !deletedIds.includes(t.id));
 
-      const mergedTickets = [...filteredCloud];
+      // Fix: preservar routeOrder local para rutas en modo manual.
+      // Cuando se reordena manualmente, saveTickets() sube los nuevos route_order a
+      // Supabase de forma asíncrona. Si llega un evento Realtime (p.ej. una parada
+      // marcada como entregada) ANTES de que termine ese upsert, syncFromCloud descarga
+      // el estado viejo de Supabase y pisa el orden local — el reordenamiento manual
+      // se pierde visualmente hasta el próximo sync. La solución: si la ruta está
+      // marcada como manual en localStorage (clave delivery_manual_route_*), se
+      // preserva el route_order que tiene el ticket en local, no el que viene de la nube.
+      const localById = {};
+      localCurrent.forEach(t => { if (t && t.id) localById[t.id] = t; });
+
+      const mergedTickets = filteredCloud.map(cloudT => {
+        const localT = localById[cloudT.id];
+        if (!localT) return cloudT;
+
+        // Si el ticket local está pendiente de sync, tiene prioridad total
+        if (localT._syncStatus === 'pending') return localT;
+
+        // Si la ruta está marcada como manual, preservar el routeOrder local
+        const manualKey = 'delivery_manual_route_' + cloudT.furgoId + '_' + cloudT.date;
+        const isManual = localStorage.getItem(manualKey) === 'true';
+        if (isManual && localT.routeOrder !== undefined && localT.routeOrder !== null) {
+          return { ...cloudT, routeOrder: localT.routeOrder };
+        }
+
+        return cloudT;
+      });
+
+      // Añadir tickets locales pendientes que no estén en la nube aún
       pendingLocal.forEach(localT => {
         const cloudIndex = mergedTickets.findIndex(t => t.id === localT.id);
         if (cloudIndex !== -1) {
@@ -4026,8 +4054,12 @@ export async function saveRouteManualStatus(furgoId, date, isManual) {
 // Obtener si la ruta está configurada en modo manual
 export function getRouteManualStatus(furgoId, date) {
   if (!furgoId || !date) return false;
-  const key = `delivery_manual_route_${furgoId}_${date}`;
-  return localStorage.getItem(key) === 'true';
+  // Fix: se comprueban ambas claves porque saveRouteManualStatus guarda con el prefijo
+  // 'delivery_' (clave: 'delivery_manual_route_X_Y') pero syncFromCloud puede haber
+  // restaurado la clave sin prefijo desde delivery_settings (clave: 'manual_route_X_Y').
+  const key1 = 'delivery_manual_route_' + furgoId + '_' + date;
+  const key2 = 'manual_route_' + furgoId + '_' + date;
+  return localStorage.getItem(key1) === 'true' || localStorage.getItem(key2) === 'true';
 }
 
 // Cambiar la fecha completa de una ruta (tickets y turnos)
