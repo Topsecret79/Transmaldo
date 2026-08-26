@@ -2342,10 +2342,6 @@ function App() {
           mapInstanceRef.current = null;
         }
       }
-      (mapMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
-      mapMarkersRef.current = [];
-      (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
-      mapDriverMarkersRef.current = [];
       if (!map) {
         map = new mapboxgl.Map({ container: mapElementId, style: 'mapbox://styles/mapbox/streets-v12', center: [2.16992, 41.3879], zoom: 12, attributionControl: true });
         map.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: false }), 'top-right');
@@ -2355,15 +2351,6 @@ function App() {
         mapInstanceRef.current = map;
       }
       const renderMapContent = () => {
-        (mapRouteSourceIds.current || []).forEach(srcId => {
-          try { if (map.getLayer(srcId + '-line')) map.removeLayer(srcId + '-line'); } catch(e){}
-          try { if (map.getSource(srcId)) map.removeSource(srcId); } catch(e){}
-        });
-        mapRouteSourceIds.current = [];
-        (mapMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
-        mapMarkersRef.current = [];
-        (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
-        mapDriverMarkersRef.current = [];
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
         const dayTickets = tickets.filter(t => {
           if (!t || t.date !== targetDate) return false;
@@ -2372,6 +2359,24 @@ function App() {
           const la = parseFloat(t.lat), lo = parseFloat(t.lng);
           return t.lat != null && t.lng != null && !isNaN(la) && !isNaN(lo);
         });
+
+        // Fix: solo borramos los marcadores viejos si hay paradas nuevas que dibujar.
+        // Antes se borraban al inicio de renderMapContent siempre, de forma incondicional.
+        // Si el array tickets llegaba temporalmente vacío (por un re-render durante sync
+        // de Supabase), el mapa quedaba en blanco hasta el siguiente ciclo completo.
+        // Ahora los marcadores viejos se mantienen visibles mientras no haya datos nuevos.
+        if (dayTickets.length > 0) {
+          (mapRouteSourceIds.current || []).forEach(srcId => {
+            try { if (map.getLayer(srcId + '-line')) map.removeLayer(srcId + '-line'); } catch(e){}
+            try { if (map.getSource(srcId)) map.removeSource(srcId); } catch(e){}
+          });
+          mapRouteSourceIds.current = [];
+          (mapMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
+          mapMarkersRef.current = [];
+          (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
+          mapDriverMarkersRef.current = [];
+        }
+
         const sortedDayTickets = sortTicketsByRouteOrder(dayTickets);
         const ticketsByDriver = {};
         sortedDayTickets.forEach(t => { if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = []; ticketsByDriver[t.furgoId].push(t); });
