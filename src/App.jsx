@@ -1309,6 +1309,10 @@ function App() {
   const [reportFilterFurgo, setReportFilterFurgo] = useState('all');
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
   const [ticketFilterPostcode, setTicketFilterPostcode] = useState('');
+  const [ticketFilterClient, setTicketFilterClient] = useState('');
+  const [ticketFilterConcept, setTicketFilterConcept] = useState('all');
+  const [ticketFilterPriceMin, setTicketFilterPriceMin] = useState('');
+  const [ticketFilterPriceMax, setTicketFilterPriceMax] = useState('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [alertMsg, setAlertMsg] = useState({ text: '', type: '' });
   const [driverFilter, setDriverFilter] = useState('active_reparto');
@@ -7292,6 +7296,80 @@ function App() {
         const taskMatch = t.tasks ? t.tasks.some(task => (task && task.name) ? task.name.toLowerCase().includes(query) : false) : false;
         if (!nameMatch && !addressMatch && !taskMatch && !notesMatch) return false;
       }
+      // Filtro específico por cliente
+      if (ticketFilterClient && ticketFilterClient.trim()) {
+        const cQuery = ticketFilterClient.trim().toLowerCase();
+        const cMatch = t.customerName ? t.customerName.toLowerCase().includes(cQuery) : false;
+        if (!cMatch) return false;
+      }
+      // Filtro por concepto facturado
+      if (ticketFilterConcept && ticketFilterConcept !== 'all') {
+        const concept = ticketFilterConcept;
+        const tasks = Array.isArray(t.tasks) ? t.tasks : [];
+        const hasConcept = tasks.some(task => {
+          if (!task) return false;
+          const tid = (task.tariffId || '').toUpperCase();
+          const tname = (task.name || '').toUpperCase();
+          const taction = (task.action || '').toUpperCase();
+
+          if (concept === 'ENTREGA') {
+            return tid.startsWith('ENTREGA_') || tid.startsWith('TV_ENT_') || tid.startsWith('TV_COMB_') || taction === 'ENTREGA';
+          }
+          if (concept === 'PM_BAS') {
+            return tid.startsWith('PM_BAS_') || tname.includes('PM BÁSICA') || tname.includes('PM BASICA') || (task.pmType === 'basic');
+          }
+          if (concept === 'PM_COMP') {
+            return tid.startsWith('PM_COMP_') || tname.includes('PM COMPLEJA') || (task.pmType === 'premium');
+          }
+          if (concept === 'CUELGUE') {
+            return tid.startsWith('CUELGUE_') || tname.includes('CUELGUE') || task.cuelgue === true;
+          }
+          if (concept === 'RECOGIDA') {
+            return tid.startsWith('RECOGIDA_') || taction === 'RECOGIDA' || tid.startsWith('TV_COMB_');
+          }
+          if (concept === 'ENTREGA_PV') {
+            return tid === 'ENTREGA_PV' || tname.includes('PEQUEÑO VOLUMEN') || tname.includes('PV');
+          }
+          if (concept === 'ENTREGA_GV') {
+            return tid === 'ENTREGA_GV' || tname.includes('GRAN VOLUMEN') || tname.includes('GV');
+          }
+          if (concept === 'BSND') {
+            return tid === 'BSND' || tname.includes('BARRA DE SONIDO');
+          }
+          if (concept === 'MFRA') {
+            return tid === 'MFRA' || tname.includes('MARCO FRAME');
+          }
+          if (concept === 'SPAR') {
+            return tid === 'SPAR' || tname.includes('SOPORTE');
+          }
+          if (concept === 'VTEC') {
+            return tid === 'VTEC' || tname.includes('VISITA TÉCNICA') || tname.includes('VISITA TECNICA');
+          }
+          if (concept === 'DORMITY') {
+            return tid.startsWith('DORMITY_') || t.provider === 'dormity';
+          }
+          if (concept === 'CUSTOM') {
+            return tid.startsWith('CUSTOM_') || tid.startsWith('EXTRA_') || tname.includes('ESCALERA');
+          }
+          return tid.includes(concept) || tname.includes(concept);
+        });
+        let notesMatch = false;
+        if (!hasConcept && (concept === 'PM_BAS' || concept === 'PM_COMP')) {
+          const notesUpper = (t.notes || '').toUpperCase();
+          if (notesUpper.includes('PUESTA_MARCHA') || notesUpper.includes('PUESTA EN MARCHA')) {
+            notesMatch = true;
+          }
+        }
+        if (!hasConcept && !notesMatch) return false;
+      }
+      // Filtro por precio mínimo y máximo
+      const price = typeof t.totalPrice === 'number' ? t.totalPrice : parseFloat(t.totalPrice || 0);
+      if (ticketFilterPriceMin !== '' && !isNaN(parseFloat(ticketFilterPriceMin))) {
+        if (price < parseFloat(ticketFilterPriceMin)) return false;
+      }
+      if (ticketFilterPriceMax !== '' && !isNaN(parseFloat(ticketFilterPriceMax))) {
+        if (price > parseFloat(ticketFilterPriceMax)) return false;
+      }
       return true;
     }).sort((a,b) => {
       const aOrder = a.routeOrder !== undefined && a.routeOrder !== null && a.routeOrder !== '' ? Number(a.routeOrder) : Infinity;
@@ -7305,7 +7383,7 @@ function App() {
     });
   };
 
-  const isSingleRouteFiltered = ticketFilterFurgo !== 'all' && ticketFilterDate && !ticketSearchQuery.trim() && !ticketFilterPostcode.trim();
+  const isSingleRouteFiltered = ticketFilterFurgo !== 'all' && ticketFilterDate && !ticketSearchQuery.trim() && !ticketFilterPostcode.trim() && !ticketFilterClient.trim() && ticketFilterConcept === 'all' && ticketFilterPriceMin === '' && ticketFilterPriceMax === '';
 
 
   const renderCreateRouteStartButton = () => {
@@ -20108,7 +20186,7 @@ function App() {
           <div className="glass-panel">
             <h2 style={{ textAlign: 'left' }}>Historial y Registro de Clientes</h2>
             
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '12px' }}>
               <div className="input-group">
                 <span className="input-label">Furgoneta</span>
                 <select className="form-input" value={ticketFilterFurgo} onChange={(e) => setTicketFilterFurgo(e.target.value)}>
@@ -20123,8 +20201,8 @@ function App() {
                 <input type="date" className="form-input" value={ticketFilterDate} onChange={(e) => setTicketFilterDate(e.target.value)} />
               </div>
               <div className="input-group">
-                <span className="input-label">Buscador</span>
-                <input type="text" className="form-input" placeholder="Buscar cliente, dirección, TV o nota..." value={ticketSearchQuery} onChange={(e) => setTicketSearchQuery(e.target.value)} />
+                <span className="input-label">Buscador General</span>
+                <input type="text" className="form-input" placeholder="Buscar dirección, TV, nota..." value={ticketSearchQuery} onChange={(e) => setTicketSearchQuery(e.target.value)} />
               </div>
               <div className="input-group">
                 <span className="input-label">Código Postal</span>
@@ -20136,6 +20214,91 @@ function App() {
                   onChange={(e) => setTicketFilterPostcode(e.target.value)} 
                 />
               </div>
+            </div>
+
+            {/* Filtros avanzados del día: Cliente, Concepto Facturado y Precio */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px', padding: '14px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--panel-border)', borderRadius: '10px' }}>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label" style={{ fontSize: '0.78rem', color: 'var(--primary)' }}>👤 Filtrar por Cliente</span>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder="Nombre de cliente..." 
+                  value={ticketFilterClient} 
+                  onChange={(e) => setTicketFilterClient(e.target.value)} 
+                />
+              </div>
+
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label" style={{ fontSize: '0.78rem', color: 'var(--primary)' }}>📦 Concepto Facturado</span>
+                <select 
+                  className="form-input" 
+                  value={ticketFilterConcept} 
+                  onChange={(e) => setTicketFilterConcept(e.target.value)}
+                >
+                  <option value="all">Todos los conceptos</option>
+                  <option value="ENTREGA">📺 Entregas (TV / Paquetería)</option>
+                  <option value="PM_BAS">⚡ PM Básica (Puesta en Marcha)</option>
+                  <option value="PM_COMP">🛠️ PM Compleja (Puesta en Marcha)</option>
+                  <option value="CUELGUE">🧱 Cuelgue en Pared</option>
+                  <option value="RECOGIDA">♻️ Recogidas / Retiradas</option>
+                  <option value="ENTREGA_PV">📦 Paquetería PV (Pequeño Vol.)</option>
+                  <option value="ENTREGA_GV">🚛 Paquetería GV (Gran Vol.)</option>
+                  <option value="BSND">🔊 Barra de Sonido</option>
+                  <option value="MFRA">🖼️ Marco Frame</option>
+                  <option value="SPAR">🔩 Soporte de Pared</option>
+                  <option value="VTEC">📋 Visita Técnica</option>
+                  <option value="DORMITY">🛏️ Dormity (Colchones / Canapés)</option>
+                  <option value="CUSTOM">➕ Conceptos Personalizados / Escaleras</option>
+                </select>
+              </div>
+
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label" style={{ fontSize: '0.78rem', color: 'var(--primary)' }}>💶 Precio Mínimo (€)</span>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  min="0"
+                  className="form-input" 
+                  placeholder="Ej: 15.00" 
+                  value={ticketFilterPriceMin} 
+                  onChange={(e) => setTicketFilterPriceMin(e.target.value)} 
+                />
+              </div>
+
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label" style={{ fontSize: '0.78rem', color: 'var(--primary)' }}>💶 Precio Máximo (€)</span>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  min="0"
+                  className="form-input" 
+                  placeholder="Ej: 50.00" 
+                  value={ticketFilterPriceMax} 
+                  onChange={(e) => setTicketFilterPriceMax(e.target.value)} 
+                />
+              </div>
+
+              {(ticketFilterClient || ticketFilterConcept !== 'all' || ticketFilterPriceMin !== '' || ticketFilterPriceMax !== '' || ticketSearchQuery || ticketFilterPostcode) && (
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-start' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTicketFilterClient('');
+                      setTicketFilterConcept('all');
+                      setTicketFilterPriceMin('');
+                      setTicketFilterPriceMax('');
+                      setTicketSearchQuery('');
+                      setTicketFilterPostcode('');
+                    }}
+                    className="btn btn-secondary"
+                    style={{ height: '42px', margin: 0, padding: '0 14px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                    title="Restablecer todos los filtros"
+                  >
+                    ✕ Limpiar Filtros
+                  </button>
+                </div>
+              )}
             </div>
 
             {ticketFilterFurgo !== 'all' && ticketFilterDate && (
