@@ -20781,7 +20781,7 @@ function App() {
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end' }}>
-                            <button onClick={() => startEditing(t)} className="btn btn-secondary btn-small" title="Editar registro"><Edit size={14} /></button>
+                            <button onClick={() => startEditing(t)} className="btn btn-secondary btn-small" title="Editar este reparto" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', color: '#c7d2fe' }}><Edit size={14} /> <span>Editar</span></button>
                             <button onClick={() => handleDeleteTicket(t.id)} className="btn btn-danger btn-small" title="Eliminar registro"><Trash2 size={14} /></button>
                           </div>
                         </td>
