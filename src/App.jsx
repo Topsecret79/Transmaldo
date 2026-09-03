@@ -2447,21 +2447,11 @@ function App() {
             const parsedNotesObj = parseTicketNotes(t.notes);
             const markerBorderColor = parsedNotesObj.timeSlot === 'morning' ? '#fbbf24' : (parsedNotesObj.timeSlot === 'afternoon' ? '#2563eb' : '#ffffff');
             
-            // PATRÓN WRAPPER/INNER — solución definitiva al desplazamiento de marcadores:
-            // Mapbox GL JS aplica su transform de posicionamiento directamente sobre el
-            // elemento raíz que se le pasa. Si además modificamos ese mismo transform
-            // (o propiedades CSS que se componen con él, como `scale`) el marcador salta.
-            // Solución: el `wrapper` lo posiciona Mapbox (no lo tocamos nunca); el `inner`
-            // es el círculo visual al que aplicamos el efecto hover de forma segura.
-            const wrapper = document.createElement('div');
-            wrapper.style.cssText = 'width:26px;height:26px;cursor:pointer;position:absolute;display:block;';
+            // Fix Safari iOS: el patrón wrapper/inner causaba que los marcadores
+            // no se renderizaran en Safari iOS. Se simplifica a un único elemento.
             const el = document.createElement('div');
-            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);transition:transform 0.15s ease,box-shadow 0.15s ease;transform-origin:center center;';
+            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;';
             el.textContent = seqIndex + 1;
-            wrapper.appendChild(el);
-            // Hover sobre wrapper → escala el inner. Mapbox solo toca wrapper.style.transform.
-            wrapper.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; el.style.boxShadow = '0 4px 18px rgba(0,0,0,0.6)'; });
-            wrapper.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)';   el.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)'; });
             let optHtml = '';
             for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
             // Seguridad: escapar nombre/dirección antes de insertarlos en el HTML del
@@ -2505,8 +2495,8 @@ function App() {
             
             const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + badgeHtml + posBlock + '</div>';
             const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
-            const marker = new mapboxgl.Marker({ element: wrapper, anchor: 'top-left', offset: [-13, -13] }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
-            wrapper.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
+            const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
+            el.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
             mapMarkersRef.current.push(marker);
             } catch (markerErr) {
               console.error('Error dibujando el marcador de la parada', t?.id, markerErr);
