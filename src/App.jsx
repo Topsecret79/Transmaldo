@@ -2500,6 +2500,9 @@ function App() {
             mapMarkersRef.current.push(marker);
             } catch (markerErr) {
               console.error('Error dibujando el marcador de la parada', t?.id, markerErr);
+              // Debug temporal Safari iOS
+              const dbg = document.getElementById('map-debug-log');
+              if (dbg) { dbg.style.display = 'block'; dbg.textContent = 'Error marcador ' + (t?.id || '') + ': ' + (markerErr?.message || String(markerErr)); }
             }
           });
           if (driverTickets.length > 1) {
@@ -21122,6 +21125,7 @@ function App() {
 
             <div className="map-split-container">
               <div className="map-split-left" style={{ position: 'relative' }}>
+                <div id="map-debug-log" style={{ position: 'absolute', top: 0, left: 0, zIndex: 9999, background: 'rgba(255,0,0,0.8)', color: '#fff', padding: '4px 8px', fontSize: '12px', maxWidth: '100%', wordBreak: 'break-all', display: 'none' }}></div>
                 <div 
                   id="admin-map" 
                   className="map-element"
