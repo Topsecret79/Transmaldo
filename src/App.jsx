@@ -2438,6 +2438,8 @@ function App() {
             // propio bloque protegido: si una falla, se salta solo esa y el
             // resto del mapa se sigue dibujando con normalidad.
             try {
+            const dbg = document.getElementById('map-debug-log');
+            if (dbg) { dbg.style.display = 'block'; dbg.textContent = 'Marcador ' + (seqIndex+1) + '/' + driverTickets.length; }
             const latNum = parseFloat(t.lat), lngNum = parseFloat(t.lng);
             allBounds.push([lngNum, latNum]);
             const statusColor = getTicketColor(t);
