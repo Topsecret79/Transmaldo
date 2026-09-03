@@ -2570,9 +2570,7 @@ function App() {
         try { map.resize(); } catch(e){}
       };
       if (map.isStyleLoaded()) {
-        // Fix Safari iOS: isStyleLoaded() puede devolver true antes de que el
-        // canvas esté listo para recibir marcadores. Se añade un pequeño retraso.
-        setTimeout(onMapReady, 50);
+        onMapReady();
       } else {
         map.once('load', onMapReady);
         map.once('style.load', onMapReady);
