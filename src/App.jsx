@@ -2549,7 +2549,7 @@ function App() {
             dEl.textContent = '🚚';
             const dPopupHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.83rem;color:#fff;padding:4px;"><strong style="color:#a78bfa;">🚚 ' + furgoLabel + ' (En Vivo)</strong><div style="margin-top:4px;">Última señal: <strong>' + new Date(locTime).toLocaleTimeString() + '</strong></div><div style="margin-top:2px;font-size:0.73rem;color:#9ca3af;">GPS: ' + latNum.toFixed(5) + ', ' + lngNum.toFixed(5) + '</div></div>';
             const dPopup = new mapboxgl.Popup({ offset: 18, className: 'mapbox-custom-popup' }).setHTML(dPopupHtml);
-            const dMarker = new mapboxgl.Marker({ element: dEl, anchor: 'top-left', offset: [-17, -17] }).setLngLat([lngNum, latNum]).setPopup(dPopup).addTo(map);
+            const dMarker = new mapboxgl.Marker({ element: dEl }).setLngLat([lngNum, latNum]).setPopup(dPopup).addTo(map);
             mapDriverMarkersRef.current.push(dMarker);
           });
         };
@@ -2570,7 +2570,9 @@ function App() {
         try { map.resize(); } catch(e){}
       };
       if (map.isStyleLoaded()) {
-        onMapReady();
+        // Fix Safari iOS: isStyleLoaded() puede devolver true antes de que el
+        // canvas esté listo para recibir marcadores. Se añade un pequeño retraso.
+        setTimeout(onMapReady, 50);
       } else {
         map.once('load', onMapReady);
         map.once('style.load', onMapReady);
