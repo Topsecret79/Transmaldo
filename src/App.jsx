@@ -2076,6 +2076,15 @@ function App() {
           } else {
             setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
           }
+          // Fix: en Safari/iPhone, el canal Realtime tarda más en conectar que en
+          // Android. Cuando la app se monta con una sesión ya guardada, loadData()
+          // se ejecutaba antes de que Supabase estuviera listo y devolvía datos
+          // vacíos — sin que hubiera ningún mecanismo que volviera a intentarlo.
+          // Se fuerza una sincronización explícita tras un breve retraso para dar
+          // tiempo al canal a conectar.
+          setTimeout(() => {
+            reinitSupabase().then(() => loadData());
+          }, 1500);
         }
       } catch (e) {
         console.error("Error parsing saved user session on mount:", e);
