@@ -419,6 +419,7 @@ import {
   toggleUserSearchPermission,
   onDataSync,
   reinitSupabase,
+  syncFromCloud,
   getSupabaseClient,
   getKmPrice,
   saveKmPrice,
@@ -1308,6 +1309,7 @@ function App() {
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [reportFilterFurgo, setReportFilterFurgo] = useState('all');
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
+  const [isSyncingMap, setIsSyncingMap] = useState(false);
   const [ticketFilterPostcode, setTicketFilterPostcode] = useState('');
   const [ticketFilterClient, setTicketFilterClient] = useState('');
   const [ticketFilterConcept, setTicketFilterConcept] = useState('all');
@@ -2115,13 +2117,27 @@ function App() {
       loadDataRef.current();
     });
 
-    const handleRefresh = () => {
-      reinitSupabase();
+    const handleRefresh = async () => {
+      try {
+        await syncFromCloud(true);
+        loadDataRef.current();
+      } catch (e) {
+        console.warn("Background cloud sync error:", e);
+      }
+      reinitSupabase(true);
+      if (mapInstanceRef.current) {
+        try { mapInstanceRef.current.resize(); } catch (e) {}
+      }
     };
 
-    const handleVisibility = () => {
+    const handleVisibility = async () => {
       if (document.visibilityState === 'visible') {
-        handleRefresh();
+        // Fix (iOS Safari / iPhone): cuando el iPhone se bloquea o cambia de app,
+        // WebKit congela el WebSocket y detiene timers. Al desbloquear, el estado en
+        // memoria cree que sigue conectado y se salta la sincronización. Forzamos la
+        // descarga directa de tickets desde Supabase (syncFromCloud) para garantizar
+        // que aparezcan las paradas del día y forzamos resize del mapa.
+        await handleRefresh();
       }
     };
 
@@ -2340,7 +2356,8 @@ function App() {
       let map = mapInstanceRef.current;
       if (map) {
         const container = map.getContainer();
-        if (!container || !document.body.contains(container)) {
+        const canvas = map.getCanvas();
+        if (!container || !document.body.contains(container) || !canvas) {
           try { map.remove(); } catch(e){}
           map = null;
           mapInstanceRef.current = null;
@@ -2352,6 +2369,17 @@ function App() {
         map.addControl(new mapboxgl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
         map.on('rotate', () => { setMapRotationState(Math.round(map.getBearing())); });
         map.on('click', (e) => { if (!e.originalEvent.target.closest('.mapboxgl-marker')) setSelectedMapTicket(null); });
+        
+        // Fix (iOS Safari): Manejar pérdida de contexto WebGL al bloquear pantalla o cambiar de app
+        const canvas = map.getCanvas();
+        if (canvas) {
+          canvas.addEventListener('webglcontextlost', (e) => {
+            console.warn("WebGL context lost on iOS Safari, resetting map instance");
+            e.preventDefault();
+            try { map.remove(); } catch(err){}
+            mapInstanceRef.current = null;
+          });
+        }
         mapInstanceRef.current = map;
       }
       const renderMapContent = () => {
@@ -2535,8 +2563,16 @@ function App() {
         }
         map.resize();
       };
-      if (map.isStyleLoaded()) { renderMapContent(); }
-      else { map.once('style.load', renderMapContent); }
+      const onMapReady = () => {
+        renderMapContent();
+        try { map.resize(); } catch(e){}
+      };
+      if (map.isStyleLoaded()) {
+        onMapReady();
+      } else {
+        map.once('load', onMapReady);
+        map.once('style.load', onMapReady);
+      }
     }, 100);
     return () => {
       clearTimeout(timer);
@@ -10443,9 +10479,34 @@ function App() {
 
         {activeTab === 'driver_map' && (
           <div className="glass-panel map-tab-panel">
-            <h3 className="map-tab-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', color: 'var(--primary)' }}>
-              🗺️ Mapa de Mi Ruta ({targetDate})
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+              <h3 className="map-tab-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: 'var(--primary)' }}>
+                🗺️ Mapa de Mi Ruta ({targetDate})
+              </h3>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsSyncingMap(true);
+                  try {
+                    await syncFromCloud(true);
+                    loadData();
+                    if (mapInstanceRef.current) {
+                      try { mapInstanceRef.current.resize(); } catch(e){}
+                    }
+                    triggerAlert('Ruta actualizada desde el servidor');
+                  } catch (e) {
+                    triggerAlert('Error al sincronizar ruta', 'error');
+                  } finally {
+                    setIsSyncingMap(false);
+                  }
+                }}
+                className="btn btn-secondary btn-small"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', padding: '6px 14px', margin: 0, height: '36px' }}
+                disabled={isSyncingMap}
+              >
+                <RefreshCw size={14} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Actualizando...' : 'Actualizar Ruta'}
+              </button>
+            </div>
             <div className="map-split-container">
               <div className="map-split-left" style={{ position: 'relative' }}>
                 <div 
@@ -12412,8 +12473,31 @@ function App() {
 
     if (sortedDayTickets.length === 0) {
       return (
-        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-          No hay paradas planificadas para este día.
+        <div style={{ padding: '25px', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+          <span>No hay paradas planificadas para este día ({targetDate}).</span>
+          <button
+            type="button"
+            onClick={async () => {
+              setIsSyncingMap(true);
+              try {
+                await syncFromCloud(true);
+                loadData();
+                if (mapInstanceRef.current) {
+                  try { mapInstanceRef.current.resize(); } catch(e){}
+                }
+                triggerAlert('Ruta sincronizada con el servidor');
+              } catch(e) {
+                triggerAlert('Error al sincronizar', 'error');
+              } finally {
+                setIsSyncingMap(false);
+              }
+            }}
+            className="btn btn-secondary btn-small"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 14px' }}
+            disabled={isSyncingMap}
+          >
+            <RefreshCw size={13} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Sincronizando...' : 'Comprobar si hay paradas en el servidor'}
+          </button>
         </div>
       );
     }
@@ -20964,11 +21048,26 @@ function App() {
               <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
                 <button 
                   type="button" 
-                  onClick={() => { loadData(); triggerAlert('Ubicaciones y entregas actualizadas'); }} 
+                  onClick={async () => {
+                    setIsSyncingMap(true);
+                    try {
+                      await syncFromCloud(true);
+                      loadData();
+                      if (mapInstanceRef.current) {
+                        try { mapInstanceRef.current.resize(); } catch(e){}
+                      }
+                      triggerAlert('Ubicaciones y entregas actualizadas desde el servidor');
+                    } catch (e) {
+                      triggerAlert('Error al sincronizar con el servidor', 'error');
+                    } finally {
+                      setIsSyncingMap(false);
+                    }
+                  }} 
                   className="btn btn-secondary" 
                   style={{ height: '45px', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  disabled={isSyncingMap}
                 >
-                  <RefreshCw size={16} /> Actualizar Mapa
+                  <RefreshCw size={16} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Actualizando...' : 'Actualizar Mapa'}
                 </button>
               </div>
             </div>
