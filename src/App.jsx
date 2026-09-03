@@ -2438,7 +2438,6 @@ function App() {
             // propio bloque protegido: si una falla, se salta solo esa y el
             // resto del mapa se sigue dibujando con normalidad.
             try {
-            if (dbg) { dbg.style.display = 'block'; dbg.textContent = 'Marcador ' + (seqIndex+1) + '/' + driverTickets.length; }
             const latNum = parseFloat(t.lat), lngNum = parseFloat(t.lng);
             allBounds.push([lngNum, latNum]);
             const statusColor = getTicketColor(t);
@@ -2501,8 +2500,6 @@ function App() {
             mapMarkersRef.current.push(marker);
             } catch (markerErr) {
               console.error('Error dibujando el marcador de la parada', t?.id, markerErr);
-              // Debug temporal Safari iOS
-              if (dbg) { dbg.style.display = 'block'; dbg.textContent = 'Error marcador ' + (t?.id || '') + ': ' + (markerErr?.message || String(markerErr)); }
             }
           });
           if (driverTickets.length > 1) {
