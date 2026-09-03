@@ -3089,6 +3089,10 @@ function App() {
       setPasswordInput('');
       await reinitSupabase(); // Forzar sincronización inmediata de sus datos tras iniciar sesión
       loadData();
+      // Fix iPhone/Safari: a veces la primera sincronización llega vacía porque
+      // el canal Realtime aún no está listo. Se hacen reintentos escalonados.
+      setTimeout(() => { reinitSupabase().then(() => loadData()); }, 2000);
+      setTimeout(() => { reinitSupabase().then(() => loadData()); }, 5000);
       triggerAlert(`¡Bienvenido, ${foundUser.label}!`);
     } else {
       setLoginError('Usuario o contraseña incorrectos');
