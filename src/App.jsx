@@ -420,6 +420,7 @@ import {
   onDataSync,
   reinitSupabase,
   syncFromCloud,
+  safeSaveTickets,
   getSupabaseClient,
   getKmPrice,
   saveKmPrice,
@@ -5866,7 +5867,7 @@ function App() {
       return updatedTicket;
     });
     
-    localStorage.setItem('delivery_tickets', JSON.stringify(updatedTickets));
+    safeSaveTickets(updatedTickets);
     setTickets(updatedTickets);
 
     // Fix: usaba la variable global `supabase`, que nunca se importa ni se declara
@@ -6851,7 +6852,7 @@ function App() {
         parsed.completedAt,
         parsed.source
       );
-      localStorage.setItem('delivery_tickets', JSON.stringify(localTickets));
+      safeSaveTickets(localTickets);
     }
 
     const performUpdate = async (latitude = null, longitude = null) => {

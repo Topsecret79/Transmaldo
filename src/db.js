@@ -777,7 +777,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       });
 
-      localStorage.setItem('delivery_tickets', JSON.stringify(mergedTickets));
+      safeSaveTickets(mergedTickets);
     }
     }
 
@@ -1436,7 +1436,7 @@ export function initDB() {
       console.error("Error migrating tariffs:", e);
     }
   if (!localStorage.getItem('delivery_tickets') || !localStorage.getItem('delivery_db_cleared_once')) {
-    localStorage.setItem('delivery_tickets', JSON.stringify([]));
+    safeSaveTickets([]);
   }
   if (!localStorage.getItem('delivery_shifts') || !localStorage.getItem('delivery_db_cleared_once')) {
     localStorage.setItem('delivery_shifts', JSON.stringify([]));
@@ -1892,6 +1892,88 @@ export async function saveTariffs(tariffs) {
   }
 }
 
+
+export function safeSaveTickets(tickets) {
+  if (!Array.isArray(tickets)) return false;
+  try {
+    safeSaveTickets(tickets);
+    return true;
+  } catch (err) {
+    console.warn("QuotaExceededError in localStorage while saving delivery_tickets. Trimming local storage cache...", err);
+    const cutoff45 = new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    const trimmed = tickets.filter(t => t && (t._syncStatus === 'pending' || (t.date && t.date >= cutoff45)));
+    try {
+      localStorage.setItem('delivery_tickets', JSON.stringify(trimmed));
+      console.log(`Trimmed local tickets cache from ${tickets.length} to ${trimmed.length} items`);
+      return true;
+    } catch (err2) {
+      console.warn("Second attempt failed, emergency trimming to last 30 days...", err2);
+      const cutoff30 = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      const emergencyTrim = tickets.filter(t => t && (t._syncStatus === 'pending' || (t.date && t.date >= cutoff30)));
+      try {
+        localStorage.setItem('delivery_tickets', JSON.stringify(emergencyTrim));
+        return true;
+      } catch (err3) {
+        console.error("Emergency tickets save failed:", err3);
+        return false;
+      }
+    }
+  }
+}
+
+export async function fetchHistoricalTickets(startDate, endDate) {
+  if (!supabase) return [];
+  try {
+    let results = [];
+    const pageSize = 1000;
+    let from = 0;
+    while (true) {
+      const { data: page, error } = await supabase
+        .from('delivery_tickets')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) {
+        console.error("Error fetching historical tickets:", error);
+        break;
+      }
+      if (!page || page.length === 0) break;
+      results = results.concat(page);
+      if (page.length < pageSize) break;
+      from += pageSize;
+    }
+    return results.map(t => ({
+      id: t.id,
+      date: t.date,
+      furgoId: t.furgo_id,
+      furgoLabel: t.furgo_label,
+      routeName: t.route_name,
+      customerName: t.customer_name,
+      phone: t.phone,
+      address: t.address,
+      postcode: t.postcode,
+      notes: t.notes,
+      codAmount: t.cod_amount,
+      tasks: t.tasks,
+      totalPrice: parseFloat(t.total_price) || 0,
+      status: t.status,
+      failureReason: t.failure_reason,
+      lat: t.lat,
+      lng: t.lng,
+      completedLat: t.completed_lat,
+      completedLng: t.completed_lng,
+      routeOrder: t.route_order,
+      createdAt: t.created_at,
+      createdBy: t.created_by || 'admin'
+    }));
+  } catch (e) {
+    console.error("Error in fetchHistoricalTickets:", e);
+    return [];
+  }
+}
+
 export function getTickets() {
   initDB();
   // Fix: un valor corrupto en localStorage (o ausente, donde JSON.parse(null)
@@ -1975,7 +2057,7 @@ export async function saveTickets(tickets) {
             }
             return t;
           });
-          localStorage.setItem('delivery_tickets', JSON.stringify(updatedLocal));
+          safeSaveTickets(updatedLocal);
         } catch (e) {
           console.error("Error clearing local sync status:", e);
         }
@@ -4176,7 +4258,7 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
             }
             return t;
           });
-          localStorage.setItem('delivery_tickets', JSON.stringify(clearedTickets));
+          safeSaveTickets(clearedTickets);
 
           if (shiftToUpsert) {
             const currentShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
