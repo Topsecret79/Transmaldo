@@ -1896,7 +1896,7 @@ export async function saveTariffs(tariffs) {
 export function safeSaveTickets(tickets) {
   if (!Array.isArray(tickets)) return false;
   try {
-    safeSaveTickets(tickets);
+    localStorage.setItem('delivery_tickets', JSON.stringify(tickets));
     return true;
   } catch (err) {
     console.warn("QuotaExceededError in localStorage while saving delivery_tickets. Trimming local storage cache...", err);

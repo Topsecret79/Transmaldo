@@ -2642,20 +2642,19 @@ function App() {
       };
 
       if (u && u.role) {
-        if (u.role === 'admin') {
-          const myUserIds = rawUsers.filter(usr => usr && (usr.createdBy === u.id || usr.id === u.id)).map(usr => usr.id);
-          finalTickets = rawTickets.filter(t => t && (t.createdBy === u.id || myUserIds.includes(t.furgoId)));
-          finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.id || usr.id === u.id));
-          const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === u.id || !t.createdBy));
-          finalTariffs = processAndDeduplicateTariffs(activeTariffsRaw, u.id);
-          finalShifts = rawShifts.filter(s => s && (s.createdBy === u.id || s.createdBy === 'admin' || myUserIds.includes(s.furgoId)));
+        if (u.role === 'admin' || u.role === 'superadmin') {
+          finalTickets = rawTickets;
+          finalUsers = rawUsers;
+          const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === u.id || t.createdBy === 'admin' || !t.createdBy));
+          finalTariffs = processAndDeduplicateTariffs(activeTariffsRaw, u.id || 'admin');
+          finalShifts = rawShifts;
         } else if (u.role === 'repartidor') {
           finalTickets = rawTickets.filter(t => t && t.furgoId === u.id);
-          finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.createdBy || usr.id === u.id || usr.id === u.createdBy));
+          finalUsers = rawUsers.filter(usr => usr && (usr.createdBy === u.createdBy || usr.id === u.id || usr.id === u.createdBy || usr.role === 'admin' || usr.role === 'superadmin'));
           finalShifts = rawShifts.filter(s => s && s.furgoId === u.id);
           
           const adminId = u.createdBy || 'admin';
-          const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === adminId || !t.createdBy));
+          const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === adminId || t.createdBy === 'admin' || !t.createdBy));
           finalTariffs = processAndDeduplicateTariffs(activeTariffsRaw, adminId);
         }
       }
