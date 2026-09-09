@@ -2132,14 +2132,27 @@ function App() {
       loadDataRef.current();
     });
 
-    const handleRefresh = async () => {
+    let lastManualRefreshAt = 0;
+    const handleRefresh = async (force = false) => {
+      const now = Date.now();
+      // Cooldown de 45 segundos para evitar descargar la base de datos repetidamente
+      // al cambiar de pestañas o desbloquear el móvil con frecuencia
+      if (!force && (now - lastManualRefreshAt < 45000)) {
+        if (mapInstanceRef.current) {
+          try { mapInstanceRef.current.resize(); } catch (e) {}
+        }
+        return;
+      }
+      lastManualRefreshAt = now;
       try {
         await syncFromCloud(true);
         loadDataRef.current();
       } catch (e) {
         console.warn("Background cloud sync error:", e);
       }
-      reinitSupabase(true);
+      // Se pasa force=false para respetar el enfriamiento del websocket y no
+      // destruir/recrear el canal descargando la BD dos veces en cada refresco
+      reinitSupabase(false);
       if (mapInstanceRef.current) {
         try { mapInstanceRef.current.resize(); } catch (e) {}
       }
@@ -2147,24 +2160,25 @@ function App() {
 
     const handleVisibility = async () => {
       if (document.visibilityState === 'visible') {
-        // Fix (iOS Safari / iPhone): cuando el iPhone se bloquea o cambia de app,
-        // WebKit congela el WebSocket y detiene timers. Al desbloquear, el estado en
-        // memoria cree que sigue conectado y se salta la sincronización. Forzamos la
-        // descarga directa de tickets desde Supabase (syncFromCloud) para garantizar
-        // que aparezcan las paradas del día y forzamos resize del mapa.
-        await handleRefresh();
+        // Al volver a la app o desbloquear el móvil se comprueban cambios si han pasado >45s
+        await handleRefresh(false);
       }
     };
 
     window.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleRefresh);
+    window.addEventListener('focus', handleVisibility);
 
-    const interval = setInterval(handleRefresh, 15000);
+    // Seguridad de fondo: comprobación ligera cada 5 minutos (NO cada 15 segundos)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        handleRefresh(false);
+      }
+    }, 5 * 60 * 1000);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleRefresh);
+      window.removeEventListener('focus', handleVisibility);
     };
   }, []);
 

@@ -662,11 +662,11 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     {
       const pageSize = 1000;
       let from = 0;
-      // Fix: Acotar la sincronización de fondo por defecto a la ventana operativa
-      // activa (últimos 60 días). Antes traía de golpe los 3.400+ repartos desde junio
-      // en CADA sincronización (~2,87 MB por petición), lo que multiplicaba el consumo
-      // de ancho de banda (Egress). Con este filtro, la descarga baja a ~0.9 MB por petición.
-      const syncCutoffDate = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      // Fix Egress crítico: Acotar la sincronización rutinaria de fondo a los últimos
+      // 15 días (685 repartos en una sola página de petición en vez de 2.500+ en 3 páginas).
+      // Los datos históricos anteriores a 15 días se conservan en localStorage y se consultan
+      // bajo demanda con fetchHistoricalTickets si se abre un periodo anterior en administración.
+      const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
       while (true) {
         const { data: page, error: pageErr } = await supabase
           .from('delivery_tickets')
