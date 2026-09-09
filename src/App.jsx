@@ -18401,32 +18401,40 @@ function App() {
       return found ? found.name : id;
     };
 
-    // Desglose de artículos del catálogo PV/GV (textos libres de choferes)
+    // Desglose de artículos del catálogo PV/GV separados por tipo
     // Las descripciones se guardan dentro de task.name con formato: "Entrega PV (Pequeño Volumen) (descripcion)"
     const pvgvCatalogItems = (() => {
       try { return JSON.parse(localStorage.getItem('pvgv_catalog') || '[]'); } catch { return []; }
     })();
-    const pvgvCatalogCounts = {};
-    const pvgvPVIds = ['ENTREGA_PV', 'RECOGIDA_PV', 'ENTREGA_GV', 'RECOGIDA_GV'];
+    const pvCatalogCounts = {};  // Solo PV
+    const gvCatalogCounts = {};  // Solo GV
+    const pvIds = ['ENTREGA_PV', 'RECOGIDA_PV'];
+    const gvIds = ['ENTREGA_GV', 'RECOGIDA_GV'];
+
     statsTickets.forEach(t => {
       if (!t.tasks) return;
       t.tasks.forEach(task => {
-        if (!pvgvPVIds.includes(task.tariffId || '')) return;
+        const tariffId = task.tariffId || '';
+        const isPV = pvIds.includes(tariffId);
+        const isGV = gvIds.includes(tariffId);
+        if (!isPV && !isGV) return;
+
+        const counts = isPV ? pvCatalogCounts : gvCatalogCounts;
         const taskName = (task.name || '').toLowerCase();
+
+        // Buscar por artículo del catálogo
         pvgvCatalogItems.forEach(item => {
           if (taskName.includes(item.toLowerCase())) {
-            pvgvCatalogCounts[item] = (pvgvCatalogCounts[item] || 0) + (task.quantity || 1);
+            counts[item] = (counts[item] || 0) + (task.quantity || 1);
           }
         });
-        // También extraer descripción del formato "Tarifa (descripcion)"
+
+        // Extraer descripción libre del formato "Tarifa (descripcion)"
         const match = (task.name || '').match(/\(([^)]+)\)\s*$/);
         if (match) {
           const desc = match[1].trim();
           if (desc && desc !== 'Mercancía' && desc !== 'Pequeño Volumen' && desc !== 'Gran Volumen') {
-            if (!pvgvCatalogCounts[desc]) {
-              pvgvCatalogCounts[desc] = 0;
-            }
-            pvgvCatalogCounts[desc] += (task.quantity || 1);
+            counts[desc] = (counts[desc] || 0) + (task.quantity || 1);
           }
         }
       });
@@ -18501,29 +18509,24 @@ function App() {
               {totalPV === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
             </tbody>
           </table>
-          {/* Artículos del catálogo PV/GV */}
-          {pvgvCatalogItems.length > 0 && (
-            <div style={{ marginTop: '16px' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📦 Artículos del Catálogo PV/GV mencionados en notas</div>
-              <table style={tableStyle}>
-                <thead><tr><th style={{ ...thStyle, background: '#3b82f6' }}>Artículo del Catálogo</th><th style={{ ...thStyle, background: '#3b82f6', textAlign: 'right' }}>Apariciones</th></tr></thead>
-                <tbody>
-                  {pvgvCatalogItems.map((item, i) => {
-                    const count = pvgvCatalogCounts[item] || 0;
-                    return count > 0 ? (
-                      <tr key={i}>
-                        <td style={tdStyle}>{item}</td>
-                        <td style={tdNumStyle}>{count}</td>
-                      </tr>
-                    ) : null;
-                  })}
-                  {Object.keys(pvgvCatalogCounts).length === 0 && (
-                    <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Ningún artículo del catálogo encontrado en las notas del periodo</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Artículos del catálogo PV — desglose por descripción de artículo */}
+          <div style={{ marginTop: '16px' }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📦 Artículos Pequeño Volumen por Descripción</div>
+            <table style={tableStyle}>
+              <thead><tr><th style={{ ...thStyle, background: '#3b82f6' }}>Artículo</th><th style={{ ...thStyle, background: '#3b82f6', textAlign: 'right' }}>Unidades</th></tr></thead>
+              <tbody>
+                {Object.entries(pvCatalogCounts).sort((a, b) => b[1] - a[1]).map(([item, count], i) => (
+                  <tr key={i}>
+                    <td style={tdStyle}>{item}</td>
+                    <td style={tdNumStyle}>{count}</td>
+                  </tr>
+                ))}
+                {Object.keys(pvCatalogCounts).length === 0 && (
+                  <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin artículos PV con descripción en este periodo</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* SECCION B: GRAN VOLUMEN */}
@@ -18546,6 +18549,24 @@ function App() {
               {totalGV === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
             </tbody>
           </table>
+          {/* Artículos del catálogo GV — desglose por descripción de artículo */}
+          <div style={{ marginTop: '16px' }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🚚 Artículos Gran Volumen por Descripción</div>
+            <table style={tableStyle}>
+              <thead><tr><th style={{ ...thStyle, background: '#f59e0b' }}>Artículo</th><th style={{ ...thStyle, background: '#f59e0b', textAlign: 'right' }}>Unidades</th></tr></thead>
+              <tbody>
+                {Object.entries(gvCatalogCounts).sort((a, b) => b[1] - a[1]).map(([item, count], i) => (
+                  <tr key={i}>
+                    <td style={tdStyle}>{item}</td>
+                    <td style={tdNumStyle}>{count}</td>
+                  </tr>
+                ))}
+                {Object.keys(gvCatalogCounts).length === 0 && (
+                  <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Sin artículos GV con descripción en este periodo</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* SECCION C: PUESTAS EN MARCHA */}
