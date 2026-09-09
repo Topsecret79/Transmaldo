@@ -1994,7 +1994,7 @@ export function getTickets() {
 }
 
 export async function saveTickets(tickets) {
-  localStorage.setItem('delivery_tickets', JSON.stringify(tickets));
+  safeSaveTickets(tickets);
   // Fix: antes esta función nunca informaba a quien la llamaba si el guardado en la
   // nube realmente funcionó o falló (siempre "terminaba bien" aunque solo hubiera
   // guardado en local) — devuelve ahora {success, error} para que el que llama pueda

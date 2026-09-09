@@ -1650,6 +1650,7 @@ function App() {
   const watchIdRef = useRef(null);
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
+  const [mapRenderKey, setMapRenderKey] = useState(0); // Trigger para re-montar mapa tras pérdida de contexto WebGL o bloqueo de pantalla
   const mapInstanceRef = useRef(null);
   const mapMarkersRef = useRef([]);          // Mapbox GL delivery stop markers
   const mapDriverMarkersRef = useRef([]);    // Mapbox GL live GPS driver markers
@@ -2160,7 +2161,18 @@ function App() {
 
     const handleVisibility = async () => {
       if (document.visibilityState === 'visible') {
-        // Al volver a la app o desbloquear el móvil se comprueban cambios si han pasado >45s
+        // Fix iOS Safari / Android: al desbloquear la pantalla, comprobar si el canvas
+        // del mapa se perdió o se congeló. Si es así, forzamos re-montado del mapa de inmediato.
+        const isMapActive = activeTab === 'map' || activeTab === 'driver_map';
+        if (isMapActive) {
+          const map = mapInstanceRef.current;
+          if (!map || !map.getCanvas() || !document.body.contains(map.getContainer())) {
+            console.log('Restaurando mapa tras desbloqueo de pantalla...');
+            setMapRenderKey(prev => prev + 1);
+          } else {
+            try { map.resize(); } catch (e) {}
+          }
+        }
         await handleRefresh(false);
       }
     };
@@ -2403,10 +2415,13 @@ function App() {
         const canvas = map.getCanvas();
         if (canvas) {
           canvas.addEventListener('webglcontextlost', (e) => {
-            console.warn("WebGL context lost on iOS Safari, resetting map instance");
+            console.warn("WebGL context lost on iOS Safari, programando recuperación automática...");
             e.preventDefault();
             try { map.remove(); } catch(err){}
             mapInstanceRef.current = null;
+            setTimeout(() => {
+              setMapRenderKey(prev => prev + 1);
+            }, 300);
           });
         }
         mapInstanceRef.current = map;
@@ -2586,11 +2601,18 @@ function App() {
         renderMapContent();
         try { map.resize(); } catch(e){}
       };
+      // Renderizado inmediato de marcadores DOM: los marcadores HTML de Mapbox
+      // NO dependen de la carga de vector tiles. Dibujarlos de inmediato evita que
+      // el mapa quede en blanco si el evento 'load' o 'style.load' ya ocurrió.
+      renderMapContent();
+      try { map.resize(); } catch(e){}
+
       if (map.isStyleLoaded()) {
         onMapReady();
       } else {
         map.once('load', onMapReady);
         map.once('style.load', onMapReady);
+        map.once('idle', onMapReady);
       }
     }, 100);
     return () => {
@@ -2600,7 +2622,7 @@ function App() {
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
 
 
 
