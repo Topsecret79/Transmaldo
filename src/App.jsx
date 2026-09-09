@@ -18402,15 +18402,32 @@ function App() {
     };
 
     // Desglose de artículos del catálogo PV/GV (textos libres de choferes)
+    // Las descripciones se guardan dentro de task.name con formato: "Entrega PV (Pequeño Volumen) (descripcion)"
     const pvgvCatalogItems = (() => {
       try { return JSON.parse(localStorage.getItem('pvgv_catalog') || '[]'); } catch { return []; }
     })();
     const pvgvCatalogCounts = {};
+    const pvgvPVIds = ['ENTREGA_PV', 'RECOGIDA_PV', 'ENTREGA_GV', 'RECOGIDA_GV'];
     statsTickets.forEach(t => {
-      const notes = t.notes || '';
-      pvgvCatalogItems.forEach(item => {
-        if (notes.toLowerCase().includes(item.toLowerCase())) {
-          pvgvCatalogCounts[item] = (pvgvCatalogCounts[item] || 0) + 1;
+      if (!t.tasks) return;
+      t.tasks.forEach(task => {
+        if (!pvgvPVIds.includes(task.tariffId || '')) return;
+        const taskName = (task.name || '').toLowerCase();
+        pvgvCatalogItems.forEach(item => {
+          if (taskName.includes(item.toLowerCase())) {
+            pvgvCatalogCounts[item] = (pvgvCatalogCounts[item] || 0) + (task.quantity || 1);
+          }
+        });
+        // También extraer descripción del formato "Tarifa (descripcion)"
+        const match = (task.name || '').match(/\(([^)]+)\)\s*$/);
+        if (match) {
+          const desc = match[1].trim();
+          if (desc && desc !== 'Mercancía' && desc !== 'Pequeño Volumen' && desc !== 'Gran Volumen') {
+            if (!pvgvCatalogCounts[desc]) {
+              pvgvCatalogCounts[desc] = 0;
+            }
+            pvgvCatalogCounts[desc] += (task.quantity || 1);
+          }
         }
       });
     });
