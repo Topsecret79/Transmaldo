@@ -1333,6 +1333,11 @@ function App() {
   const [adminStartDate, setAdminStartDate] = useState(getFirstDayOfMonth());
   const [adminEndDate, setAdminEndDate] = useState(getTodayDate());
   const [billingFilterFurgo, setBillingFilterFurgo] = useState('all');
+  // Stats module filters
+  const [statsStartDate, setStatsStartDate] = useState(getFirstDayOfMonth());
+  const [statsEndDate, setStatsEndDate] = useState(getTodayDate());
+  const [statsFilterFurgo, setStatsFilterFurgo] = useState('all');
+  const [statsFilterStatus, setStatsFilterStatus] = useState('all');
 
   // Estado que controla si estamos editando
   const [editingTicketId, setEditingTicketId] = useState(null);
@@ -18239,6 +18244,352 @@ function App() {
     );
   };
 
+
+  // --- MÓDULO DE ESTADÍSTICAS ---
+  const renderEstadisticas = () => {
+    const allUsers = users.filter(u => u && u.role === 'repartidor');
+
+    // Filtrar tickets según los filtros del módulo
+    const statsTickets = tickets.filter(t => {
+      if (!t) return false;
+      if (statsStartDate && t.date < statsStartDate) return false;
+      if (statsEndDate && t.date > statsEndDate) return false;
+      if (statsFilterFurgo !== 'all' && t.furgoId !== statsFilterFurgo) return false;
+      if (statsFilterStatus !== 'all' && t.status !== statsFilterStatus) return false;
+      return true;
+    });
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+    const countTasks = (tariffIdFilter) => {
+      let count = 0;
+      statsTickets.forEach(t => {
+        if (!t.tasks) return;
+        t.tasks.forEach(task => {
+          if (tariffIdFilter(task.tariffId || '')) count += (task.quantity || 1);
+        });
+      });
+      return count;
+    };
+
+    const countTasksByInches = (tariffPrefix, inchSuffix) => {
+      let count = 0;
+      statsTickets.forEach(t => {
+        if (!t.tasks) return;
+        t.tasks.forEach(task => {
+          const tid = task.tariffId || '';
+          if (tid === tariffPrefix + inchSuffix) count += (task.quantity || 1);
+        });
+      });
+      return count;
+    };
+
+    const totalTickets = statsTickets.length;
+    const exitosos = statsTickets.filter(t => t.status === 'success').length;
+    const fallidos = statsTickets.filter(t => t.status === 'failed').length;
+    const pendientes = statsTickets.filter(t => !t.status || t.status === 'pending' || t.status === 'transit').length;
+    const efectividad = totalTickets > 0 ? Math.round((exitosos / totalTickets) * 100) : 0;
+
+    const totalCOD = statsTickets.reduce((s, t) => s + (parseFloat(t.codAmount) || 0), 0);
+    const totalFacturado = statsTickets.reduce((s, t) => s + (parseFloat(t.totalPrice) || 0), 0);
+
+    // Pequeño Volumen
+    const pvEntrega = countTasks(id => id === 'ENTREGA_PV');
+    const pvRecogida = countTasks(id => id === 'RECOGIDA_PV');
+    const pvTV49Ent = countTasks(id => id === 'TV_ENT_49');
+    const pvTV49Comb = countTasks(id => id === 'TV_COMB_49');
+    const pvBsnd = countTasks(id => id === 'BSND');
+    const pvSpar = countTasks(id => id === 'SPAR');
+    const pvSsue = countTasks(id => id === 'SSUE');
+    const pvOrde = countTasks(id => id === 'ORDE');
+    const pvPant = countTasks(id => id === 'PANT');
+    const pvMcad = countTasks(id => id === 'MCAD');
+    const pvAlta = countTasks(id => id === 'ALTA');
+    const pvTdic = countTasks(id => id === 'TDIC');
+    const pvProy = countTasks(id => id === 'PROY');
+
+    // Gran Volumen
+    const gvEntrega = countTasks(id => id === 'ENTREGA_GV');
+    const gvRecogida = countTasks(id => id === 'RECOGIDA_GV');
+    const gvTV74Ent = countTasks(id => id === 'TV_ENT_74');
+    const gvTV74Comb = countTasks(id => id === 'TV_COMB_74');
+    const gvTV115Ent = countTasks(id => id === 'TV_ENT_115');
+    const gvTV115Comb = countTasks(id => id === 'TV_COMB_115');
+    const gvMfra = countTasks(id => id === 'MFRA');
+    const tvViejaUrb = countTasks(id => id === 'TV_VIEJA_URB');
+    const tvViejaNoUrb = countTasks(id => id === 'TV_VIEJA_NO_URB');
+
+    // Puestas en Marcha
+    const pmBas49 = countTasks(id => id === 'PM_BAS_49');
+    const pmBas74 = countTasks(id => id === 'PM_BAS_74');
+    const pmBas115 = countTasks(id => id === 'PM_BAS_115');
+    const pmComp49 = countTasks(id => id === 'PM_COMP_49');
+    const pmComp74 = countTasks(id => id === 'PM_COMP_74');
+    const pmComp115 = countTasks(id => id === 'PM_COMP_115');
+    const pmBsnd = countTasks(id => id === 'PM_BSND');
+    const vtec = countTasks(id => id === 'VTEC');
+    const totalPM = pmBas49 + pmBas74 + pmBas115 + pmComp49 + pmComp74 + pmComp115 + pmBsnd;
+
+    // Cuelgues
+    const cueg49 = countTasks(id => id === 'CUELGUE_49');
+    const cueg74 = countTasks(id => id === 'CUELGUE_74');
+    const cueg115 = countTasks(id => id === 'CUELGUE_115');
+    const cuegBsnd = countTasks(id => id === 'CUELGUE_BSND');
+    const totalCuelgues = cueg49 + cueg74 + cueg115 + cuegBsnd;
+
+    // Especiales
+    const urgente100 = countTasks(id => id === 'URGENTE_100');
+    const urgente120 = countTasks(id => id === 'URGENTE_120');
+    const kmRuta = countTasks(id => id === 'KM_RUTA_LARGA');
+
+    // Dormity
+    const dormServDia = countTasks(id => id.startsWith('DORMITY_SERVDIA_'));
+    const dormExpress = countTasks(id => id.startsWith('DORMITY_EXPRESS_'));
+    const dormMadrid = countTasks(id => id === 'DORMITY_MADRID');
+    const dormToledo = countTasks(id => id === 'DORMITY_TOLEDO');
+    const dormTotal = dormServDia + dormExpress + dormMadrid + dormToledo;
+
+    const totalPV = pvEntrega + pvRecogida + pvTV49Ent + pvTV49Comb + pvBsnd + pvSpar + pvSsue + pvOrde + pvPant + pvMcad + pvAlta + pvTdic + pvProy;
+    const totalGV = gvEntrega + gvRecogida + gvTV74Ent + gvTV74Comb + gvTV115Ent + gvTV115Comb + gvMfra + dormTotal;
+    const totalRetiradas = tvViejaUrb + tvViejaNoUrb;
+
+    // Desglose por furgoneta
+    const furgoStats = {};
+    allUsers.forEach(u => {
+      furgoStats[u.id] = {
+        label: u.label,
+        total: 0, exito: 0, pv: 0, gv: 0, pm: 0, cuelgues: 0, cod: 0, facturado: 0
+      };
+    });
+    statsTickets.forEach(t => {
+      if (!furgoStats[t.furgoId]) {
+        furgoStats[t.furgoId] = { label: t.furgoId, total: 0, exito: 0, pv: 0, gv: 0, pm: 0, cuelgues: 0, cod: 0, facturado: 0 };
+      }
+      const f = furgoStats[t.furgoId];
+      f.total++;
+      if (t.status === 'success') f.exito++;
+      f.cod += parseFloat(t.codAmount) || 0;
+      f.facturado += parseFloat(t.totalPrice) || 0;
+      if (t.tasks) {
+        t.tasks.forEach(task => {
+          const tid = task.tariffId || '';
+          const qty = task.quantity || 1;
+          if (tid === 'ENTREGA_PV' || tid === 'RECOGIDA_PV' || tid === 'TV_ENT_49' || tid === 'TV_COMB_49' || tid === 'BSND') f.pv += qty;
+          if (tid === 'ENTREGA_GV' || tid === 'RECOGIDA_GV' || tid === 'TV_ENT_74' || tid === 'TV_COMB_74' || tid === 'TV_ENT_115' || tid === 'TV_COMB_115') f.gv += qty;
+          if (tid.startsWith('PM_')) f.pm += qty;
+          if (tid.startsWith('CUELGUE_')) f.cuelgues += qty;
+        });
+      }
+    });
+
+    const cardStyle = { background: 'var(--card-bg)', borderRadius: '12px', padding: '16px', textAlign: 'center', border: '1px solid var(--border-color)' };
+    const sectionStyle = { background: 'var(--card-bg)', borderRadius: '12px', padding: '20px', border: '1px solid var(--border-color)', marginBottom: '16px' };
+    const tableStyle = { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' };
+    const thStyle = { background: 'var(--primary)', color: '#fff', padding: '8px 12px', textAlign: 'left', fontWeight: '700' };
+    const tdStyle = { padding: '7px 12px', borderBottom: '1px solid var(--border-color)', color: 'var(--text-primary)' };
+    const tdNumStyle = { ...tdStyle, textAlign: 'right', fontWeight: '600' };
+
+    const Row = ({ label, val, sub }) => val > 0 ? (
+      <tr>
+        <td style={tdStyle}>{sub ? <span style={{ paddingLeft: '16px', color: 'var(--text-muted)', fontSize: '0.82rem' }}>↳ {label}</span> : label}</td>
+        <td style={tdNumStyle}>{val}</td>
+      </tr>
+    ) : null;
+
+    return (
+      <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* FILTROS */}
+        <div style={{ ...sectionStyle, marginBottom: 0 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+            <strong style={{ color: 'var(--primary)', fontSize: '1rem' }}>📊 Estadísticas</strong>
+            <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Desde</label>
+            <input type="date" className="form-input" style={{ padding: '5px 10px', fontSize: '0.85rem', width: 'auto' }} value={statsStartDate} onChange={e => setStatsStartDate(e.target.value)} />
+            <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Hasta</label>
+            <input type="date" className="form-input" style={{ padding: '5px 10px', fontSize: '0.85rem', width: 'auto' }} value={statsEndDate} onChange={e => setStatsEndDate(e.target.value)} />
+            <select className="form-input" style={{ padding: '5px 10px', fontSize: '0.85rem', width: 'auto' }} value={statsFilterFurgo} onChange={e => setStatsFilterFurgo(e.target.value)}>
+              <option value="all">Todas las Furgonetas</option>
+              {allUsers.map(u => <option key={u.id} value={u.id}>{u.label}</option>)}
+            </select>
+            <select className="form-input" style={{ padding: '5px 10px', fontSize: '0.85rem', width: 'auto' }} value={statsFilterStatus} onChange={e => setStatsFilterStatus(e.target.value)}>
+              <option value="all">Todos los estados</option>
+              <option value="success">Entregados</option>
+              <option value="failed">Fallidos</option>
+              <option value="pending">Pendientes</option>
+            </select>
+            <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '5px 12px' }} onClick={() => { setStatsStartDate(getFirstDayOfMonth()); setStatsEndDate(getTodayDate()); setStatsFilterFurgo('all'); setStatsFilterStatus('all'); }}>Limpiar Filtros</button>
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
+          {[
+            { label: '📦 Total Repartos', val: totalTickets, sub: efectividad + '% efectividad', color: 'var(--primary)' },
+            { label: '✅ Entregados', val: exitosos, color: '#10b981' },
+            { label: '❌ Fallidos', val: fallidos, color: '#ef4444' },
+            { label: '🔵 Pendientes', val: pendientes, color: '#6366f1' },
+            { label: '📱 Pequeño Vol.', val: totalPV, color: '#3b82f6' },
+            { label: '🚚 Gran Volumen', val: totalGV, color: '#f59e0b' },
+            { label: '🛠️ Puestas en Marcha', val: totalPM, color: '#8b5cf6' },
+            { label: '🔧 Cuelgues', val: totalCuelgues, color: '#ec4899' },
+            { label: '♻️ Retiradas', val: totalRetiradas, color: '#64748b' },
+            { label: '💵 COD', val: totalCOD.toFixed(2) + '€', color: '#f97316' },
+            { label: '💶 Facturado', val: totalFacturado.toFixed(2) + '€', color: '#10b981' },
+          ].map((k, i) => (
+            <div key={i} style={{ ...cardStyle, borderTop: '3px solid ' + k.color }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '6px' }}>{k.label}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: k.color }}>{k.val}</div>
+              {k.sub && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>{k.sub}</div>}
+            </div>
+          ))}
+        </div>
+
+        {/* SECCION A: PEQUEÑO VOLUMEN */}
+        <div style={sectionStyle}>
+          <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', color: '#3b82f6' }}>📱 A. Pequeño Volumen (PV)</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
+            <tbody>
+              <Row label="Entrega PV General" val={pvEntrega} />
+              <Row label="Recogida PV General" val={pvRecogida} />
+              <Row label="TV ≤ 49&quot; Solo Entrega (TV_ENT_49)" val={pvTV49Ent} />
+              <Row label="TV ≤ 49&quot; Entrega + Recogida (TV_COMB_49)" val={pvTV49Comb} />
+              <Row label="Barras de Sonido (BSND)" val={pvBsnd} />
+              <Row label="Soporte de Pared (SPAR)" val={pvSpar} />
+              <Row label="Soporte de Suelo (SSUE)" val={pvSsue} />
+              <Row label="Ordenador (ORDE)" val={pvOrde} />
+              <Row label="Pantalla PC (PANT)" val={pvPant} />
+              <Row label="Microcadena (MCAD)" val={pvMcad} />
+              <Row label="Altavoces (ALTA)" val={pvAlta} />
+              <Row label="Tocadiscos (TDIC)" val={pvTdic} />
+              <Row label="Proyector (PROY)" val={pvProy} />
+              {totalPV === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        {/* SECCION B: GRAN VOLUMEN */}
+        <div style={sectionStyle}>
+          <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', color: '#f59e0b' }}>🚚 B. Gran Volumen (GV)</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
+            <tbody>
+              <Row label="Entrega GV General" val={gvEntrega} />
+              <Row label="Recogida GV General" val={gvRecogida} />
+              <Row label="TV 50&quot;-74&quot; Solo Entrega (TV_ENT_74)" val={gvTV74Ent} />
+              <Row label="TV 50&quot;-74&quot; Entrega + Recogida (TV_COMB_74)" val={gvTV74Comb} />
+              <Row label="TV 75&quot;-115&quot; Solo Entrega (TV_ENT_115)" val={gvTV115Ent} />
+              <Row label="TV 75&quot;-115&quot; Entrega + Recogida (TV_COMB_115)" val={gvTV115Comb} />
+              <Row label="Marco The Frame (MFRA)" val={gvMfra} />
+              <Row label="Dormity - Servicio Día" val={dormServDia} />
+              <Row label="Dormity - Ruta Express" val={dormExpress} />
+              <Row label="Dormity - Ruta Madrid" val={dormMadrid} />
+              <Row label="Dormity - Ruta Toledo" val={dormToledo} />
+              {totalGV === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        {/* SECCION C: PUESTAS EN MARCHA */}
+        <div style={sectionStyle}>
+          <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', color: '#8b5cf6' }}>🛠️ C. Puestas en Marcha (PM)</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
+            <tbody>
+              <Row label="PM Básica TV ≤ 49&quot;" val={pmBas49} />
+              <Row label="PM Básica TV 50&quot;-74&quot;" val={pmBas74} />
+              <Row label="PM Básica TV 75&quot;-115&quot;" val={pmBas115} />
+              <Row label="PM Compleja TV ≤ 49&quot;" val={pmComp49} />
+              <Row label="PM Compleja TV 50&quot;-74&quot;" val={pmComp74} />
+              <Row label="PM Compleja TV 75&quot;-115&quot;" val={pmComp115} />
+              <Row label="PM Barra de Sonido (PM_BSND)" val={pmBsnd} />
+              <Row label="Visita Técnica (VTEC)" val={vtec} />
+              {totalPM === 0 && vtec === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        {/* SECCION D: CUELGUES */}
+        <div style={sectionStyle}>
+          <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', color: '#ec4899' }}>🔧 D. Cuelgues en Pared</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
+            <tbody>
+              <Row label="Cuelgue TV ≤ 49&quot;" val={cueg49} />
+              <Row label="Cuelgue TV 50&quot;-74&quot;" val={cueg74} />
+              <Row label="Cuelgue TV 75&quot;-115&quot;" val={cueg115} />
+              <Row label="Cuelgue Barra de Sonido (CUELGUE_BSND)" val={cuegBsnd} />
+              {totalCuelgues === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        {/* SECCION E: RETIRADAS */}
+        <div style={sectionStyle}>
+          <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', color: '#64748b' }}>♻️ E. Retiradas y Chatarra</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
+            <tbody>
+              <Row label="Recogida TV Vieja Urbantz (TV_VIEJA_URB)" val={tvViejaUrb} />
+              <Row label="Recogida TV Vieja NO Urbantz (TV_VIEJA_NO_URB)" val={tvViejaNoUrb} />
+              {totalRetiradas === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        {/* SECCION F: SERVICIOS ESPECIALES */}
+        <div style={sectionStyle}>
+          <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', color: '#f97316' }}>⚡ F. Servicios Especiales</h3>
+          <table style={tableStyle}>
+            <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
+            <tbody>
+              <Row label="Servicio Urgente 100€" val={urgente100} />
+              <Row label="Servicio Urgente 120€" val={urgente120} />
+              <Row label="Kilometraje Ruta Larga / Extra" val={kmRuta} />
+              {urgente100 === 0 && urgente120 === 0 && kmRuta === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        {/* SECCION G: COMPARATIVA POR FURGONETA */}
+        <div style={sectionStyle}>
+          <h3 style={{ margin: '0 0 14px 0', fontSize: '1rem', color: 'var(--primary)' }}>🏆 G. Comparativa por Furgoneta / Ruta</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  {['Furgoneta', 'Total', 'Entregados', '% Éxito', 'PV', 'GV', 'PM', 'Cuelgues', 'COD', 'Facturado'].map((h, i) => (
+                    <th key={i} style={{ ...thStyle, textAlign: i > 0 ? 'right' : 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(furgoStats)
+                  .filter(([, f]) => f.total > 0)
+                  .sort((a, b) => b[1].total - a[1].total)
+                  .map(([id, f]) => (
+                    <tr key={id}>
+                      <td style={tdStyle}>{f.label}</td>
+                      <td style={tdNumStyle}>{f.total}</td>
+                      <td style={{ ...tdNumStyle, color: '#10b981' }}>{f.exito}</td>
+                      <td style={{ ...tdNumStyle, color: '#10b981' }}>{f.total > 0 ? Math.round((f.exito / f.total) * 100) : 0}%</td>
+                      <td style={tdNumStyle}>{f.pv}</td>
+                      <td style={tdNumStyle}>{f.gv}</td>
+                      <td style={{ ...tdNumStyle, color: '#8b5cf6' }}>{f.pm}</td>
+                      <td style={{ ...tdNumStyle, color: '#ec4899' }}>{f.cuelgues}</td>
+                      <td style={{ ...tdNumStyle, color: '#f97316' }}>{f.cod.toFixed(2)}€</td>
+                      <td style={{ ...tdNumStyle, color: '#10b981' }}>{f.facturado.toFixed(2)}€</td>
+                    </tr>
+                  ))}
+                {Object.values(furgoStats).every(f => f.total === 0) && (
+                  <tr><td colSpan={10} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // --- RENDERIZADO DEL PORTAL DE ADMINISTRADOR ---
   const renderAdminPortal = () => {
     const filteredAdminTickets = visibleTickets.filter(t => {
@@ -19990,10 +20341,12 @@ function App() {
           {showFleetControl && (
             <button className={`tab-btn ${activeTab === 'fleet' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('fleet'); }}>🚗 Control de Flota</button>
           )}
+          <button className={`tab-btn ${activeTab === 'estadisticas' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('estadisticas'); }}>📊 Estadísticas</button>
           <button className={`tab-btn ${activeTab === 'changelog' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('changelog'); }}>🚀 Actualizaciones</button>
         </div>
 
         {activeTab === 'employees' && renderEmployeesPortal()}
+        {activeTab === 'estadisticas' && renderEstadisticas()}
         {activeTab === 'daily_report' && renderDailyReport()}
         {activeTab === 'calendar' && renderShiftCalendar()}
 
