@@ -2384,7 +2384,7 @@ function App() {
             console.warn("Background driver locations polling failed");
           });
       }
-    }, 15000);
+    }, 45000);
 
     const timer = setTimeout(() => {
       const isAdminMap = activeTab === 'map' && document.getElementById('admin-map');

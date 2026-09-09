@@ -3555,7 +3555,7 @@ export async function deleteTariff(id) {
 // - Si no, se guarda la posición más reciente y se programa un envío al final de
 //   la ventana, así nunca se pierde la posición más actual del conductor.
 // El localStorage (para el mapa local) se sigue actualizando siempre, al instante.
-const DRIVER_LOCATION_THROTTLE_MS = 8000; // 8 segundos entre envíos por conductor
+const DRIVER_LOCATION_THROTTLE_MS = 15000; // 8 segundos entre envíos por conductor
 const lastLocationSentAt = {};
 const pendingLocationTimers = {};
 
