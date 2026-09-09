@@ -18395,6 +18395,26 @@ function App() {
       </tr>
     ) : null;
 
+    // Nombre real de cada tarifa desde el catálogo cargado
+    const getTariffName = (id) => {
+      const found = tariffs.find(t => t.id === id);
+      return found ? found.name : id;
+    };
+
+    // Desglose de artículos del catálogo PV/GV (textos libres de choferes)
+    const pvgvCatalogItems = (() => {
+      try { return JSON.parse(localStorage.getItem('pvgv_catalog') || '[]'); } catch { return []; }
+    })();
+    const pvgvCatalogCounts = {};
+    statsTickets.forEach(t => {
+      const notes = t.notes || '';
+      pvgvCatalogItems.forEach(item => {
+        if (notes.toLowerCase().includes(item.toLowerCase())) {
+          pvgvCatalogCounts[item] = (pvgvCatalogCounts[item] || 0) + 1;
+        }
+      });
+    });
+
     return (
       <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {/* FILTROS */}
@@ -18448,22 +18468,45 @@ function App() {
           <table style={tableStyle}>
             <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
             <tbody>
-              <Row label="Entrega PV General" val={pvEntrega} />
-              <Row label="Recogida PV General" val={pvRecogida} />
-              <Row label="TV ≤ 49&quot; Solo Entrega (TV_ENT_49)" val={pvTV49Ent} />
-              <Row label="TV ≤ 49&quot; Entrega + Recogida (TV_COMB_49)" val={pvTV49Comb} />
-              <Row label="Barras de Sonido (BSND)" val={pvBsnd} />
-              <Row label="Soporte de Pared (SPAR)" val={pvSpar} />
-              <Row label="Soporte de Suelo (SSUE)" val={pvSsue} />
-              <Row label="Ordenador (ORDE)" val={pvOrde} />
-              <Row label="Pantalla PC (PANT)" val={pvPant} />
-              <Row label="Microcadena (MCAD)" val={pvMcad} />
-              <Row label="Altavoces (ALTA)" val={pvAlta} />
-              <Row label="Tocadiscos (TDIC)" val={pvTdic} />
-              <Row label="Proyector (PROY)" val={pvProy} />
+              <Row label={getTariffName('ENTREGA_PV')} val={pvEntrega} />
+              <Row label={getTariffName('RECOGIDA_PV')} val={pvRecogida} />
+              <Row label={getTariffName('TV_ENT_49')} val={pvTV49Ent} />
+              <Row label={getTariffName('TV_COMB_49')} val={pvTV49Comb} />
+              <Row label={getTariffName('BSND')} val={pvBsnd} />
+              <Row label={getTariffName('SPAR')} val={pvSpar} />
+              <Row label={getTariffName('SSUE')} val={pvSsue} />
+              <Row label={getTariffName('ORDE')} val={pvOrde} />
+              <Row label={getTariffName('PANT')} val={pvPant} />
+              <Row label={getTariffName('MCAD')} val={pvMcad} />
+              <Row label={getTariffName('ALTA')} val={pvAlta} />
+              <Row label={getTariffName('TDIC')} val={pvTdic} />
+              <Row label={getTariffName('PROY')} val={pvProy} />
               {totalPV === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
             </tbody>
           </table>
+          {/* Artículos del catálogo PV/GV */}
+          {pvgvCatalogItems.length > 0 && (
+            <div style={{ marginTop: '16px' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>📦 Artículos del Catálogo PV/GV mencionados en notas</div>
+              <table style={tableStyle}>
+                <thead><tr><th style={{ ...thStyle, background: '#3b82f6' }}>Artículo del Catálogo</th><th style={{ ...thStyle, background: '#3b82f6', textAlign: 'right' }}>Apariciones</th></tr></thead>
+                <tbody>
+                  {pvgvCatalogItems.map((item, i) => {
+                    const count = pvgvCatalogCounts[item] || 0;
+                    return count > 0 ? (
+                      <tr key={i}>
+                        <td style={tdStyle}>{item}</td>
+                        <td style={tdNumStyle}>{count}</td>
+                      </tr>
+                    ) : null;
+                  })}
+                  {Object.keys(pvgvCatalogCounts).length === 0 && (
+                    <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Ningún artículo del catálogo encontrado en las notas del periodo</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* SECCION B: GRAN VOLUMEN */}
@@ -18472,13 +18515,13 @@ function App() {
           <table style={tableStyle}>
             <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
             <tbody>
-              <Row label="Entrega GV General" val={gvEntrega} />
-              <Row label="Recogida GV General" val={gvRecogida} />
-              <Row label="TV 50&quot;-74&quot; Solo Entrega (TV_ENT_74)" val={gvTV74Ent} />
-              <Row label="TV 50&quot;-74&quot; Entrega + Recogida (TV_COMB_74)" val={gvTV74Comb} />
-              <Row label="TV 75&quot;-115&quot; Solo Entrega (TV_ENT_115)" val={gvTV115Ent} />
-              <Row label="TV 75&quot;-115&quot; Entrega + Recogida (TV_COMB_115)" val={gvTV115Comb} />
-              <Row label="Marco The Frame (MFRA)" val={gvMfra} />
+              <Row label={getTariffName('ENTREGA_GV')} val={gvEntrega} />
+              <Row label={getTariffName('RECOGIDA_GV')} val={gvRecogida} />
+              <Row label={getTariffName('TV_ENT_74')} val={gvTV74Ent} />
+              <Row label={getTariffName('TV_COMB_74')} val={gvTV74Comb} />
+              <Row label={getTariffName('TV_ENT_115')} val={gvTV115Ent} />
+              <Row label={getTariffName('TV_COMB_115')} val={gvTV115Comb} />
+              <Row label={getTariffName('MFRA')} val={gvMfra} />
               <Row label="Dormity - Servicio Día" val={dormServDia} />
               <Row label="Dormity - Ruta Express" val={dormExpress} />
               <Row label="Dormity - Ruta Madrid" val={dormMadrid} />
