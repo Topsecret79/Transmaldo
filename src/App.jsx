@@ -3960,30 +3960,24 @@ function App() {
     if (direction === 'down' && idx === dayTickets.length - 1) return;
 
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    const ticketB = dayTickets[targetIdx];
+    
+    // Mover elemento en el array y reasignar orden secuencial limpio 1..N sin duplicados ni huecos
+    const newDayList = [...dayTickets];
+    const [movedItem] = newDayList.splice(idx, 1);
+    newDayList.splice(targetIdx, 0, movedItem);
+
+    const orderMap = {};
+    newDayList.forEach((t, i) => {
+      orderMap[t.id] = i + 1;
+    });
 
     const updatedTickets = tickets.map(t => {
       if (t.date === ticketA.date && t.furgoId === ticketA.furgoId) {
-        const itemIdx = dayTickets.findIndex(x => x.id === t.id);
-        let order = t.routeOrder;
-        if (order === undefined || order === null || order === '') {
-          order = itemIdx + 1;
-        }
-        // Fix: marcar como 'pending' para que saveTickets() solo suba estos tickets
-        // (los de esta ruta/día), no el array completo de todos los repartos.
-        return { ...t, routeOrder: Number(order), _syncStatus: 'pending' };
+        const newOrder = orderMap[t.id] || t.routeOrder || 1;
+        return { ...t, routeOrder: Number(newOrder), _syncStatus: 'pending' };
       }
       return t;
     });
-
-    const dbTicketA = updatedTickets.find(t => t.id === ticketA.id);
-    const dbTicketB = updatedTickets.find(t => t.id === ticketB.id);
-
-    if (dbTicketA && dbTicketB) {
-      const tempOrder = dbTicketA.routeOrder;
-      dbTicketA.routeOrder = dbTicketB.routeOrder;
-      dbTicketB.routeOrder = tempOrder;
-    }
 
     setTickets(updatedTickets);
 
@@ -4900,7 +4894,13 @@ function App() {
   const autoOptimizeRemainingRoute = async (targetFurgoId, targetDate, lastCompletedTicketId) => {
     try {
       const isManual = getRouteManualStatus(targetFurgoId, targetDate);
-      if (isManual) {
+      const allTicketsNow = getTickets();
+      const dayTicketsCheck = allTicketsNow.filter(t => t && t.furgoId === targetFurgoId && t.date === targetDate);
+      const hasExplicitOrders = dayTicketsCheck.some(t => t && t.routeOrder !== undefined && t.routeOrder !== null && t.routeOrder !== '');
+      
+      // BLOQUEO ESTRICTO: Si la ruta está en modo manual O ya tiene números de parada asignados por el usuario,
+      // NUNCA auto-reordenar por cercanía. Se preserva el orden manual al 100%.
+      if (isManual || hasExplicitOrders) {
         loadData();
         return;
       }
@@ -6904,7 +6904,8 @@ function App() {
       await updateTicketStatus(id, status, failureReason, latitude, longitude);
       
       if (status === 'success' || status === 'failed') {
-        if (furgoId && date) {
+        const isRouteManual = (furgoId && date) ? getRouteManualStatus(furgoId, date) : false;
+        if (furgoId && date && !isRouteManual) {
           await autoOptimizeRemainingRoute(furgoId, date, id);
         } else {
           loadData();
@@ -10521,8 +10522,17 @@ function App() {
         {activeTab === 'driver_map' && (
           <div className="glass-panel map-tab-panel">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-              <h3 className="map-tab-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: 'var(--primary)' }}>
-                🗺️ Mapa de Mi Ruta ({targetDate})
+              <h3 className="map-tab-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: 'var(--primary)', flexWrap: 'wrap' }}>
+                <span>🗺️ Mapa de Mi Ruta ({targetDate})</span>
+                {getRouteManualStatus(currentUser?.id, targetDate) ? (
+                  <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '6px', background: 'rgba(168, 85, 247, 0.2)', border: '1px solid #a855f7', color: '#d8b4fe', fontWeight: '700' }}>
+                    🔒 Orden Manual Fijo
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '6px', background: 'rgba(59, 130, 246, 0.2)', border: '1px solid #3b82f6', color: '#93c5fd', fontWeight: '700' }}>
+                    ⚡ Ruta Automática
+                  </span>
+                )}
               </h3>
               <button
                 type="button"
@@ -21604,8 +21614,30 @@ function App() {
 
             {mapFilterFurgo !== 'all' && (
               <div className="glass-panel" style={{ marginTop: '20px', padding: '20px', border: '1px solid var(--panel-border)', borderRadius: '12px', textAlign: 'left', background: 'rgba(255,255,255,0.01)' }}>
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', margin: '0 0 10px 0', fontSize: '1.05rem' }}>
-                  ⚡ Optimización de Ruta (Furgoneta: {activeRepartidores.find(r => r.id === mapFilterFurgo)?.label || mapFilterFurgo})
+                <h3 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', color: 'var(--primary)', margin: '0 0 10px 0', fontSize: '1.05rem', flexWrap: 'wrap' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    ⚡ Control y Optimización de Ruta ({activeRepartidores.find(r => r.id === mapFilterFurgo)?.label || mapFilterFurgo})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const current = getRouteManualStatus(mapFilterFurgo, mapFilterDate);
+                      await saveRouteManualStatus(mapFilterFurgo, mapFilterDate, !current);
+                      loadData();
+                      triggerAlert(current ? 'Ruta configurada en modo automático' : '🔒 Ruta bloqueada en MODO MANUAL FIJO', 'success');
+                    }}
+                    className="btn btn-secondary btn-small"
+                    style={{
+                      margin: 0,
+                      fontSize: '0.78rem',
+                      padding: '5px 12px',
+                      background: getRouteManualStatus(mapFilterFurgo, mapFilterDate) ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255,255,255,0.05)',
+                      border: getRouteManualStatus(mapFilterFurgo, mapFilterDate) ? '1.5px solid #a855f7' : '1px solid var(--border-color)',
+                      color: getRouteManualStatus(mapFilterFurgo, mapFilterDate) ? '#d8b4fe' : 'var(--text-muted)'
+                    }}
+                  >
+                    {getRouteManualStatus(mapFilterFurgo, mapFilterDate) ? '🔒 Modo Manual Activo (Clic para desbloquear)' : '🔓 Modo Automático (Clic para fijar manual)'}
+                  </button>
                 </h3>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
                   Organiza de forma eficiente las paradas del día, ordenándolas desde la más cercana a la más lejana basándose en tus puntos de partida y destino final.

@@ -258,6 +258,15 @@ export async function reinitSupabase(force = false) {
                   }
                   return;
                 }
+                // Sincronización instantánea de bloqueo de orden manual vía Realtime
+                if (record.key && record.key.startsWith('manual_route_')) {
+                  try {
+                    localStorage.setItem('delivery_' + record.key, record.value);
+                    localStorage.setItem(record.key, record.value);
+                    window.dispatchEvent(new CustomEvent('manual-route-status-updated', { detail: { key: record.key, value: record.value } }));
+                  } catch (e) {}
+                  return;
+                }
               }
               // Antes: cada cambio en CUALQUIER tabla llamaba a syncFromCloud() de inmediato,
               // que siempre volvía a descargar las 5 tablas completas (incluida delivery_tickets,
@@ -763,9 +772,10 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         // Si el ticket local está pendiente de sync, tiene prioridad total
         if (localT._syncStatus === 'pending') return localT;
 
-        // Si la ruta está marcada como manual, preservar el routeOrder local
-        const manualKey = 'delivery_manual_route_' + cloudT.furgoId + '_' + cloudT.date;
-        const isManual = localStorage.getItem(manualKey) === 'true';
+        // Si la ruta está marcada como manual, preservar el routeOrder local de forma estricta
+        const manualKey1 = 'delivery_manual_route_' + cloudT.furgoId + '_' + cloudT.date;
+        const manualKey2 = 'manual_route_' + cloudT.furgoId + '_' + cloudT.date;
+        const isManual = localStorage.getItem(manualKey1) === 'true' || localStorage.getItem(manualKey2) === 'true';
         if (isManual && localT.routeOrder !== undefined && localT.routeOrder !== null) {
           return { ...cloudT, routeOrder: localT.routeOrder };
         }
@@ -1143,6 +1153,14 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       settings.forEach(s => {
         if (s.key && s.key.startsWith('route_start_time_')) {
           localStorage.setItem(`delivery_${s.key}`, s.value);
+        }
+      });
+
+      // Estado Manual de Rutas (Sincronizar a TODOS los dispositivos)
+      settings.forEach(s => {
+        if (s.key && s.key.startsWith('manual_route_')) {
+          localStorage.setItem(`delivery_${s.key}`, s.value);
+          localStorage.setItem(s.key, s.value);
         }
       });
 
@@ -4128,6 +4146,7 @@ export async function saveRouteManualStatus(furgoId, date, isManual) {
     const key = `manual_route_${furgoId}_${date}`;
     const value = isManual ? 'true' : 'false';
     localStorage.setItem(`delivery_${key}`, value);
+    localStorage.setItem(key, value);
     if (supabase) {
       const { error } = await supabase.from('delivery_settings').upsert({ key: key, value: value });
       if (error) {
