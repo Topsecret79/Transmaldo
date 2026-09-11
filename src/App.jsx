@@ -1594,16 +1594,22 @@ function App() {
   const [editTariffValue, setEditTariffValue] = useState('');
 
   // Bloques expandidos en el catálogo
-  const [expandedBlocks, setExpandedBlocks] = useState({
-    'Paquetería': true,
-    'Televisores': false,
-    'Instalaciones': false,
-    'Barras de Sonido': false,
-    'Electrodomésticos Varios': false,
-    'Servicios': false,
-    'Gama Blanca': false,
-    'Muebles': false,
-    'Otros': false
+  const [expandedBlocks, setExpandedBlocks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('delivery_expanded_blocks');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      'Paquetería': true,
+      'Televisores': false,
+      'Instalaciones': false,
+      'Barras de Sonido': false,
+      'Electrodomésticos Varios': false,
+      'Servicios': false,
+      'Gama Blanca': false,
+      'Muebles': true,
+      'Otros': false
+    };
   });
 
   // Modal de observaciones para entrega/fallo
@@ -5821,6 +5827,11 @@ function App() {
       });
       if (res.success) {
         triggerAlert(`Tarifa "${newTariffName}" añadida correctamente`);
+        setExpandedBlocks(prev => {
+          const next = { ...prev, [newTariffBlock]: true };
+          try { localStorage.setItem('delivery_expanded_blocks', JSON.stringify(next)); } catch (e) {}
+          return next;
+        });
         setNewTariffName('');
         setNewTariffValue('');
         loadData();
@@ -22056,7 +22067,11 @@ function App() {
                   return (
                     <div key={block} style={{ marginBottom: '15px', borderRadius: '10px', border: '1px solid var(--panel-border)', background: 'rgba(255,255,255,0.01)', overflow: 'hidden' }}>
                       <div 
-                        onClick={() => setExpandedBlocks(prev => ({ ...prev, [block]: !prev[block] }))}
+                        onClick={() => setExpandedBlocks(prev => {
+                          const next = { ...prev, [block]: !prev[block] };
+                          try { localStorage.setItem('delivery_expanded_blocks', JSON.stringify(next)); } catch (e) {}
+                          return next;
+                        })}
                         style={{ 
                           display: 'flex', 
                           justifyContent: 'space-between', 

@@ -630,7 +630,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         block: t.block,
         type: t.type,
         value: parseFloat(t.value) || 0,
-        createdBy: t.created_by || null
+        createdBy: t.created_by || null,
+        provider: t.provider || 'eci'
       }));
 
       // Migrar soportes a tarifa fija (5.23 € / equivalente a TV pequeña)
@@ -650,7 +651,16 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         needsSave = true;
       }
 
-      localStorage.setItem('delivery_tariffs', JSON.stringify(localTariffs));
+      // Preservar tarifas personalizadas creadas localmente para que no se borren en caso de desfase
+      let existingLocal = [];
+      try {
+        existingLocal = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+      } catch (e) {}
+      const cloudIds = new Set(localTariffs.map(t => t.id));
+      const preservedCustom = existingLocal.filter(t => t && t.id && t.id.startsWith('CUSTOM_') && !cloudIds.has(t.id));
+      const mergedTariffs = [...localTariffs, ...preservedCustom];
+
+      localStorage.setItem('delivery_tariffs', JSON.stringify(mergedTariffs));
       if (needsSave) {
         saveTariffs(localTariffs);
       }
@@ -3482,31 +3492,77 @@ export async function saveRouteKms(furgoId, date, kms) {
 
 // Agregar nueva tarifa
 export async function addTariff(tariff) {
-  // Fix: esta capa de datos no validaba nada contra un valor negativo, vacío o
-  // no numérico — un valor así se propagaría directamente al cálculo de
-  // precios de cualquier ticket que use esta tarifa, restando del total sin
-  // ningún aviso de error. Se valida aquí también (además de en la pantalla),
-  // por si algún otro punto de la app llega a llamar a addTariff() sin pasar
-  // por esa validación.
   const safeValue = Number(tariff?.value);
   if (!Number.isFinite(safeValue) || safeValue < 0) {
     return { success: false, error: new Error('El valor de la tarifa debe ser un número mayor o igual a cero') };
   }
 
-  const tariffs = getTariffs();
-  // Fix: un id basado solo en Date.now() puede colisionar si dos administradores
-  // en dispositivos distintos crean una tarifa personalizada en el mismo
-  // milisegundo — una sustituiría silenciosamente a la otra. Se añade el mismo
-  // sufijo aleatorio que ya se usa en el resto de IDs generados en el cliente
-  // (ver addTicket en este mismo archivo).
+  let activeAdminId = null;
+  let isSuperAdmin = false;
+  try {
+    const savedUser = localStorage.getItem('delivery_session');
+    if (savedUser) {
+      const u = JSON.parse(savedUser);
+      if (u) {
+        if (u.role === 'admin') activeAdminId = u.id;
+        else if (u.role === 'superadmin') isSuperAdmin = true;
+      }
+    }
+  } catch (e) {}
+
+  const createdBy = (activeAdminId && !isSuperAdmin) ? activeAdminId : null;
   const id = 'CUSTOM_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
   const newTariff = {
     ...tariff,
     value: safeValue,
-    id
+    id,
+    createdBy,
+    provider: tariff?.provider || 'eci'
   };
-  tariffs.push(newTariff);
-  await saveTariffs(tariffs);
+
+  // 1. Guardar de forma atómica y directa en Supabase
+  if (supabase) {
+    try {
+      const dbItem = {
+        id: newTariff.id,
+        name: newTariff.name,
+        block: newTariff.block,
+        type: newTariff.type,
+        value: newTariff.value,
+        created_by: newTariff.createdBy || null,
+        provider: newTariff.provider || 'eci'
+      };
+      const { error } = await supabase.from('delivery_tariffs').upsert([dbItem]);
+      if (error) {
+        console.error("Error guardando tarifa en Supabase:", error);
+        return { success: false, error };
+      }
+    } catch (e) {
+      console.error("Excepción guardando tarifa en Supabase:", e);
+      return { success: false, error: e };
+    }
+  }
+
+  // 2. Guardar en caché local de localStorage
+  try {
+    const existingRaw = JSON.parse(localStorage.getItem('delivery_tariffs')) || [];
+    const mergedMap = {};
+    existingRaw.forEach(t => { if (t && t.id) mergedMap[t.id] = t; });
+    mergedMap[newTariff.id] = newTariff;
+    localStorage.setItem('delivery_tariffs', JSON.stringify(Object.values(mergedMap)));
+  } catch (e) {
+    console.warn("Error guardando tarifa en localStorage:", e);
+  }
+
+  // 3. Si además es para Dormity o ambos proveedores, registrar copia en catálogo Dormity
+  if (newTariff.provider === 'dormity' || newTariff.provider === 'ambos') {
+    try {
+      await saveDormityTariffs([{ id: newTariff.id, name: newTariff.name, block: newTariff.block, value: newTariff.value }]);
+    } catch (e) {
+      console.warn("Error guardando copia de tarifa en catálogo Dormity:", e);
+    }
+  }
+
   return { success: true, tariff: newTariff };
 }
 
