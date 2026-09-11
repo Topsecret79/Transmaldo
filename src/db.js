@@ -1272,7 +1272,15 @@ const DEFAULT_TARIFFS = [
   { id: 'ORDE', name: 'Ordenador', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
   { id: 'PANT', name: 'Pantalla', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
   { id: 'MCAD', name: 'Micro Cadena', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
-  { id: 'KM_RUTA_LARGA', name: 'Kilometraje Ruta Larga / Extra (por km)', block: 'Servicios', type: 'fixed', value: 0.30 }
+  { id: 'KM_RUTA_LARGA', name: 'Kilometraje Ruta Larga / Extra (por km)', block: 'Servicios', type: 'fixed', value: 0.30 },
+
+  // Bloque Gama Blanca
+  { id: 'GB_HORNO', name: 'Horno', block: 'Gama Blanca', type: 'fixed', value: 13.62 },
+  { id: 'GB_AIRE', name: 'Aire Acondicionado', block: 'Gama Blanca', type: 'fixed', value: 13.62 },
+
+  // Bloque Muebles
+  { id: 'MUEB_COLCHON', name: 'Colchon', block: 'Muebles', type: 'fixed', value: 11.07 },
+  { id: 'MUEB_MESA', name: 'Mesa', block: 'Muebles', type: 'fixed', value: 11.07 }
 ];
 
 export const DEFAULT_DORMITY_TARIFFS = [
@@ -3510,7 +3518,8 @@ export async function addTariff(tariff) {
     }
   } catch (e) {}
 
-  const createdBy = (activeAdminId && !isSuperAdmin) ? activeAdminId : null;
+  // Ámbito global (null) para que cualquier artículo nuevo de cualquier categoría quede 100% activo y compartido en todas las furgonetas y dispositivos
+  const createdBy = null;
   const id = 'CUSTOM_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
   const newTariff = {
     ...tariff,

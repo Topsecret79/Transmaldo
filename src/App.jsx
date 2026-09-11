@@ -967,6 +967,8 @@ function App() {
     });
   };
 
+  const [quickAddArticleNames, setQuickAddArticleNames] = useState({});
+  const [quickAddArticlePrices, setQuickAddArticlePrices] = useState({});
   const [tariffSubTab, setTariffSubTab] = useState('eci');
   const [selectedTicketProvider, setSelectedTicketProvider] = useState('eci');
   const [showBatchAddressModal, setShowBatchAddressModal] = useState(false);
@@ -5845,6 +5847,47 @@ function App() {
     }
   };
 
+  const handleQuickAddArticle = async (blockName, itemName, itemPrice, effectiveProv) => {
+    if (!itemName || !itemName.trim()) return;
+    const trimmedName = itemName.trim();
+    const priceVal = parseFloat(itemPrice) || 0;
+    if (priceVal < 0) {
+      triggerAlert('El precio no puede ser negativo', 'error');
+      return;
+    }
+    try {
+      const res = await addTariff({
+        name: trimmedName,
+        block: blockName,
+        type: 'fixed',
+        value: priceVal,
+        provider: effectiveProv || 'eci'
+      });
+      if (res.success && res.tariff) {
+        setOtherQuantities(prev => ({
+          ...prev,
+          [res.tariff.id]: 1
+        }));
+        setQuickAddArticleNames(prev => ({
+          ...prev,
+          [blockName]: ''
+        }));
+        setQuickAddArticlePrices(prev => ({
+          ...prev,
+          [blockName]: ''
+        }));
+        triggerAlert(`Artículo "${trimmedName}" añadido a ${blockName} y seleccionado`);
+        loadData();
+      } else {
+        triggerAlert(res.error?.message || 'No se pudo añadir el artículo', 'error');
+      }
+    } catch (err) {
+      console.error('Error al añadir artículo rápido:', err);
+      triggerAlert('Error al guardar el artículo en el servidor, guardado localmente', 'warning');
+      loadData();
+    }
+  };
+
   const handleDeleteTariff = async (id, name) => {
     if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente la tarifa "${name}"?`)) {
       try {
@@ -9768,7 +9811,7 @@ function App() {
               )}
 
               {/* SECCIÓN C: GAMA BLANCA */}
-              {itemsGamaBlanca.length > 0 && effectiveTicketProvider !== 'dormity' && (
+              {effectiveTicketProvider !== 'dormity' && (
                 <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                   <div 
                     onClick={() => toggleSection('gamablanca')} 
@@ -9818,13 +9861,54 @@ function App() {
                           </div>
                         </div>
                       ))}
+
+                      {/* Añadir nuevo artículo a Gama Blanca */}
+                      <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '1px dashed var(--panel-border)', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="➕ Añadir nuevo artículo a Gama Blanca (ej: Frigorífico, Lavadora)..." 
+                          value={quickAddArticleNames['Gama Blanca'] || ''} 
+                          onChange={(e) => setQuickAddArticleNames(prev => ({ ...prev, 'Gama Blanca': e.target.value }))} 
+                          disabled={isClosed} 
+                          style={{ flex: '1 1 180px', margin: 0, fontSize: '0.85rem' }} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleQuickAddArticle('Gama Blanca', quickAddArticleNames['Gama Blanca'], quickAddArticlePrices['Gama Blanca'], effectiveTicketProvider);
+                            }
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            className="form-input" 
+                            placeholder="0.00 €" 
+                            value={quickAddArticlePrices['Gama Blanca'] || ''} 
+                            onChange={(e) => setQuickAddArticlePrices(prev => ({ ...prev, 'Gama Blanca': e.target.value }))} 
+                            disabled={isClosed} 
+                            style={{ width: '85px', margin: 0, fontSize: '0.85rem', textAlign: 'right' }} 
+                            title="Precio en Euros (€)"
+                          />
+                          <button 
+                            type="button" 
+                            className="btn btn-primary" 
+                            style={{ width: 'auto', margin: 0, height: '38px', padding: '0 14px', fontSize: '0.82rem', whiteSpace: 'nowrap' }} 
+                            disabled={isClosed || !quickAddArticleNames['Gama Blanca']?.trim()} 
+                            onClick={() => handleQuickAddArticle('Gama Blanca', quickAddArticleNames['Gama Blanca'], quickAddArticlePrices['Gama Blanca'], effectiveTicketProvider)}
+                          >
+                            + Añadir
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
               {/* SECCIÓN D: MUEBLES */}
-              {itemsMuebles.length > 0 && effectiveTicketProvider !== 'dormity' && (
+              {effectiveTicketProvider !== 'dormity' && (
                 <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                   <div 
                     onClick={() => toggleSection('muebles')} 
@@ -9874,13 +9958,54 @@ function App() {
                           </div>
                         </div>
                       ))}
+
+                      {/* Añadir nuevo artículo a Muebles */}
+                      <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '1px dashed var(--panel-border)', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="➕ Añadir nuevo artículo a Muebles (ej: Sofá, Canapé, Cabecero)..." 
+                          value={quickAddArticleNames['Muebles'] || ''} 
+                          onChange={(e) => setQuickAddArticleNames(prev => ({ ...prev, 'Muebles': e.target.value }))} 
+                          disabled={isClosed} 
+                          style={{ flex: '1 1 180px', margin: 0, fontSize: '0.85rem' }} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleQuickAddArticle('Muebles', quickAddArticleNames['Muebles'], quickAddArticlePrices['Muebles'], effectiveTicketProvider);
+                            }
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            className="form-input" 
+                            placeholder="0.00 €" 
+                            value={quickAddArticlePrices['Muebles'] || ''} 
+                            onChange={(e) => setQuickAddArticlePrices(prev => ({ ...prev, 'Muebles': e.target.value }))} 
+                            disabled={isClosed} 
+                            style={{ width: '85px', margin: 0, fontSize: '0.85rem', textAlign: 'right' }} 
+                            title="Precio en Euros (€)"
+                          />
+                          <button 
+                            type="button" 
+                            className="btn btn-primary" 
+                            style={{ width: 'auto', margin: 0, height: '38px', padding: '0 14px', fontSize: '0.82rem', whiteSpace: 'nowrap' }} 
+                            disabled={isClosed || !quickAddArticleNames['Muebles']?.trim()} 
+                            onClick={() => handleQuickAddArticle('Muebles', quickAddArticleNames['Muebles'], quickAddArticlePrices['Muebles'], effectiveTicketProvider)}
+                          >
+                            + Añadir
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
               {/* SECCIÓN E: ELECTRODOMÉSTICOS VARIOS */}
-              {itemsElectrodomesticosVarios.length > 0 && effectiveTicketProvider !== 'dormity' && (
+              {effectiveTicketProvider !== 'dormity' && (
                 <div className="block-section" style={{ textAlign: 'left', padding: 0 }}>
                   <div 
                     onClick={() => toggleSection('electrodomesticos')} 
@@ -9979,6 +10104,47 @@ function App() {
                           </div>
                         );
                       })}
+
+                      {/* Añadir nuevo artículo a Electrodomésticos Varios */}
+                      <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '1px dashed var(--panel-border)', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="➕ Añadir nuevo electrodoméstico..." 
+                          value={quickAddArticleNames['Electrodomésticos Varios'] || ''} 
+                          onChange={(e) => setQuickAddArticleNames(prev => ({ ...prev, 'Electrodomésticos Varios': e.target.value }))} 
+                          disabled={isClosed} 
+                          style={{ flex: '1 1 180px', margin: 0, fontSize: '0.85rem' }} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleQuickAddArticle('Electrodomésticos Varios', quickAddArticleNames['Electrodomésticos Varios'], quickAddArticlePrices['Electrodomésticos Varios'], effectiveTicketProvider);
+                            }
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            className="form-input" 
+                            placeholder="0.00 €" 
+                            value={quickAddArticlePrices['Electrodomésticos Varios'] || ''} 
+                            onChange={(e) => setQuickAddArticlePrices(prev => ({ ...prev, 'Electrodomésticos Varios': e.target.value }))} 
+                            disabled={isClosed} 
+                            style={{ width: '85px', margin: 0, fontSize: '0.85rem', textAlign: 'right' }} 
+                            title="Precio en Euros (€)"
+                          />
+                          <button 
+                            type="button" 
+                            className="btn btn-primary" 
+                            style={{ width: 'auto', margin: 0, height: '38px', padding: '0 14px', fontSize: '0.82rem', whiteSpace: 'nowrap' }} 
+                            disabled={isClosed || !quickAddArticleNames['Electrodomésticos Varios']?.trim()} 
+                            onClick={() => handleQuickAddArticle('Electrodomésticos Varios', quickAddArticleNames['Electrodomésticos Varios'], quickAddArticlePrices['Electrodomésticos Varios'], effectiveTicketProvider)}
+                          >
+                            + Añadir
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -10042,6 +10208,47 @@ function App() {
                         </div>
                       ));
                     })()}
+
+                    {/* Añadir nuevo artículo a Otros */}
+                    <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '1px dashed var(--panel-border)', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="➕ Añadir otro elemento o accesorio..." 
+                        value={quickAddArticleNames['Otros'] || ''} 
+                        onChange={(e) => setQuickAddArticleNames(prev => ({ ...prev, 'Otros': e.target.value }))} 
+                        disabled={isClosed} 
+                        style={{ flex: '1 1 180px', margin: 0, fontSize: '0.85rem' }} 
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleQuickAddArticle('Otros', quickAddArticleNames['Otros'], quickAddArticlePrices['Otros'], effectiveTicketProvider);
+                          }
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                        <input 
+                          type="number" 
+                          step="0.01" 
+                          className="form-input" 
+                          placeholder="0.00 €" 
+                          value={quickAddArticlePrices['Otros'] || ''} 
+                          onChange={(e) => setQuickAddArticlePrices(prev => ({ ...prev, 'Otros': e.target.value }))} 
+                          disabled={isClosed} 
+                          style={{ width: '85px', margin: 0, fontSize: '0.85rem', textAlign: 'right' }} 
+                          title="Precio en Euros (€)"
+                        />
+                        <button 
+                          type="button" 
+                          className="btn btn-primary" 
+                          style={{ width: 'auto', margin: 0, height: '38px', padding: '0 14px', fontSize: '0.82rem', whiteSpace: 'nowrap' }} 
+                          disabled={isClosed || !quickAddArticleNames['Otros']?.trim()} 
+                          onClick={() => handleQuickAddArticle('Otros', quickAddArticleNames['Otros'], quickAddArticlePrices['Otros'], effectiveTicketProvider)}
+                        >
+                          + Añadir
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -22046,9 +22253,9 @@ function App() {
             
             <div className="settings-grid">
               <div>
-                {['Paquetería', 'Televisores', 'Instalaciones', 'Barras de Sonido', 'Electrodomésticos Varios', 'Servicios', 'Gama Blanca', 'Muebles'].map(block => {
+                {['Paquetería', 'Televisores', 'Instalaciones', 'Barras de Sonido', 'Electrodomésticos Varios', 'Servicios', 'Gama Blanca', 'Muebles', 'Otros'].map(block => {
                   const blockTariffs = tariffs.filter(t => {
-                    const matchesBlock = t.block === block;
+                    const matchesBlock = t.block === block || (block === 'Otros' && t.block === 'Otros Elementos');
                     if (!matchesBlock) return false;
                     
                     if (currentUser?.role === 'superadmin') {
@@ -22078,7 +22285,7 @@ function App() {
                           alignItems: 'center', 
                           padding: '12px 18px', 
                           background: isExpanded ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255,255,255,0.02)', 
-                          cursor: 'pointer',
+                          cursor: 'pointer', 
                           userSelect: 'none',
                           transition: 'all 0.2s ease',
                           borderBottom: isExpanded ? '1px solid var(--panel-border)' : 'none'
@@ -22094,7 +22301,8 @@ function App() {
                              block === 'Electrodomésticos Varios' ? '💻' :
                              block === 'Servicios' ? '🛠️' :
                              block === 'Gama Blanca' ? '🔌' : 
-                             block === 'Muebles' ? '🛋️' : '🏷️'}
+                             block === 'Muebles' ? '🛋️' : 
+                             block === 'Otros' ? '🏷️' : '🏷️'}
                           </span>
                           <span style={{ fontWeight: '700', textTransform: 'uppercase', fontSize: '0.85rem', letterSpacing: '0.5px', color: isExpanded ? 'var(--primary)' : 'var(--text)' }}>
                             {block}
