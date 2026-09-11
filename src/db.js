@@ -1272,6 +1272,7 @@ const DEFAULT_TARIFFS = [
   { id: 'ORDE', name: 'Ordenador', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
   { id: 'PANT', name: 'Pantalla', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
   { id: 'MCAD', name: 'Micro Cadena', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
+  { id: 'CUSTOM_1783953367706', name: 'DVD / BLU-RAY', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 },
   { id: 'KM_RUTA_LARGA', name: 'Kilometraje Ruta Larga / Extra (por km)', block: 'Servicios', type: 'fixed', value: 0.30 },
 
   // Bloque Gama Blanca
@@ -1449,13 +1450,13 @@ export function initDB() {
 
       // Split 'Otros' block into new categories: 'Barras de Sonido', 'Electrodomésticos Varios', 'Servicios'
       const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
-      const electroIds = ['PROY', 'ORDE', 'PANT', 'MCAD', 'MFRA', 'SPAR', 'SSUE', 'ALTA', 'TDIC'];
+      const electroIds = ['PROY', 'ORDE', 'PANT', 'MCAD', 'MFRA', 'SPAR', 'SSUE', 'ALTA', 'TDIC', 'CUSTOM_1783953367706'];
       const serviceIds = ['URGENTE_100', 'URGENTE_120', 'VTEC'];
       
       let changed = false;
       current = current.map(t => {
         const matchesSoundbar = soundbarIds.some(sid => t.id === sid || t.id.startsWith(sid + '_'));
-        const matchesElectro = electroIds.some(eid => t.id === eid || t.id.startsWith(eid + '_'));
+        const matchesElectro = electroIds.some(eid => t.id === eid || t.id.startsWith(eid + '_')) || (t && t.name && t.name.toLowerCase().includes('dvd'));
         const matchesService = serviceIds.some(sid => t.id === sid || t.id.startsWith(sid + '_'));
         
         if (matchesSoundbar && t.block !== 'Barras de Sonido') {
