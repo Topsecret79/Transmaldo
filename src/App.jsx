@@ -4299,17 +4299,28 @@ function App() {
     });
 
     // 4. Añadir Servicio Urgente si aplica
-    if (urgenteType === '100') {
+    if (urgenteType === '1' || urgenteType === '100') {
       tasksArray.push({
         tariffId: 'URGENTE_100',
         quantity: 1,
         noCharge: getExistingNoCharge('URGENTE_100')
       });
-    } else if (urgenteType === '120') {
+    } else if (urgenteType === '2' || urgenteType === '120') {
       tasksArray.push({
         tariffId: 'URGENTE_120',
         quantity: 1,
         noCharge: getExistingNoCharge('URGENTE_120')
+      });
+    } else if (urgenteType === '3' || urgenteType === '130') {
+      const urgent3Tariff = tariffs.find(t => t.id === 'CUSTOM_1789676503465_obkqs' || t.id === 'URGENTE_130' || (t.name && t.name.toLowerCase().includes('urgente 3')));
+      const urgent3Id = urgent3Tariff ? urgent3Tariff.id : 'CUSTOM_1789676503465_obkqs';
+      tasksArray.push({
+        tariffId: urgent3Id,
+        name: urgent3Tariff ? urgent3Tariff.name : 'Servicio Urgente 3',
+        quantity: 1,
+        unitPrice: urgent3Tariff ? (urgent3Tariff.value || 130) : 130,
+        totalPrice: urgent3Tariff ? (urgent3Tariff.value || 130) : 130,
+        noCharge: getExistingNoCharge(urgent3Id)
       });
     }
 
@@ -5598,11 +5609,15 @@ function App() {
     // Reconstruir otros artículos no-TV y sus descripciones de paquetería
     (ticket.tasks || []).forEach(t => {
       if (t.tariffId === 'URGENTE_100') {
-        localUrgente = '100';
+        localUrgente = '1';
         return;
       }
       if (t.tariffId === 'URGENTE_120') {
-        localUrgente = '120';
+        localUrgente = '2';
+        return;
+      }
+      if (t.tariffId === 'CUSTOM_1789676503465_obkqs' || t.tariffId === 'URGENTE_130' || (t.name && t.name.toLowerCase().includes('urgente 3'))) {
+        localUrgente = '3';
         return;
       }
       if (t.tariffId && t.tariffId.startsWith('CUSTOM_DORMITY_')) {
@@ -7810,6 +7825,8 @@ function App() {
     const itemsElectrodomesticosVarios = tariffs.filter(t => getNormalizedBlock(t.block) === 'electrodomesticos varios');
     const itemsOtros = tariffs.filter(t => {
       const isTvInstallation = t.id.startsWith('PM_BAS_') || t.id.startsWith('PM_COMP_') || t.id.startsWith('CUELGUE_');
+      const isUrgentTariff = t.id.startsWith('URGENTE_') || t.id === 'CUSTOM_1789676503465_obkqs' || t.id === 'URGENTE_130' || (t.name && t.name.toLowerCase().includes('urgente'));
+      if (isUrgentTariff) return false;
       const bNorm = getNormalizedBlock(t.block);
       return bNorm === 'otros' || bNorm === 'barras de sonido' || bNorm === 'servicios' || (bNorm === 'instalaciones' && !isTvInstallation);
     });
@@ -9365,7 +9382,7 @@ function App() {
           
           const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
           const otrosCount = itemsOtros
-            .filter(item => !['URGENTE_100', 'URGENTE_120'].includes(item.id))
+            .filter(item => !['URGENTE_100', 'URGENTE_120', 'CUSTOM_1789676503465_obkqs', 'URGENTE_130'].includes(item.id) && !(item.name && item.name.toLowerCase().includes('urgente')))
             .reduce((sum, t) => sum + (otherQuantities[t.id] || 0), 0);
 
           return (
@@ -9683,55 +9700,45 @@ function App() {
 
                     {/* SECCIÓN URGENTE */}
                     <div style={{ borderTop: '1px dashed var(--panel-border)', paddingTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px' }}>⚡ Servicio Urgente Especial</div>
+                      <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px' }}>⚡ Servicios Urgentes</div>
                       <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-                        Si este reparto es un servicio urgente especial que sale en cualquier momento, selecciona la tarifa correspondiente:
+                        Si este reparto es un servicio urgente especial, selecciona el tipo correspondiente:
                       </p>
                       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '5px' }}>
-                        <button
-                          type="button"
-                          className={`action-pill-opt ${urgenteType === 'none' ? 'active' : ''}`}
-                          onClick={() => !isClosed && setUrgenteType('none')}
-                          style={{ flex: 1, height: '38px', minWidth: '100px', borderRadius: '8px', cursor: isClosed ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}
-                        >
-                          No es Urgente
-                        </button>
-                        <button
-                          type="button"
-                          className={`action-pill-opt ${urgenteType === '100' ? 'active' : ''}`}
-                          onClick={() => !isClosed && setUrgenteType('100')}
-                          style={{ 
-                            flex: 1, 
-                            height: '38px', 
-                            minWidth: '100px', 
-                            borderRadius: '8px', 
-                            cursor: isClosed ? 'not-allowed' : 'pointer',
-                            fontSize: '0.85rem',
-                            borderColor: urgenteType === '100' ? '#ef4444' : '', 
-                            color: urgenteType === '100' ? '#fff' : '', 
-                            background: urgenteType === '100' ? 'rgba(239, 68, 68, 0.2)' : '' 
-                          }}
-                        >
-                          Urgente 100€
-                        </button>
-                        <button
-                          type="button"
-                          className={`action-pill-opt ${urgenteType === '120' ? 'active' : ''}`}
-                          onClick={() => !isClosed && setUrgenteType('120')}
-                          style={{ 
-                            flex: 1, 
-                            height: '38px', 
-                            minWidth: '100px', 
-                            borderRadius: '8px', 
-                            cursor: isClosed ? 'not-allowed' : 'pointer',
-                            fontSize: '0.85rem',
-                            borderColor: urgenteType === '120' ? '#ef4444' : '', 
-                            color: urgenteType === '120' ? '#fff' : '', 
-                            background: urgenteType === '120' ? 'rgba(239, 68, 68, 0.2)' : '' 
-                          }}
-                        >
-                          Urgente 120€
-                        </button>
+                        {[
+                          { key: '1', label: '⚡ Servicio Urgente 1' },
+                          { key: '2', label: '⚡ Servicio Urgente 2' },
+                          { key: '3', label: '⚡ Servicio Urgente 3' }
+                        ].map(({ key, label }) => {
+                          const isSelected = urgenteType === key || (key === '1' && urgenteType === '100') || (key === '2' && urgenteType === '120') || (key === '3' && urgenteType === '130');
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              className={`action-pill-opt ${isSelected ? 'active' : ''}`}
+                              onClick={() => {
+                                if (isClosed) return;
+                                setUrgenteType(prev => {
+                                  const wasActive = prev === key || (key === '1' && prev === '100') || (key === '2' && prev === '120') || (key === '3' && prev === '130');
+                                  return wasActive ? 'none' : key;
+                                });
+                              }}
+                              style={{ 
+                                flex: '1 1 140px', 
+                                height: '38px', 
+                                borderRadius: '8px', 
+                                cursor: isClosed ? 'not-allowed' : 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: isSelected ? '700' : 'normal',
+                                borderColor: isSelected ? '#ef4444' : '', 
+                                color: isSelected ? '#fff' : '', 
+                                background: isSelected ? 'rgba(239, 68, 68, 0.25)' : '' 
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -10194,7 +10201,7 @@ function App() {
                     {(() => {
                       const soundbarIds = ['BSND', 'PM_BSND', 'CUELGUE_BSND'];
                       const soundbarItems = soundbarIds.map(id => itemsOtros.find(item => item.id === id)).filter(Boolean);
-                      const otherItems = itemsOtros.filter(item => !soundbarIds.includes(item.id) && item.id !== 'URGENTE_100' && item.id !== 'URGENTE_120');
+                      const otherItems = itemsOtros.filter(item => !soundbarIds.includes(item.id) && !['URGENTE_100', 'URGENTE_120', 'CUSTOM_1789676503465_obkqs', 'URGENTE_130'].includes(item.id) && !(item.name && item.name.toLowerCase().includes('urgente')));
                       const sortedOtros = [...soundbarItems, ...otherItems];
                       
                       return sortedOtros.map(t => (
@@ -18545,7 +18552,7 @@ function App() {
       statsTickets.forEach(t => {
         if (!t.tasks) return;
         t.tasks.forEach(task => {
-          if (tariffIdFilter(task.tariffId || '')) count += (task.quantity || 1);
+          if (tariffIdFilter(task.tariffId || '', task)) count += (task.quantity || 1);
         });
       });
       return count;
@@ -18619,6 +18626,7 @@ function App() {
     // Especiales
     const urgente100 = countTasks(id => id === 'URGENTE_100');
     const urgente120 = countTasks(id => id === 'URGENTE_120');
+    const urgente130 = countTasks((id, task) => id === 'CUSTOM_1789676503465_obkqs' || id === 'URGENTE_130' || (task?.name && task.name.toLowerCase().includes('urgente 3')));
     const kmRuta = countTasks(id => id === 'KM_RUTA_LARGA');
 
     // Dormity
@@ -18902,10 +18910,11 @@ function App() {
           <table style={tableStyle}>
             <thead><tr><th style={thStyle}>Concepto</th><th style={{ ...thStyle, textAlign: 'right' }}>Unidades</th></tr></thead>
             <tbody>
-              <Row label="Servicio Urgente 100€" val={urgente100} />
-              <Row label="Servicio Urgente 120€" val={urgente120} />
+              <Row label="Servicio Urgente 1" val={urgente100} />
+              <Row label="Servicio Urgente 2" val={urgente120} />
+              <Row label="Servicio Urgente 3" val={urgente130} />
               <Row label="Kilometraje Ruta Larga / Extra" val={kmRuta} />
-              {urgente100 === 0 && urgente120 === 0 && kmRuta === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
+              {urgente100 === 0 && urgente120 === 0 && urgente130 === 0 && kmRuta === 0 && <tr><td colSpan={2} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>Sin datos en este periodo</td></tr>}
             </tbody>
           </table>
         </div>
@@ -19358,7 +19367,8 @@ function App() {
             totalPMsBasicEarnings += pmEarnings;
           }
         }
-        if (tid.startsWith('CUSTOM_')) {
+        const isUrgent = tid.startsWith('URGENTE_') || tid === 'CUSTOM_1789676503465_obkqs' || tid === 'URGENTE_130' || (task.name && task.name.toLowerCase().includes('urgente'));
+        if (tid.startsWith('CUSTOM_') && !isUrgent) {
           totalCustomEarnings += (task.unitPrice || task.price || 0) * task.quantity;
         }
         if (!isDormityTicket && tid.startsWith('CUELGUE_')) {
@@ -19371,7 +19381,7 @@ function App() {
         if (tid === 'BSND') {
           totalBarrasSonido += task.quantity;
         }
-        if (tid.startsWith('URGENTE_')) {
+        if (isUrgent) {
           totalUrgentes += task.quantity;
         }
       });
@@ -19386,9 +19396,10 @@ function App() {
     // (successTickets/filteredAdminTickets + el mismo prefijo de tariffId), para que
     // el desglose siempre coincida con el número mostrado en la tarjeta.
     const getTicketsForStatCard = (key) => {
+      const isUrgentTask = (tid, task) => tid.startsWith('URGENTE_') || tid === 'CUSTOM_1789676503465_obkqs' || tid === 'URGENTE_130' || (task?.name && task.name.toLowerCase().includes('urgente'));
       const hasTaskMatching = (t, predicate) => {
         const isDormityTicket = t.provider === 'dormity';
-        return (t.tasks || []).some(task => predicate(task.tariffId || '', isDormityTicket));
+        return (t.tasks || []).some(task => predicate(task.tariffId || '', isDormityTicket, task));
       };
       switch (key) {
         case 'total':
@@ -19402,7 +19413,7 @@ function App() {
         case 'cuelgues':
           return { title: 'Cuelgues', tickets: successTickets.filter(t => hasTaskMatching(t, (tid, isDorm) => !isDorm && tid.startsWith('CUELGUE_'))) };
         case 'adicionales':
-          return { title: 'Adicionales del Mes', tickets: successTickets.filter(t => hasTaskMatching(t, (tid) => tid.startsWith('CUSTOM_'))) };
+          return { title: 'Adicionales del Mes', tickets: successTickets.filter(t => hasTaskMatching(t, (tid, isDorm, task) => tid.startsWith('CUSTOM_') && !isUrgentTask(tid, task))) };
         case 'recogidas':
           return { title: 'Recogidas TV Vieja', tickets: successTickets.filter(t => hasTaskMatching(t, (tid) => tid.startsWith('TV_VIEJA_'))) };
         case 'fallidos':
@@ -19412,7 +19423,7 @@ function App() {
         case 'barras':
           return { title: 'Barras de Sonido', tickets: successTickets.filter(t => hasTaskMatching(t, (tid) => tid === 'BSND')) };
         case 'urgentes':
-          return { title: 'Servicios Urgentes', tickets: successTickets.filter(t => hasTaskMatching(t, (tid) => tid.startsWith('URGENTE_'))) };
+          return { title: 'Servicios Urgentes', tickets: successTickets.filter(t => hasTaskMatching(t, (tid, isDorm, task) => isUrgentTask(tid, task))) };
         default:
           return { title: '', tickets: [] };
       }
