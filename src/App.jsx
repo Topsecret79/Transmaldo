@@ -6445,9 +6445,6 @@ function App() {
         });
       }
 
-      // Guardar kms de la ruta para que coincida el resumen de turno
-      await saveRouteKms(shift.furgoId, shift.date, traveled);
-
       // 3. Actualizar odómetro del vehículo en la lista de furgonetas
       const currentVehicles = getFleetVehicles() || [];
       const vehIndex = currentVehicles.findIndex(v => v.plate === editAssignPlate);
@@ -10885,10 +10882,11 @@ function App() {
                                 startKm = Number(sortedLogs[0].kmEnd) || 0;
                               } else {
                                 const matchingVeh = fleetVehicles.find(v => v.plate === driverMatricula);
-                                  if (matchingVeh) startKm = Number(matchingVeh.currentKm) || 0;
+                                if (matchingVeh) startKm = Number(matchingVeh.currentKm) || 0;
                               }
+                              const savedEnd = currentShift?.endKms || currentShift?.summary?.endKms || '';
                               setDriverKmStart(startKm.toString());
-                              setDriverKmEnd(existingKms > 0 ? (startKm + existingKms).toString() : startKm.toString());
+                              setDriverKmEnd(savedEnd ? savedEnd.toString() : '');
                               setDriverKmL('');
                               setDriverHasFuel(false);
                               setDriverFuelLiters('');
@@ -10951,8 +10949,9 @@ function App() {
                                   const matchingVeh = fleetVehicles.find(v => v.plate === driverMatricula);
                                   if (matchingVeh) startKm = Number(matchingVeh.currentKm) || 0;
                                 }
+                                const savedEnd = currentShift?.endKms || currentShift?.summary?.endKms || '';
                                 setDriverKmStart(startKm.toString());
-                                setDriverKmEnd(existingKms > 0 ? (startKm + existingKms).toString() : startKm.toString());
+                                setDriverKmEnd(savedEnd ? savedEnd.toString() : '');
                                 setDriverKmL('');
                                 setDriverHasFuel(false);
                                 setDriverFuelLiters('');
@@ -10983,8 +10982,9 @@ function App() {
                                   const matchingVeh = fleetVehicles.find(v => v.plate === driverMatricula);
                                   if (matchingVeh) startKm = Number(matchingVeh.currentKm) || 0;
                                 }
+                                const savedEnd = currentShift?.endKms || currentShift?.summary?.endKms || '';
                                 setDriverKmStart(startKm.toString());
-                                setDriverKmEnd(existingKms > 0 ? (startKm + existingKms).toString() : startKm.toString());
+                                setDriverKmEnd(savedEnd ? savedEnd.toString() : '');
                                 setDriverKmL('');
                                 setDriverHasFuel(false);
                                 setDriverFuelLiters('');
@@ -23635,33 +23635,23 @@ function App() {
                             
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                               <div>
-                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Inicio *</label>
+                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Inicio (Odómetro Vehículo) *</label>
                                 <input 
                                   type="number" 
                                   className="form-input" 
                                   value={driverKmStart} 
-                                  onChange={(e) => {
-                                    const startVal = e.target.value;
-                                    setDriverKmStart(startVal);
-                                    const diff = Number(driverKmEnd) - Number(startVal);
-                                    setShiftKmsInput(diff > 0 ? diff.toString() : '0');
-                                  }} 
+                                  onChange={(e) => setDriverKmStart(e.target.value)} 
                                   style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px' }} 
                                 />
                               </div>
                               <div>
-                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Fin *</label>
+                                <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Km Fin (Odómetro Vehículo) *</label>
                                 <input 
                                   type="number" 
                                   className="form-input" 
-                                  placeholder="Lectura final" 
+                                  placeholder="Lectura final del vehículo" 
                                   value={driverKmEnd} 
-                                  onChange={(e) => {
-                                    const endVal = e.target.value;
-                                    setDriverKmEnd(endVal);
-                                    const diff = Number(endVal) - Number(driverKmStart);
-                                    setShiftKmsInput(diff > 0 ? diff.toString() : '0');
-                                  }} 
+                                  onChange={(e) => setDriverKmEnd(e.target.value)} 
                                   style={{ padding: '6px', textAlign: 'center', fontSize: '0.85rem', margin: 0, height: '32px', border: '1px solid var(--primary)' }} 
                                 />
                               </div>
@@ -23681,10 +23671,11 @@ function App() {
                                 />
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Recorrido Estimado:</span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Recorrido Odómetro:</span>
                                 <strong style={{ fontSize: '0.9rem', color: '#60a5fa' }}>
                                   {Number(driverKmEnd) - Number(driverKmStart) > 0 ? `+${Number(driverKmEnd) - Number(driverKmStart)} km` : '0 km'}
                                 </strong>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>(Control vehículo, no facturable)</span>
                               </div>
                             </div>
 
@@ -23746,12 +23737,15 @@ function App() {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
                           <span style={{ fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>🏁 Kilómetros de la Ruta (Facturables):</span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            💡 Solo rellenar si la ruta tiene kilómetros facturables al cliente (ej. ruta larga o kilometraje pactado). Dejar en 0 o en blanco si no aplica.
+                          </span>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                             <input 
                               type="number" 
                               step="0.1" 
                               className="form-input" 
-                              placeholder="Introduce kms recorridos de ganancia" 
+                              placeholder="0 (Solo si es facturable)" 
                               value={shiftKmsInput} 
                               onChange={(e) => setShiftKmsInput(e.target.value)} 
                               style={{ flex: 1, padding: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', height: '36px', margin: 0 }} 
@@ -23761,7 +23755,7 @@ function App() {
                           {isAdminOrSuper && (
                             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
                               <span>Tarifa: {kmPrice.toFixed(2)} €/km</span>
-                              <span>Importe: <strong style={{ color: 'var(--primary)' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
+                              <span>Importe Facturable: <strong style={{ color: 'var(--primary)' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
                             </div>
                           )}
                         </div>
