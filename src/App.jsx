@@ -7296,7 +7296,8 @@ function App() {
     });
 
     const totalBaseEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
-    const totalEarnings = totalBaseEarnings;
+    const totalMileageEarnings = totalKms * kmPrice;
+    const totalEarnings = totalBaseEarnings + totalMileageEarnings;
     const totalIVA = totalEarnings * 0.21;
     const totalRetencion = totalEarnings * 0.01;
     const totalNet = totalEarnings + totalIVA - totalRetencion;
@@ -7305,9 +7306,9 @@ function App() {
     const summaryData = [
       [`CONTROL DE FACTURACIÓN DE REPARTOS (Periodo: ${adminStartDate || 'inicio'} a ${adminEndDate || 'hoy'})`],
       [],
-      ['Facturación Total Acumulada (Base Imponible Servicios)', `${totalEarnings.toFixed(2)} €`],
+      ['Facturación Total Acumulada (Servicios + Kilometraje)', `${totalEarnings.toFixed(2)} €`],
       ['  - Base Imponible Servicios', `${totalBaseEarnings.toFixed(2)} €`],
-      ['  - Registro Odómetro Flota (Info Control Flota)', `${totalKms.toFixed(1)} km`],
+      ['  - Kilometraje Facturable (' + totalKms.toFixed(1) + ' km a ' + kmPrice.toFixed(2) + ' €/km)', `${totalMileageEarnings.toFixed(2)} €`],
       ['IVA Acumulado (+21%)', `${totalIVA.toFixed(2)} €`],
       ['Retención Acumulada (-1%)', `${totalRetencion.toFixed(2)} €`],
       ['Total Neto Facturado', `${totalNet.toFixed(2)} €`],
@@ -7315,7 +7316,7 @@ function App() {
       ['Total Entregas con Éxito (Facturadas)', successTickets.length],
       ['Total Reembolsos Cobrados', `${totalCOD.toFixed(2)} €`],
       [],
-      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Kilómetros Flota (Control)', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)', 'Reembolsos Cobrados (€)'],
+      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Kilómetros Facturables', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)', 'Reembolsos Cobrados (€)'],
     ];
 
     furgos.forEach(fid => {
@@ -7334,7 +7335,9 @@ function App() {
         fKms += getRouteKms(fid, s.date);
       });
 
-      const earnings = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+      const deliveryEarnings = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+      const furgoMileage = fKms * kmPrice;
+      const earnings = deliveryEarnings + furgoMileage;
       const iva = earnings * 0.21;
       const ret = earnings * 0.01;
       const net = earnings + iva - ret;
@@ -18091,8 +18094,10 @@ function App() {
           });
 
           const recordedKms = existingShift ? getRouteKms(furgoId, reportDate) : 0;
+          const furgoMileage = recordedKms * kmPrice;
+          const furgoGrandTotal = furgoTotal + furgoMileage;
 
-          allRows.push(['', '', 'TOTAL FURGONETA:', furgoTotalQty, '', furgoTotal.toFixed(2) + ' €']);
+          allRows.push(['', '', 'Subtotal Entregas y Servicios:', furgoTotalQty, '', furgoTotal.toFixed(2) + ' €']);
           if (furgoPickupsEci > 0) {
             allRows.push(['', '', 'De las cuales, Recogidas (El Corte Inglés):', furgoPickupsEci, '', '']);
           }
@@ -18100,8 +18105,9 @@ function App() {
             allRows.push(['', '', 'De las cuales, Recogidas (Dormity):', furgoPickupsDormity, '', '']);
           }
           if (recordedKms > 0) {
-            allRows.push(['', '', `Odómetro Flota (${recordedKms} km - Control Flota):`, '', '', '0.00 €']);
+            allRows.push(['', '', `Kilometraje Facturable (${recordedKms} km a ${kmPrice.toFixed(2)} €/km):`, '', '', furgoMileage.toFixed(2) + ' €']);
           }
+          allRows.push(['', '', 'TOTAL FURGONETA (Servicios + Kms):', furgoTotalQty, '', furgoGrandTotal.toFixed(2) + ' €']);
           allRows.push([]);
         });
 
@@ -18208,7 +18214,8 @@ function App() {
               });
 
               const recordedKms = getRouteKms(furgoId, reportDate);
-              const furgoGrandTotal = furgoDeliveryTotal;
+              const furgoMileage = recordedKms * kmPrice;
+              const furgoGrandTotal = furgoDeliveryTotal + furgoMileage;
 
               return (
                 <div key={furgoId} className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
@@ -18351,11 +18358,13 @@ function App() {
                       </tbody>
                       <tfoot>
                         {recordedKms > 0 && (
-                          <tr style={{ background: 'rgba(99,102,241,0.04)' }}>
-                            <td colSpan={3} style={{ padding: '8px 16px', fontWeight: '600', color: 'var(--text-muted)', fontSize: '0.85rem' }}>🛣️ Odómetro Flota ({recordedKms} km - Control de Flota)</td>
-                            <td style={{ padding: '8px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>—</td>
-                            <td style={{ padding: '8px 16px', textAlign: 'right', color: 'var(--text-muted)' }}>—</td>
-                            <td style={{ padding: '8px 16px', textAlign: 'right', fontWeight: '500', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>0.00 €</td>
+                          <tr style={{ background: 'rgba(99,102,241,0.06)' }}>
+                            <td colSpan={3} style={{ padding: '9px 16px', fontWeight: '600', color: 'var(--primary)', fontSize: '0.85rem' }}>
+                              🛣️ Kilometraje Facturable ({recordedKms} km × {kmPrice.toFixed(2)} €/km)
+                            </td>
+                            <td style={{ padding: '9px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>—</td>
+                            <td style={{ padding: '9px 16px', textAlign: 'right', color: 'var(--text-muted)' }}>{kmPrice.toFixed(2)} €</td>
+                            <td style={{ padding: '9px 16px', textAlign: 'right', fontWeight: '700', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{furgoMileage.toFixed(2)} €</td>
                           </tr>
                         )}
                         <tr style={{ background: 'rgba(99,102,241,0.12)', borderTop: '1px solid rgba(99,102,241,0.3)' }}>
@@ -18412,6 +18421,8 @@ function App() {
                         });
                       });
                       const fKms = getRouteKms(furgoId, reportDate);
+                      const fMileage = fKms * kmPrice;
+                      const fGrandTotal = fTotal + fMileage;
                       return (
                         <tr key={furgoId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                           <td style={{ padding: '9px 12px', fontWeight: '600', color: 'var(--text-main)' }}>🚚 {furgoLabel}</td>
@@ -18420,8 +18431,10 @@ function App() {
                           <td style={{ padding: '9px 12px', textAlign: 'center', color: '#38bdf8', fontWeight: '600' }}>{fPickupsEci > 0 ? fPickupsEci : '—'}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'center', color: '#a855f7', fontWeight: '600' }}>{fPickupsDormity > 0 ? fPickupsDormity : '—'}</td>
                           <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>{fTotal.toFixed(2)} €</td>
-                          <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{fKms > 0 ? `${fKms} km` : '—'}</td>
-                          <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{fTotal.toFixed(2)} €</td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', color: fMileage > 0 ? '#10b981' : 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                            {fKms > 0 ? `${fKms} km (${fMileage.toFixed(2)} €)` : '—'}
+                          </td>
+                          <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>{fGrandTotal.toFixed(2)} €</td>
                         </tr>
                       );
                     })}
@@ -18481,7 +18494,8 @@ function App() {
                             const fKms = getRouteKms(fId, reportDate);
                             tk += fKms;
                           });
-                          return tk > 0 ? `${tk} km` : '—';
+                          const totalMileage = tk * kmPrice;
+                          return tk > 0 ? `${tk} km (${totalMileage.toFixed(2)} €)` : '—';
                         })()}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', fontSize: '1.1rem', fontVariantNumeric: 'tabular-nums' }}>
@@ -18493,6 +18507,8 @@ function App() {
                               const billable = getBillableTasks(t);
                               billable.forEach(task => { gt += task.totalPrice; }); 
                             });
+                            const fKms = getRouteKms(fId, reportDate);
+                            gt += fKms * kmPrice;
                           });
                           return gt.toFixed(2) + ' €';
                         })()}
@@ -18984,10 +19000,11 @@ function App() {
           });
         });
 
-        const shift = shifts.find(s => s.furgoId === fid && s.date === date && s.status === 'closed');
-        const kms = shift ? getRouteKms(fid, date) : 0;
-        const mileage = 0;
-        const base = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+        const shift = shifts.find(s => s.furgoId === fid && s.date === date);
+        const kms = getRouteKms(fid, date);
+        const mileage = kms * kmPrice;
+        const deliveryBase = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+        const base = deliveryBase + mileage;
         const dailyTotal = base;
         const iva = dailyTotal * 0.21;
         const retencion = dailyTotal * 0.01;
@@ -19086,10 +19103,11 @@ function App() {
           });
         });
 
-        const shift = shifts.find(s => s.furgoId === fid && s.date === date && s.status === 'closed');
-        const kms = shift ? getRouteKms(fid, date) : 0;
-        const mileage = 0;
-        const base = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+        const shift = shifts.find(s => s.furgoId === fid && s.date === date);
+        const kms = getRouteKms(fid, date);
+        const mileage = kms * kmPrice;
+        const deliveryBase = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+        const base = deliveryBase + mileage;
         const dailyTotal = base;
         const iva = dailyTotal * 0.21;
         const retencion = dailyTotal * 0.01;
@@ -19123,7 +19141,7 @@ function App() {
         };
       });
 
-      const overallTotalNet = (totalBase + totalMileage) * 1.20;
+      const overallTotalNet = totalBase + (totalBase * 0.21) - (totalBase * 0.01);
 
       return (
         <div className="drilldown-overlay" onClick={() => setSelectedDrilldownFurgoId(null)}>
@@ -19145,7 +19163,7 @@ function App() {
 
             <div className="dashboard-grid" style={{ marginBottom: '20px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
               <div className="stat-card success" style={{ padding: '15px' }}>
-                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Facturación Base (Informe del Día)</p>
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Facturación Total (Servicios + Kms)</p>
                 <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalBase.toFixed(2)} €</div>
                 <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>(Neto con IVA/Ret: {overallTotalNet.toFixed(2)} €)</span>
               </div>
@@ -19154,9 +19172,9 @@ function App() {
                 <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalSuccess} / {totalTickets}</div>
               </div>
               <div className="stat-card warning" style={{ padding: '15px' }}>
-                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Kilometraje Flota (Control)</p>
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.8 }}>Kilometraje Facturable</p>
                 <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalKms.toFixed(1)} km</div>
-                <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>(Odómetro de Vehículo)</span>
+                <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({totalMileage.toFixed(2)} € a {kmPrice.toFixed(2)} €/km)</span>
               </div>
             </div>
 
@@ -19193,7 +19211,7 @@ function App() {
                   </thead>
                   <tbody>
                     {dailyStats.map(stat => {
-                      const dailyTotal = stat.base + stat.mileage;
+                      const dailyTotal = stat.base;
                       const iva = dailyTotal * 0.21;
                       const retencion = dailyTotal * 0.01;
                       const net = dailyTotal + iva - retencion;
@@ -19210,8 +19228,10 @@ function App() {
                             </td>
                           )}
                           <td style={{ textAlign: 'center' }}>{stat.deliveries}</td>
-                          <td style={{ textAlign: 'center' }}>{stat.kms.toFixed(1)} km</td>
-                          <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>0.00 €</td>
+                          <td style={{ textAlign: 'center' }}>{stat.kms > 0 ? `${stat.kms.toFixed(1)} km` : '—'}</td>
+                          <td style={{ textAlign: 'right', fontWeight: stat.mileage > 0 ? '600' : 'normal', color: stat.mileage > 0 ? '#10b981' : 'var(--text-muted)' }}>
+                            {stat.mileage > 0 ? `${stat.mileage.toFixed(2)} €` : '0.00 €'}
+                          </td>
                           <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{stat.base.toFixed(2)} €</td>
                           <td style={{ textAlign: 'right', fontWeight: '500', opacity: 0.85 }}>{net.toFixed(2)} €</td>
                         </tr>
@@ -19264,25 +19284,27 @@ function App() {
       const fFailed = fTickets.filter(t => t.status === 'failed').length;
       const fCod = fSuccess.reduce((sum, t) => sum + (t.codAmount || 0), 0);
 
-      // Get all closed shifts for this furgoneta in the filtered period
-      const fShifts = shifts.filter(s => 
-        s.furgoId === fid && 
-        s.status === 'closed' &&
-        (!adminStartDate || s.date >= adminStartDate) &&
-        (!adminEndDate || s.date <= adminEndDate)
-      );
+      // Get all dates for this furgoneta in the filtered period
+      const fDates = [...new Set([
+        ...fTickets.map(t => t.date),
+        ...shifts.filter(s => s.furgoId === fid && (!adminStartDate || s.date >= adminStartDate) && (!adminEndDate || s.date <= adminEndDate)).map(s => s.date)
+      ])];
       
       let fKms = 0;
-      fShifts.forEach(s => {
-        const kms = getRouteKms(fid, s.date);
-        fKms += kms;
+      fDates.forEach(d => {
+        fKms += getRouteKms(fid, d);
       });
+
+      const fDeliveryEarnings = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
+      const fMileageEarnings = fKms * kmPrice;
+      const fTotalEarnings = fDeliveryEarnings + fMileageEarnings;
 
       acc[fid] = {
         count: fTickets.length,
         successCount: fSuccess.length,
-        earnings: fSuccess.reduce((sum, t) => sum + t.totalPrice, 0),
-        mileageEarnings: 0,
+        deliveryEarnings: fDeliveryEarnings,
+        mileageEarnings: fMileageEarnings,
+        earnings: fTotalEarnings,
         kms: fKms,
         pms,
         pmsBasic,
@@ -19296,9 +19318,10 @@ function App() {
       return acc;
     }, {});
 
-    const totalMileageEarnings = 0;
-    const totalEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
+    const totalDeliveryEarnings = successTickets.reduce((sum, t) => sum + t.totalPrice, 0);
     const totalKmsAllFurgos = furgos.reduce((sum, fid) => sum + (furgoData[fid]?.kms || 0), 0);
+    const totalMileageEarnings = totalKmsAllFurgos * kmPrice;
+    const totalEarnings = totalDeliveryEarnings + totalMileageEarnings;
 
     const maxEarnings = Math.max(...Object.values(furgoData).map(d => d.earnings), 1);
 
@@ -20805,7 +20828,11 @@ function App() {
               <div className="stat-card success clickable" onClick={() => setSelectedStatCardKey('total')} title="Ver repartos de Total Mes">
                 <p>Total Mes</p>
                 <div className="stat-val">{totalEarnings.toFixed(2)} €</div>
-                <span>Km Flota (Odómetro): {totalKmsAllFurgos.toFixed(1)} km</span>
+                <span>
+                  {totalMileageEarnings > 0 
+                    ? `Entregas: ${totalDeliveryEarnings.toFixed(2)} € | Kms: ${totalMileageEarnings.toFixed(2)} €`
+                    : `Km Flota (Odómetro): ${totalKmsAllFurgos.toFixed(1)} km`}
+                </span>
               </div>
               <div className="stat-card info clickable" onClick={() => setSelectedStatCardKey('entregas')} title="Ver repartos de Entregas">
                 <p>Entregas</p>
@@ -20923,7 +20950,9 @@ function App() {
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.recogidas}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.cod > 0 ? `${data.cod.toFixed(2)} €` : '-'}</td>
                             <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.kms.toFixed(1)} km</td>
-                            <td style={{ textAlign: 'right', fontWeight: '500', color: 'var(--text-muted)' }}>0.00 €</td>
+                            <td style={{ textAlign: 'right', fontWeight: data.mileageEarnings > 0 ? '600' : '500', color: data.mileageEarnings > 0 ? '#10b981' : 'var(--text-muted)' }}>
+                              {data.mileageEarnings > 0 ? `${data.mileageEarnings.toFixed(2)} €` : '0.00 €'}
+                            </td>
                             <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{base.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: '500' }}>+{iva.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>-{retencion.toFixed(2)} €</td>
