@@ -115,5 +115,20 @@
       "Apertura automática de los bloques de acordeón en el formulario que contienen artículos registrados en el ticket.",
       "Inclusión de todos los campos estructurados en el guardado de borradores (delivery_form_draft) para evitar pérdidas accidentales."
     ]
+  },
+  {
+    "id": "v1.7.0",
+    "date": "2026-09-18",
+    "version": "1.7.0",
+    "title": "Atajos rápidos y transferencia masiva a Rutas de Apoyo",
+    "category": "Rutas / Usabilidad / Admin",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Botón de transferencia rápida individual (📤) en cada tarjeta de parada (vistas contraída y expandida) para enviar clientes a apoyo con 1 solo clic.",
+      "Modo de Selección Múltiple (☑️) en el listado de paradas con checkboxes dedicados para elegir varias entregas a la vez.",
+      "Barra de acciones flotante inferior con recuento en tiempo real de paradas seleccionadas, botón de seleccionar todas y cancelación rápida.",
+      "Modal interactivo de transferencia por lotes para elegir chofer destino con recálculo automático y secuencial del orden de ruta (routeOrder).",
+      "Preservación íntegra de la Ruta Original (originalRouteLabel) en notas y estructura del ticket durante transferencias masivas e individuales."
+    ]
   }
 ]

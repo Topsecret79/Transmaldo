@@ -1367,6 +1367,12 @@ function App() {
   const [showHelperRoute, setShowHelperRoute] = useState(false);
   const [showCod, setShowCod] = useState(() => getDraftVal('showCod', false));
 
+  // --- Quick Transfer to Support Route ---
+  const [supportTransferTicketId, setSupportTransferTicketId] = useState(null); // ticket ID whose mini-modal is open
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [bulkSelectedTickets, setBulkSelectedTickets] = useState(new Set());
+  const [bulkTransferModalOpen, setBulkTransferModalOpen] = useState(false);
+
   // Lista de TVs añadidas al ticket actual
   // Cada TV: { id: string, inches: number, action: 'entrega'|'recogida'|'combinado', pmType: 'none'|'basic'|'complex', cuelgue: boolean, recogidaViejaType: 'none'|'urbantz'|'no_urbantz' }
   const [formTvs, setFormTvs] = useState(() => getDraftVal('formTvs', []));
@@ -6793,7 +6799,7 @@ function App() {
 
     try {
       const parsed = parseTicketNotes(ticket.notes);
-      const originalRoute = parsed.originalRouteLabel || currentOwnerLabel;
+      const originalRoute = ticket.originalRouteLabel || parsed.originalRouteLabel || currentOwnerLabel;
       
       const updatedNotes = encodeTicketNotes(
         parsed.timeSlot,
@@ -6812,6 +6818,7 @@ function App() {
         ...ticket,
         furgoId: targetUser.id,
         furgoLabel: targetUser.label,
+        originalRouteLabel: originalRoute,
         routeName: `Ruta ${targetUser.label} (${ticket.date})`,
         notes: updatedNotes,
         routeOrder: targetDayTickets.length + 1
@@ -6823,6 +6830,75 @@ function App() {
     } catch (err) {
       console.error("Error transferring ticket support:", err);
       triggerAlert("Error al realizar la transferencia de apoyo", "error");
+    }
+  };
+
+  // --- Bulk transfer to support route ---
+  const toggleBulkSelect = (ticketId) => {
+    setBulkSelectedTickets(prev => {
+      const next = new Set(prev);
+      if (next.has(ticketId)) next.delete(ticketId);
+      else next.add(ticketId);
+      return next;
+    });
+  };
+
+  const handleBulkSendSupport = async (targetFurgoId) => {
+    const targetUser = users.find(u => u.id === targetFurgoId);
+    if (!targetUser || bulkSelectedTickets.size === 0) return;
+
+    const selectedIds = [...bulkSelectedTickets];
+    const validTickets = selectedIds
+      .map(id => tickets.find(t => t.id === id))
+      .filter(t => t && (!t.status || t.status === 'pending' || t.status === 'transit'));
+
+    if (validTickets.length === 0) {
+      triggerAlert('Ninguna de las paradas seleccionadas es transferible (ya están completadas).', 'error');
+      return;
+    }
+
+    if (!window.confirm(`¿Transferir ${validTickets.length} parada(s) a ${targetUser.label} en modo de auxilio/apoyo?`)) {
+      return;
+    }
+
+    try {
+      const targetDayTickets = tickets.filter(t => t.date === validTickets[0]?.date && t.furgoId === targetUser.id);
+      let runningOrder = targetDayTickets.length;
+
+      for (const ticket of validTickets) {
+        runningOrder += 1;
+        const parsed = parseTicketNotes(ticket.notes);
+        const currentOwnerLabel = ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId;
+        const originalRoute = ticket.originalRouteLabel || parsed.originalRouteLabel || currentOwnerLabel;
+        const updatedNotes = encodeTicketNotes(
+          parsed.timeSlot,
+          parsed.estimatedDuration,
+          parsed.cleanNotes,
+          parsed.driverObservations,
+          parsed.failedChargeType,
+          originalRoute,
+          parsed.completedAt,
+          parsed.source
+        );
+        const updatedTicket = {
+          ...ticket,
+          furgoId: targetUser.id,
+          furgoLabel: targetUser.label,
+          originalRouteLabel: originalRoute,
+          routeName: `Ruta ${targetUser.label} (${ticket.date})`,
+          notes: updatedNotes,
+          routeOrder: runningOrder
+        };
+        await updateTicket(updatedTicket);
+      }
+      triggerAlert(`${validTickets.length} parada(s) transferida(s) a ${targetUser.label} con éxito`);
+      setBulkSelectedTickets(new Set());
+      setBulkSelectMode(false);
+      setBulkTransferModalOpen(false);
+      loadData();
+    } catch (err) {
+      console.error("Error bulk transferring tickets:", err);
+      triggerAlert("Error al realizar la transferencia masiva de apoyo", "error");
     }
   };
 
@@ -11514,6 +11590,41 @@ function App() {
                 </div>
               )}
 
+              {/* Botón de Selección Múltiple para Transferencia en Lote */}
+              {dateTickets.length > 0 && isAdminOrSuper && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !bulkSelectMode;
+                      setBulkSelectMode(next);
+                      if (!next) { setBulkSelectedTickets(new Set()); setBulkTransferModalOpen(false); }
+                    }}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: '8px',
+                      border: bulkSelectMode ? '1px solid rgba(99, 102, 241, 0.6)' : '1px solid var(--panel-border)',
+                      background: bulkSelectMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(255,255,255,0.03)',
+                      color: bulkSelectMode ? 'var(--primary)' : 'var(--text-muted)',
+                      fontWeight: '700',
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {bulkSelectMode ? '✅ Modo Selección Activo' : '☑️ Selección Múltiple'}
+                  </button>
+                  {bulkSelectMode && (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      Selecciona paradas y pulsa "📤 Enviar" para transferirlas a otra ruta
+                    </span>
+                  )}
+                </div>
+              )}
+
               {dateTickets.length === 0 ? (
                 <div style={{ padding: '30px', color: 'var(--text-muted)', textAlign: 'center' }}>No hay paradas planificadas para este día.</div>
               ) : (
@@ -11578,6 +11689,16 @@ function App() {
                               }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                                {bulkSelectMode && (!t.status || t.status === 'pending' || t.status === 'transit') && (
+                                  <input
+                                    type="checkbox"
+                                    checked={bulkSelectedTickets.has(t.id)}
+                                    onChange={() => toggleBulkSelect(t.id)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{ width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0, accentColor: 'var(--primary)' }}
+                                    title="Seleccionar para transferencia"
+                                  />
+                                )}
                                 <div 
                                   onClick={() => toggleCollapse(t.id)} 
                                   style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, cursor: 'pointer', overflow: 'hidden' }}
@@ -11677,6 +11798,89 @@ function App() {
                                       <Edit size={14} color="#fbbf24" />
                                     </button>
                                   )}
+                                  {/* Botón rápido de transferencia en tarjeta contraída */}
+                                  {isAdminOrSuper && (!t.status || t.status === 'pending' || t.status === 'transit') && (
+                                    <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSupportTransferTicketId(supportTransferTicketId === t.id ? null : t.id);
+                                        }}
+                                        className="btn btn-secondary btn-small"
+                                        style={{
+                                          margin: 0, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                          borderRadius: '50%', height: '32px', width: '32px',
+                                          background: supportTransferTicketId === t.id ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.1)',
+                                          border: supportTransferTicketId === t.id ? '1px solid rgba(99, 102, 241, 0.7)' : '1px solid rgba(99, 102, 241, 0.35)'
+                                        }}
+                                        title="Enviar a otra ruta (apoyo)"
+                                      >
+                                        <span style={{ fontSize: '14px' }}>📤</span>
+                                      </button>
+                                      {supportTransferTicketId === t.id && (
+                                        <>
+                                          <div 
+                                            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                                            onClick={(e) => { e.stopPropagation(); setSupportTransferTicketId(null); }} 
+                                          />
+                                          <div 
+                                            onClick={e => e.stopPropagation()}
+                                            style={{
+                                              position: 'absolute', right: 0, top: '36px', zIndex: 1000,
+                                              background: 'var(--panel-bg)', border: '1px solid var(--primary)',
+                                              borderRadius: '10px', padding: '8px', minWidth: '200px',
+                                              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                                              animation: 'fadeIn 0.15s ease'
+                                            }}
+                                          >
+                                            <div style={{ fontSize: '0.78rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '6px', padding: '0 4px' }}>
+                                              📤 Enviar a Apoyo:
+                                            </div>
+                                            {users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).map(u => (
+                                              <button
+                                                key={u.id}
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setSupportTransferTicketId(null);
+                                                  handleSendSupport(t.id, u.id);
+                                                }}
+                                                style={{
+                                                  display: 'block', width: '100%', textAlign: 'left',
+                                                  padding: '7px 10px', margin: '2px 0', borderRadius: '6px',
+                                                  border: 'none', background: 'transparent',
+                                                  color: 'var(--text-main)', fontSize: '0.82rem',
+                                                  cursor: 'pointer', fontWeight: '600',
+                                                  transition: 'background 0.15s'
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                              >
+                                                🚚 {u.label}
+                                              </button>
+                                            ))}
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSupportTransferTicketId(null);
+                                              }}
+                                              style={{
+                                                display: 'block', width: '100%', textAlign: 'center',
+                                                padding: '6px', marginTop: '4px', borderRadius: '6px',
+                                                border: '1px solid var(--panel-border)', background: 'transparent',
+                                                color: 'var(--text-muted)', fontSize: '0.75rem',
+                                                cursor: 'pointer'
+                                              }}
+                                            >
+                                              Cancelar
+                                            </button>
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
                                   <button 
                                     type="button"
                                     onClick={(e) => {
@@ -11719,6 +11923,16 @@ function App() {
                             {/* Cabecera de la Tarjeta */}
                             <div className="driver-card-header">
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, flexWrap: 'wrap' }}>
+                                {bulkSelectMode && (!t.status || t.status === 'pending' || t.status === 'transit') && (
+                                  <input
+                                    type="checkbox"
+                                    checked={bulkSelectedTickets.has(t.id)}
+                                    onChange={() => toggleBulkSelect(t.id)}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{ width: '20px', height: '20px', cursor: 'pointer', flexShrink: 0, accentColor: 'var(--primary)' }}
+                                    title="Seleccionar para transferencia"
+                                  />
+                                )}
                                 <span 
                                   onClick={() => toggleCollapse(t.id)} 
                                   style={{ color: 'var(--primary)', cursor: 'pointer', display: 'inline-flex', marginRight: '4px', transition: 'transform 0.2s' }}
@@ -11860,6 +12074,79 @@ function App() {
                                     >
                                       <Trash2 size={12} />
                                     </button>
+                                    {/* Botón rápido de transferencia a ruta de apoyo */}
+                                    {isAdminOrSuper && (!t.status || t.status === 'pending' || t.status === 'transit') && (
+                                      <div style={{ position: 'relative' }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSupportTransferTicketId(supportTransferTicketId === t.id ? null : t.id)}
+                                          className="btn btn-secondary btn-small"
+                                          style={{
+                                            margin: 0, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                            borderRadius: '50%', height: '32px', width: '32px',
+                                            background: supportTransferTicketId === t.id ? 'rgba(99, 102, 241, 0.25)' : 'rgba(99, 102, 241, 0.1)',
+                                            border: supportTransferTicketId === t.id ? '1px solid rgba(99, 102, 241, 0.7)' : '1px solid rgba(99, 102, 241, 0.35)'
+                                          }}
+                                          title="Enviar a otra ruta (apoyo)"
+                                        >
+                                          <span style={{ fontSize: '14px' }}>📤</span>
+                                        </button>
+                                        {supportTransferTicketId === t.id && (
+                                          <>
+                                            <div 
+                                              style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }} 
+                                              onClick={() => setSupportTransferTicketId(null)} 
+                                            />
+                                            <div style={{
+                                              position: 'absolute', right: 0, top: '36px', zIndex: 1000,
+                                              background: 'var(--panel-bg)', border: '1px solid var(--primary)',
+                                              borderRadius: '10px', padding: '8px', minWidth: '200px',
+                                              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                                              animation: 'fadeIn 0.15s ease'
+                                            }}>
+                                              <div style={{ fontSize: '0.78rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '6px', padding: '0 4px' }}>
+                                                📤 Enviar a Apoyo:
+                                              </div>
+                                              {users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).map(u => (
+                                                <button
+                                                  key={u.id}
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setSupportTransferTicketId(null);
+                                                    handleSendSupport(t.id, u.id);
+                                                  }}
+                                                  style={{
+                                                    display: 'block', width: '100%', textAlign: 'left',
+                                                    padding: '7px 10px', margin: '2px 0', borderRadius: '6px',
+                                                    border: 'none', background: 'transparent',
+                                                    color: 'var(--text-main)', fontSize: '0.82rem',
+                                                    cursor: 'pointer', fontWeight: '600',
+                                                    transition: 'background 0.15s'
+                                                  }}
+                                                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)'}
+                                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                  🚚 {u.label}
+                                                </button>
+                                              ))}
+                                              <button
+                                                type="button"
+                                                onClick={() => setSupportTransferTicketId(null)}
+                                                style={{
+                                                  display: 'block', width: '100%', textAlign: 'center',
+                                                  padding: '6px', marginTop: '4px', borderRadius: '6px',
+                                                  border: '1px solid var(--panel-border)', background: 'transparent',
+                                                  color: 'var(--text-muted)', fontSize: '0.75rem',
+                                                  cursor: 'pointer'
+                                                }}
+                                              >
+                                                Cancelar
+                                              </button>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -12269,6 +12556,217 @@ function App() {
                     </div>
                   );
                 })()
+              )}
+
+              {/* Barra flotante inferior de Selección Múltiple */}
+              {bulkSelectMode && (
+                <div style={{
+                  position: 'fixed',
+                  bottom: '24px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  zIndex: 1500,
+                  background: 'rgba(17, 24, 39, 0.95)',
+                  backdropFilter: 'blur(12px)',
+                  border: '1px solid rgba(99, 102, 241, 0.4)',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.6), 0 0 15px rgba(99, 102, 241, 0.2)',
+                  borderRadius: '16px',
+                  padding: '10px 18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                  maxWidth: '92vw',
+                  animation: 'fadeIn 0.2s ease'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      background: bulkSelectedTickets.size > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
+                      color: '#fff',
+                      borderRadius: '20px',
+                      padding: '3px 10px',
+                      fontSize: '0.8rem',
+                      fontWeight: '800'
+                    }}>
+                      {bulkSelectedTickets.size}
+                    </span>
+                    <span style={{ fontSize: '0.84rem', fontWeight: '600', color: 'var(--text-main)' }}>
+                      {bulkSelectedTickets.size === 1 ? 'parada seleccionada' : 'paradas seleccionadas'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const selectableTickets = dateTickets.filter(t => !t.status || t.status === 'pending' || t.status === 'transit');
+                        if (bulkSelectedTickets.size === selectableTickets.length) {
+                          setBulkSelectedTickets(new Set());
+                        } else {
+                          setBulkSelectedTickets(new Set(selectableTickets.map(t => t.id)));
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--panel-border)',
+                        background: 'rgba(255,255,255,0.06)',
+                        color: 'var(--text-main)',
+                        fontSize: '0.78rem',
+                        fontWeight: '600',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {bulkSelectedTickets.size === dateTickets.filter(t => !t.status || t.status === 'pending' || t.status === 'transit').length ? 'Deseleccionar' : 'Todas'}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={bulkSelectedTickets.size === 0}
+                      onClick={() => setBulkTransferModalOpen(true)}
+                      style={{
+                        padding: '7px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: bulkSelectedTickets.size > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
+                        color: '#fff',
+                        fontSize: '0.84rem',
+                        fontWeight: '700',
+                        cursor: bulkSelectedTickets.size > 0 ? 'pointer' : 'not-allowed',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: bulkSelectedTickets.size > 0 ? '0 4px 14px rgba(99, 102, 241, 0.4)' : 'none',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      📤 Enviar a Apoyo
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBulkSelectMode(false);
+                        setBulkSelectedTickets(new Set());
+                        setBulkTransferModalOpen(false);
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        color: 'var(--danger)',
+                        fontSize: '0.78rem',
+                        fontWeight: '600',
+                        cursor: 'pointer'
+                      }}
+                      title="Salir del modo selección"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal de Transferencia Masiva a Apoyo */}
+              {bulkTransferModalOpen && (
+                <div style={{
+                  position: 'fixed',
+                  top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'rgba(0, 0, 0, 0.75)',
+                  backdropFilter: 'blur(8px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 2100,
+                  padding: '20px'
+                }}>
+                  <div className="glass-panel" style={{
+                    width: '100%',
+                    maxWidth: '420px',
+                    padding: '24px',
+                    textAlign: 'left',
+                    boxShadow: '0 15px 50px rgba(0,0,0,0.6)',
+                    border: '1px solid var(--panel-border)',
+                    borderRadius: '16px',
+                    background: 'rgba(21, 23, 30, 0.96)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        📤 Transferir a Ruta de Apoyo
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setBulkTransferModalOpen(false)}
+                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: '1.4' }}>
+                      Vas a transferir <strong>{bulkSelectedTickets.size} parada(s)</strong> en modo de auxilio/apoyo. Selecciona el chofer o furgoneta de destino:
+                    </p>
+
+                    <div style={{ maxHeight: '280px', overflowY: 'auto', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {users
+                        .filter(u => u && u.role === 'repartidor' && u.id !== (currentUser?.id || dateTickets[0]?.furgoId))
+                        .map(u => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => handleBulkSendSupport(u.id)}
+                            style={{
+                              width: '100%',
+                              padding: '12px 16px',
+                              borderRadius: '10px',
+                              border: '1px solid var(--panel-border)',
+                              background: 'rgba(255,255,255,0.04)',
+                              color: 'var(--text-main)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              cursor: 'pointer',
+                              fontWeight: '600',
+                              fontSize: '0.88rem',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.borderColor = 'var(--primary)';
+                              e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)';
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.borderColor = 'var(--panel-border)';
+                              e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                            }}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              🚚 {u.label}
+                            </span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: '700' }}>
+                              Enviar →
+                            </span>
+                          </button>
+                        ))}
+                      {users.filter(u => u && u.role === 'repartidor' && u.id !== (currentUser?.id || dateTickets[0]?.furgoId)).length === 0 && (
+                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                          No hay otros choferes registrados para recibir el apoyo.
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={() => setBulkTransferModalOpen(false)}
+                        className="btn btn-secondary btn-small"
+                        style={{ margin: 0, padding: '8px 16px' }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </div>
