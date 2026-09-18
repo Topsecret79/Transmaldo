@@ -716,26 +716,20 @@ function getDraftVal(key, defaultVal) {
 }
 
 function App() {
-  const getSourceFromNotes = (notes) => {
+  const getSourceFromNotes = (notes, directSource = null) => {
+    if (directSource) {
+      if (directSource.toLowerCase() === 'urbantz') return 'Urbantz';
+      if (directSource.toLowerCase() === 'pda') return 'PDA';
+      if (directSource.toLowerCase() === 'both' || directSource.toLowerCase() === 'ambos') return 'Ambos';
+    }
     if (!notes) return null;
-    let parsedNotes = notes;
-    if (parsedNotes.startsWith('[Ruta Original: ')) {
-      const endIdx = parsedNotes.indexOf(']');
-      if (endIdx !== -1) {
-        parsedNotes = parsedNotes.substring(endIdx + 1).trim();
-      }
-    }
-    if (parsedNotes.startsWith('[Origen: ')) {
-      const endIdx = parsedNotes.indexOf(']');
-      if (endIdx !== -1) {
-        return parsedNotes.substring(9, endIdx).trim();
-      }
-    }
+    const match = notes.match(/\[Origen:\s*([^\]]+)\]/i);
+    if (match) return match[1].trim();
     return null;
   };
 
-  const renderSourceBadge = (notes) => {
-    const source = getSourceFromNotes(notes);
+  const renderSourceBadge = (notes, directSource = null) => {
+    const source = getSourceFromNotes(notes, directSource);
     if (!source) return null;
     let bg = 'rgba(168, 85, 247, 0.15)'; // Purple for Urbantz
     let border = '1px solid rgba(168, 85, 247, 0.3)';
@@ -762,7 +756,7 @@ function App() {
         alignItems: 'center',
         gap: '4px'
       }}>
-        🏷️ ${source}
+        🏷️ {source}
       </span>
     );
   };
@@ -775,10 +769,11 @@ function App() {
       .join(' ');
   };
   const [currentUser, setCurrentUser] = useState(null);
-  const [serviceType, setServiceType] = useState('estandar');
+  const [serviceType, setServiceType] = useState(() => getDraftVal('serviceType', 'estandar'));
 
   const getTicketServiceType = (t) => {
     if (!t) return 'estandar';
+    if (t.serviceType) return t.serviceType;
     const isDormity = t.provider === 'dormity';
 
     // 1. Prioridad: Etiquetas o palabras clave en las notas
@@ -792,7 +787,7 @@ function App() {
       if (notesLower.includes('[preferencial]') || notesLower.includes('preferencial')) {
         return 'preferencial';
       }
-      if (notesLower.includes('[estandar]') || notesLower.includes('[estándar]') || notesLower.includes('estandar')) {
+      if (notesLower.includes('[estandar]') || notesLower.includes('[estándar]')) {
         return 'estandar';
       }
       if (!isDormity) {
@@ -820,18 +815,13 @@ function App() {
           return 'puesta_marcha';
         }
       }
-      if (notesLower.includes('[tarde]') || notesLower.includes('servicio de tarde') || notesLower.includes('por la tarde') || notesLower.includes('tarde')) {
+      if (notesLower.includes('[tarde]') || notesLower.includes('servicio de tarde') || notesLower.includes('por la tarde')) {
         return 'tarde';
       }
     }
 
     // 2. Si no hay marcas en las notas, deducir por las tareas asignadas
     if (!isDormity && t.tasks && t.tasks.length > 0) {
-      const hasDelivery = t.tasks.some(task =>
-        (task.tariffId || '').startsWith('TV_ENT_') ||
-        (task.tariffId || '').startsWith('TV_COMB_') ||
-        (task.tariffId || '').startsWith('ENTREGA_')
-      );
       const hasCuelgue = t.tasks.some(task =>
         (task.tariffId || '').startsWith('CUELGUE_')
       );
@@ -839,10 +829,8 @@ function App() {
         (task.tariffId || '').startsWith('PM_')
       );
 
-      if (!hasDelivery) {
-        if (hasCuelgue) return 'cuelgue';
-        if (hasPM) return 'puesta_marcha';
-      }
+      if (hasCuelgue) return 'cuelgue';
+      if (hasPM) return 'puesta_marcha';
     }
 
     return 'estandar';
@@ -1679,7 +1667,7 @@ function App() {
   const [routeEndAddr, setRouteEndAddr] = useState(getRouteEndAddr());
   const [startSuggestions, setStartSuggestions] = useState([]);
   const [endSuggestions, setEndSuggestions] = useState([]);
-  const [otherDescriptions, setOtherDescriptions] = useState({});
+  const [otherDescriptions, setOtherDescriptions] = useState(() => getDraftVal('otherDescriptions', {}));
   const [pvgvCatalog, setPvgvCatalog] = useState(() => {
     try { return JSON.parse(localStorage.getItem('pvgv_catalog') || '[]'); } catch { return []; }
   });
@@ -1796,9 +1784,12 @@ function App() {
       showCod,
       formTvs,
       otherQuantities,
+      otherDescriptions,
       otherActions,
       customExtras,
-      urgenteType
+      urgenteType,
+      ticketSource,
+      serviceType
     };
     // Solo guardamos si el borrador tiene algo de contenido
     const hasContent = customerName || phone || address || notes || formTvs.length > 0 || Object.keys(otherQuantities).length > 0 || customExtras.length > 0;
@@ -1826,9 +1817,12 @@ function App() {
     showCod,
     formTvs,
     otherQuantities,
+    otherDescriptions,
     otherActions,
     customExtras,
     urgenteType,
+    ticketSource,
+    serviceType,
     editingTicketId
   ]);
 
@@ -4228,6 +4222,7 @@ function App() {
               tariffId,
               quantity: 1,
               name: `${originalTariff?.name || 'Paquetería'} (${desc})`,
+              description: desc,
               noCharge: getExistingNoCharge(tariffId, { desc })
             });
           }
@@ -4267,16 +4262,20 @@ function App() {
           } else {
             let taskName = originalTariff?.name || tariffId;
             const descVal = otherDescriptions[tariffId];
+            let taskDesc = null;
             if (descVal && typeof descVal === 'string' && descVal.trim()) {
-              taskName = `${taskName} (${descVal.trim()})`;
+              taskDesc = descVal.trim();
+              taskName = `${taskName} (${taskDesc})`;
             } else if (Array.isArray(descVal) && descVal.length > 0) {
-              taskName = `${taskName} (${descVal.join(', ')})`;
+              taskDesc = descVal.join(', ');
+              taskName = `${taskName} (${taskDesc})`;
             }
             const taskPrice = originalTariff?.value !== undefined ? parseFloat(originalTariff.value) : (originalTariff?.price || 0);
             tasksArray.push({
               tariffId,
               quantity,
               name: taskName,
+              description: taskDesc,
               unitPrice: taskPrice,
               price: taskPrice,
               subtotal: taskPrice * quantity,
@@ -4382,14 +4381,8 @@ function App() {
       finalNotes = `[TARDE] ${finalNotes}`.trim();
     }
     
-    finalNotes = encodeTicketNotes(timeSlot, estimatedDuration, finalNotes);
-    if (originalRouteLabel) {
-      finalNotes = `[Ruta Original: ${originalRouteLabel}] ${finalNotes}`.trim();
-    }
-    if (ticketSource) {
-      const srcLabel = ticketSource === 'urbantz' ? 'Urbantz' : ticketSource === 'pda' ? 'PDA' : 'Ambos';
-      finalNotes = `[Origen: ${srcLabel}] ${finalNotes}`.trim();
-    }
+    const srcLabel = ticketSource === 'urbantz' ? 'Urbantz' : ticketSource === 'pda' ? 'PDA' : ticketSource === 'both' ? 'Ambos' : '';
+    finalNotes = encodeTicketNotes(timeSlot, estimatedDuration, finalNotes, '', 'none', originalRouteLabel || '', '', srcLabel);
 
     // Lógica Automática para Dormity (Asignación de modo de servicio y distancias)
     if (selectedTicketProvider === 'dormity') {
@@ -4514,6 +4507,10 @@ function App() {
       address: address.trim(),
       postcode: postcode.trim(),
       notes: finalNotes,
+      source: ticketSource || null,
+      originalRouteLabel: originalRouteLabel || null,
+      serviceType: activeServiceType || null,
+      timeSlot: timeSlot || null,
       // Fix: solo uno de los dos campos de importe COD del formulario (Dormity/ECI)
       // tenía la validación min="0" a nivel de HTML, que además es fácil de saltar
       // escribiendo el signo "-" a mano. Se fuerza aquí, en el único punto donde se
@@ -5443,39 +5440,51 @@ function App() {
     setLastVerifiedAddress(ticket.lat ? ticket.address : '');
     setTicketDate(ticket.date);
     let parsedNotes = ticket.notes || '';
-    let origLabel = '';
-    if (parsedNotes.startsWith('[Ruta Original: ')) {
-      const endIdx = parsedNotes.indexOf(']');
-      if (endIdx !== -1) {
-        origLabel = parsedNotes.substring(16, endIdx).trim();
-        parsedNotes = parsedNotes.substring(endIdx + 1).trim();
-      }
+    const parsed = parseTicketNotes(parsedNotes);
+
+    // 1. Ruta Original / Auxilio de Ruta
+    let origLabel = ticket.originalRouteLabel || parsed.originalRouteLabel || '';
+    if (!origLabel) {
+      const routeMatch = parsedNotes.match(/\[Ruta Original:\s*([^\]]+)\]/i);
+      if (routeMatch) origLabel = routeMatch[1].trim();
     }
     setOriginalRouteLabel(origLabel);
     setShowHelperRoute(!!origLabel);
     
-    // Parsear franja horaria y duración
-    const parsed = parseTicketNotes(parsedNotes);
-    setTimeSlot(parsed.timeSlot);
-    setEstimatedDuration(parsed.estimatedDuration);
+    // 2. Franja horaria y duración
+    setTimeSlot(ticket.timeSlot || parsed.timeSlot || 'any');
+    setEstimatedDuration(parsed.estimatedDuration || 10);
     setIsDurationManuallyEdited(true);
-    let cleanNotesText = parsed.cleanNotes;
-    let sType = 'entrega';
-    if (cleanNotesText.includes('[CUELGUE]')) {
-      sType = 'cuelgue';
-      cleanNotesText = cleanNotesText.replace('[CUELGUE]', '').trim();
-    } else if (cleanNotesText.includes('[PUESTA_MARCHA]')) {
-      sType = 'puesta_marcha';
-      cleanNotesText = cleanNotesText.replace('[PUESTA_MARCHA]', '').trim();
-    } else if (cleanNotesText.includes('[TARDE]')) {
-      sType = 'tarde';
-      cleanNotesText = cleanNotesText.replace('[TARDE]', '').trim();
-    } else {
-      sType = getTicketServiceType(ticket);
+
+    // 3. Origen del pedido (Urbantz / PDA / Ambos)
+    const rawSource = ticket.source || parsed.source || '';
+    const cleanSource = (rawSource.toLowerCase() === 'ambos' || rawSource.toLowerCase() === 'both') ? 'both'
+      : (rawSource.toLowerCase() === 'urbantz' ? 'urbantz'
+      : (rawSource.toLowerCase() === 'pda' ? 'pda' : ''));
+    setTicketSource(cleanSource);
+
+    // 4. Tipo de Servicio (Colores y selección)
+    let sType = ticket.serviceType || parsed.serviceType || '';
+    if (!sType || sType === 'entrega') {
+      if (parsed.cleanNotes.includes('[CUELGUE]')) {
+        sType = 'cuelgue';
+      } else if (parsed.cleanNotes.includes('[PUESTA_MARCHA]')) {
+        sType = 'puesta_marcha';
+      } else if (parsed.cleanNotes.includes('[VIP]')) {
+        sType = 'vip';
+      } else if (parsed.cleanNotes.includes('[PREFERENCIAL]')) {
+        sType = 'preferencial';
+      } else if (parsed.cleanNotes.includes('[TARDE]')) {
+        sType = 'tarde';
+      } else {
+        sType = getTicketServiceType(ticket);
+      }
+    }
+    if (!sType || sType === 'entrega') {
+      sType = 'estandar';
     }
     setServiceType(sType);
-    setNotes(cleanNotesText);
-    setTicketSource(parsed.source ? (parsed.source.toLowerCase() === 'ambos' ? 'both' : parsed.source.toLowerCase()) : '');
+    setNotes(parsed.cleanNotes);
     setShowCod(ticket.codAmount > 0);
     setTicketRoute(ticket.furgoLabel || users.find(u => u.id === ticket.furgoId)?.label || ticket.furgoId);
 
@@ -5680,15 +5689,16 @@ function App() {
         const isPaqueteria = ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(t.tariffId);
         if (isPaqueteria) {
           const match = t.name ? t.name.match(/\(([^)]+)\)/) : null;
-          const desc = match ? match[1] : 'Mercancía';
+          const desc = t.description || (match ? match[1] : 'Mercancía');
           if (!tempDescriptions[t.tariffId]) tempDescriptions[t.tariffId] = [];
           for (let i = 0; i < t.quantity; i++) {
             tempDescriptions[t.tariffId].push(desc);
           }
         } else {
           const match = t.name ? t.name.match(/\(([^)]+)\)/) : null;
-          if (match && !tempDescriptions[t.tariffId]) {
-            tempDescriptions[t.tariffId] = match[1];
+          const desc = t.description || (match ? match[1] : null);
+          if (desc && !tempDescriptions[t.tariffId]) {
+            tempDescriptions[t.tariffId] = desc;
           }
         }
       }
@@ -5704,6 +5714,33 @@ function App() {
     setCustomDormityRecogidaName('');
     setUrgenteType(localUrgente);
     setCodAmount(ticket.codAmount ? ticket.codAmount.toString() : '');
+
+    const hasTV = tempTvs.length > 0;
+    const hasPaqueteria = Object.keys(tempOthers).some(k => ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(k) && tempOthers[k] > 0);
+    const hasGamaBlanca = Object.keys(tempOthers).some(k => {
+      const tariff = tariffs.find(tar => tar.id === k);
+      return tariff && getNormalizedBlock(tariff.block) === 'gama blanca' && tempOthers[k] > 0;
+    });
+    const hasMuebles = Object.keys(tempOthers).some(k => {
+      const tariff = tariffs.find(tar => tar.id === k);
+      return tariff && getNormalizedBlock(tariff.block) === 'muebles' && tempOthers[k] > 0;
+    });
+    const hasElectro = Object.keys(tempOthers).some(k => {
+      const tariff = tariffs.find(tar => tar.id === k);
+      return tariff && getNormalizedBlock(tariff.block) === 'electrodomesticos varios' && tempOthers[k] > 0;
+    });
+    const hasExtras = tempCustomExtras.length > 0;
+
+    setExpandedSections({
+      tv: hasTV || (!hasPaqueteria && !hasGamaBlanca && !hasMuebles && !hasElectro),
+      paqueteria: hasPaqueteria,
+      gamablanca: hasGamaBlanca,
+      muebles: hasMuebles,
+      electrodomesticos: hasElectro,
+      otros: false,
+      extras: hasExtras
+    });
+
     setFormStep(1);
     setActiveTab('new_ticket');
   };
@@ -9800,12 +9837,27 @@ function App() {
                               <button type="button" className="qty-btn" onClick={() => handleOtherQtyChange(t.id, 1)} disabled={isClosed}><Plus size={14} /></button>
                             </div>
                           </div>
-                          {qty > 0 && descs.length > 0 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '10px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                              {descs.map((d, i) => (
-                                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  📦 Item {i + 1}: <strong style={{ color: '#fff' }}>{d}</strong>
-                                </span>
+                          {qty > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '8px', fontSize: '0.85rem', marginTop: '6px' }}>
+                              {Array.from({ length: qty }).map((_, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>📦 Bulto {i + 1}:</span>
+                                  <input 
+                                    type="text" 
+                                    className="form-input" 
+                                    style={{ padding: '4px 10px', fontSize: '0.82rem', flex: 1, height: '32px', background: 'var(--bg-input)' }}
+                                    placeholder="¿Qué se lleva? (ej. Silla de bebé, microondas...)"
+                                    value={descs[i] || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setOtherDescriptions(prev => {
+                                        const curList = [...(prev[t.id] || [])];
+                                        curList[i] = val;
+                                        return { ...prev, [t.id]: curList };
+                                      });
+                                    }}
+                                  />
+                                </div>
                               ))}
                             </div>
                           )}
@@ -11734,61 +11786,54 @@ function App() {
                                   )}
                                 </div>
                                 <div className="driver-card-title">{t.customerName}</div>
-                                 {(() => {
-                                   const pnotes = parseTicketNotes(t.notes);
-                                   if (!pnotes.originalRouteLabel) return (
-                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                                       {renderSourceBadge(t.notes)}
-                                     </div>
-                                   );
-                                   return null;
-                                 })()}
                                 {(() => {
-                                   const pnotes = parseTicketNotes(t.notes);
-                                   if (!pnotes.originalRouteLabel) return null;
-                                   const label = pnotes.originalRouteLabel;
-                                   return (
-                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                                       <span className="badge" style={{ 
-                                         fontSize: '0.72rem', 
-                                         padding: '2px 8px', 
-                                         background: 'rgba(245, 158, 11, 0.15)', 
-                                         border: '1px solid rgba(245, 158, 11, 0.3)', 
-                                         color: 'var(--warning)',
-                                         borderRadius: '6px',
-                                         fontWeight: 'bold',
-                                         display: 'inline-flex',
-                                         alignItems: 'center',
-                                         gap: '4px'
-                                       }}>
-                                         🔄 Auxilio de {label}
-                                       </span>
-                                       {(!isClosed || isAdminOrSuper) && (
-                                         <button
-                                           type="button"
-                                           onClick={() => handleReturnToOriginalRoute(t.id)}
-                                           style={{
-                                             fontSize: '0.7rem',
-                                             padding: '3px 8px',
-                                             background: 'rgba(239, 68, 68, 0.12)',
-                                             border: '1px solid rgba(239, 68, 68, 0.35)',
-                                             color: 'var(--danger)',
-                                             borderRadius: '4px',
-                                             cursor: 'pointer',
-                                             fontWeight: '700',
-                                             transition: 'background 0.2s ease',
-                                             display: 'inline-flex',
-                                             alignItems: 'center',
-                                             gap: '2px'
-                                           }}
-                                           title={`Devolver esta parada a la ruta original de ${label}`}
-                                         >
-                                           ↩️ Devolver
-                                         </button>
-                                       )}
-                                     </div>
-                                   );
-                                 })()}
+                                  const pnotes = parseTicketNotes(t.notes);
+                                  const label = t.originalRouteLabel || pnotes.originalRouteLabel;
+                                  return (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                      {renderSourceBadge(t.notes, t.source)}
+                                      {label && (
+                                        <span className="badge" style={{ 
+                                          fontSize: '0.72rem', 
+                                          padding: '2px 8px', 
+                                          background: 'rgba(245, 158, 11, 0.15)', 
+                                          border: '1px solid rgba(245, 158, 11, 0.3)', 
+                                          color: 'var(--warning)',
+                                          borderRadius: '6px',
+                                          fontWeight: 'bold',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px'
+                                        }}>
+                                          🔄 Auxilio de {label}
+                                        </span>
+                                      )}
+                                      {label && (!isClosed || isAdminOrSuper) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleReturnToOriginalRoute(t.id)}
+                                          style={{
+                                            fontSize: '0.7rem',
+                                            padding: '3px 8px',
+                                            background: 'rgba(239, 68, 68, 0.12)',
+                                            border: '1px solid rgba(239, 68, 68, 0.35)',
+                                            color: 'var(--danger)',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            fontWeight: '700',
+                                            transition: 'background 0.2s ease',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '2px'
+                                          }}
+                                          title={`Devolver esta parada a la ruta original de ${label}`}
+                                        >
+                                          ↩️ Devolver
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {statusBadge}
@@ -12929,7 +12974,7 @@ function App() {
                       const sType = getTicketServiceType(t);
                       const svcBadge = getServiceTypeBadge(sType);
                       const slotBadge = getTimeSlotBadge(parsed.timeSlot);
-                      const sourceBadge = renderSourceBadge(t.notes);
+                      const sourceBadge = renderSourceBadge(t.notes, t.source);
                       if (!svcBadge && !slotBadge && !sourceBadge) return null;
                       return (
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginLeft: '34px', marginTop: '2px', alignItems: 'center' }}>
@@ -21448,7 +21493,7 @@ function App() {
                                   {slotBadge && (
                                     <span className={`badge-service ${slotBadge.className}`}>{slotBadge.label}</span>
                                   )}
-                                  {renderSourceBadge(t.notes)}
+                                  {renderSourceBadge(t.notes, t.source)}
                                   <span className="badge" style={{
                                     fontSize: '0.65rem',
                                     padding: '1px 5px',

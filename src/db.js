@@ -705,30 +705,38 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       }
     }
     if (tickets && !errTickets) {
-      const cloudTickets = tickets.map(t => ({
-        id: t.id,
-        date: t.date,
-        furgoId: t.furgo_id,
-        furgoLabel: t.furgo_label,
-        routeName: t.route_name,
-        customerName: t.customer_name,
-        phone: t.phone,
-        address: t.address,
-        postcode: t.postcode,
-        notes: t.notes,
-        codAmount: t.cod_amount,
-        tasks: t.tasks,
-        totalPrice: parseFloat(t.total_price) || 0,
-        status: t.status,
-        failureReason: t.failure_reason,
-        lat: t.lat,
-        lng: t.lng,
-        completedLat: t.completed_lat,
-        completedLng: t.completed_lng,
-        routeOrder: t.route_order,
-        createdAt: t.created_at,
-        createdBy: t.created_by || 'admin'
-      }));
+      const cloudTickets = tickets.map(t => {
+        const parsedN = t.notes ? parseTicketNotes(t.notes) : {};
+        return {
+          id: t.id,
+          date: t.date,
+          furgoId: t.furgo_id,
+          furgoLabel: t.furgo_label,
+          routeName: t.route_name,
+          customerName: t.customer_name,
+          phone: t.phone,
+          address: t.address,
+          postcode: t.postcode,
+          notes: t.notes,
+          codAmount: t.cod_amount,
+          provider: t.provider || (t.tasks && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')) ? 'dormity' : 'eci'),
+          source: t.source || parsedN.source || null,
+          originalRouteLabel: t.original_route_label || parsedN.originalRouteLabel || null,
+          dormityRouteType: t.dormity_route_type || null,
+          dormityServDiaOption: t.dormity_serv_dia_option || null,
+          tasks: t.tasks,
+          totalPrice: parseFloat(t.total_price) || 0,
+          status: t.status,
+          failureReason: t.failure_reason,
+          lat: t.lat,
+          lng: t.lng,
+          completedLat: t.completed_lat,
+          completedLng: t.completed_lng,
+          routeOrder: t.route_order,
+          createdAt: t.created_at,
+          createdBy: t.created_by || 'admin'
+        };
+      });
 
       // Offline-First reconciliation: merge cloud tickets with pending local tickets
       let localCurrent = [];
@@ -2425,6 +2433,7 @@ export async function addTicket(ticketData) {
     return {
       tariffId: task.tariffId,
       name: name,
+      description: task.description || (isPaqueteria && task.name && task.name.includes('(') ? task.name.match(/\(([^)]+)\)/)?.[1] : null),
       quantity: task.quantity,
       unitPrice: price,
       subtotal: subtotal,
@@ -2443,6 +2452,7 @@ export async function addTicket(ticketData) {
     .find(s => s.furgoId === ticketData.furgoId && s.date === (ticketData.date || new Date().toISOString().split('T')[0]));
 
   const inferredProvider = ticketData.provider || (ticketData.tasks && ticketData.tasks.some(t => t.tariffId && t.tariffId.startsWith('DORMITY_')) ? 'dormity' : 'eci');
+  const parsedNotesForTicket = ticketData.notes ? parseTicketNotes(ticketData.notes) : {};
 
   const newTicket = {
     // Fix: un id basado solo en Date.now() puede colisionar si dos dispositivos crean
@@ -2461,6 +2471,10 @@ export async function addTicket(ticketData) {
     notes: ticketData.notes || '',
     codAmount: ticketData.codAmount || 0,
     provider: inferredProvider,
+    source: ticketData.source || parsedNotesForTicket.source || null,
+    originalRouteLabel: ticketData.originalRouteLabel || parsedNotesForTicket.originalRouteLabel || null,
+    serviceType: ticketData.serviceType || parsedNotesForTicket.serviceType || null,
+    timeSlot: ticketData.timeSlot || parsedNotesForTicket.timeSlot || null,
     tasks: detailedTasks,
     totalPrice: round2(totalCalculado),
     status: ticketData.status || 'pending',
@@ -2554,6 +2568,7 @@ export async function updateTicket(updatedTicket) {
     return {
       tariffId: task.tariffId,
       name: name,
+      description: task.description || (isPaqueteria && task.name && task.name.includes('(') ? task.name.match(/\(([^)]+)\)/)?.[1] : null),
       quantity: task.quantity,
       unitPrice: price,
       subtotal: subtotal,
@@ -2574,6 +2589,7 @@ export async function updateTicket(updatedTicket) {
       .find(s => s.furgoId === updatedTicket.furgoId && s.date === updatedTicket.date);
 
     const inferredProvider = updatedTicket.provider || tickets[index].provider || (updatedTicket.tasks && updatedTicket.tasks.some(t => t.tariffId && t.tariffId.startsWith('DORMITY_')) ? 'dormity' : 'eci');
+    const parsedNotesForTicket = updatedTicket.notes ? parseTicketNotes(updatedTicket.notes) : {};
 
     tickets[index] = {
       ...tickets[index],
@@ -2588,6 +2604,10 @@ export async function updateTicket(updatedTicket) {
       notes: updatedTicket.notes || '',
       codAmount: updatedTicket.codAmount || 0,
       provider: inferredProvider,
+      source: updatedTicket.source !== undefined ? updatedTicket.source : (tickets[index].source || parsedNotesForTicket.source || null),
+      originalRouteLabel: updatedTicket.originalRouteLabel !== undefined ? updatedTicket.originalRouteLabel : (tickets[index].originalRouteLabel || parsedNotesForTicket.originalRouteLabel || null),
+      serviceType: updatedTicket.serviceType !== undefined ? updatedTicket.serviceType : (tickets[index].serviceType || parsedNotesForTicket.serviceType || null),
+      timeSlot: updatedTicket.timeSlot !== undefined ? updatedTicket.timeSlot : (tickets[index].timeSlot || parsedNotesForTicket.timeSlot || null),
       tasks: detailedTasks,
       totalPrice: round2(totalCalculado),
       status: updatedTicket.status || tickets[index].status || 'pending',
@@ -2640,8 +2660,9 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
           parsed.cleanNotes,
           parsed.driverObservations,
           parsed.failedChargeType,
-          parsed.originalRouteLabel,
-          completedAt
+          tickets[index].originalRouteLabel || parsed.originalRouteLabel,
+          completedAt,
+          tickets[index].source || parsed.source
         );
       } else {
         tickets[index].completedAt = parsed.completedAt;
@@ -2655,30 +2676,29 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
         parsed.cleanNotes,
         parsed.driverObservations,
         parsed.failedChargeType,
-        parsed.originalRouteLabel,
-        ''
+        tickets[index].originalRouteLabel || parsed.originalRouteLabel,
+        '',
+        tickets[index].source || parsed.source
       );
     }
 
-    // Auto-reassignment if finalized (success or failed) and has [Ruta Original: XXX] in notes
-    if ((status === 'success' || status === 'failed') && tickets[index].notes && tickets[index].notes.startsWith('[Ruta Original: ')) {
-      const notesStr = tickets[index].notes;
-      const endIdx = notesStr.indexOf(']');
-      if (endIdx !== -1) {
-        const origLabel = notesStr.substring(16, endIdx).trim();
-        const users = JSON.parse(localStorage.getItem('delivery_users')) || [];
-        const targetUser = users.find(u => 
-          u.label.toLowerCase() === origLabel.toLowerCase() || 
-          u.username.toLowerCase() === origLabel.toLowerCase()
-        );
-        if (targetUser) {
-          const helperUser = users.find(u => u.id === tickets[index].furgoId);
-          const helperLabel = helperUser ? helperUser.label : tickets[index].furgoId;
-          tickets[index].notes = `${notesStr} (Auxilio realizado por ${helperLabel})`.trim();
-          tickets[index].furgoId = targetUser.id;
-          tickets[index].furgoLabel = targetUser.label;
-          tickets[index].routeName = `Ruta ${targetUser.label} (${tickets[index].date})`;
-        }
+    // Auto-reassignment if finalized (success or failed) and has [Ruta Original: XXX] in notes or ticket.originalRouteLabel
+    const notesStr = tickets[index].notes || '';
+    const routeMatch = notesStr.match(/\[Ruta Original:\s*([^\]]+)\]/i);
+    const origLabel = tickets[index].originalRouteLabel || (routeMatch ? routeMatch[1].trim() : null);
+    if ((status === 'success' || status === 'failed') && origLabel) {
+      const users = JSON.parse(localStorage.getItem('delivery_users')) || [];
+      const targetUser = users.find(u => 
+        u.label.toLowerCase() === origLabel.toLowerCase() || 
+        u.username.toLowerCase() === origLabel.toLowerCase()
+      );
+      if (targetUser) {
+        const helperUser = users.find(u => u.id === tickets[index].furgoId);
+        const helperLabel = helperUser ? helperUser.label : tickets[index].furgoId;
+        tickets[index].notes = `${notesStr} (Auxilio realizado por ${helperLabel})`.trim();
+        tickets[index].furgoId = targetUser.id;
+        tickets[index].furgoLabel = targetUser.label;
+        tickets[index].routeName = `Ruta ${targetUser.label} (${tickets[index].date})`;
       }
     }
 
@@ -4030,70 +4050,93 @@ export function parseTicketNotes(notesText) {
   let originalRouteLabel = '';
   let completedAt = '';
   let source = '';
+  let serviceType = '';
 
   // Extraer [Origen: ...] si existe en cualquier parte del texto
-  const sourceMatch = cleanNotes.match(/\[Origen:\s*([^\]]+)\]/);
+  const sourceMatch = cleanNotes.match(/\[Origen:\s*([^\]]+)\]/i);
   if (sourceMatch) {
     source = sourceMatch[1].trim();
-    cleanNotes = cleanNotes.replace(/\[Origen:\s*[^\]]+\]\s*/g, '');
+    cleanNotes = cleanNotes.replace(/\[Origen:\s*[^\]]+\]\s*/gi, '');
   }
 
   // 1. Extraer [Ruta Original: ...] si existe en cualquier parte del texto
-  const routeMatch = cleanNotes.match(/\[Ruta Original:\s*([^\]]+)\]/);
+  const routeMatch = cleanNotes.match(/\[Ruta Original:\s*([^\]]+)\]/i);
   if (routeMatch) {
     originalRouteLabel = routeMatch[1].trim();
-    cleanNotes = cleanNotes.replace(/\[Ruta Original:\s*[^\]]+\]\s*/g, '');
+    cleanNotes = cleanNotes.replace(/\[Ruta Original:\s*[^\]]+\]\s*/gi, '');
   }
 
-  // 1.5. Detectar y extraer tags combinados de servicio y franja horaria
-  if (cleanNotes.match(/\[CUELGUE_MA?Ñ?NANA\]/i) || cleanNotes.toLowerCase().includes('[cuelgue_mañana]') || cleanNotes.toLowerCase().includes('[cuelgue_manana]')) {
+  // 1.5. Detectar y extraer tags combinados o individuales de servicio y franja horaria
+  if (cleanNotes.match(/\[CUELGUE_MA?Ñ?ANA\]/i) || cleanNotes.toLowerCase().includes('[cuelgue_mañana]') || cleanNotes.toLowerCase().includes('[cuelgue_manana]')) {
     timeSlot = 'morning';
-    cleanNotes = cleanNotes.replace(/\[CUELGUE_MA?Ñ?NANA\]/gi, '').trim();
+    serviceType = 'cuelgue';
+    cleanNotes = cleanNotes.replace(/\[CUELGUE_MA?Ñ?ANA\]/gi, '').trim();
   } else if (cleanNotes.match(/\[CUELGUE_TARDE\]/i) || cleanNotes.toLowerCase().includes('[cuelgue_tarde]')) {
     timeSlot = 'afternoon';
+    serviceType = 'cuelgue';
     cleanNotes = cleanNotes.replace(/\[CUELGUE_TARDE\]/gi, '').trim();
-  } else if (cleanNotes.match(/\[PUESTA_MARCHA_MA?Ñ?NANA\]/i) || cleanNotes.toLowerCase().includes('[puesta_marcha_mañana]') || cleanNotes.toLowerCase().includes('[puesta_marcha_manana]')) {
+  } else if (cleanNotes.match(/\[CUELGUE\]/i) || cleanNotes.toLowerCase().includes('[cuelgue]')) {
+    serviceType = 'cuelgue';
+    cleanNotes = cleanNotes.replace(/\[CUELGUE\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[PUESTA_MARCHA_MA?Ñ?ANA\]/i) || cleanNotes.toLowerCase().includes('[puesta_marcha_mañana]') || cleanNotes.toLowerCase().includes('[puesta_marcha_manana]')) {
     timeSlot = 'morning';
-    cleanNotes = cleanNotes.replace(/\[PUESTA_MARCHA_MA?Ñ?NANA\]/gi, '').trim();
+    serviceType = 'puesta_marcha';
+    cleanNotes = cleanNotes.replace(/\[PUESTA_MARCHA_MA?Ñ?ANA\]/gi, '').trim();
   } else if (cleanNotes.match(/\[PUESTA_MARCHA_TARDE\]/i) || cleanNotes.toLowerCase().includes('[puesta_marcha_tarde]')) {
     timeSlot = 'afternoon';
+    serviceType = 'puesta_marcha';
     cleanNotes = cleanNotes.replace(/\[PUESTA_MARCHA_TARDE\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[PUESTA_MARCHA\]/i) || cleanNotes.toLowerCase().includes('[puesta_marcha]')) {
+    serviceType = 'puesta_marcha';
+    cleanNotes = cleanNotes.replace(/\[PUESTA_MARCHA\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[VIP\]/i)) {
+    serviceType = 'vip';
+    cleanNotes = cleanNotes.replace(/\[VIP\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[PREFERENCIAL\]/i)) {
+    serviceType = 'preferencial';
+    cleanNotes = cleanNotes.replace(/\[PREFERENCIAL\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[EST[AÁ]NDAR\]/i)) {
+    serviceType = 'estandar';
+    cleanNotes = cleanNotes.replace(/\[EST[AÁ]NDAR\]/gi, '').trim();
+  } else if (cleanNotes.match(/\[TARDE\]/i)) {
+    serviceType = 'tarde';
+    cleanNotes = cleanNotes.replace(/\[TARDE\]/gi, '').trim();
   }
 
   // 2. Extraer [Horario: ...]
-  const slotMatch = cleanNotes.match(/\[Horario:\s*([^\]]+)\]/);
+  const slotMatch = cleanNotes.match(/\[Horario:\s*([^\]]+)\]/i);
   if (slotMatch) {
     const rawSlot = slotMatch[1].trim().toLowerCase();
-    timeSlot = rawSlot === 'mañana' ? 'morning' : rawSlot === 'tarde' ? 'afternoon' : 'any';
-    cleanNotes = cleanNotes.replace(/\[Horario:\s*[^\]]+\]\s*/g, '');
+    timeSlot = rawSlot === 'mañana' ? 'morning' : rawSlot === 'tarde' ? 'afternoon' : (timeSlot !== 'any' ? timeSlot : 'any');
+    cleanNotes = cleanNotes.replace(/\[Horario:\s*[^\]]+\]\s*/gi, '');
   }
 
   // 3. Extraer [Duracion: ...]
-  const durationMatch = cleanNotes.match(/\[Duracion:\s*(\d+)\s*min\]/);
+  const durationMatch = cleanNotes.match(/\[Duracion:\s*(\d+)\s*min\]/i);
   if (durationMatch) {
     estimatedDuration = parseInt(durationMatch[1], 10);
-    cleanNotes = cleanNotes.replace(/\[Duracion:\s*\d+\s*min\]\s*/g, '');
+    cleanNotes = cleanNotes.replace(/\[Duracion:\s*\d+\s*min\]\s*/gi, '');
   }
 
   // Parse driver observations: check if there's an [Observacion: ...] block
-  const obsMatch = cleanNotes.match(/\[Observacion:\s*([^\]]+)\]/);
+  const obsMatch = cleanNotes.match(/\[Observacion:\s*([^\]]+)\]/i);
   if (obsMatch) {
     driverObservations = obsMatch[1].trim();
-    cleanNotes = cleanNotes.replace(/\[Observacion:\s*[^\]]+\]\s*/g, '');
+    cleanNotes = cleanNotes.replace(/\[Observacion:\s*[^\]]+\]\s*/gi, '');
   }
 
   // Parse failed charge: check if there's a [CobroFallo: ...] block
-  const chargeMatch = cleanNotes.match(/\[CobroFallo:\s*([^\]]+)\]/);
+  const chargeMatch = cleanNotes.match(/\[CobroFallo:\s*([^\]]+)\]/i);
   if (chargeMatch) {
     failedChargeType = chargeMatch[1].trim();
-    cleanNotes = cleanNotes.replace(/\[CobroFallo:\s*[^\]]+\]\s*/g, '');
+    cleanNotes = cleanNotes.replace(/\[CobroFallo:\s*[^\]]+\]\s*/gi, '');
   }
 
   // Parse completed at timestamp: check if there's a [CompletadoEn: ...] block
-  const completedMatch = cleanNotes.match(/\[CompletadoEn:\s*([^\]]+)\]/);
+  const completedMatch = cleanNotes.match(/\[CompletadoEn:\s*([^\]]+)\]/i);
   if (completedMatch) {
     completedAt = completedMatch[1].trim();
-    cleanNotes = cleanNotes.replace(/\[CompletadoEn:\s*[^\]]+\]\s*/g, '');
+    cleanNotes = cleanNotes.replace(/\[CompletadoEn:\s*[^\]]+\]\s*/gi, '');
   }
 
   return { 
@@ -4104,7 +4147,8 @@ export function parseTicketNotes(notesText) {
     failedChargeType,
     originalRouteLabel,
     completedAt,
-    source
+    source,
+    serviceType
   };
 }
 

@@ -99,5 +99,21 @@
       "Desacoplamiento de la puesta en marcha de barras de sonido eliminando el cobro automático de entrega y recalculando el histórico de tickets.",
       "Adición de un botón de reapertura de turnos cerrado ('Reabrir Turno') en el resumen de turno visible únicamente para administradores."
     ]
+  },
+  {
+    "id": "v1.6.0",
+    "date": "2026-09-18",
+    "version": "1.6.0",
+    "title": "Preservación integral de datos al editar tickets (Origen, Ruta de Apoyo, PM/Franjas, Paquetería)",
+    "category": "Core / UI / Tickets",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Preservación permanente del Origen del Pedido (Urbantz, PDA, Ambos) tanto en notas estructuradas como en el objeto del ticket.",
+      "Extracción y conservación robusta de la Ruta de Apoyo (Ruta Original) sin riesgo de borrado al editar o cambiar estados.",
+      "Conservación de la Puesta en Marcha (PM), Cuelgues, VIP, Preferencial y Franjas Horarias con sus colores identificativos correspondientes.",
+      "Persistencia de las descripciones específicas de bultos de paquetería (ej. 'silla de bb', 'microondas') con campos editables en el Paso 2.",
+      "Apertura automática de los bloques de acordeón en el formulario que contienen artículos registrados en el ticket.",
+      "Inclusión de todos los campos estructurados en el guardado de borradores (delivery_form_draft) para evitar pérdidas accidentales."
+    ]
   }
 ]
