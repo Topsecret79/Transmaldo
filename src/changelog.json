@@ -130,5 +130,19 @@
       "Modal interactivo de transferencia por lotes para elegir chofer destino con recálculo automático y secuencial del orden de ruta (routeOrder).",
       "Preservación íntegra de la Ruta Original (originalRouteLabel) en notas y estructura del ticket durante transferencias masivas e individuales."
     ]
+  },
+  {
+    "id": "v1.7.1",
+    "date": "2026-09-18",
+    "version": "1.7.1",
+    "title": "Transferencia a Ruta de Apoyo directamente interactuando con el Mapa",
+    "category": "Mapa / Rutas / Usabilidad",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Selección y envío a Ruta de Apoyo directo desde el globo emergente (popup) del marcador en el mapa con selector de chofer en 1 clic.",
+      "Botón destacado '📤 Enviar Parada a Ruta de Apoyo' en el panel flotante inferior al tocar cualquier marcador o parada en el mapa.",
+      "Insignia identificativa '🤝 Apoyo: [Ruta Original]' y botón '↩️ Devolver' directamente en el panel flotante y en el listado de paradas del mapa.",
+      "Acción de transferencia a apoyo y devolución en tarjetas expandidas del listado secuencial bajo el mapa."
+    ]
   }
 ]
