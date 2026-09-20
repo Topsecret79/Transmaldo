@@ -144,5 +144,18 @@
       "Insignia identificativa '🤝 Apoyo: [Ruta Original]' y botón '↩️ Devolver' directamente en el panel flotante y en el listado de paradas del mapa.",
       "Acción de transferencia a apoyo y devolución en tarjetas expandidas del listado secuencial bajo el mapa."
     ]
+  },
+  {
+    "id": "v1.7.2",
+    "date": "2026-09-20",
+    "version": "1.7.2",
+    "title": "Corrección crítica en el guardado de Televisores y tareas generales",
+    "category": "Core / Fix / Tickets",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Subsanado error de ámbito léxico (ReferenceError: isPaqueteria is not defined) que bloqueaba el guardado de tickets con televisores y artículos generales en addTicket y updateTicket.",
+      "Inclusión de fallback automático de TV en el formulario para garantizar que la medida de televisor seleccionada se registre y guarde siempre con éxito.",
+      "Añadido bloque de captura de errores (try/catch) en handleFormSubmit para evitar bloqueos silenciosos y notificar fallos con alertas claras."
+    ]
   }
 ]

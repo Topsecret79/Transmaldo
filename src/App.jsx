@@ -4350,6 +4350,33 @@ function App() {
       });
     }
 
+    // Si no se añadieron tareas explícitas pero el usuario seleccionó una medida de TV en el formulario
+    if (tasksArray.length === 0 && formTvs.length === 0 && tempTvInches && effectiveTicketProviderSubmit !== 'dormity') {
+      const range = getTVRange(tempTvInches);
+      const action = tempTvAction || 'entrega';
+      if (action !== 'solo_pm' && action !== 'solo_cuelgue') {
+        const mainTariffId = action === 'combinado' ? `TV_COMB_${range}` : `TV_ENT_${range}`;
+        const mainTariff = tariffs.find(t => t.id === mainTariffId);
+        let taskName = mainTariff?.name || `TV ${tempTvInches}"`;
+        if (action === 'recogida') {
+          taskName = `${taskName} (Recogida)`;
+        } else if (action === 'combinado') {
+          taskName = `${taskName} (Entrega + Recogida)`;
+        } else {
+          taskName = `${taskName} (Entrega)`;
+        }
+        tasksArray.push({
+          tariffId: mainTariffId,
+          quantity: 1,
+          brand: tempTvBrand || 'Genérica',
+          inches: parseInt(tempTvInches) || 43,
+          action: action,
+          name: taskName,
+          noCharge: getExistingNoCharge(mainTariffId, { inches: parseInt(tempTvInches), brand: tempTvBrand })
+        });
+      }
+    }
+
     if (tasksArray.length === 0) {
       triggerAlert('Debes registrar al menos un artículo o servicio', 'error');
       return;
@@ -4678,6 +4705,9 @@ function App() {
         setFormStep(1);
         loadData();
       }
+    } catch (err) {
+      console.error("Error guardando el reparto:", err);
+      triggerAlert('Ocurrió un error inesperado al guardar el reparto. Inténtalo de nuevo.', 'error');
     } finally {
       setIsSubmittingTicket(false);
     }

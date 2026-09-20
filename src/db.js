@@ -2377,6 +2377,7 @@ export async function addTicket(ticketData) {
     let basePrice = 0;
     let name = task.name;
     let priceNeedsReview = false;
+    const isPaqueteria = task.tariffId && ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(task.tariffId);
 
     if (task.tariffId && task.tariffId.startsWith('DORMITY_')) {
       const dormityT = dormityTariffs.find(t => t.id === task.tariffId || t.id.startsWith(task.tariffId + '_'));
@@ -2420,7 +2421,6 @@ export async function addTicket(ticketData) {
       // descripción para siempre — nunca llegaba al Informe del Día ni a la
       // lista de repartos, y tampoco sobrevivía a una edición posterior del
       // ticket (que la reconstruye leyendo el paréntesis del nombre guardado).
-      const isPaqueteria = task.tariffId && ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(task.tariffId);
       if (isPaqueteria && task.name && task.name.includes('(')) {
         name = task.name;
       }
@@ -2511,6 +2511,7 @@ export async function updateTicket(updatedTicket) {
     let basePrice = 0;
     let name = task.name;
     let priceNeedsReview = false;
+    const isPaqueteria = task.tariffId && ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(task.tariffId);
 
     if (task.tariffId && task.tariffId.startsWith('DORMITY_')) {
       const dormityT = dormityTariffs.find(t => t.id === task.tariffId || t.id.startsWith(task.tariffId + '_'));
@@ -2555,7 +2556,6 @@ export async function updateTicket(updatedTicket) {
       // descripción para siempre — nunca llegaba al Informe del Día ni a la
       // lista de repartos, y tampoco sobrevivía a una edición posterior del
       // ticket (que la reconstruye leyendo el paréntesis del nombre guardado).
-      const isPaqueteria = task.tariffId && ['ENTREGA_PV', 'ENTREGA_GV', 'RECOGIDA_PV', 'RECOGIDA_GV'].includes(task.tariffId);
       if (isPaqueteria && task.name && task.name.includes('(')) {
         name = task.name;
       }
