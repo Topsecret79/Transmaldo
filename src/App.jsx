@@ -11644,7 +11644,7 @@ function App() {
 
               {/* Botón de Selección Múltiple para Transferencia en Lote */}
               {dateTickets.length > 0 && (() => {
-                const isClosed = getShiftStatus(currentUser?.id || activeFurgo, targetDate) === 'closed';
+                const isClosed = getShiftStatus(currentUser?.id, targetDate) === 'closed';
                 return (!isClosed || isAdminOrSuper);
               })() && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
