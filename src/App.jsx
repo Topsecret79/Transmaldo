@@ -2564,6 +2564,7 @@ function App() {
             }
             
             const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + badgeHtml + posBlock + supportBlock + '</div>';
+            const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
             const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
             el.addEventListener('click', (ev) => {
               ev.stopPropagation();
