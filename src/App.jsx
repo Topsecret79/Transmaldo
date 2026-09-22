@@ -1372,6 +1372,10 @@ function App() {
   const [bulkSelectMode, setBulkSelectMode] = useState(false);
   const [bulkSelectedTickets, setBulkSelectedTickets] = useState(new Set());
   const [bulkTransferModalOpen, setBulkTransferModalOpen] = useState(false);
+  const bulkSelectModeRef = useRef(bulkSelectMode);
+  useEffect(() => {
+    bulkSelectModeRef.current = bulkSelectMode;
+  }, [bulkSelectMode]);
 
   // Lista de TVs añadidas al ticket actual
   // Cada TV: { id: string, inches: number, action: 'entrega'|'recogida'|'combinado', pmType: 'none'|'basic'|'complex', cuelgue: boolean, recogidaViejaType: 'none'|'urbantz'|'no_urbantz' }
@@ -2499,7 +2503,10 @@ function App() {
             // Fix Safari iOS: el patrón wrapper/inner causaba que los marcadores
             // no se renderizaran en Safari iOS. Se simplifica a un único elemento.
             const el = document.createElement('div');
-            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:0 2px 10px rgba(0,0,0,0.45);cursor:pointer;';
+            el.className = 'map-stop-marker-pin';
+            el.dataset.ticketId = t.id;
+            const isInitiallySelected = bulkSelectModeRef.current && bulkSelectedTickets.has(t.id);
+            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:' + (isInitiallySelected ? '0 0 16px rgba(99, 102, 241, 0.95), 0 0 0 3px #818cf8' : '0 2px 10px rgba(0,0,0,0.45)') + ';cursor:pointer;transition:transform 0.15s ease,box-shadow 0.15s ease;' + (isInitiallySelected ? 'transform:scale(1.28);z-index:50;' : '');
             el.textContent = seqIndex + 1;
             let optHtml = '';
             for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
@@ -2557,9 +2564,15 @@ function App() {
             }
             
             const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + badgeHtml + posBlock + supportBlock + '</div>';
-            const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
             const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
-            el.addEventListener('click', (ev) => { ev.stopPropagation(); handleSelectMapTicket(t); });
+            el.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              if (bulkSelectModeRef.current && (!t.status || t.status === 'pending' || t.status === 'transit')) {
+                toggleBulkSelect(t.id);
+                return;
+              }
+              handleSelectMapTicket(t);
+            });
             mapMarkersRef.current.push(marker);
             } catch (markerErr) {
               console.error('Error dibujando el marcador de la parada', t?.id, markerErr);
@@ -2652,6 +2665,26 @@ function App() {
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
     };
   }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
+
+  // Actualizar visualmente los marcadores del mapa cuando cambia bulkSelectedTickets o bulkSelectMode
+  useEffect(() => {
+    try {
+      document.querySelectorAll('.map-stop-marker-pin').forEach(pin => {
+        const tid = pin.dataset.ticketId;
+        if (bulkSelectMode && bulkSelectedTickets.has(tid)) {
+          pin.style.transform = 'scale(1.28)';
+          pin.style.boxShadow = '0 0 16px rgba(99, 102, 241, 0.95), 0 0 0 3px #818cf8';
+          pin.style.zIndex = '50';
+        } else {
+          pin.style.transform = '';
+          pin.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)';
+          pin.style.zIndex = '';
+        }
+      });
+    } catch (err) {
+      console.error('Error actualizando estilo de marcadores de selección múltiple', err);
+    }
+  }, [bulkSelectedTickets, bulkSelectMode]);
 
 
 
@@ -12648,216 +12681,6 @@ function App() {
                 })()
               )}
 
-              {/* Barra flotante inferior de Selección Múltiple */}
-              {bulkSelectMode && (
-                <div style={{
-                  position: 'fixed',
-                  bottom: '24px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  zIndex: 1500,
-                  background: 'rgba(17, 24, 39, 0.95)',
-                  backdropFilter: 'blur(12px)',
-                  border: '1px solid rgba(99, 102, 241, 0.4)',
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.6), 0 0 15px rgba(99, 102, 241, 0.2)',
-                  borderRadius: '16px',
-                  padding: '10px 18px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  flexWrap: 'wrap',
-                  maxWidth: '92vw',
-                  animation: 'fadeIn 0.2s ease'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{
-                      background: bulkSelectedTickets.size > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
-                      color: '#fff',
-                      borderRadius: '20px',
-                      padding: '3px 10px',
-                      fontSize: '0.8rem',
-                      fontWeight: '800'
-                    }}>
-                      {bulkSelectedTickets.size}
-                    </span>
-                    <span style={{ fontSize: '0.84rem', fontWeight: '600', color: 'var(--text-main)' }}>
-                      {bulkSelectedTickets.size === 1 ? 'parada seleccionada' : 'paradas seleccionadas'}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const selectableTickets = dateTickets.filter(t => !t.status || t.status === 'pending' || t.status === 'transit');
-                        if (bulkSelectedTickets.size === selectableTickets.length) {
-                          setBulkSelectedTickets(new Set());
-                        } else {
-                          setBulkSelectedTickets(new Set(selectableTickets.map(t => t.id)));
-                        }
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid var(--panel-border)',
-                        background: 'rgba(255,255,255,0.06)',
-                        color: 'var(--text-main)',
-                        fontSize: '0.78rem',
-                        fontWeight: '600',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {bulkSelectedTickets.size === dateTickets.filter(t => !t.status || t.status === 'pending' || t.status === 'transit').length ? 'Deseleccionar' : 'Todas'}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={bulkSelectedTickets.size === 0}
-                      onClick={() => setBulkTransferModalOpen(true)}
-                      style={{
-                        padding: '7px 16px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: bulkSelectedTickets.size > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
-                        color: '#fff',
-                        fontSize: '0.84rem',
-                        fontWeight: '700',
-                        cursor: bulkSelectedTickets.size > 0 ? 'pointer' : 'not-allowed',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        boxShadow: bulkSelectedTickets.size > 0 ? '0 4px 14px rgba(99, 102, 241, 0.4)' : 'none',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      📤 Enviar a Apoyo
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBulkSelectMode(false);
-                        setBulkSelectedTickets(new Set());
-                        setBulkTransferModalOpen(false);
-                      }}
-                      style={{
-                        padding: '6px 10px',
-                        borderRadius: '8px',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        color: 'var(--danger)',
-                        fontSize: '0.78rem',
-                        fontWeight: '600',
-                        cursor: 'pointer'
-                      }}
-                      title="Salir del modo selección"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Modal de Transferencia Masiva a Apoyo */}
-              {bulkTransferModalOpen && (
-                <div style={{
-                  position: 'fixed',
-                  top: 0, left: 0, right: 0, bottom: 0,
-                  background: 'rgba(0, 0, 0, 0.75)',
-                  backdropFilter: 'blur(8px)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  zIndex: 2100,
-                  padding: '20px'
-                }}>
-                  <div className="glass-panel" style={{
-                    width: '100%',
-                    maxWidth: '420px',
-                    padding: '24px',
-                    textAlign: 'left',
-                    boxShadow: '0 15px 50px rgba(0,0,0,0.6)',
-                    border: '1px solid var(--panel-border)',
-                    borderRadius: '16px',
-                    background: 'rgba(21, 23, 30, 0.96)'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                      <h3 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        📤 Transferir a Ruta de Apoyo
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={() => setBulkTransferModalOpen(false)}
-                        style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: '1.4' }}>
-                      Vas a transferir <strong>{bulkSelectedTickets.size} parada(s)</strong> en modo de auxilio/apoyo. Selecciona el chofer o furgoneta de destino:
-                    </p>
-
-                    <div style={{ maxHeight: '280px', overflowY: 'auto', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {users
-                        .filter(u => u && u.role === 'repartidor' && u.id !== (currentUser?.id || dateTickets[0]?.furgoId))
-                        .map(u => (
-                          <button
-                            key={u.id}
-                            type="button"
-                            onClick={() => handleBulkSendSupport(u.id)}
-                            style={{
-                              width: '100%',
-                              padding: '12px 16px',
-                              borderRadius: '10px',
-                              border: '1px solid var(--panel-border)',
-                              background: 'rgba(255,255,255,0.04)',
-                              color: 'var(--text-main)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              cursor: 'pointer',
-                              fontWeight: '600',
-                              fontSize: '0.88rem',
-                              transition: 'all 0.15s'
-                            }}
-                            onMouseEnter={e => {
-                              e.currentTarget.style.borderColor = 'var(--primary)';
-                              e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)';
-                            }}
-                            onMouseLeave={e => {
-                              e.currentTarget.style.borderColor = 'var(--panel-border)';
-                              e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                            }}
-                          >
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              🚚 {u.label}
-                            </span>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: '700' }}>
-                              Enviar →
-                            </span>
-                          </button>
-                        ))}
-                      {users.filter(u => u && u.role === 'repartidor' && u.id !== (currentUser?.id || dateTickets[0]?.furgoId)).length === 0 && (
-                        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                          No hay otros choferes registrados para recibir el apoyo.
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button
-                        type="button"
-                        onClick={() => setBulkTransferModalOpen(false)}
-                        className="btn btn-secondary btn-small"
-                        style={{ margin: 0, padding: '8px 16px' }}
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -13539,6 +13362,245 @@ function App() {
 );
 };
 
+  const renderBulkSelectControls = () => {
+    if (!bulkSelectMode && !bulkTransferModalOpen) return null;
+
+    const isMapTab = activeTab === 'map' || activeTab === 'driver_map';
+    const targetDate = isMapTab
+      ? (isAdminOrSuper ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]))
+      : (shiftSummaryDate || mapFilterDate || new Date().toISOString().split('T')[0]);
+
+    const selectableTickets = (tickets || []).filter(t => {
+      if (!t) return false;
+      if (t.date !== targetDate) return false;
+      if (!isAdminOrSuper && t.furgoId !== currentUser?.id) return false;
+      if (isAdminOrSuper && isMapTab && mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+      return (!t.status || t.status === 'pending' || t.status === 'transit');
+    });
+
+    const isAllSelected = selectableTickets.length > 0 && bulkSelectedTickets.size >= selectableTickets.length;
+
+    // Destinatarios válidos para auxilio/apoyo
+    const selectedList = (tickets || []).filter(t => bulkSelectedTickets.has(t.id));
+    const ownerIds = new Set(selectedList.map(t => t.furgoId));
+    if (currentUser && currentUser.role === 'repartidor') {
+      ownerIds.add(currentUser.id);
+    }
+    const availableDrivers = (users || []).filter(u => u && u.role === 'repartidor' && !ownerIds.has(u.id));
+
+    return (
+      <>
+        {/* Barra flotante inferior de Selección Múltiple */}
+        {bulkSelectMode && (
+          <div style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1500,
+            background: 'rgba(17, 24, 39, 0.96)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(99, 102, 241, 0.5)',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.65), 0 0 20px rgba(99, 102, 241, 0.25)',
+            borderRadius: '16px',
+            padding: '10px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            flexWrap: 'wrap',
+            maxWidth: '92vw',
+            animation: 'fadeIn 0.2s ease'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                background: bulkSelectedTickets.size > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
+                color: '#fff',
+                borderRadius: '20px',
+                padding: '3px 10px',
+                fontSize: '0.8rem',
+                fontWeight: '800'
+              }}>
+                {bulkSelectedTickets.size}
+              </span>
+              <span style={{ fontSize: '0.84rem', fontWeight: '600', color: 'var(--text-main)' }}>
+                {bulkSelectedTickets.size === 1 ? 'parada seleccionada' : 'paradas seleccionadas'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAllSelected) {
+                    setBulkSelectedTickets(new Set());
+                  } else {
+                    setBulkSelectedTickets(new Set(selectableTickets.map(t => t.id)));
+                  }
+                }}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--panel-border)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: 'var(--text-main)',
+                  fontSize: '0.78rem',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                {isAllSelected ? 'Deseleccionar' : 'Todas'}
+              </button>
+
+              <button
+                type="button"
+                disabled={bulkSelectedTickets.size === 0}
+                onClick={() => setBulkTransferModalOpen(true)}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: bulkSelectedTickets.size > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  fontSize: '0.84rem',
+                  fontWeight: '700',
+                  cursor: bulkSelectedTickets.size > 0 ? 'pointer' : 'not-allowed',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: bulkSelectedTickets.size > 0 ? '0 4px 14px rgba(99, 102, 241, 0.4)' : 'none',
+                  transition: 'all 0.2s'
+                }}
+              >
+                📤 Enviar a Apoyo
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setBulkSelectMode(false);
+                  setBulkSelectedTickets(new Set());
+                  setBulkTransferModalOpen(false);
+                }}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  color: 'var(--danger)',
+                  fontSize: '0.78rem',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+                title="Salir del modo selección"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Transferencia Masiva a Apoyo */}
+        {bulkTransferModalOpen && (
+          <div style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2100,
+            padding: '20px'
+          }}>
+            <div className="glass-panel" style={{
+              width: '100%',
+              maxWidth: '420px',
+              padding: '24px',
+              textAlign: 'left',
+              boxShadow: '0 15px 50px rgba(0,0,0,0.6)',
+              border: '1px solid var(--panel-border)',
+              borderRadius: '16px',
+              background: 'rgba(21, 23, 30, 0.96)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📤 Transferir a Ruta de Apoyo
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setBulkTransferModalOpen(false)}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: '1.4' }}>
+                Vas a transferir <strong>{bulkSelectedTickets.size} parada(s)</strong> en modo de auxilio/apoyo. Selecciona el chofer o furgoneta de destino:
+              </p>
+
+              <div style={{ maxHeight: '280px', overflowY: 'auto', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {availableDrivers.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => handleBulkSendSupport(u.id)}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      borderRadius: '10px',
+                      border: '1px solid var(--panel-border)',
+                      background: 'rgba(255,255,255,0.04)',
+                      color: 'var(--text-main)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '0.88rem',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = 'var(--primary)';
+                      e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = 'var(--panel-border)';
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      🚚 {u.label}
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: '700' }}>
+                      Enviar →
+                    </span>
+                  </button>
+                ))}
+                {availableDrivers.length === 0 && (
+                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    No hay otros choferes registrados para recibir el apoyo.
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setBulkTransferModalOpen(false)}
+                  className="btn btn-secondary btn-small"
+                  style={{ margin: 0, padding: '8px 16px' }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
+
   const renderMapStopsList = (isAdminMap) => {
     const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
     
@@ -13658,14 +13720,80 @@ function App() {
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px', margin: '0 0 5px 0' }}>
-          <span>📋 Secuencia de Paradas ({sortedDayTickets.length})</span>
-          {activeFurgo !== 'all' && sortedDayTickets.length > 0 && (
-            <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold' }}>
-              {isOsrmStats ? '🛣️ OSRM: ' : '🛣️ '} {totalDistance.toFixed(1)} km | 🚗 {totalTransit} min viaje
+        {(() => {
+          const isShiftClosed = !isAdminMap
+            ? (getShiftStatus(currentUser?.id, targetDate) === 'closed')
+            : (activeFurgo && activeFurgo !== 'all' ? (getShiftStatus(activeFurgo, targetDate) === 'closed') : false);
+          const canUseBulk = (!isShiftClosed || isAdminOrSuper);
+
+          return (
+            <div style={{ borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px', margin: '0 0 5px 0' }}>
+              <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>📋 Secuencia de Paradas ({sortedDayTickets.length})</span>
+              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {activeFurgo !== 'all' && sortedDayTickets.length > 0 && (
+                  <span style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold' }}>
+                    {isOsrmStats ? '🛣️ OSRM: ' : '🛣️ '} {totalDistance.toFixed(1)} km | 🚗 {totalTransit} min viaje
+                  </span>
+                )}
+                {canUseBulk && sortedDayTickets.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !bulkSelectMode;
+                      setBulkSelectMode(next);
+                      if (!next) {
+                        setBulkSelectedTickets(new Set());
+                        setBulkTransferModalOpen(false);
+                      }
+                    }}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '8px',
+                      border: bulkSelectMode ? '1px solid rgba(99, 102, 241, 0.6)' : '1px solid var(--panel-border)',
+                      background: bulkSelectMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.04)',
+                      color: bulkSelectMode ? 'var(--primary)' : 'var(--text-muted)',
+                      fontWeight: '700',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.15s'
+                    }}
+                    title="Activar selección múltiple para transferir paradas a otra ruta de apoyo"
+                  >
+                    {bulkSelectMode ? '✓ Selección Activa' : '☑️ Selección Múltiple'}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {bulkSelectMode && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            background: 'rgba(99, 102, 241, 0.1)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+            fontSize: '0.8rem',
+            color: 'var(--text-main)',
+            gap: '8px',
+            flexWrap: 'wrap'
+          }}>
+            <span>
+              💡 Marca casillas en la lista o <strong>toca los números en el mapa</strong> para seleccionar.
             </span>
-          )}
-        </h3>
+            <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>
+              {bulkSelectedTickets.size} seleccionada(s)
+            </span>
+          </div>
+        )}
 
         {activeFurgo !== 'all' && finalSchedule && (
           <div style={{
@@ -13712,11 +13840,17 @@ function App() {
             
             const isSelected = selectedMapTicket && selectedMapTicket.id === t.id;
             const furgoLabel = users.find(u => u.id === t.furgoId)?.label || t.furgoId || '';
+            const isSelectable = !t.status || t.status === 'pending' || t.status === 'transit';
+            const isBulkSelected = bulkSelectMode && bulkSelectedTickets.has(t.id);
 
             return (
               <div 
                 key={t.id}
                 onClick={() => {
+                  if (bulkSelectMode && isSelectable) {
+                    toggleBulkSelect(t.id);
+                    return;
+                  }
                   setSelectedMapTicket(t);
                   const latNum = parseFloat(t.lat);
                   const lngNum = parseFloat(t.lng);
@@ -13727,21 +13861,46 @@ function App() {
                 className="glass-panel"
                 style={{
                   padding: '15px',
-                  border: isSelected ? '2px solid var(--primary)' : '1px solid var(--panel-border)',
+                  border: isBulkSelected
+                    ? '2px solid #818cf8'
+                    : (isSelected ? '2px solid var(--primary)' : '1px solid var(--panel-border)'),
                   cursor: 'pointer',
                   transition: 'all 0.2s',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '8px',
-                  background: isSelected ? 'rgba(79, 70, 229, 0.08)' : 'rgba(255, 255, 255, 0.01)',
+                  background: isBulkSelected
+                    ? 'rgba(99, 102, 241, 0.16)'
+                    : (isSelected ? 'rgba(79, 70, 229, 0.08)' : 'rgba(255, 255, 255, 0.01)'),
                   textAlign: 'left',
-                  boxShadow: isSelected ? '0 0 15px rgba(79, 70, 229, 0.2)' : 'none',
+                  boxShadow: isBulkSelected
+                    ? '0 0 14px rgba(99, 102, 241, 0.35)'
+                    : (isSelected ? '0 0 15px rgba(79, 70, 229, 0.2)' : 'none'),
                   borderRadius: '12px'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {bulkSelectMode && isSelectable && (
+                        <input
+                          type="checkbox"
+                          checked={isBulkSelected}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleBulkSelect(t.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'pointer',
+                            accentColor: 'var(--primary)',
+                            flexShrink: 0
+                          }}
+                          title="Seleccionar para transferencia de apoyo"
+                        />
+                      )}
                       <span style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -24463,6 +24622,8 @@ function App() {
       )}
 
       {isAdminOrSuper ? renderAdminPortal() : renderDriverPortal()}
+
+      {renderBulkSelectControls()}
 
       {showShiftModal && (
         <div className="modal-overlay">
