@@ -2505,8 +2505,9 @@ function App() {
             const el = document.createElement('div');
             el.className = 'map-stop-marker-pin';
             el.dataset.ticketId = t.id;
+            el.dataset.markerBorder = markerBorderColor;
             const isInitiallySelected = bulkSelectModeRef.current && bulkSelectedTickets.has(t.id);
-            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:' + (isInitiallySelected ? '0 0 16px rgba(99, 102, 241, 0.95), 0 0 0 3px #818cf8' : '0 2px 10px rgba(0,0,0,0.45)') + ';cursor:pointer;transition:transform 0.15s ease,box-shadow 0.15s ease;' + (isInitiallySelected ? 'transform:scale(1.28);z-index:50;' : '');
+            el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + (isInitiallySelected ? '#818cf8' : markerBorderColor) + ';box-shadow:' + (isInitiallySelected ? '0 0 16px rgba(99, 102, 241, 0.95), 0 0 0 3px #818cf8' : '0 2px 10px rgba(0,0,0,0.45)') + ';cursor:pointer;user-select:none;' + (isInitiallySelected ? 'z-index:50;' : '');
             el.textContent = seqIndex + 1;
 
             el.addEventListener('click', (ev) => {
@@ -2678,17 +2679,20 @@ function App() {
   }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
 
   // Actualizar visualmente los marcadores del mapa cuando cambia bulkSelectedTickets o bulkSelectMode
+  // IMPORTANTE: Nunca modificar pin.style.transform ni añadir transition:transform,
+  // ya que Mapbox GL JS usa 'transform: translate(...)' para calcular y fijar las coordenadas GPS
+  // en tiempo real al hacer zoom o desplazar el mapa.
   useEffect(() => {
     try {
       document.querySelectorAll('.map-stop-marker-pin').forEach(pin => {
         const tid = pin.dataset.ticketId;
         if (bulkSelectMode && bulkSelectedTickets.has(tid)) {
-          pin.style.transform = 'scale(1.28)';
           pin.style.boxShadow = '0 0 16px rgba(99, 102, 241, 0.95), 0 0 0 3px #818cf8';
+          pin.style.borderColor = '#818cf8';
           pin.style.zIndex = '50';
         } else {
-          pin.style.transform = '';
           pin.style.boxShadow = '0 2px 10px rgba(0,0,0,0.45)';
+          pin.style.borderColor = pin.dataset.markerBorder || '#ffffff';
           pin.style.zIndex = '';
         }
       });
