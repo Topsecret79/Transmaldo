@@ -2508,64 +2508,7 @@ function App() {
             const isInitiallySelected = bulkSelectModeRef.current && bulkSelectedTickets.has(t.id);
             el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + markerBorderColor + ';box-shadow:' + (isInitiallySelected ? '0 0 16px rgba(99, 102, 241, 0.95), 0 0 0 3px #818cf8' : '0 2px 10px rgba(0,0,0,0.45)') + ';cursor:pointer;transition:transform 0.15s ease,box-shadow 0.15s ease;' + (isInitiallySelected ? 'transform:scale(1.28);z-index:50;' : '');
             el.textContent = seqIndex + 1;
-            let optHtml = '';
-            for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
-            // Seguridad: escapar nombre/dirección antes de insertarlos en el HTML del
-            // popup (ver escapeHtml arriba) — evita XSS almacenado vía estos campos.
-            const cAddr = escapeHtml(getShortAddressString(t.address));
-            const cName = escapeHtml(t.customerName || 'Cliente');
-            const posBlock = (!isClosed || isAdminOrSuper) ? '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#9ca3af;font-weight:600;">Posición:</span><select onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder(\'' + t.id + '\', this.value)" style="background:var(--primary);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;">' + optHtml + '</select></div>' : '<div style="font-size:0.74rem;color:#9ca3af;font-weight:700;margin-top:3px;">Parada #' + (seqIndex + 1) + '</div>';
-            
-            // Construir insignias para el Popup informativo (clases CSS centralizadas,
-            // ver getServiceTypeBadge/getTimeSlotBadge más arriba en el componente)
-            const sType = getTicketServiceType(t);
-            let badgeHtml = '';
-            const svcBadge = getServiceTypeBadge(sType);
-            if (svcBadge) {
-              badgeHtml += '<span class="badge-service ' + svcBadge.className + '" style="display:inline-block;margin-right:4px;">' + svcBadge.label + '</span>';
-            }
-            const slotBadge = getTimeSlotBadge(parsedNotesObj.timeSlot);
-            if (slotBadge) {
-              badgeHtml += '<span class="badge-service ' + slotBadge.className + '" style="display:inline-block;margin-right:4px;">' + slotBadge.label + '</span>';
-            }
-            const sourceVal = getSourceFromNotes(t.notes);
-            if (sourceVal) {
-              let color = '#c084fc';
-              let border = 'rgba(168, 85, 247, 0.3)';
-              let bg = 'rgba(168, 85, 247, 0.15)';
-              if (sourceVal.toLowerCase() === 'pda') {
-                color = '#60a5fa';
-                border = 'rgba(59, 130, 246, 0.3)';
-                bg = 'rgba(59, 130, 246, 0.15)';
-              } else if (sourceVal.toLowerCase() === 'ambos') {
-                color = '#facc15';
-                border = 'rgba(234, 179, 8, 0.3)';
-                bg = 'rgba(234, 179, 8, 0.15)';
-              }
-              badgeHtml += '<span class="badge-service" style="display:inline-block;margin-right:4px;font-size:0.7rem;padding:1px 6px;border-radius:4px;font-weight:bold;color:' + color + ';border:1px solid ' + border + ';background:' + bg + ';">🏷️ ' + sourceVal + '</span>';
-            }
 
-            const origRouteLabel = t.originalRouteLabel || parsedNotesObj.originalRouteLabel;
-            if (origRouteLabel) {
-              badgeHtml += '<span class="badge-service" style="display:inline-block;margin-right:4px;font-size:0.7rem;padding:1px 6px;border-radius:4px;font-weight:bold;color:#f59e0b;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.15);">🤝 Apoyo: ' + escapeHtml(origRouteLabel) + '</span>';
-            }
-
-            if (badgeHtml) {
-              badgeHtml = '<div style="margin-top:3px;margin-bottom:3px;display:flex;flex-wrap:wrap;gap:4px;">' + badgeHtml + '</div>';
-            }
-
-            let supportBlock = '';
-            if ((!isClosed || isAdminOrSuper) && (!t.status || t.status === 'pending' || t.status === 'transit')) {
-              let supOpts = '<option value="">🤝 Enviar a Apoyo...</option>';
-              users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).forEach(u => {
-                supOpts += '<option value="' + u.id + '">🚚 ' + escapeHtml(u.label) + '</option>';
-              });
-              supportBlock = '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#818cf8;font-weight:700;">📤 Apoyo:</span><select onchange="if(window.handleSendSupportFromMap) window.handleSendSupportFromMap(\'' + t.id + '\', this.value)" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.5);color:#c7d2fe;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;width:125px;">' + supOpts + '</select></div>';
-            }
-            
-            const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + badgeHtml + posBlock + supportBlock + '</div>';
-            const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
-            const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).setPopup(popup).addTo(map);
             el.addEventListener('click', (ev) => {
               ev.stopPropagation();
               if (bulkSelectModeRef.current && (!t.status || t.status === 'pending' || t.status === 'transit')) {
@@ -2574,7 +2517,74 @@ function App() {
               }
               handleSelectMapTicket(t);
             });
+
+            // Blindaje 100%: añadir el marcador al mapa inmediatamente para que NUNCA desaparezca
+            const marker = new mapboxgl.Marker({ element: el }).setLngLat([lngNum, latNum]).addTo(map);
             mapMarkersRef.current.push(marker);
+
+            // Construir el popup informativo en bloque aislado (si fallara cualquier detalle cosmético, el marcador ya está en el mapa)
+            try {
+              let optHtml = '';
+              for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
+              // Seguridad: escapar nombre/dirección antes de insertarlos en el HTML del
+              // popup (ver escapeHtml arriba) — evita XSS almacenado vía estos campos.
+              const cAddr = escapeHtml(getShortAddressString(t.address));
+              const cName = escapeHtml(t.customerName || 'Cliente');
+              const posBlock = (!isClosed || isAdminOrSuper) ? '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#9ca3af;font-weight:600;">Posición:</span><select onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder(\'' + t.id + '\', this.value)" style="background:var(--primary);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;">' + optHtml + '</select></div>' : '<div style="font-size:0.74rem;color:#9ca3af;font-weight:700;margin-top:3px;">Parada #' + (seqIndex + 1) + '</div>';
+
+              // Construir insignias para el Popup informativo (clases CSS centralizadas,
+              // ver getServiceTypeBadge/getTimeSlotBadge más arriba en el componente)
+              const sType = getTicketServiceType(t);
+              let badgeHtml = '';
+              const svcBadge = getServiceTypeBadge(sType);
+              if (svcBadge) {
+                badgeHtml += '<span class="badge-service ' + svcBadge.className + '" style="display:inline-block;margin-right:4px;">' + svcBadge.label + '</span>';
+              }
+              const slotBadge = getTimeSlotBadge(parsedNotesObj.timeSlot);
+              if (slotBadge) {
+                badgeHtml += '<span class="badge-service ' + slotBadge.className + '" style="display:inline-block;margin-right:4px;">' + slotBadge.label + '</span>';
+              }
+              const sourceVal = getSourceFromNotes(t.notes);
+              if (sourceVal) {
+                let color = '#c084fc';
+                let border = 'rgba(168, 85, 247, 0.3)';
+                let bg = 'rgba(168, 85, 247, 0.15)';
+                if (sourceVal.toLowerCase() === 'pda') {
+                  color = '#60a5fa';
+                  border = 'rgba(59, 130, 246, 0.3)';
+                  bg = 'rgba(59, 130, 246, 0.15)';
+                } else if (sourceVal.toLowerCase() === 'ambos') {
+                  color = '#facc15';
+                  border = 'rgba(234, 179, 8, 0.3)';
+                  bg = 'rgba(234, 179, 8, 0.15)';
+                }
+                badgeHtml += '<span class="badge-service" style="display:inline-block;margin-right:4px;font-size:0.7rem;padding:1px 6px;border-radius:4px;font-weight:bold;color:' + color + ';border:1px solid ' + border + ';background:' + bg + ';">🏷️ ' + sourceVal + '</span>';
+              }
+
+              const origRouteLabel = t.originalRouteLabel || parsedNotesObj.originalRouteLabel;
+              if (origRouteLabel) {
+                badgeHtml += '<span class="badge-service" style="display:inline-block;margin-right:4px;font-size:0.7rem;padding:1px 6px;border-radius:4px;font-weight:bold;color:#f59e0b;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.15);">🤝 Apoyo: ' + escapeHtml(origRouteLabel) + '</span>';
+              }
+
+              if (badgeHtml) {
+                badgeHtml = '<div style="margin-top:3px;margin-bottom:3px;display:flex;flex-wrap:wrap;gap:4px;">' + badgeHtml + '</div>';
+              }
+
+              let supportBlock = '';
+              if ((!isClosed || isAdminOrSuper) && (!t.status || t.status === 'pending' || t.status === 'transit')) {
+                let supOpts = '<option value="">🤝 Enviar a Apoyo...</option>';
+                users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).forEach(u => {
+                  supOpts += '<option value="' + u.id + '">🚚 ' + escapeHtml(u.label) + '</option>';
+                });
+                supportBlock = '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#818cf8;font-weight:700;">📤 Apoyo:</span><select onchange="if(window.handleSendSupportFromMap) window.handleSendSupportFromMap(\'' + t.id + '\', this.value)" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.5);color:#c7d2fe;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;width:125px;">' + supOpts + '</select></div>';
+              }
+              
+              const popHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.86rem;color:#fff;padding:4px;min-width:170px;display:flex;flex-direction:column;gap:5px;"><strong style="color:#a78bfa;font-size:0.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + cName + '</strong><div style="font-size:0.74rem;color:#d1d5db;line-height:1.2;">📍 ' + cAddr + '</div>' + badgeHtml + posBlock + supportBlock + '</div>';
+              const popup = new mapboxgl.Popup({ offset: 14, closeButton: true, closeOnClick: false, className: 'mapbox-custom-popup' }).setHTML(popHtml);
+              marker.setPopup(popup);
+            } catch (popupErr) {
+              console.warn('Detalle no fatal en popup de parada', t?.id, popupErr);
+            }
             } catch (markerErr) {
               console.error('Error dibujando el marcador de la parada', t?.id, markerErr);
             }
