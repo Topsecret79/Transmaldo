@@ -172,5 +172,19 @@
       "Habilitación del modo de Selección Múltiple para transferencias en lote a apoyo desde la vista de chofer mientras la jornada siga activa.",
       "Protección continua de seguridad: las acciones permanecen bloqueadas automáticamente si la jornada del chofer ha sido cerrada."
     ]
+  },
+  {
+    "id": "v1.7.4",
+    "date": "2026-09-22",
+    "version": "1.7.4",
+    "title": "Corrección de visibilidad de marcadores y chinchetas en el mapa",
+    "category": "Mapa / Fix / Core",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Subsanado fallo de ámbito léxico (ReferenceError por Temporal Dead Zone) que impedía la instanciación de los marcadores DOM en renderMapContent.",
+      "Restauración completa de las chinchetas numéricas de colores para todas las paradas sobre las líneas de ruta en el mapa.",
+      "Incorporación de selector de fecha directo en la cabecera del mapa del chofer para alternar días cómodamente.",
+      "Acceso directo y sugerencia inteligente de rutas en otras fechas cuando la fecha seleccionada no contenga paradas."
+    ]
   }
 ]
