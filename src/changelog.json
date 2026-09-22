@@ -157,5 +157,20 @@
       "Inclusión de fallback automático de TV en el formulario para garantizar que la medida de televisor seleccionada se registre y guarde siempre con éxito.",
       "Añadido bloque de captura de errores (try/catch) en handleFormSubmit para evitar bloqueos silenciosos y notificar fallos con alertas claras."
     ]
+  },
+  {
+    "id": "v1.7.3",
+    "date": "2026-09-22",
+    "version": "1.7.3",
+    "title": "Transferencia a Ruta de Apoyo y Devolución habilitadas para Choferes",
+    "category": "Mapa / Choferes / Usabilidad",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Habilitación de la acción '📤 Enviar Parada a Ruta de Apoyo' en el panel flotante inferior del mapa para choferes con jornada abierta.",
+      "Habilitación del selector de apoyo directo en los marcadores (popups) del mapa y en el listado interactivo de paradas bajo el mapa.",
+      "Acceso para choferes a la devolución ('↩️ Devolver') de paradas de apoyo y botones de transferencia rápida en tarjetas de paradas.",
+      "Habilitación del modo de Selección Múltiple para transferencias en lote a apoyo desde la vista de chofer mientras la jornada siga activa.",
+      "Protección continua de seguridad: las acciones permanecen bloqueadas automáticamente si la jornada del chofer ha sido cerrada."
+    ]
   }
 ]

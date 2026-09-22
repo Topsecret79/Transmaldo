@@ -2548,7 +2548,8 @@ function App() {
             }
 
             let supportBlock = '';
-            if (isAdminOrSuper && (!t.status || t.status === 'pending' || t.status === 'transit')) {
+            const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
+            if ((!isClosed || isAdminOrSuper) && (!t.status || t.status === 'pending' || t.status === 'transit')) {
               let supOpts = '<option value="">🤝 Enviar a Apoyo...</option>';
               users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).forEach(u => {
                 supOpts += '<option value="' + u.id + '">🚚 ' + escapeHtml(u.label) + '</option>';
@@ -11642,7 +11643,10 @@ function App() {
               )}
 
               {/* Botón de Selección Múltiple para Transferencia en Lote */}
-              {dateTickets.length > 0 && isAdminOrSuper && (
+              {dateTickets.length > 0 && (() => {
+                const isClosed = getShiftStatus(currentUser?.id || activeFurgo, targetDate) === 'closed';
+                return (!isClosed || isAdminOrSuper);
+              })() && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
@@ -11850,7 +11854,7 @@ function App() {
                                     </button>
                                   )}
                                   {/* Botón rápido de transferencia en tarjeta contraída */}
-                                  {isAdminOrSuper && (!t.status || t.status === 'pending' || t.status === 'transit') && (
+                                  {(!isClosed || isAdminOrSuper) && (!t.status || t.status === 'pending' || t.status === 'transit') && (
                                     <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
                                       <button
                                         type="button"
@@ -12126,7 +12130,7 @@ function App() {
                                       <Trash2 size={12} />
                                     </button>
                                     {/* Botón rápido de transferencia a ruta de apoyo */}
-                                    {isAdminOrSuper && (!t.status || t.status === 'pending' || t.status === 'transit') && (
+                                    {(!isClosed || isAdminOrSuper) && (!t.status || t.status === 'pending' || t.status === 'transit') && (
                                       <div style={{ position: 'relative' }}>
                                         <button
                                           type="button"
@@ -13328,6 +13332,8 @@ function App() {
               const parsed = parseTicketNotes(ticketToShow.notes);
               const origRoute = ticketToShow.originalRouteLabel || parsed.originalRouteLabel;
               const isSupport = !!origRoute;
+              const isClosed = getShiftStatus(ticketToShow.furgoId, ticketToShow.date) === 'closed';
+              const canSupportAction = (!isClosed || isAdminOrSuper) && (!ticketToShow.status || ticketToShow.status === 'pending' || ticketToShow.status === 'transit');
 
               return (
                 <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
@@ -13345,7 +13351,7 @@ function App() {
                       color: '#fbbf24'
                     }}>
                       <span>🤝 <strong>Apoyo:</strong> {origRoute}</span>
-                      {isAdminOrSuper && (!ticketToShow.status || ticketToShow.status === 'pending' || ticketToShow.status === 'transit') && (
+                      {canSupportAction && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -13370,7 +13376,7 @@ function App() {
                     </div>
                   )}
 
-                  {isAdminOrSuper && (!ticketToShow.status || ticketToShow.status === 'pending' || ticketToShow.status === 'transit') && (
+                  {canSupportAction && (
                     <div style={{ position: 'relative', width: '100%' }}>
                       <button
                         type="button"
@@ -13936,96 +13942,100 @@ function App() {
                       );
                     })()}
 
-                    {isAdminOrSuper && (!t.status || t.status === 'pending' || t.status === 'transit') && (() => {
-                      const parsed = parseTicketNotes(t.notes);
-                      const origRoute = t.originalRouteLabel || parsed.originalRouteLabel;
-                      return (
-                        <div style={{ position: 'relative', marginTop: '8px', display: 'flex', gap: '8px' }}>
-                          {origRoute && (
+                    {(() => {
+                      const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
+                      if ((!isClosed || isAdminOrSuper) && (!t.status || t.status === 'pending' || t.status === 'transit')) {
+                        const parsed = parseTicketNotes(t.notes);
+                        const origRoute = t.originalRouteLabel || parsed.originalRouteLabel;
+                        return (
+                          <div style={{ position: 'relative', marginTop: '8px', display: 'flex', gap: '8px' }}>
+                            {origRoute && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReturnToOriginalRoute(t.id);
+                                }}
+                                className="btn btn-warning btn-small"
+                                style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid rgba(245, 158, 11, 0.5)', color: '#fbbf24', fontWeight: 'bold' }}
+                              >
+                                ↩️ Devolver
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleReturnToOriginalRoute(t.id);
+                                setSupportTransferTicketId(supportTransferTicketId === t.id ? null : t.id);
                               }}
-                              className="btn btn-warning btn-small"
-                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto', background: 'rgba(245, 158, 11, 0.2)', border: '1px solid rgba(245, 158, 11, 0.5)', color: '#fbbf24', fontWeight: 'bold' }}
+                              className="btn btn-secondary btn-small"
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto', background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.5)', color: '#c7d2fe', fontWeight: 'bold' }}
                             >
-                              ↩️ Devolver
+                              📤 Enviar a Apoyo
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSupportTransferTicketId(supportTransferTicketId === t.id ? null : t.id);
-                            }}
-                            className="btn btn-secondary btn-small"
-                            style={{ margin: 0, padding: '6px 10px', fontSize: '0.75rem', flex: 1, height: 'auto', background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.5)', color: '#c7d2fe', fontWeight: 'bold' }}
-                          >
-                            📤 Enviar a Apoyo
-                          </button>
-                          {supportTransferTicketId === t.id && (
-                            <>
-                              <div
-                                style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1200 }}
-                                onClick={(e) => { e.stopPropagation(); setSupportTransferTicketId(null); }}
-                              />
-                              <div
-                                onClick={e => e.stopPropagation()}
-                                style={{
-                                  position: 'absolute',
-                                  bottom: '100%',
-                                  marginBottom: '6px',
-                                  left: 0,
-                                  right: 0,
-                                  zIndex: 1250,
-                                  background: 'var(--panel-bg)',
-                                  border: '1px solid var(--primary)',
-                                  borderRadius: '10px',
-                                  padding: '8px',
-                                  boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
-                                  maxHeight: '180px',
-                                  overflowY: 'auto'
-                                }}
-                              >
-                                <div style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--primary)', marginBottom: '6px', padding: '0 2px' }}>
-                                  📤 Seleccionar Chofer:
+                            {supportTransferTicketId === t.id && (
+                              <>
+                                <div
+                                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1200 }}
+                                  onClick={(e) => { e.stopPropagation(); setSupportTransferTicketId(null); }}
+                                />
+                                <div
+                                  onClick={e => e.stopPropagation()}
+                                  style={{
+                                    position: 'absolute',
+                                    bottom: '100%',
+                                    marginBottom: '6px',
+                                    left: 0,
+                                    right: 0,
+                                    zIndex: 1250,
+                                    background: 'var(--panel-bg)',
+                                    border: '1px solid var(--primary)',
+                                    borderRadius: '10px',
+                                    padding: '8px',
+                                    boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
+                                    maxHeight: '180px',
+                                    overflowY: 'auto'
+                                  }}
+                                >
+                                  <div style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--primary)', marginBottom: '6px', padding: '0 2px' }}>
+                                    📤 Seleccionar Chofer:
+                                  </div>
+                                  {users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).map(u => (
+                                    <button
+                                      key={u.id}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSupportTransferTicketId(null);
+                                        handleSendSupport(t.id, u.id);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        width: '100%',
+                                        textAlign: 'left',
+                                        padding: '7px 10px',
+                                        margin: '2px 0',
+                                        borderRadius: '6px',
+                                        border: '1px solid var(--panel-border)',
+                                        background: 'rgba(255,255,255,0.04)',
+                                        color: 'var(--text-main)',
+                                        fontSize: '0.8rem',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      <span>🚚 {u.label}</span>
+                                      <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 'bold' }}>Enviar →</span>
+                                    </button>
+                                  ))}
                                 </div>
-                                {users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).map(u => (
-                                  <button
-                                    key={u.id}
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSupportTransferTicketId(null);
-                                      handleSendSupport(t.id, u.id);
-                                    }}
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'space-between',
-                                      width: '100%',
-                                      textAlign: 'left',
-                                      padding: '7px 10px',
-                                      margin: '2px 0',
-                                      borderRadius: '6px',
-                                      border: '1px solid var(--panel-border)',
-                                      background: 'rgba(255,255,255,0.04)',
-                                      color: 'var(--text-main)',
-                                      fontSize: '0.8rem',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    <span>🚚 {u.label}</span>
-                                    <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: 'bold' }}>Enviar →</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      );
+                              </>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
                     })()}
                   </div>
                 )}
