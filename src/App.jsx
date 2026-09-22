@@ -2548,7 +2548,6 @@ function App() {
             }
 
             let supportBlock = '';
-            const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
             if ((!isClosed || isAdminOrSuper) && (!t.status || t.status === 'pending' || t.status === 'transit')) {
               let supOpts = '<option value="">🤝 Enviar a Apoyo...</option>';
               users.filter(u => u && u.role === 'repartidor' && u.id !== t.furgoId).forEach(u => {
