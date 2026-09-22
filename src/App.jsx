@@ -10928,7 +10928,14 @@ function App() {
           <div className="glass-panel map-tab-panel">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
               <h3 className="map-tab-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: 'var(--primary)', flexWrap: 'wrap' }}>
-                <span>🗺️ Mapa de Mi Ruta ({targetDate})</span>
+                <span>🗺️ Mapa de Mi Ruta</span>
+                <input 
+                  type="date" 
+                  className="form-input" 
+                  value={targetDate} 
+                  onChange={(e) => setShiftSummaryDate(e.target.value)} 
+                  style={{ width: '145px', padding: '4px 8px', fontSize: '0.82rem', height: '32px', margin: 0 }} 
+                />
                 {getRouteManualStatus(currentUser?.id, targetDate) ? (
                   <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '6px', background: 'rgba(168, 85, 247, 0.2)', border: '1px solid #a855f7', color: '#d8b4fe', fontWeight: '700' }}>
                     🔒 Orden Manual Fijo
@@ -11681,7 +11688,36 @@ function App() {
               )}
 
               {dateTickets.length === 0 ? (
-                <div style={{ padding: '30px', color: 'var(--text-muted)', textAlign: 'center' }}>No hay paradas planificadas para este día.</div>
+                <div style={{ padding: '30px', color: 'var(--text-muted)', textAlign: 'center', background: 'rgba(255,255,255,0.01)', borderRadius: '12px', border: '1px dashed var(--panel-border)' }}>
+                  <div style={{ fontSize: '0.95rem', fontWeight: '600', marginBottom: '8px' }}>
+                    No hay paradas planificadas para este día ({targetDate}).
+                  </div>
+                  {userTickets.length > 0 && (() => {
+                    const otherDates = [...new Set(userTickets.map(t => t.date))].sort().filter(d => d !== targetDate);
+                    if (otherDates.length === 0) return null;
+                    return (
+                      <div style={{ marginTop: '12px', fontSize: '0.85rem' }}>
+                        <span style={{ color: 'var(--text-main)', fontWeight: '600' }}>Tienes paradas asignadas en otras fechas:</span>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', marginTop: '8px' }}>
+                          {otherDates.map(d => {
+                            const count = userTickets.filter(t => t.date === d).length;
+                            return (
+                              <button
+                                key={d}
+                                type="button"
+                                onClick={() => setShiftSummaryDate(d)}
+                                className="btn btn-secondary btn-small"
+                                style={{ margin: 0, padding: '5px 12px', fontSize: '0.8rem', background: 'rgba(99, 102, 241, 0.15)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.4)', fontWeight: '700' }}
+                              >
+                                📅 Ver ruta del {d} ({count} {count === 1 ? 'parada' : 'paradas'}) →
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
               ) : (
                 (() => {
                   const filteredTickets = dateTickets.filter(t => {
@@ -13521,9 +13557,45 @@ function App() {
     const sortedDayTickets = sortTicketsByRouteOrder(dayTickets);
 
     if (sortedDayTickets.length === 0) {
+      const userAllTickets = (tickets || []).filter(t => {
+        if (!t) return false;
+        if (isAdminMap) {
+          if (mapFilterFurgo !== 'all') return t.furgoId === mapFilterFurgo;
+          return true;
+        }
+        return t.furgoId === currentUser?.id;
+      });
+      const otherDates = [...new Set(userAllTickets.map(t => t.date))].sort().filter(d => d !== targetDate);
+
       return (
         <div style={{ padding: '25px', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
           <span>No hay paradas planificadas para este día ({targetDate}).</span>
+          {otherDates.length > 0 && (
+            <div style={{ marginTop: '4px', fontSize: '0.82rem' }}>
+              <div style={{ color: 'var(--text-main)', fontWeight: '600', marginBottom: '6px' }}>
+                Paradas encontradas en otras fechas:
+              </div>
+              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                {otherDates.map(d => {
+                  const count = userAllTickets.filter(t => t.date === d).length;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => {
+                        if (isAdminMap) setMapFilterDate(d);
+                        else setShiftSummaryDate(d);
+                      }}
+                      className="btn btn-secondary btn-small"
+                      style={{ margin: 0, padding: '4px 10px', fontSize: '0.78rem', background: 'rgba(99, 102, 241, 0.15)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.4)', fontWeight: '700' }}
+                    >
+                      📅 {d} ({count} {count === 1 ? 'parada' : 'paradas'}) →
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <button
             type="button"
             onClick={async () => {
@@ -13542,7 +13614,7 @@ function App() {
               }
             }}
             className="btn btn-secondary btn-small"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 14px' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 14px', marginTop: '4px' }}
             disabled={isSyncingMap}
           >
             <RefreshCw size={13} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Sincronizando...' : 'Comprobar si hay paradas en el servidor'}
