@@ -772,14 +772,13 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       const pendingLocal = localCurrent.filter(t => t && t._syncStatus === 'pending');
       const filteredCloud = cloudTickets.filter(t => t && !deletedIds.includes(t.id));
 
-      // Fix: preservar routeOrder local para rutas en modo manual.
-      // Cuando se reordena manualmente, saveTickets() sube los nuevos route_order a
-      // Supabase de forma asíncrona. Si llega un evento Realtime (p.ej. una parada
-      // marcada como entregada) ANTES de que termine ese upsert, syncFromCloud descarga
-      // el estado viejo de Supabase y pisa el orden local — el reordenamiento manual
-      // se pierde visualmente hasta el próximo sync. La solución: si la ruta está
-      // marcada como manual en localStorage (clave delivery_manual_route_*), se
-      // preserva el route_order que tiene el ticket en local, no el que viene de la nube.
+      // Sincronización de tickets y orden de paradas:
+      // 1. Si un ticket local está marcado como 'pending' en este dispositivo,
+      //    significa que este dispositivo está activamente guardando cambios que se están
+      //    subiendo a Supabase, por lo que se preserva el ticket local para evitar condiciones de carrera.
+      // 2. Si la nube (cloudT) tiene routeOrder definido, la nube es la fuente canónica de
+      //    verdad para todos los dispositivos (móviles de choferes, panel de administración, etc.).
+      // 3. Si la nube no tuviera routeOrder pero el local sí, se mantiene el local como respaldo.
       const localById = {};
       localCurrent.forEach(t => { if (t && t.id) localById[t.id] = t; });
 
@@ -787,14 +786,16 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         const localT = localById[cloudT.id];
         if (!localT) return cloudT;
 
-        // Si el ticket local está pendiente de sync, tiene prioridad total
+        // Si el ticket local está pendiente de sync en este dispositivo, tiene prioridad total
         if (localT._syncStatus === 'pending') return localT;
 
-        // Si la ruta está marcada como manual, preservar el routeOrder local de forma estricta
-        const manualKey1 = 'delivery_manual_route_' + cloudT.furgoId + '_' + cloudT.date;
-        const manualKey2 = 'manual_route_' + cloudT.furgoId + '_' + cloudT.date;
-        const isManual = localStorage.getItem(manualKey1) === 'true' || localStorage.getItem(manualKey2) === 'true';
-        if (isManual && localT.routeOrder !== undefined && localT.routeOrder !== null) {
+        // La nube es la fuente canónica de verdad para todos los dispositivos sincronizados
+        if (cloudT.routeOrder !== undefined && cloudT.routeOrder !== null) {
+          return cloudT;
+        }
+
+        // Respaldo de seguridad: si la nube no tuviera routeOrder pero el local sí
+        if (localT.routeOrder !== undefined && localT.routeOrder !== null) {
           return { ...cloudT, routeOrder: localT.routeOrder };
         }
 
