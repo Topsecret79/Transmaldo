@@ -812,6 +812,16 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       });
 
+      // Preservar tickets históricos locales que sean anteriores a syncCutoffDate
+      // para no borrarlos de localStorage al hacer sincronizaciones rutinarias de los últimos 15 días
+      const historicalLocal = localCurrent.filter(t => t && t.date && t.date < syncCutoffDate && !deletedIds.includes(t.id));
+      historicalLocal.forEach(histT => {
+        const existingIndex = mergedTickets.findIndex(t => t.id === histT.id);
+        if (existingIndex === -1) {
+          mergedTickets.push(histT);
+        }
+      });
+
       safeSaveTickets(mergedTickets);
     }
     }
@@ -1996,34 +2006,70 @@ export async function fetchHistoricalTickets(startDate, endDate) {
       if (page.length < pageSize) break;
       from += pageSize;
     }
-    return results.map(t => ({
-      id: t.id,
-      date: t.date,
-      furgoId: t.furgo_id,
-      furgoLabel: t.furgo_label,
-      routeName: t.route_name,
-      customerName: t.customer_name,
-      phone: t.phone,
-      address: t.address,
-      postcode: t.postcode,
-      notes: t.notes,
-      codAmount: t.cod_amount,
-      tasks: t.tasks,
-      totalPrice: parseFloat(t.total_price) || 0,
-      status: t.status,
-      failureReason: t.failure_reason,
-      lat: t.lat,
-      lng: t.lng,
-      completedLat: t.completed_lat,
-      completedLng: t.completed_lng,
-      routeOrder: t.route_order,
-      createdAt: t.created_at,
-      createdBy: t.created_by || 'admin'
-    }));
+    return results.map(t => {
+      const parsedN = t.notes ? parseTicketNotes(t.notes) : {};
+      return {
+        id: t.id,
+        date: t.date,
+        furgoId: t.furgo_id,
+        furgoLabel: t.furgo_label,
+        routeName: t.route_name,
+        customerName: t.customer_name,
+        phone: t.phone,
+        address: t.address,
+        postcode: t.postcode,
+        notes: t.notes,
+        codAmount: t.cod_amount,
+        provider: t.provider || (t.tasks && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')) ? 'dormity' : 'eci'),
+        source: t.source || parsedN.source || null,
+        originalRouteLabel: t.original_route_label || parsedN.originalRouteLabel || null,
+        dormityRouteType: t.dormity_route_type || null,
+        dormityServDiaOption: t.dormity_serv_dia_option || null,
+        tasks: t.tasks,
+        totalPrice: parseFloat(t.total_price) || 0,
+        status: t.status,
+        failureReason: t.failure_reason,
+        lat: t.lat,
+        lng: t.lng,
+        completedLat: t.completed_lat,
+        completedLng: t.completed_lng,
+        routeOrder: t.route_order,
+        createdAt: t.created_at,
+        createdBy: t.created_by || 'admin'
+      };
+    });
   } catch (e) {
     console.error("Error in fetchHistoricalTickets:", e);
     return [];
   }
+}
+
+export async function loadHistoricalTicketsForPeriod(startDate, endDate) {
+  if (!startDate || !endDate) return [];
+  const historical = await fetchHistoricalTickets(startDate, endDate);
+  if (historical && historical.length > 0) {
+    let deletedIds = [];
+    try {
+      deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+    } catch (e) {}
+
+    const current = getTickets();
+    const currentMap = new Map();
+    current.forEach(t => { if (t && t.id) currentMap.set(t.id, t); });
+
+    historical.forEach(h => {
+      if (h && h.id && !deletedIds.includes(h.id)) {
+        const existing = currentMap.get(h.id);
+        if (existing && existing._syncStatus === 'pending') return;
+        currentMap.set(h.id, h);
+      }
+    });
+
+    const updated = Array.from(currentMap.values());
+    safeSaveTickets(updated);
+    return historical;
+  }
+  return [];
 }
 
 export function getTickets() {

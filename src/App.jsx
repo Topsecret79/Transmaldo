@@ -421,6 +421,7 @@ import {
   reinitSupabase,
   syncFromCloud,
   safeSaveTickets,
+  loadHistoricalTicketsForPeriod,
   getSupabaseClient,
   getKmPrice,
   saveKmPrice,
@@ -1328,6 +1329,7 @@ function App() {
   const [statsEndDate, setStatsEndDate] = useState(getTodayDate());
   const [statsFilterFurgo, setStatsFilterFurgo] = useState('all');
   const [statsFilterStatus, setStatsFilterStatus] = useState('all');
+  const [isLoadingHistorical, setIsLoadingHistorical] = useState(false);
 
   // Estado que controla si estamos editando
   const [editingTicketId, setEditingTicketId] = useState(null);
@@ -2137,6 +2139,89 @@ function App() {
       setRouteStartTime(time);
     }
   }, [currentUser, activeTab, ticketFilterFurgo, mapFilterFurgo, ticketFilterDate, mapFilterDate, shiftSummaryDate]);
+
+  // Carga automática bajo demanda de tickets históricos anteriores al corte rutinario de 15 días
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      if (adminStartDate && adminEndDate && adminStartDate <= adminEndDate && adminStartDate < syncCutoffDate) {
+        setIsLoadingHistorical(true);
+        loadHistoricalTicketsForPeriod(adminStartDate, adminEndDate)
+          .then((loaded) => {
+            if (loaded && loaded.length > 0) {
+              loadDataRef.current();
+            }
+          })
+          .catch((err) => console.error("Error cargando tickets históricos de facturación:", err))
+          .finally(() => setIsLoadingHistorical(false));
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [adminStartDate, adminEndDate]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      if (activeTab === 'estadisticas' && statsStartDate && statsEndDate && statsStartDate <= statsEndDate && statsStartDate < syncCutoffDate) {
+        loadHistoricalTicketsForPeriod(statsStartDate, statsEndDate)
+          .then((loaded) => {
+            if (loaded && loaded.length > 0) {
+              loadDataRef.current();
+            }
+          })
+          .catch((err) => console.error("Error cargando tickets históricos de estadísticas:", err));
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeTab, statsStartDate, statsEndDate]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      if (ticketFilterDate && ticketFilterDate < syncCutoffDate) {
+        loadHistoricalTicketsForPeriod(ticketFilterDate, ticketFilterDate)
+          .then((loaded) => {
+            if (loaded && loaded.length > 0) {
+              loadDataRef.current();
+            }
+          })
+          .catch((err) => console.error("Error cargando tickets históricos por fecha:", err));
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [ticketFilterDate]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      if ((activeTab === 'map' || activeTab === 'driver_map') && mapFilterDate && mapFilterDate < syncCutoffDate) {
+        loadHistoricalTicketsForPeriod(mapFilterDate, mapFilterDate)
+          .then((loaded) => {
+            if (loaded && loaded.length > 0) {
+              loadDataRef.current();
+            }
+          })
+          .catch((err) => console.error("Error cargando tickets históricos para el mapa:", err));
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeTab, mapFilterDate]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+      if (activeTab === 'daily_report' && reportDate && reportDate < syncCutoffDate) {
+        loadHistoricalTicketsForPeriod(reportDate, reportDate)
+          .then((loaded) => {
+            if (loaded && loaded.length > 0) {
+              loadDataRef.current();
+            }
+          })
+          .catch((err) => console.error("Error cargando tickets históricos de informe diario:", err));
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeTab, reportDate]);
 
   useEffect(() => {
     reinitSupabase();
@@ -7484,7 +7569,19 @@ function App() {
 
   // Exportar Excel del Periodo seleccionado
   const handleExportExcel = async () => {
-    const filteredTickets = visibleTickets.filter(t => {
+    let currentVisible = visibleTickets;
+    const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    if (adminStartDate && adminStartDate < syncCutoffDate) {
+      const hasHistorical = currentVisible.some(t => t.date >= adminStartDate && (!adminEndDate || t.date <= adminEndDate));
+      if (!hasHistorical) {
+        triggerAlert('Cargando registros históricos del periodo para la exportación...', 'info');
+        await loadHistoricalTicketsForPeriod(adminStartDate, adminEndDate || new Date().toISOString().split('T')[0]);
+        loadDataRef.current();
+        currentVisible = getTickets();
+      }
+    }
+
+    const filteredTickets = currentVisible.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
       if (billingFilterFurgo !== 'all' && t.furgoId !== billingFilterFurgo) return false;
@@ -20326,7 +20423,7 @@ function App() {
 
             {dailyStats.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                No hay actividad registrada en este periodo.
+                {isLoadingHistorical ? '⏳ Cargando datos históricos de la nube para este periodo...' : 'No hay actividad registrada en este periodo.'}
               </div>
             ) : (
               <div className="table-container">
@@ -21816,7 +21913,7 @@ function App() {
             <button className={`tab-btn ${activeTab === 'daily_report' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('daily_report'); }}>📊 Informe del Día</button>
           )}
           {showDeliveriesPeriod && (
-            <button className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => setActiveTab('tickets')}>Repartos del Periodo ({filteredAdminTickets.length})</button>
+            <button className={`tab-btn ${activeTab === 'tickets' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setTicketFilterDate(''); setActiveTab('tickets'); }}>Repartos del Periodo ({isLoadingHistorical ? '⏳' : filteredAdminTickets.length})</button>
           )}
           {showMapControl && (
             <button className={`tab-btn ${activeTab === 'map' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('map'); }}>🗺️ Mapa de Control</button>
@@ -21861,6 +21958,11 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Calendar size={20} color="var(--primary)" />
                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '600' }}>Corte de Facturación (Periodo)</h3>
+                {isLoadingHistorical && (
+                  <span style={{ fontSize: '0.82rem', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    ⏳ Cargando datos históricos...
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -22144,7 +22246,19 @@ function App() {
                 </select>
               </div>
               <div className="input-group">
-                <span className="input-label">Fecha</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="input-label">Fecha</span>
+                  {ticketFilterDate && (
+                    <button 
+                      type="button" 
+                      onClick={() => setTicketFilterDate('')}
+                      style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
+                      title="Ver todos los repartos del periodo de facturación"
+                    >
+                      Ver periodo ({adminStartDate || '...'} → {adminEndDate || '...'})
+                    </button>
+                  )}
+                </div>
                 <input type="date" className="form-input" value={ticketFilterDate} onChange={(e) => setTicketFilterDate(e.target.value)} />
               </div>
               <div className="input-group">
