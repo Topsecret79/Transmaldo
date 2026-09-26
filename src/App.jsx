@@ -25057,13 +25057,13 @@ function App() {
 
 
       <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <TrendingUp size={32} color="var(--primary)" />
-          <div style={{ textAlign: 'left' }}>
-            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', background: 'none', webkitTextFillColor: 'var(--text-main)', letterSpacing: '-0.02em' }}>{appName}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flexShrink: 1 }}>
+          <TrendingUp size={32} color="var(--primary)" style={{ flexShrink: 0 }} />
+          <div style={{ textAlign: 'left', minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', background: 'none', webkitTextFillColor: 'var(--text-main)', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{appName}</h1>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'nowrap' }}>
           {!isAdminOrSuper && (
             <div 
               className="user-badge"
@@ -25116,10 +25116,10 @@ function App() {
               }
             }} 
             className="btn btn-secondary btn-small" 
-            style={{ width: 'auto', padding: '6px 10px', marginRight: '6px', background: 'rgba(16, 185, 129, 0.15)', borderColor: '#10b981', color: '#6ee7b7', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}
+            style={{ width: 'auto', padding: '6px 10px', background: 'rgba(16, 185, 129, 0.15)', borderColor: '#10b981', color: '#6ee7b7', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '600', whiteSpace: 'nowrap' }}
             title="Sincronizar datos con el servidor ahora"
           >
-            <span>☁️</span> Sincronizar
+            <span>☁️</span><span className="hide-xs"> Sincronizar</span>
           </button>
           <button 
             onClick={async () => {
@@ -25145,12 +25145,12 @@ function App() {
               }
             }} 
             className="btn btn-secondary btn-small" 
-            style={{ width: 'auto', padding: '6px', marginRight: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
+            style={{ width: 'auto', padding: '6px', background: 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)', whiteSpace: 'nowrap' }}
             title="Forzar actualización de versión"
           >
-            🔄 v{changelogData[changelogData.length - 1]?.version || '1.3.1'}
+            🔄<span className="hide-xs"> v{changelogData[changelogData.length - 1]?.version || '1.3.1'}</span>
           </button>
-          <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px' }}><LogOut size={14} /></button>
+          <button onClick={handleLogout} className="btn btn-secondary btn-small" style={{ width: 'auto', padding: '6px', flexShrink: 0 }} title="Cerrar sesión"><LogOut size={14} /></button>
         </div>
       </header>
 

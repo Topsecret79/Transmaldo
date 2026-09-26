@@ -590,6 +590,14 @@ p {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 25px;
+  overflow: visible;
+}
+
+/* Utility: hide text labels on very small screens so icon buttons still show */
+@media (max-width: 480px) {
+  .hide-xs {
+    display: none !important;
+  }
 }
 
 .user-badge {
