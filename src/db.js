@@ -3183,10 +3183,12 @@ export async function reopenShift(furgoId, date) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   let index = shifts.findIndex(s => s.id === shiftId);
+  const existingShift = index !== -1 ? shifts[index] : null;
+
   if (index !== -1) {
     shifts[index].status = 'open';
     shifts[index].closedAt = null;
-    shifts[index].closed_at = null; // por si acaso hay campo redundante
+    shifts[index].closed_at = null;
   } else {
     shifts.push({
       id: shiftId,
@@ -3204,30 +3206,26 @@ export async function reopenShift(furgoId, date) {
 
   if (supabase) {
     try {
-      // Usamos .update() en lugar de .upsert() para garantizar que closed_at
-      // se sobrescribe a NULL en Supabase (upsert puede ignorar columnas null)
+      // Upsert completo con todos los campos para satisfacer políticas RLS
+      // ON CONFLICT (id) DO UPDATE garantiza que closed_at se pone a NULL
       const { error } = await supabase
         .from('delivery_shifts')
-        .update({
+        .upsert({
+          id: shiftId,
+          furgo_id: furgoId,
+          date: date,
           status: 'open',
-          closed_at: null
-        })
-        .eq('id', shiftId);
+          closed_at: null,
+          opened_at: existingShift?.openedAt || null,
+          created_by: existingShift?.createdBy || 'admin'
+        }, { onConflict: 'id', ignoreDuplicates: false });
+
       if (error) {
-        // Si el turno no existe en Supabase todavía, intentar upsert como fallback
-        const { error: upsertError } = await supabase
-          .from('delivery_shifts')
-          .upsert({
-            id: shiftId,
-            furgo_id: furgoId,
-            date: date,
-            status: 'open',
-            closed_at: null
-          }, { onConflict: 'id' });
-        if (upsertError) {
-          console.error("Error reopening shift in Supabase:", upsertError);
-          return { success: false, error: upsertError };
-        }
+        console.error("Error reopening shift in Supabase:", error);
+        // Marcar como pendiente para reintentar en próxima sincronización
+        shifts[index]._syncStatus = 'pending';
+        localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
+        return { success: false, error };
       }
     } catch (e) {
       console.error("Exception reopening shift in Supabase:", e);
