@@ -6775,15 +6775,15 @@ function App() {
 
   const handleReopenShift = async (furgoId, date) => {
     if (window.confirm(`¿Estás seguro de que deseas reabrir el turno del día ${date} para esta furgoneta?`)) {
-      // Fix: se espera la confirmación real de la nube antes de refrescar y avisar
-      // éxito, en vez de un setTimeout fijo que podía adelantarse a la respuesta real.
+      triggerAlert('Reabriendo turno en el servidor...', 'info');
       const result = await reopenShift(furgoId, date);
       if (!result || !result.success) {
         triggerAlert('No se pudo confirmar la reapertura en el servidor (revisa tu conexión). Vuelve a intentarlo.', 'error');
         return;
       }
-      triggerAlert('Turno reabierto correctamente');
+      try { await syncFromCloud(true); } catch (e) {}
       loadData();
+      triggerAlert('Turno reabierto correctamente ✓');
     }
   };
 
@@ -17351,15 +17351,15 @@ function App() {
                                   type="button"
                                   onClick={async () => {
                                     if (window.confirm(`¿Estás seguro de que deseas reabrir el turno del día ${s.date} para esta furgoneta?`)) {
-                                      // Fix: se espera la confirmación real del servidor en vez de
-                                      // un setTimeout fijo que podía adelantarse a la respuesta real.
+                                      triggerAlert('Reabriendo turno en el servidor...', 'info');
                                       const result = await reopenShift(s.furgoId, s.date);
                                       if (!result || !result.success) {
                                         triggerAlert('No se pudo confirmar la reapertura en el servidor. Vuelve a intentarlo.', 'error');
                                         return;
                                       }
+                                      try { await syncFromCloud(true); } catch (e) {}
                                       loadData();
-                                      triggerAlert('Turno reabierto correctamente');
+                                      triggerAlert('Turno reabierto correctamente ✓');
                                     }
                                   }}
                                   style={{
@@ -18891,15 +18891,15 @@ function App() {
                                     type="button"
                                     onClick={async () => {
                                       if (window.confirm(`¿Estás seguro de que deseas reabrir el turno del día ${s.date} para esta furgoneta?`)) {
-                                        // Fix: se espera la confirmación real del servidor en vez de
-                                        // un setTimeout fijo que podía adelantarse a la respuesta real.
+                                        triggerAlert('Reabriendo turno en el servidor...', 'info');
                                         const result = await reopenShift(s.furgoId, s.date);
                                         if (!result || !result.success) {
                                           triggerAlert('No se pudo confirmar la reapertura en el servidor. Vuelve a intentarlo.', 'error');
                                           return;
                                         }
+                                        try { await syncFromCloud(true); } catch (e) {}
                                         loadData();
-                                        triggerAlert('Turno reabierto correctamente');
+                                        triggerAlert('Turno reabierto correctamente ✓');
                                       }
                                     }}
                                     style={{
@@ -22956,12 +22956,22 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '10px' }}>
                 <h3 style={{ margin: 0 }}>Turnos Diarios Cerrados (Repartidores)</h3>
                 <button
-                  onClick={() => { loadData(); triggerAlert('Lista de turnos actualizada'); }}
+                  onClick={async () => {
+                    try {
+                      triggerAlert('Sincronizando con el servidor...', 'info');
+                      await syncFromCloud(true);
+                      loadData();
+                      triggerAlert('Lista de turnos actualizada ✓');
+                    } catch (e) {
+                      loadData();
+                      triggerAlert('Error al sincronizar con el servidor', 'error');
+                    }
+                  }}
                   className="btn btn-secondary btn-small"
                   style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px' }}
                   title="Sincronizar con la base de datos"
                 >
-                  🔄 Actualizar
+                  🔄 Sincronizar y Actualizar
                 </button>
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
@@ -23006,85 +23016,139 @@ function App() {
                 )}
               </div>
               
-              {shifts.length === 0 ? (
-                <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
-                  No se ha registrado ningún cierre de turno todavía.
-                </div>
-              ) : visibleShifts.length === 0 ? (
-                <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
-                  No se encontraron cierres de turno que coincidan con los filtros aplicados.
-                </div>
-              ) : (
-                <div className="table-container">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Furgoneta</th>
-                        <th>Hora de Cierre</th>
-                        <th>Resumen de Entregas</th>
-                        <th style={{ textAlign: 'right' }}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                                            {visibleShifts.map(s => {
-                        const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
-                        const summary = getShiftSummary(s.furgoId, s.date);
-                        return (
-                          <tr key={s.id}>
-                            <td style={{ fontWeight: '600' }}>
-                              <div>{s.date}</div>
-                              {s.routeName && <div style={{ fontSize: '0.8rem', color: 'var(--primary)', marginTop: '2.5px' }}>📍 {s.routeName}</div>}
-                            </td>
-                            <td>
-                              {(() => {
-                                const uIdx = users.findIndex(u => u.id === s.furgoId);
-                                const badgeClass = uIdx % 3 === 0 ? 'badge-primary' : uIdx % 3 === 1 ? 'badge-warning' : 'badge-success';
-                                return <span className={`badge ${badgeClass}`}>{furgoLabel}</span>;
-                              })()}
-                            </td>
-                            <td style={{ fontSize: '0.85rem' }}>{new Date(s.closedAt).toLocaleString()}</td>
-                            <td style={{ fontSize: '0.85rem' }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                <span>Cli: <strong>{summary ? summary.ticketsCount : 0}</strong></span> |
-                                <span>TV: <strong>{summary ? summary.totalTvs : 0}</strong></span> |
-                                <span>PV/GV: <strong>{summary ? summary.totalPV : 0}/{summary ? summary.totalGV : 0}</strong></span> |
-                                <span>PM: <strong>{summary ? `${summary.totalPM} (${summary.pmsBasic || 0} B. / ${summary.pmsComplex || 0} C.)` : '0'}</strong></span> |
-                                <span>Cuelgues: <strong>{summary ? summary.totalCuelgues : 0}</strong></span>
-                                {summary && summary.totalCODAmount > 0 && (
-                                  <> | <span>Cobrado: <strong style={{ color: 'var(--success)' }}>{summary.totalCODAmount.toFixed(2)} €</strong></span></>
-                                )}
-                              </div>
-                            </td>
-                            <td style={{ textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                              <button 
-                                onClick={() => {
-                                  const existingKms = getRouteKms(s.furgoId, s.date);
-                                  setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
-                                  setShiftSummaryDate(s.date);
-                                  setShiftSummaryFurgoId(s.furgoId);
-                                  setShowShiftModal(true);
-                                }} 
-                                className="btn btn-primary btn-small"
-                                style={{ margin: 0 }}
-                              >
-                                Ver Resumen
-                              </button>
-                              <button 
-                                onClick={() => handleReopenShift(s.furgoId, s.date)} 
-                                className="btn btn-secondary btn-small"
-                                style={{ margin: 0, border: '1px solid var(--danger)', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }}
-                              >
-                                Reabrir Turno
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              {(() => {
+                const closedShiftsList = (shifts || [])
+                  .filter(s => {
+                    if (!s) return false;
+                    // Mostrar turnos cerrados (con status 'closed' o fecha de cierre)
+                    if (s.status !== 'closed' && !s.closedAt) return false;
+
+                    // Role filter
+                    if (currentUser?.role === 'repartidor') {
+                      if (s.furgoId !== currentUser.id) return false;
+                    } else if (currentUser?.role === 'admin') {
+                      const allowedFurgoIds = activeRepartidores.map(r => r.id);
+                      if (!allowedFurgoIds.includes(s.furgoId)) return false;
+                    }
+
+                    // Search filters
+                    if (shiftFilterDate && s.date !== shiftFilterDate) return false;
+                    if (shiftFilterFurgo !== 'all' && s.furgoId !== shiftFilterFurgo) return false;
+
+                    return true;
+                  })
+                  .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.closedAt || '').localeCompare(a.closedAt || ''));
+
+                if (shifts.length === 0) {
+                  return (
+                    <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
+                      No se ha registrado ningún cierre de turno todavía.
+                    </div>
+                  );
+                }
+
+                if (closedShiftsList.length === 0) {
+                  return (
+                    <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
+                      No se encontraron cierres de turno que coincidan con los filtros aplicados.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="table-container">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Furgoneta / Chofer</th>
+                          <th>Hora de Cierre</th>
+                          <th>Resumen de Entregas</th>
+                          <th style={{ textAlign: 'right' }}>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {closedShiftsList.map(s => {
+                          const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
+                          const summary = getShiftSummary(s.furgoId, s.date);
+                          return (
+                            <tr key={s.id}>
+                              <td style={{ fontWeight: '600' }}>
+                                <div>{s.date}</div>
+                                {s.routeName && <div style={{ fontSize: '0.8rem', color: 'var(--primary)', marginTop: '2.5px' }}>📍 {s.routeName}</div>}
+                              </td>
+                              <td>
+                                {(() => {
+                                  const uIdx = users.findIndex(u => u.id === s.furgoId);
+                                  const badgeClass = uIdx % 3 === 0 ? 'badge-primary' : uIdx % 3 === 1 ? 'badge-warning' : 'badge-success';
+                                  return (
+                                    <div>
+                                      <span className={`badge ${badgeClass}`}>{furgoLabel}</span>
+                                      {s.customDriver && (
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-main)', marginTop: '3px', fontWeight: '600' }}>
+                                          🚚 {s.customDriver}
+                                        </div>
+                                      )}
+                                      {s.helper && (
+                                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                                          🤝 {s.helper}
+                                        </div>
+                                      )}
+                                      {s.matricula && (
+                                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                                          🚐 {s.matricula}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td style={{ fontSize: '0.85rem' }}>
+                                {s.closedAt ? new Date(s.closedAt).toLocaleString() : 'Cerrado'}
+                              </td>
+                              <td style={{ fontSize: '0.85rem' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                  <span>Cli: <strong>{summary ? summary.ticketsCount : 0}</strong></span> |
+                                  <span>TV: <strong>{summary ? summary.totalTvs : 0}</strong></span> |
+                                  <span>PV/GV: <strong>{summary ? summary.totalPV : 0}/{summary ? summary.totalGV : 0}</strong></span> |
+                                  <span>PM: <strong>{summary ? `${summary.totalPM} (${summary.pmsBasic || 0} B. / ${summary.pmsComplex || 0} C.)` : '0'}</strong></span> |
+                                  <span>Cuelgues: <strong>{summary ? summary.totalCuelgues : 0}</strong></span>
+                                  {summary && summary.totalCODAmount > 0 && (
+                                    <> | <span>Cobrado: <strong style={{ color: 'var(--success)' }}>{summary.totalCODAmount.toFixed(2)} €</strong></span></>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                <button 
+                                  onClick={() => {
+                                    const existingKms = getRouteKms(s.furgoId, s.date);
+                                    setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
+                                    setShiftSummaryDate(s.date);
+                                    setShiftSummaryFurgoId(s.furgoId);
+                                    setShowShiftModal(true);
+                                  }} 
+                                  className="btn btn-primary btn-small"
+                                  style={{ margin: 0 }}
+                                >
+                                  Ver Resumen
+                                </button>
+                                <button 
+                                  onClick={() => handleReopenShift(s.furgoId, s.date)} 
+                                  className="btn btn-secondary btn-small"
+                                  style={{ margin: 0, border: '1px solid var(--danger)', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.05)', fontWeight: '600' }}
+                                  title="Reabrir este turno para que el repartidor pueda seguir editando"
+                                >
+                                  🔓 Reabrir Turno
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
 
           </div>

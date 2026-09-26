@@ -3178,14 +3178,46 @@ export async function deletePlannedShift(furgoId, date) {
 export async function reopenShift(furgoId, date) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
-  const index = shifts.findIndex(s => s.id === shiftId);
+  let index = shifts.findIndex(s => s.id === shiftId);
   if (index !== -1) {
     shifts[index].status = 'open';
     shifts[index].closedAt = null;
-    const result = await saveShifts(shifts);
-    return result || { success: true };
+  } else {
+    shifts.push({
+      id: shiftId,
+      furgoId,
+      date,
+      status: 'open',
+      openedAt: new Date().toISOString(),
+      closedAt: null,
+      createdBy: 'admin'
+    });
+    index = shifts.length - 1;
   }
-  return { success: false, error: new Error('Turno no encontrado') };
+
+  localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
+
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('delivery_shifts')
+        .upsert({
+          id: shiftId,
+          furgo_id: furgoId,
+          date: date,
+          status: 'open',
+          closed_at: null
+        });
+      if (error) {
+        console.error("Error reopening shift in Supabase:", error);
+        return { success: false, error };
+      }
+    } catch (e) {
+      console.error("Exception reopening shift in Supabase:", e);
+      return { success: false, error: e };
+    }
+  }
+  return { success: true };
 }
 
 // Resetear turnos mensuales
