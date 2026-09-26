@@ -17070,7 +17070,7 @@ function App() {
               borderRadius: '12px',
               overflowX: 'auto'
             }}>
-              <div style={{ minWidth: '720px' }}>
+              <div style={{ minWidth: '420px' }}>
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(7, 1fr)',
@@ -17078,18 +17078,18 @@ function App() {
                   borderBottom: '1px solid var(--panel-border)',
                   textAlign: 'center',
                   fontWeight: '700',
-                  fontSize: '0.85rem',
+                  fontSize: '0.75rem',
                   color: 'var(--text-muted)'
                 }}>
                   {weekdays.map(wd => (
-                    <div key={wd} style={{ padding: '12px 6px' }}>{wd}</div>
+                    <div key={wd} style={{ padding: '8px 2px' }}>{wd}</div>
                   ))}
                 </div>
 
                 <div style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(7, 1fr)',
-                  gridAutoRows: 'minmax(120px, auto)'
+                  gridAutoRows: 'minmax(70px, auto)'
                 }}>
                   {calendarCells.map((dayNum, idx) => {
                     const cellDateStr = getCellDateStr(dayNum);
@@ -17109,17 +17109,17 @@ function App() {
                           }
                         }}
                         style={{
-                          padding: '8px',
+                          padding: '4px',
                           borderRight: (idx % 7 === 6) ? 'none' : '1px solid var(--panel-border)',
                           borderBottom: '1px solid var(--panel-border)',
                           background: !dayNum ? 'transparent' : isToday ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
                           cursor: dayNum ? 'pointer' : 'default',
                           transition: 'background 0.2s ease',
                           position: 'relative',
-                          minHeight: '120px',
+                          minHeight: '70px',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '4px'
+                          gap: '2px'
                         }}
                         className={dayNum ? 'calendar-day-cell' : ''}
                         onMouseEnter={(e) => {
@@ -17134,20 +17134,17 @@ function App() {
                             display: 'flex', 
                             justifyContent: 'space-between', 
                             alignItems: 'center', 
-                            marginBottom: '6px' 
+                            marginBottom: '2px' 
                           }}>
                             <span style={{ 
-                              fontSize: '0.9rem', 
+                              fontSize: '0.78rem', 
                               fontWeight: '700', 
                               color: isToday ? 'var(--primary)' : 'var(--text-muted)',
                               background: isToday ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                              padding: isToday ? '2px 6px' : '0',
+                              padding: isToday ? '1px 4px' : '0',
                               borderRadius: '4px'
                             }}>
                               {dayNum}
-                            </span>
-                            <span className="plus-indicator" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', opacity: 0 }}>
-                              ➕ Asignar
                             </span>
                           </div>
                         )}
@@ -17164,42 +17161,38 @@ function App() {
                             <div 
                               key={s.id} 
                               style={{
-                                fontSize: '0.72rem',
-                                padding: '4px 8px',
-                                borderRadius: '6px',
+                                fontSize: '0.65rem',
+                                padding: '2px 4px',
+                                borderRadius: '4px',
                                 background: s.status === 'closed' ? 'var(--shift-closed-bg)' : s.openedAt ? 'var(--shift-active-bg)' : 'var(--shift-planned-bg)',
                                 border: s.status === 'closed' ? '1px solid var(--shift-closed-border)' : s.openedAt ? '1px solid var(--shift-active-border)' : '1px solid var(--shift-planned-border)',
                                 color: s.status === 'closed' ? 'var(--shift-closed-text)' : s.openedAt ? 'var(--shift-active-text)' : 'var(--shift-planned-text)',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '1px'
+                                gap: '1px',
+                                overflow: 'hidden'
                               }}
                             >
-                              <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  <span style={{ 
-                                    width: '5px', 
-                                    height: '5px', 
-                                    borderRadius: '50%', 
-                                    background: s.status === 'closed' ? '#ef4444' : s.openedAt ? '#10b981' : '#9ca3af',
-                                    display: 'inline-block',
-                                    flexShrink: 0
-                                  }}></span>
-                                  🚚 {driverName}
-                                </div>
+                              <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '2px', overflow: 'hidden' }}>
+                                <span style={{ 
+                                  width: '4px', 
+                                  height: '4px', 
+                                  borderRadius: '50%', 
+                                  background: s.status === 'closed' ? '#ef4444' : s.openedAt ? '#10b981' : '#9ca3af',
+                                  display: 'inline-block',
+                                  flexShrink: 0
+                                }}></span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {driverName.split(' ')[0]}
+                                </span>
                                 {s.status === 'closed' && (
-                                  <span style={{ fontSize: '0.62rem', opacity: 0.85, fontWeight: '600' }}>Cerrado</span>
+                                  <span style={{ fontSize: '0.58rem', opacity: 0.85, fontWeight: '600', flexShrink: 0 }}>🔒</span>
                                 )}
                               </div>
-                              {(s.matricula || s.helper || s.helper2 || s.ticketsCount > 0 || totalKm > 0) && (
-                                <div style={{ color: 'var(--shift-planned-detail)', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                                  {s.matricula && <span>🚐 {s.matricula}</span>}
-                                  {s.helper && <span>🤝 {s.helper}</span>}
-                                  {s.helper2 && <span>🤝 {s.helper2}</span>}
-                                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginTop: '1px' }}>
-                                    {s.ticketsCount > 0 && <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📦 {s.ticketsCount} rep.</span>}
-                                    {totalKm > 0 && <span style={{ color: '#10b981', fontWeight: '600' }}>🛣️ {totalKm} km</span>}
-                                  </div>
+                              {(s.ticketsCount > 0 || totalKm > 0) && (
+                                <div style={{ fontSize: '0.6rem', opacity: 0.8, display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+                                  {s.ticketsCount > 0 && <span>📦{s.ticketsCount}</span>}
+                                  {totalKm > 0 && <span>🛣️{totalKm}km</span>}
                                 </div>
                               )}
                             </div>
