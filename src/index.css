@@ -593,10 +593,19 @@ p {
   overflow: visible;
 }
 
-/* Utility: hide text labels on very small screens so icon buttons still show */
-@media (max-width: 480px) {
+/* Utility: hide text labels on mobile so icon buttons still show */
+@media (max-width: 768px) {
   .hide-xs {
     display: none !important;
+  }
+  .app-header {
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .app-header .user-badge {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    gap: 5px;
   }
 }
 

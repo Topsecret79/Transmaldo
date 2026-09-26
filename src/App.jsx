@@ -25097,9 +25097,9 @@ function App() {
           )}
           <div className="user-badge" title={`Rol: ${currentUser.role}\nPermisos: ${JSON.stringify(loggedInUserObj?.permissions || {})}`}>
             <User size={14} />
-            {currentUser.label}
+            <span className="hide-xs">{currentUser.label}</span>
             {currentUser.role === 'admin' && (
-              <span style={{ fontSize: '0.7rem', color: 'var(--primary)', marginLeft: '5px', fontWeight: 'bold' }}>(Coord)</span>
+              <span className="hide-xs" style={{ fontSize: '0.7rem', color: 'var(--primary)', marginLeft: '5px', fontWeight: 'bold' }}>(Coord)</span>
             )}
           </div>
           <button 
