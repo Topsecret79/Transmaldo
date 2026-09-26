@@ -866,15 +866,17 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       }
     }
 
-    if (shifts && !errShifts && settings && !errSettings) {
+    if (shifts && !errShifts) {
       // Load existing local shifts so we can preserve any pending/unsaved metadata
       let localExisting = [];
       try {
         localExisting = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
       } catch (e) {}
 
+      const safeSettings = (settings && !errSettings) ? settings : [];
+
       const cloudShifts = shifts.map(s => {
-        const metaSetting = settings.find(set => set.key === `shift_meta_${s.id}`);
+        const metaSetting = safeSettings.find(set => set.key === `shift_meta_${s.id}`);
         let meta = {
           helper: '',
           helper2: '',
@@ -926,7 +928,10 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
 
       // Fix: mismo motivo que el reintento de borrado de tickets — si el borrado
       // remoto de un turno falló una vez, nunca se reintentaba automáticamente.
-      const stillPendingDeleteShiftIds = cloudShifts.filter(s => s && deletedShiftIds.includes(s.id)).map(s => s.id);
+      // Pero NUNCA borrar turnos que estén cerrados o con actividad real trabajada.
+      const stillPendingDeleteShiftIds = cloudShifts
+        .filter(s => s && deletedShiftIds.includes(s.id) && s.status !== 'closed' && !s.closedAt && !s.openedAt)
+        .map(s => s.id);
       if (stillPendingDeleteShiftIds.length > 0) {
         secureDelete('delivery_shifts', stillPendingDeleteShiftIds).then(({ error }) => {
           if (error) {
@@ -940,18 +945,17 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         });
       }
 
-      const filteredCloudShifts = cloudShifts.filter(s => s && !deletedShiftIds.includes(s.id));
+      // Un turno que ya fue trabajado/cerrado (status === 'closed' o con horas) NUNCA debe ser ocultado por una marca de borrado antigua
+      const filteredCloudShifts = cloudShifts.filter(s => {
+        if (!s) return false;
+        if (s.status === 'closed' || s.closedAt || s.openedAt) return true;
+        return !deletedShiftIds.includes(s.id);
+      });
 
       // Merge: start from cloud, but if local version has richer metadata (non-empty driver/plate)
       // and the cloud version is empty, prefer the local data to avoid losing unsaved state
       const mergedShifts = [...filteredCloudShifts];
 
-      // Fix: antes esta protección solo miraba si customDriver/matricula estaban vacíos
-      // en la nube. Cualquier otro cambio local pendiente (status, kms, fecha movida,
-      // helper, etc.) podía perderse en silencio si un sync llegaba antes de que la
-      // subida terminara o fallara. Igual que con los tickets (ver pendingLocal más
-      // arriba), un turno marcado _syncStatus:'pending' localmente tiene ahora
-      // prioridad total sobre lo que venga de la nube hasta que se confirme la subida.
       const pendingLocalShifts = localExisting.filter(s => s && s._syncStatus === 'pending');
       pendingLocalShifts.forEach(localS => {
         const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
@@ -967,25 +971,19 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
         if (cloudIdx !== -1) {
           const cloud = mergedShifts[cloudIdx];
-          // If local has more complete metadata than cloud, keep the local values
-          if (
-            (localS.customDriver && !cloud.customDriver) ||
-            (localS.matricula && !cloud.matricula)
-          ) {
-            mergedShifts[cloudIdx] = {
-              ...cloud,
-              customDriver: cloud.customDriver || localS.customDriver || '',
-              matricula: cloud.matricula || localS.matricula || '',
-              helper: cloud.helper || localS.helper || '',
-              helper2: cloud.helper2 || localS.helper2 || '',
-              observations: cloud.observations || localS.observations || '',
-              routeName: cloud.routeName || localS.routeName || '',
-              kms: cloud.kms || localS.kms || null,
-              startKms: cloud.startKms || localS.startKms || null,
-              endKms: cloud.endKms || localS.endKms || null,
-              summary: cloud.summary || localS.summary || null
-            };
-          }
+          mergedShifts[cloudIdx] = {
+            ...cloud,
+            customDriver: cloud.customDriver || localS.customDriver || '',
+            matricula: cloud.matricula || localS.matricula || '',
+            helper: cloud.helper || localS.helper || '',
+            helper2: cloud.helper2 || localS.helper2 || '',
+            observations: cloud.observations || localS.observations || '',
+            routeName: cloud.routeName || localS.routeName || '',
+            kms: cloud.kms || localS.kms || null,
+            startKms: cloud.startKms || localS.startKms || null,
+            endKms: cloud.endKms || localS.endKms || null,
+            summary: cloud.summary || localS.summary || null
+          };
         } else {
           // Local shift not yet in cloud - keep it
           mergedShifts.push(localS);

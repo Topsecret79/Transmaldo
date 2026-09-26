@@ -16851,6 +16851,62 @@ function App() {
       return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
     };
 
+    const todayFormatted = getFormattedDateStr(new Date());
+
+    // Obtener todos los turnos y actividad real del día (tanto planificados como trabajados/con repartos)
+    const getShiftsForDay = (dateStr) => {
+      if (!dateStr) return [];
+      const existingShifts = (shifts || []).filter(s => s && s.date === dateStr);
+
+      // Identificar furgonetas que tuvieron repartos este día
+      const dayTickets = (tickets || []).filter(t => t && t.date === dateStr);
+      const furgosWithTickets = new Map();
+      dayTickets.forEach(t => {
+        if (t.furgoId) {
+          if (!furgosWithTickets.has(t.furgoId)) {
+            furgosWithTickets.set(t.furgoId, { count: 0, completedCount: 0 });
+          }
+          const data = furgosWithTickets.get(t.furgoId);
+          data.count++;
+          if (t.status === 'success' || t.status === 'failed') data.completedCount++;
+        }
+      });
+
+      const shiftFurgoIds = new Set(existingShifts.map(s => s.furgoId).filter(Boolean));
+      const resultShifts = [...existingShifts];
+
+      // Si una furgoneta tiene repartos este día pero no tenía turno previo registrado,
+      // se sintetiza una entrada para que el calendario NUNCA oculte a quien trabajó
+      furgosWithTickets.forEach((stats, fId) => {
+        if (!shiftFurgoIds.has(fId)) {
+          const uObj = (users || []).find(u => u.id === fId);
+          const isFinished = stats.count > 0 && stats.completedCount === stats.count;
+          resultShifts.push({
+            id: `ticket_shift_${fId}_${dateStr}`,
+            furgoId: fId,
+            date: dateStr,
+            status: isFinished ? 'closed' : 'open',
+            openedAt: dateStr,
+            closedAt: isFinished ? dateStr : null,
+            customDriver: uObj?.label || fId,
+            helper: '',
+            helper2: '',
+            matricula: '',
+            ticketsCount: stats.count
+          });
+        }
+      });
+
+      // Asegurar que cada turno tenga su conteo de repartos del día
+      return resultShifts.map(s => {
+        const stats = furgosWithTickets.get(s.furgoId);
+        return {
+          ...s,
+          ticketsCount: s.ticketsCount || (stats ? stats.count : 0)
+        };
+      });
+    };
+
     // Format header title based on active view mode
     let headerTitle = '';
     if (calendarViewMode === 'month') {
@@ -17003,8 +17059,8 @@ function App() {
                 }}>
                   {calendarCells.map((dayNum, idx) => {
                     const cellDateStr = getCellDateStr(dayNum);
-                    const cellShifts = cellDateStr ? shifts.filter(s => s.date === cellDateStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim()))) : [];
-                    const isToday = cellDateStr === new Date().toISOString().split('T')[0];
+                    const cellShifts = getShiftsForDay(cellDateStr);
+                    const isToday = cellDateStr === todayFormatted;
 
                     return (
                       <div 
@@ -17090,11 +17146,12 @@ function App() {
                                 }}></span>
                                 🚚 {driverName}
                               </div>
-                              {(s.matricula || s.helper || s.helper2) && (
+                              {(s.matricula || s.helper || s.helper2 || s.ticketsCount > 0) && (
                                 <div style={{ color: 'var(--shift-planned-detail)', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                                   {s.matricula && <span>🚐 {s.matricula}</span>}
                                   {s.helper && <span>🤝 {s.helper}</span>}
                                   {s.helper2 && <span>🤝 {s.helper2}</span>}
+                                  {s.ticketsCount > 0 && <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📦 {s.ticketsCount} rep.</span>}
                                 </div>
                               )}
                             </div>
@@ -17118,14 +17175,14 @@ function App() {
           }}>
             {weekDays.map((dayDate, idx) => {
               const dayStr = getFormattedDateStr(dayDate);
-              const dayShifts = shifts.filter(s => s.date === dayStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim())));
-              const isToday = dayStr === new Date().toISOString().split('T')[0];
+              const dayShifts = getShiftsForDay(dayStr);
+              const isToday = dayStr === todayFormatted;
               const weekdayName = dayDate.toLocaleDateString('es-ES', { weekday: 'long' });
               const capitalized = weekdayName.charAt(0).toUpperCase() + weekdayName.slice(1);
 
               return (
                 <div 
-                  key={idx}
+                  key={idx} 
                   onClick={() => {
                     setSelectedCalendarDay(dayStr);
                     setPlannedFurgoId('');
@@ -17207,6 +17264,7 @@ function App() {
                             {s.matricula && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🚐 {s.matricula}</span>}
                             {s.helper && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🤝 {s.helper}</span>}
                             {s.helper2 && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🤝 {s.helper2}</span>}
+                            {s.ticketsCount > 0 && <span style={{ color: 'var(--primary)', fontSize: '0.68rem', paddingLeft: '8px', fontWeight: '600' }}>📦 {s.ticketsCount} {s.ticketsCount === 1 ? 'reparto' : 'repartos'}</span>}
                           </div>
                         );
                       })
@@ -17225,7 +17283,7 @@ function App() {
         {/* -------------------- 3. DAY VIEW -------------------- */}
         {calendarViewMode === 'day' && (() => {
           const dayStr = getFormattedDateStr(calendarDate);
-          const dayShifts = shifts.filter(s => s.date === dayStr && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim()) || (s.helper2 && s.helper2.trim())));
+          const dayShifts = getShiftsForDay(dayStr);
           const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
           const availableDrivers = activeRepartidores.filter(d => !dayShifts.some(s => s.furgoId === d.id));
 
@@ -17245,7 +17303,7 @@ function App() {
                 padding: '20px'
               }}>
                 <h3 style={{ margin: '0 0 15px 0', fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-main)', borderBottom: '1px solid var(--panel-border)', paddingBottom: '10px' }}>
-                  Turnos Planificados ({dayShifts.length})
+                  Turnos y Personal del Día ({dayShifts.length})
                 </h3>
 
                 {dayShifts.length === 0 ? (
@@ -17283,6 +17341,11 @@ function App() {
                               }}>
                                 {s.status === 'closed' ? 'Cerrado' : s.openedAt ? 'Activo' : 'Planificado'}
                               </span>
+                              {s.ticketsCount > 0 && (
+                                <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: '600', marginLeft: '6px' }}>
+                                  📦 {s.ticketsCount} {s.ticketsCount === 1 ? 'reparto' : 'repartos'}
+                                </span>
+                              )}
                               {s.status === 'closed' && (
                                 <button
                                   type="button"
@@ -17719,15 +17782,22 @@ function App() {
 
           const payrollList = [];
 
+          const normStr = (str) => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
           employeesList.forEach(emp => {
+            const empNorm = normStr(emp.name);
+
             // Count dates worked as driver
             const driverDates = monthShifts
-              .filter(s => s.customDriver && s.customDriver.toLowerCase() === emp.name.toLowerCase())
+              .filter(s => {
+                const driverVal = s.customDriver || (users || []).find(usr => usr.id === s.furgoId)?.label || '';
+                return normStr(driverVal) === empNorm;
+              })
               .map(s => ({ date: s.date, role: 'Chofer' }));
 
             // Count dates worked as helper
             const helperDates = monthShifts
-              .filter(s => (s.helper && s.helper.toLowerCase() === emp.name.toLowerCase()) || (s.helper2 && s.helper2.toLowerCase() === emp.name.toLowerCase()))
+              .filter(s => normStr(s.helper) === empNorm || normStr(s.helper2) === empNorm)
               .map(s => ({ date: s.date, role: 'Ayudante' }));
 
             // Merge and sort
@@ -18301,7 +18371,7 @@ function App() {
         {/* Modal de Turnos Abiertos (planificados o en curso, sin cerrar) */}
         {showOpenShiftsModal && (() => {
           const openShifts = shifts
-            .filter(s => s.status !== 'closed' && ((s.customDriver && s.customDriver.trim()) || (s.helper && s.helper.trim()) || (s.helper2 && s.helper2.trim())))
+            .filter(s => s && s.status !== 'closed')
             .sort((a, b) => b.date.localeCompare(a.date));
 
           return (
@@ -18752,7 +18822,7 @@ function App() {
 
         {/* -------------------- COMMON PLAN MODAL (For Month/Week Views) -------------------- */}
         {plannedShiftModalOpen && selectedCalendarDay && (() => {
-          const dateShifts = shifts.filter(s => s.date === selectedCalendarDay);
+          const dateShifts = getShiftsForDay(selectedCalendarDay);
           const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
           const availableDrivers = activeRepartidores.filter(d => !dateShifts.some(s => s.furgoId === d.id));
 
