@@ -973,6 +973,10 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           const cloud = mergedShifts[cloudIdx];
           mergedShifts[cloudIdx] = {
             ...cloud,
+            // status y closedAt vienen de la nube (fuente de verdad)
+            status: cloud.status,
+            closedAt: cloud.closedAt,
+            // metadata: preferir nube, fallback a local si la nube está vacía
             customDriver: cloud.customDriver || localS.customDriver || '',
             matricula: cloud.matricula || localS.matricula || '',
             helper: cloud.helper || localS.helper || '',
@@ -3182,6 +3186,7 @@ export async function reopenShift(furgoId, date) {
   if (index !== -1) {
     shifts[index].status = 'open';
     shifts[index].closedAt = null;
+    shifts[index].closed_at = null; // por si acaso hay campo redundante
   } else {
     shifts.push({
       id: shiftId,
@@ -3199,18 +3204,30 @@ export async function reopenShift(furgoId, date) {
 
   if (supabase) {
     try {
+      // Usamos .update() en lugar de .upsert() para garantizar que closed_at
+      // se sobrescribe a NULL en Supabase (upsert puede ignorar columnas null)
       const { error } = await supabase
         .from('delivery_shifts')
-        .upsert({
-          id: shiftId,
-          furgo_id: furgoId,
-          date: date,
+        .update({
           status: 'open',
           closed_at: null
-        });
+        })
+        .eq('id', shiftId);
       if (error) {
-        console.error("Error reopening shift in Supabase:", error);
-        return { success: false, error };
+        // Si el turno no existe en Supabase todavía, intentar upsert como fallback
+        const { error: upsertError } = await supabase
+          .from('delivery_shifts')
+          .upsert({
+            id: shiftId,
+            furgo_id: furgoId,
+            date: date,
+            status: 'open',
+            closed_at: null
+          }, { onConflict: 'id' });
+        if (upsertError) {
+          console.error("Error reopening shift in Supabase:", upsertError);
+          return { success: false, error: upsertError };
+        }
       }
     } catch (e) {
       console.error("Exception reopening shift in Supabase:", e);
