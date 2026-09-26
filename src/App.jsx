@@ -16897,11 +16897,45 @@ function App() {
         }
       });
 
-      // Asegurar que cada turno tenga su conteo de repartos del día
+      // Asegurar que cada turno tenga su conteo de repartos del día y metadatos completos
       return resultShifts.map(s => {
         const stats = furgosWithTickets.get(s.furgoId);
+        let meta = {};
+        try {
+          const rawLocalMeta = localStorage.getItem(`shift_meta_${s.id}`);
+          if (rawLocalMeta) meta = JSON.parse(rawLocalMeta);
+        } catch (e) {}
+
+        if (!meta.customDriver && !meta.summary) {
+          try {
+            const rawSettings = JSON.parse(localStorage.getItem('delivery_settings')) || [];
+            const foundSetting = rawSettings.find(set => set.key === `shift_meta_${s.id}`);
+            if (foundSetting?.value) {
+              const parsed = JSON.parse(foundSetting.value);
+              meta = { ...meta, ...parsed };
+            }
+          } catch (e) {}
+        }
+
+        const customDriver = s.customDriver || meta.customDriver || '';
+        const helper = s.helper || meta.helper || '';
+        const helper2 = s.helper2 || meta.helper2 || '';
+        const matricula = s.matricula || meta.matricula || '';
+        const startKms = s.startKms ?? meta.startKms ?? s.summary?.startKms ?? meta.summary?.startKms ?? null;
+        const endKms = s.endKms ?? meta.endKms ?? s.summary?.endKms ?? meta.summary?.endKms ?? null;
+        const kms = s.kms ?? meta.kms ?? s.summary?.kms ?? meta.summary?.kms ?? null;
+        const summary = s.summary || meta.summary || null;
+
         return {
           ...s,
+          customDriver,
+          helper,
+          helper2,
+          matricula,
+          startKms,
+          endKms,
+          kms,
+          summary,
           ticketsCount: s.ticketsCount || (stats ? stats.count : 0)
         };
       });
@@ -17120,6 +17154,11 @@ function App() {
 
                         {cellShifts.map(s => {
                           const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
+                          const startKm = s.startKms ?? s.summary?.startKms ?? null;
+                          const endKm = s.endKms ?? s.summary?.endKms ?? null;
+                          const totalKm = (endKm != null && startKm != null && endKm >= startKm) 
+                            ? (endKm - startKm) 
+                            : (s.kms || s.summary?.kms || 0);
                           
                           return (
                             <div 
@@ -17136,22 +17175,31 @@ function App() {
                                 gap: '1px'
                               }}
                             >
-                              <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                <span style={{ 
-                                  width: '5px', 
-                                  height: '5px', 
-                                  borderRadius: '50%', 
-                                  background: s.status === 'closed' ? '#ef4444' : s.openedAt ? '#10b981' : '#9ca3af',
-                                  display: 'inline-block' 
-                                }}></span>
-                                🚚 {driverName}
+                              <div style={{ fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '3px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <span style={{ 
+                                    width: '5px', 
+                                    height: '5px', 
+                                    borderRadius: '50%', 
+                                    background: s.status === 'closed' ? '#ef4444' : s.openedAt ? '#10b981' : '#9ca3af',
+                                    display: 'inline-block',
+                                    flexShrink: 0
+                                  }}></span>
+                                  🚚 {driverName}
+                                </div>
+                                {s.status === 'closed' && (
+                                  <span style={{ fontSize: '0.62rem', opacity: 0.85, fontWeight: '600' }}>Cerrado</span>
+                                )}
                               </div>
-                              {(s.matricula || s.helper || s.helper2 || s.ticketsCount > 0) && (
+                              {(s.matricula || s.helper || s.helper2 || s.ticketsCount > 0 || totalKm > 0) && (
                                 <div style={{ color: 'var(--shift-planned-detail)', paddingLeft: '8px', fontSize: '0.66rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
                                   {s.matricula && <span>🚐 {s.matricula}</span>}
                                   {s.helper && <span>🤝 {s.helper}</span>}
                                   {s.helper2 && <span>🤝 {s.helper2}</span>}
-                                  {s.ticketsCount > 0 && <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📦 {s.ticketsCount} rep.</span>}
+                                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginTop: '1px' }}>
+                                    {s.ticketsCount > 0 && <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📦 {s.ticketsCount} rep.</span>}
+                                    {totalKm > 0 && <span style={{ color: '#10b981', fontWeight: '600' }}>🛣️ {totalKm} km</span>}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -17242,6 +17290,11 @@ function App() {
                     ) : (
                       dayShifts.map(s => {
                         const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
+                        const startKm = s.startKms ?? s.summary?.startKms ?? null;
+                        const endKm = s.endKms ?? s.summary?.endKms ?? null;
+                        const totalKm = (endKm != null && startKm != null && endKm >= startKm) 
+                          ? (endKm - startKm) 
+                          : (s.kms || s.summary?.kms || 0);
 
                         return (
                           <div 
@@ -17258,13 +17311,21 @@ function App() {
                               gap: '2px'
                             }}
                           >
-                            <strong style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                              🚚 {driverName}
-                            </strong>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '3px' }}>
+                              <strong style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                🚚 {driverName}
+                              </strong>
+                              {s.status === 'closed' && (
+                                <span style={{ fontSize: '0.62rem', opacity: 0.85, fontWeight: '600' }}>Cerrado</span>
+                              )}
+                            </div>
                             {s.matricula && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🚐 {s.matricula}</span>}
                             {s.helper && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🤝 {s.helper}</span>}
                             {s.helper2 && <span style={{ color: 'var(--shift-planned-detail)', fontSize: '0.68rem', paddingLeft: '8px' }}>🤝 {s.helper2}</span>}
-                            {s.ticketsCount > 0 && <span style={{ color: 'var(--primary)', fontSize: '0.68rem', paddingLeft: '8px', fontWeight: '600' }}>📦 {s.ticketsCount} {s.ticketsCount === 1 ? 'reparto' : 'repartos'}</span>}
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', paddingLeft: '8px' }}>
+                              {s.ticketsCount > 0 && <span style={{ color: 'var(--primary)', fontSize: '0.68rem', fontWeight: '600' }}>📦 {s.ticketsCount} {s.ticketsCount === 1 ? 'rep.' : 'repartos'}</span>}
+                              {totalKm > 0 && <span style={{ color: '#10b981', fontSize: '0.68rem', fontWeight: '600' }}>🛣️ {totalKm} km</span>}
+                            </div>
                           </div>
                         );
                       })
@@ -17314,38 +17375,78 @@ function App() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {dayShifts.map(s => {
                       const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
+                      const startKm = s.startKms ?? s.summary?.startKms ?? null;
+                      const endKm = s.endKms ?? s.summary?.endKms ?? null;
+                      const totalKm = (endKm != null && startKm != null && endKm >= startKm) 
+                        ? (endKm - startKm) 
+                        : (s.kms || s.summary?.kms || 0);
+                      const closedTime = s.closedAt 
+                        ? (s.closedAt.includes('T') 
+                            ? new Date(s.closedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                            : s.closedAt) 
+                        : null;
+                      const sum = s.summary || {};
+                      const dayTicketsForFurgo = (tickets || []).filter(t => t && t.date === s.date && t.furgoId === s.furgoId);
+                      const completedCount = dayTicketsForFurgo.filter(t => t.status === 'success' || t.status === 'completed' || t.delivered).length;
+                      const failedCount = dayTicketsForFurgo.filter(t => t.status === 'failed').length;
+                      const totalTicketsCount = dayTicketsForFurgo.length || s.ticketsCount || sum.ticketsCount || 0;
 
                       return (
                         <div 
                           key={s.id} 
                           style={{
-                            background: 'rgba(255, 255, 255, 0.01)',
-                            border: '1px solid var(--panel-border)',
-                            borderRadius: '8px',
-                            padding: '12px',
+                            background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.04)' : s.openedAt ? 'rgba(16, 185, 129, 0.04)' : 'rgba(255, 255, 255, 0.01)',
+                            border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.25)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid var(--panel-border)',
+                            borderRadius: '10px',
+                            padding: '14px',
                             display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
+                            flexDirection: 'column',
                             gap: '10px'
                           }}
                         >
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              🚚 {driverName}
+                          {/* Cabecera del Turno */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span>🚚 {driverName}</span>
                               <span style={{ 
-                                fontSize: '0.65rem', 
-                                padding: '2px 5px', 
+                                fontSize: '0.68rem', 
+                                padding: '2px 6px', 
                                 borderRadius: '4px',
+                                fontWeight: '600',
                                 background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.15)' : s.openedAt ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
                                 color: s.status === 'closed' ? 'var(--danger)' : s.openedAt ? 'var(--success)' : 'var(--text-muted)'
                               }}>
-                                {s.status === 'closed' ? 'Cerrado' : s.openedAt ? 'Activo' : 'Planificado'}
+                                {s.status === 'closed' ? `🔒 Cerrado${closedTime ? ` (${closedTime})` : ''}` : s.openedAt ? '🟢 Activo' : '⚪ Planificado'}
                               </span>
-                              {s.ticketsCount > 0 && (
-                                <span style={{ fontSize: '0.72rem', color: 'var(--primary)', fontWeight: '600', marginLeft: '6px' }}>
-                                  📦 {s.ticketsCount} {s.ticketsCount === 1 ? 'reparto' : 'repartos'}
-                                </span>
-                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShiftSummaryDate(s.date);
+                                  setShiftSummaryFurgoId(s.furgoId);
+                                  setShowShiftModal(true);
+                                }}
+                                style={{
+                                  background: 'rgba(99, 102, 241, 0.15)',
+                                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                                  color: 'var(--primary)',
+                                  padding: '3px 8px',
+                                  borderRadius: '5px',
+                                  fontSize: '0.72rem',
+                                  cursor: 'pointer',
+                                  fontWeight: '600',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  height: '24px'
+                                }}
+                                title="Ver resumen diario completo y tickets de este turno"
+                              >
+                                📋 Ver Detalle
+                              </button>
+
                               {s.status === 'closed' && (
                                 <button
                                   type="button"
@@ -17366,242 +17467,275 @@ function App() {
                                     background: 'rgba(16, 185, 129, 0.15)',
                                     border: '1px solid rgba(16, 185, 129, 0.3)',
                                     color: 'var(--success)',
-                                    padding: '2px 8px',
-                                    borderRadius: '4px',
-                                    fontSize: '0.68rem',
+                                    padding: '3px 8px',
+                                    borderRadius: '5px',
+                                    fontSize: '0.72rem',
                                     cursor: 'pointer',
-                                    marginLeft: '8px',
                                     fontWeight: '600',
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    height: '20px'
+                                    height: '24px'
                                   }}
+                                  title="Reabrir este turno"
                                 >
                                   🔓 Reabrir
                                 </button>
                               )}
-                            </div>
 
-                            <div style={{ display: 'flex', gap: '15px', marginTop: '8px', flexWrap: 'wrap' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                <span>Chofer:</span>
-                                <select
-                                  className="form-input"
-                                  value={s.customDriver || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    let newCustom = val;
-                                    if (val === 'custom_input') {
-                                      const typed = window.prompt('Escribe el nombre del chofer:');
-                                      if (typed === null) return;
-                                      newCustom = typed.trim() || 'Por asignar';
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (s.status === 'closed') {
+                                    const typed = window.prompt(`Este turno ya está CERRADO (trabajado). Para eliminarlo definitivamente, escribe la fecha exacta (${dayStr}):`);
+                                    if (typed !== dayStr) {
+                                      if (typed !== null) triggerAlert('La fecha no coincide. Turno no eliminado.', 'error');
+                                      return;
                                     }
-                                    const updatedShifts = shifts.map(curr => {
-                                      if (curr.id === s.id) {
-                                        return { ...curr, customDriver: newCustom };
-                                      }
-                                      return curr;
-                                    });
-                                    setShifts(updatedShifts);
-                                    saveShifts(updatedShifts);
-                                    triggerAlert('Chofer actualizado');
-                                  }}
-                                  disabled={s.status === 'closed' && !isAdminOrSuper}
-                                  style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.75rem', 
-                                    height: '24px', 
-                                    width: 'auto', 
-                                    margin: 0,
-                                    color: 'var(--text-main)',
-                                    background: 'var(--input-bg)',
-                                    border: '1px solid var(--panel-border)',
-                                    borderRadius: '4px'
-                                  }}
-                                >
-                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
-                                  <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
-                                  {s.customDriver && !employeesList.some(emp => emp.name === s.customDriver) && (
-                                    <option value={s.customDriver} style={{ color: '#000000', background: '#ffffff' }}>{s.customDriver}</option>
-                                  )}
-                                  {employeesList.filter(emp => emp.active !== false && (emp.role === 'chofer' || emp.role === 'ambos')).map(emp => (
-                                    <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                <span>Ayudante:</span>
-                                 <select
-                                   className="form-input"
-                                    value={s.helper || ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      let newHelper = val;
-                                      if (val === 'custom_input') {
-                                        const typed = window.prompt('Escribe el nombre del ayudante:');
-                                        if (typed === null) return;
-                                        newHelper = typed.trim() || '';
-                                      }
-                                      const updatedShifts = shifts.map(curr => {
-                                        if (curr.id === s.id) {
-                                          return { ...curr, helper: newHelper };
-                                        }
-                                        return curr;
-                                      });
-                                      setShifts(updatedShifts);
-                                      saveShifts(updatedShifts);
-                                      triggerAlert('Ayudante actualizado');
-                                    }}
-                                    disabled={s.status === 'closed' && !isAdminOrSuper}
-                                    style={{ 
-                                      padding: '2px 6px', 
-                                      fontSize: '0.75rem', 
-                                      height: '24px', 
-                                      width: 'auto', 
-                                      margin: 0,
-                                      color: 'var(--text-main)',
-                                      background: 'var(--input-bg)',
-                                      border: '1px solid var(--panel-border)',
-                                      borderRadius: '4px'
-                                    }}
-                                  >
-                                    <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
-                                    <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
-                                    {s.helper && !employeesList.some(emp => emp.name === s.helper) && (
-                                      <option value={s.helper} style={{ color: '#000000', background: '#ffffff' }}>{s.helper}</option>
-                                    )}
-                                    {employeesList.filter(emp => emp.active !== false).map(emp => (
-                                      <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
-                                    ))}
-                                  </select>
-                                </div>
-  
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                  <span>Ayudante 2:</span>
-                                  <select
-                                    className="form-input"
-                                    value={s.helper2 || ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      let newHelper2 = val;
-                                      if (val === 'custom_input') {
-                                        const typed = window.prompt('Escribe el nombre del segundo ayudante:');
-                                        if (typed === null) return;
-                                        newHelper2 = typed.trim() || '';
-                                      }
-                                      const updatedShifts = shifts.map(curr => {
-                                        if (curr.id === s.id) {
-                                          return { ...curr, helper2: newHelper2 };
-                                        }
-                                        return curr;
-                                      });
-                                      setShifts(updatedShifts);
-                                      saveShifts(updatedShifts);
-                                      triggerAlert('Segundo ayudante actualizado');
-                                    }}
-                                    disabled={s.status === 'closed' && !isAdminOrSuper}
-                                    style={{ 
-                                      padding: '2px 6px', 
-                                      fontSize: '0.75rem', 
-                                      height: '24px', 
-                                      width: 'auto', 
-                                      margin: 0,
-                                      color: 'var(--text-main)',
-                                      background: 'var(--input-bg)',
-                                      border: '1px solid var(--panel-border)',
-                                      borderRadius: '4px'
-                                    }}
-                                  >
-                                    <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante 2</option>
-                                    <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
-                                    {s.helper2 && !employeesList.some(emp => emp.name === s.helper2) && (
-                                      <option value={s.helper2} style={{ color: '#000000', background: '#ffffff' }}>{s.helper2}</option>
-                                    )}
-                                    {employeesList.filter(emp => emp.active !== false).map(emp => (
-                                      <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
-                                    ))}
-                                  </select>
-                              </div>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                                <span>Matrícula:</span>
-                                <select
-                                  className="form-input"
-                                  value={s.matricula || ''}
-                                  onChange={(e) => {
-                                    const updatedShifts = shifts.map(curr => {
-                                      if (curr.id === s.id) {
-                                        return { ...curr, matricula: e.target.value };
-                                      }
-                                      return curr;
-                                    });
-                                    setShifts(updatedShifts);
-                                    saveShifts(updatedShifts);
-                                    triggerAlert('Matrícula actualizada');
-                                  }}
-                                  disabled={s.status === 'closed' && !isAdminOrSuper}
-                                  style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.75rem', 
-                                    height: '24px', 
-                                    width: 'auto', 
-                                    margin: 0,
-                                    color: 'var(--text-main)',
-                                    background: 'var(--input-bg)',
-                                    border: '1px solid var(--panel-border)',
-                                    borderRadius: '4px'
-                                  }}
-                                >
-                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin matrícula</option>
-                                  {s.matricula && !platesList.includes(s.matricula) && (
-                                    <option value={s.matricula} style={{ color: '#000000', background: '#ffffff' }}>{s.matricula}</option>
-                                  )}
-                                  {platesList.map(plate => (
-                                    <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
-                                  ))}
-                                </select>
-                              </div>
+                                  } else if (!window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
+                                    return;
+                                  }
+                                  const result = await deletePlannedShift(s.furgoId, dayStr);
+                                  loadData();
+                                  if (!result || !result.success) {
+                                    triggerAlert('No se pudo confirmar el borrado en el servidor. El turno puede seguir existiendo.', 'error');
+                                  } else {
+                                    triggerAlert('Turno eliminado');
+                                  }
+                                }}
+                                style={{ 
+                                  background: 'rgba(239, 68, 68, 0.1)', 
+                                  border: '1px solid rgba(239, 68, 68, 0.2)', 
+                                  color: 'var(--danger)',
+                                  padding: '3px 6px',
+                                  borderRadius: '5px',
+                                  cursor: 'pointer',
+                                  fontSize: '0.75rem',
+                                  height: '24px'
+                                }}
+                                title="Eliminar turno"
+                              >
+                                🗑️
+                              </button>
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              // Fix: un turno ya CERRADO (trabajado, con kms/nómina) requiere
-                              // confirmación reforzada — antes se borraba igual de fácil que uno
-                              // "Planificado" sin trabajar, arriesgando perder historial real.
-                              if (s.status === 'closed') {
-                                const typed = window.prompt(`Este turno ya está CERRADO (trabajado). Para eliminarlo definitivamente, escribe la fecha exacta (${dayStr}):`);
-                                if (typed !== dayStr) {
-                                  if (typed !== null) triggerAlert('La fecha no coincide. Turno no eliminado.', 'error');
-                                  return;
-                                }
-                              } else if (!window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
-                                return;
-                              }
-                              // Fix: se espera y comprueba el resultado real del borrado.
-                              const result = await deletePlannedShift(s.furgoId, dayStr);
-                              loadData();
-                              if (!result || !result.success) {
-                                triggerAlert('No se pudo confirmar el borrado en el servidor. El turno puede seguir existiendo.', 'error');
-                              } else {
-                                triggerAlert('Turno eliminado');
-                              }
-                            }}
-                            style={{ 
-                              background: 'rgba(239, 68, 68, 0.1)', 
-                              border: '1px solid rgba(239, 68, 68, 0.2)', 
-                              color: 'var(--danger)',
-                              padding: '6px 8px',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontSize: '0.75rem'
-                            }}
-                            title="Eliminar turno"
-                          >
-                            🗑️
-                          </button>
+                          {/* Personal Asignado y Matrícula */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px', border: '1px solid var(--panel-border)' }}>
+                            <div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>👤 Chofer:</div>
+                              <select
+                                className="form-input"
+                                value={s.customDriver || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  let newCustom = val;
+                                  if (val === 'custom_input') {
+                                    const typed = window.prompt('Escribe el nombre del chofer:');
+                                    if (typed === null) return;
+                                    newCustom = typed.trim() || 'Por asignar';
+                                  }
+                                  const updatedShifts = shifts.map(curr => {
+                                    if (curr.id === s.id) {
+                                      return { ...curr, customDriver: newCustom };
+                                    }
+                                    return curr;
+                                  });
+                                  setShifts(updatedShifts);
+                                  saveShifts(updatedShifts);
+                                  triggerAlert('Chofer actualizado');
+                                }}
+                                disabled={s.status === 'closed' && !isAdminOrSuper}
+                                style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
+                              >
+                                <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
+                                <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                {s.customDriver && !employeesList.some(emp => emp.name === s.customDriver) && (
+                                  <option value={s.customDriver} style={{ color: '#000000', background: '#ffffff' }}>{s.customDriver}</option>
+                                )}
+                                {employeesList.filter(emp => emp.active !== false && (emp.role === 'chofer' || emp.role === 'ambos')).map(emp => (
+                                  <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>🤝 Ayudante:</div>
+                              <select
+                                className="form-input"
+                                value={s.helper || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  let newHelper = val;
+                                  if (val === 'custom_input') {
+                                    const typed = window.prompt('Escribe el nombre del ayudante:');
+                                    if (typed === null) return;
+                                    newHelper = typed.trim() || '';
+                                  }
+                                  const updatedShifts = shifts.map(curr => {
+                                    if (curr.id === s.id) {
+                                      return { ...curr, helper: newHelper };
+                                    }
+                                    return curr;
+                                  });
+                                  setShifts(updatedShifts);
+                                  saveShifts(updatedShifts);
+                                  triggerAlert('Ayudante actualizado');
+                                }}
+                                disabled={s.status === 'closed' && !isAdminOrSuper}
+                                style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
+                              >
+                                <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
+                                <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                {s.helper && !employeesList.some(emp => emp.name === s.helper) && (
+                                  <option value={s.helper} style={{ color: '#000000', background: '#ffffff' }}>{s.helper}</option>
+                                )}
+                                {employeesList.filter(emp => emp.active !== false).map(emp => (
+                                  <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>🤝 Ayudante 2:</div>
+                              <select
+                                className="form-input"
+                                value={s.helper2 || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  let newHelper2 = val;
+                                  if (val === 'custom_input') {
+                                    const typed = window.prompt('Escribe el nombre del segundo ayudante:');
+                                    if (typed === null) return;
+                                    newHelper2 = typed.trim() || '';
+                                  }
+                                  const updatedShifts = shifts.map(curr => {
+                                    if (curr.id === s.id) {
+                                      return { ...curr, helper2: newHelper2 };
+                                    }
+                                    return curr;
+                                  });
+                                  setShifts(updatedShifts);
+                                  saveShifts(updatedShifts);
+                                  triggerAlert('Segundo ayudante actualizado');
+                                }}
+                                disabled={s.status === 'closed' && !isAdminOrSuper}
+                                style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
+                              >
+                                <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante 2</option>
+                                <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                {s.helper2 && !employeesList.some(emp => emp.name === s.helper2) && (
+                                  <option value={s.helper2} style={{ color: '#000000', background: '#ffffff' }}>{s.helper2}</option>
+                                )}
+                                {employeesList.filter(emp => emp.active !== false).map(emp => (
+                                  <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>🚐 Matrícula:</div>
+                              <select
+                                className="form-input"
+                                value={s.matricula || ''}
+                                onChange={(e) => {
+                                  const updatedShifts = shifts.map(curr => {
+                                    if (curr.id === s.id) {
+                                      return { ...curr, matricula: e.target.value };
+                                    }
+                                    return curr;
+                                  });
+                                  setShifts(updatedShifts);
+                                  saveShifts(updatedShifts);
+                                  triggerAlert('Matrícula actualizada');
+                                }}
+                                disabled={s.status === 'closed' && !isAdminOrSuper}
+                                style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
+                              >
+                                <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin matrícula</option>
+                                {s.matricula && !platesList.includes(s.matricula) && (
+                                  <option value={s.matricula} style={{ color: '#000000', background: '#ffffff' }}>{s.matricula}</option>
+                                )}
+                                {platesList.map(plate => (
+                                  <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Kilometraje y Distancia */}
+                          {(startKm != null || endKm != null || totalKm > 0 || s.status === 'closed') && (
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              background: 'rgba(255, 255, 255, 0.03)',
+                              border: '1px solid var(--panel-border)',
+                              borderRadius: '8px',
+                              padding: '8px 12px',
+                              fontSize: '0.78rem',
+                              flexWrap: 'wrap',
+                              gap: '8px'
+                            }}>
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>🚗 Km Inicio: </span>
+                                <strong style={{ color: 'var(--text-main)' }}>{startKm != null ? Number(startKm).toLocaleString('es-ES') : '—'}</strong>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>🏁 Km Fin: </span>
+                                <strong style={{ color: 'var(--text-main)' }}>{endKm != null ? Number(endKm).toLocaleString('es-ES') : '—'}</strong>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>📏 Recorridos: </span>
+                                <strong style={{ color: '#10b981' }}>{totalKm > 0 ? `${Number(totalKm).toLocaleString('es-ES')} km` : (startKm != null && endKm != null ? '0 km' : '—')}</strong>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Resumen de Repartos y Servicios */}
+                          {(totalTicketsCount > 0 || sum.ticketsCount > 0 || sum.totalTvs > 0) && (
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary)', fontWeight: '700' }}>
+                                📦 {totalTicketsCount} {totalTicketsCount === 1 ? 'reparto' : 'repartos'} {completedCount > 0 ? `(${completedCount} entregados${failedCount > 0 ? `, ${failedCount} fallidos` : ''})` : ''}
+                              </span>
+                              {sum.totalTvs > 0 && (
+                                <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#60a5fa', fontWeight: '600' }}>
+                                  📺 {sum.totalTvs} TVs
+                                </span>
+                              )}
+                              {sum.totalPV > 0 && (
+                                <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', fontWeight: '600' }}>
+                                  📦 {sum.totalPV} PV
+                                </span>
+                              )}
+                              {sum.totalPM > 0 && (
+                                <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.12)', color: '#fbbf24', fontWeight: '600' }}>
+                                  ⚙️ {sum.totalPM} PM
+                                </span>
+                              )}
+                              {sum.totalCuelgues > 0 && (
+                                <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.12)', color: '#c084fc', fontWeight: '600' }}>
+                                  🔨 {sum.totalCuelgues} Cuelgues
+                                </span>
+                              )}
+                              {sum.totalVieja > 0 && (
+                                <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#f87171', fontWeight: '600' }}>
+                                  ♻️ {sum.totalVieja} Retiradas
+                                </span>
+                              )}
+                              {sum.totalCODAmount > 0 && (
+                                <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: '700' }}>
+                                  💶 {Number(sum.totalCODAmount).toFixed(2)} € COD
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Observaciones si las hay */}
+                          {s.observations && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic', background: 'rgba(255,255,255,0.01)', padding: '4px 8px', borderRadius: '4px' }}>
+                              📝 {s.observations}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -17778,7 +17912,37 @@ function App() {
           // contaba cualquier turno con el nombre del empleado asignado, incluidos los
           // "Planificados" que nunca llegaron a abrirse/cerrarse (ausencia, cancelación,
           // planificación por adelantado), pagando días que no se trabajaron.
-          const monthShifts = shifts.filter(s => s.date.startsWith(monthPrefix) && s.status === 'closed');
+          const daysInCurrentMonth = new Date(year, month + 1, 0).getDate();
+          const monthShiftsMap = new Map();
+
+          (shifts || []).forEach(s => {
+            if (s && s.date && s.date.startsWith(monthPrefix) && (s.status === 'closed' || s.closedAt)) {
+              monthShiftsMap.set(s.id, s);
+            }
+          });
+
+          for (let d = 1; d <= daysInCurrentMonth; d++) {
+            const dStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const dayList = getShiftsForDay(dStr);
+            dayList.forEach(s => {
+              if (s && (s.status === 'closed' || s.closedAt)) {
+                if (!monthShiftsMap.has(s.id)) {
+                  monthShiftsMap.set(s.id, s);
+                } else {
+                  const existing = monthShiftsMap.get(s.id);
+                  monthShiftsMap.set(s.id, {
+                    ...existing,
+                    customDriver: existing.customDriver || s.customDriver || '',
+                    helper: existing.helper || s.helper || '',
+                    helper2: existing.helper2 || s.helper2 || '',
+                    matricula: existing.matricula || s.matricula || ''
+                  });
+                }
+              }
+            });
+          }
+
+          const monthShifts = Array.from(monthShiftsMap.values());
 
           const payrollList = [];
 
@@ -18859,33 +19023,78 @@ function App() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {dateShifts.map(s => {
                         const driverName = s.customDriver || users.find(usr => usr.id === s.furgoId)?.label || s.furgoId;
+                        const startKm = s.startKms ?? s.summary?.startKms ?? null;
+                        const endKm = s.endKms ?? s.summary?.endKms ?? null;
+                        const totalKm = (endKm != null && startKm != null && endKm >= startKm) 
+                          ? (endKm - startKm) 
+                          : (s.kms || s.summary?.kms || 0);
+                        const closedTime = s.closedAt 
+                          ? (s.closedAt.includes('T') 
+                              ? new Date(s.closedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                              : s.closedAt) 
+                          : null;
+                        const sum = s.summary || {};
+                        const dayTicketsForFurgo = (tickets || []).filter(t => t && t.date === s.date && t.furgoId === s.furgoId);
+                        const completedCount = dayTicketsForFurgo.filter(t => t.status === 'success' || t.status === 'completed' || t.delivered).length;
+                        const failedCount = dayTicketsForFurgo.filter(t => t.status === 'failed').length;
+                        const totalTicketsCount = dayTicketsForFurgo.length || s.ticketsCount || sum.ticketsCount || 0;
 
                         return (
                           <div 
                             key={s.id} 
                             style={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'space-between', 
-                              background: 'rgba(255,255,255,0.02)', 
-                              border: '1px solid var(--panel-border)', 
-                              borderRadius: '8px', 
-                              padding: '10px 12px',
+                              background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.04)' : s.openedAt ? 'rgba(16, 185, 129, 0.04)' : 'rgba(255,255,255,0.02)', 
+                              border: s.status === 'closed' ? '1px solid rgba(239, 68, 68, 0.25)' : s.openedAt ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid var(--panel-border)', 
+                              borderRadius: '10px', 
+                              padding: '12px 14px',
+                              display: 'flex',
+                              flexDirection: 'column',
                               gap: '10px'
                             }}
                           >
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: '700', fontSize: '0.85rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                🚚 {driverName}
+                            {/* Cabecera del Turno */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                              <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span>🚚 {driverName}</span>
                                 <span style={{ 
-                                  fontSize: '0.7rem', 
-                                  padding: '1px 5px', 
+                                  fontSize: '0.68rem', 
+                                  padding: '2px 6px', 
                                   borderRadius: '4px',
+                                  fontWeight: '600',
                                   background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.15)' : s.openedAt ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
                                   color: s.status === 'closed' ? 'var(--danger)' : s.openedAt ? 'var(--success)' : 'var(--text-muted)'
                                 }}>
-                                  {s.status === 'closed' ? 'Cerrado' : s.openedAt ? 'Activo' : 'Planificado'}
+                                  {s.status === 'closed' ? `🔒 Cerrado${closedTime ? ` (${closedTime})` : ''}` : s.openedAt ? '🟢 Activo' : '⚪ Planificado'}
                                 </span>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShiftSummaryDate(s.date);
+                                    setShiftSummaryFurgoId(s.furgoId);
+                                    setShowShiftModal(true);
+                                  }}
+                                  style={{
+                                    background: 'rgba(99, 102, 241, 0.15)',
+                                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                                    color: 'var(--primary)',
+                                    padding: '3px 8px',
+                                    borderRadius: '5px',
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    height: '24px'
+                                  }}
+                                  title="Ver resumen diario completo y tickets de este turno"
+                                >
+                                  📋 Ver Detalle
+                                </button>
+
                                 {s.status === 'closed' && (
                                   <button
                                     type="button"
@@ -18906,24 +19115,62 @@ function App() {
                                       background: 'rgba(16, 185, 129, 0.15)',
                                       border: '1px solid rgba(16, 185, 129, 0.3)',
                                       color: 'var(--success)',
-                                      padding: '2px 6px',
-                                      borderRadius: '4px',
-                                      fontSize: '0.68rem',
+                                      padding: '3px 8px',
+                                      borderRadius: '5px',
+                                      fontSize: '0.72rem',
                                       cursor: 'pointer',
-                                      marginLeft: '6px',
                                       fontWeight: '600',
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      height: '18px'
+                                      height: '24px'
                                     }}
+                                    title="Reabrir este turno"
                                   >
                                     🔓 Reabrir
                                   </button>
                                 )}
+
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (s.status === 'closed') {
+                                      const typed = window.prompt(`Este turno ya está CERRADO (trabajado). Para eliminarlo definitivamente, escribe la fecha exacta (${selectedCalendarDay}):`);
+                                      if (typed !== selectedCalendarDay) {
+                                        if (typed !== null) triggerAlert('La fecha no coincide. Turno no eliminado.', 'error');
+                                        return;
+                                      }
+                                    } else if (!window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
+                                      return;
+                                    }
+                                    const result = await deletePlannedShift(s.furgoId, selectedCalendarDay);
+                                    loadData();
+                                    if (!result || !result.success) {
+                                      triggerAlert('No se pudo confirmar el borrado en el servidor. El turno puede seguir existiendo.', 'error');
+                                    } else {
+                                      triggerAlert('Turno eliminado');
+                                    }
+                                  }}
+                                  style={{ 
+                                    background: 'rgba(239, 68, 68, 0.1)', 
+                                    border: '1px solid rgba(239, 68, 68, 0.2)', 
+                                    color: 'var(--danger)',
+                                    padding: '3px 6px',
+                                    borderRadius: '5px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    height: '24px'
+                                  }}
+                                  title="Eliminar turno"
+                                >
+                                  🗑️
+                                </button>
                               </div>
-                              
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Chofer:</span>
+                            </div>
+
+                            {/* Equipo y Matrícula */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px', border: '1px solid var(--panel-border)' }}>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>👤 Chofer:</div>
                                 <select
                                   className="form-input"
                                   value={s.customDriver || ''}
@@ -18946,17 +19193,7 @@ function App() {
                                     triggerAlert('Chofer actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
-                                  style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.75rem', 
-                                    height: '24px', 
-                                    width: 'auto', 
-                                    margin: 0,
-                                    color: 'var(--text-main)',
-                                    background: 'var(--input-bg)',
-                                    border: '1px solid var(--panel-border)',
-                                    borderRadius: '4px'
-                                  }}
+                                  style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
                                 >
                                   <option value="" style={{ color: '#000000', background: '#ffffff' }}>Por asignar</option>
                                   <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
@@ -18967,8 +19204,10 @@ function App() {
                                     <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
+                              </div>
 
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>Ayudante:</span>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>🤝 Ayudante:</div>
                                 <select
                                   className="form-input"
                                   value={s.helper || ''}
@@ -18991,17 +19230,7 @@ function App() {
                                     triggerAlert('Ayudante actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
-                                  style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.75rem', 
-                                    height: '24px', 
-                                    width: 'auto', 
-                                    margin: 0,
-                                    color: 'var(--text-main)',
-                                    background: 'var(--input-bg)',
-                                    border: '1px solid var(--panel-border)',
-                                    borderRadius: '4px'
-                                  }}
+                                  style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
                                 >
                                   <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante</option>
                                   <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
@@ -19012,8 +19241,10 @@ function App() {
                                     <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
+                              </div>
 
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>Ayudante 2:</span>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>🤝 Ayudante 2:</div>
                                 <select
                                   className="form-input"
                                   value={s.helper2 || ''}
@@ -19036,17 +19267,7 @@ function App() {
                                     triggerAlert('Segundo ayudante actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
-                                  style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.75rem', 
-                                    height: '24px', 
-                                    width: 'auto', 
-                                    margin: 0,
-                                    color: 'var(--text-main)',
-                                    background: 'var(--input-bg)',
-                                    border: '1px solid var(--panel-border)',
-                                    borderRadius: '4px'
-                                  }}
+                                  style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
                                 >
                                   <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ayudante 2</option>
                                   <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
@@ -19057,8 +19278,10 @@ function App() {
                                     <option key={emp.id} value={emp.name} style={{ color: '#000000', background: '#ffffff' }}>{emp.name}</option>
                                   ))}
                                 </select>
+                              </div>
 
-                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>Matrícula:</span>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>🚐 Matrícula:</div>
                                 <select
                                   className="form-input"
                                   value={s.matricula || ''}
@@ -19074,17 +19297,7 @@ function App() {
                                     triggerAlert('Matrícula actualizada');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
-                                  style={{ 
-                                    padding: '2px 6px', 
-                                    fontSize: '0.75rem', 
-                                    height: '24px', 
-                                    width: 'auto', 
-                                    margin: 0,
-                                    color: 'var(--text-main)',
-                                    background: 'var(--input-bg)',
-                                    border: '1px solid var(--panel-border)',
-                                    borderRadius: '4px'
-                                  }}
+                                  style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
                                 >
                                   <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin matrícula</option>
                                   {s.matricula && !platesList.includes(s.matricula) && (
@@ -19097,43 +19310,80 @@ function App() {
                               </div>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                // Fix: un turno ya CERRADO (trabajado, con kms/nómina) requiere
-                                // confirmación reforzada, igual que en la vista de día.
-                                if (s.status === 'closed') {
-                                  const typed = window.prompt(`Este turno ya está CERRADO (trabajado). Para eliminarlo definitivamente, escribe la fecha exacta (${selectedCalendarDay}):`);
-                                  if (typed !== selectedCalendarDay) {
-                                    if (typed !== null) triggerAlert('La fecha no coincide. Turno no eliminado.', 'error');
-                                    return;
-                                  }
-                                } else if (!window.confirm(`¿Seguro que deseas eliminar el turno de ${driverName}?`)) {
-                                  return;
-                                }
-                                // Fix: esperar la confirmación real del servidor antes de avisar
-                                // "eliminado" — evita que el turno reaparezca si el borrado falló.
-                                const result = await deletePlannedShift(s.furgoId, selectedCalendarDay);
-                                loadData();
-                                if (!result || !result.success) {
-                                  triggerAlert('No se pudo confirmar el borrado en el servidor. El turno puede seguir existiendo.', 'error');
-                                } else {
-                                  triggerAlert('Turno eliminado');
-                                }
-                              }}
-                              style={{ 
-                                background: 'rgba(239, 68, 68, 0.1)', 
-                                border: '1px solid rgba(239, 68, 68, 0.2)', 
-                                color: 'var(--danger)',
-                                padding: '6px 8px',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                fontSize: '0.75rem'
-                              }}
-                              title="Eliminar turno"
-                            >
-                              🗑️
-                            </button>
+                            {/* Kilometraje y Distancia */}
+                            {(startKm != null || endKm != null || totalKm > 0 || s.status === 'closed') && (
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                background: 'rgba(255, 255, 255, 0.03)',
+                                border: '1px solid var(--panel-border)',
+                                borderRadius: '8px',
+                                padding: '8px 12px',
+                                fontSize: '0.78rem',
+                                flexWrap: 'wrap',
+                                gap: '8px'
+                              }}>
+                                <div>
+                                  <span style={{ color: 'var(--text-muted)' }}>🚗 Km Inicio: </span>
+                                  <strong style={{ color: 'var(--text-main)' }}>{startKm != null ? Number(startKm).toLocaleString('es-ES') : '—'}</strong>
+                                </div>
+                                <div>
+                                  <span style={{ color: 'var(--text-muted)' }}>🏁 Km Fin: </span>
+                                  <strong style={{ color: 'var(--text-main)' }}>{endKm != null ? Number(endKm).toLocaleString('es-ES') : '—'}</strong>
+                                </div>
+                                <div>
+                                  <span style={{ color: 'var(--text-muted)' }}>📏 Recorridos: </span>
+                                  <strong style={{ color: '#10b981' }}>{totalKm > 0 ? `${Number(totalKm).toLocaleString('es-ES')} km` : (startKm != null && endKm != null ? '0 km' : '—')}</strong>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Resumen de Repartos y Servicios */}
+                            {(totalTicketsCount > 0 || sum.ticketsCount > 0 || sum.totalTvs > 0) && (
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary)', fontWeight: '700' }}>
+                                  📦 {totalTicketsCount} {totalTicketsCount === 1 ? 'reparto' : 'repartos'} {completedCount > 0 ? `(${completedCount} entregados${failedCount > 0 ? `, ${failedCount} fallidos` : ''})` : ''}
+                                </span>
+                                {sum.totalTvs > 0 && (
+                                  <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: '#60a5fa', fontWeight: '600' }}>
+                                    📺 {sum.totalTvs} TVs
+                                  </span>
+                                )}
+                                {sum.totalPV > 0 && (
+                                  <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', fontWeight: '600' }}>
+                                    📦 {sum.totalPV} PV
+                                  </span>
+                                )}
+                                {sum.totalPM > 0 && (
+                                  <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.12)', color: '#fbbf24', fontWeight: '600' }}>
+                                    ⚙️ {sum.totalPM} PM
+                                  </span>
+                                )}
+                                {sum.totalCuelgues > 0 && (
+                                  <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.12)', color: '#c084fc', fontWeight: '600' }}>
+                                    🔨 {sum.totalCuelgues} Cuelgues
+                                  </span>
+                                )}
+                                {sum.totalVieja > 0 && (
+                                  <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: '#f87171', fontWeight: '600' }}>
+                                    ♻️ {sum.totalVieja} Retiradas
+                                  </span>
+                                )}
+                                {sum.totalCODAmount > 0 && (
+                                  <span style={{ fontSize: '0.7rem', padding: '3px 7px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: '700' }}>
+                                    💶 {Number(sum.totalCODAmount).toFixed(2)} € COD
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Observaciones si las hay */}
+                            {s.observations && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic', background: 'rgba(255,255,255,0.01)', padding: '4px 8px', borderRadius: '4px' }}>
+                                📝 {s.observations}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
