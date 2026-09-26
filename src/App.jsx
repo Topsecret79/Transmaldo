@@ -2144,7 +2144,18 @@ function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
-      if (adminStartDate && adminEndDate && adminStartDate <= adminEndDate && adminStartDate < syncCutoffDate) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (!adminStartDate && !adminEndDate) {
+        setIsLoadingHistorical(true);
+        loadHistoricalTicketsForPeriod('2026-06-01', todayStr)
+          .then((loaded) => {
+            if (loaded && loaded.length > 0) {
+              loadDataRef.current();
+            }
+          })
+          .catch((err) => console.error("Error cargando histórico completo:", err))
+          .finally(() => setIsLoadingHistorical(false));
+      } else if (adminStartDate && adminEndDate && adminStartDate <= adminEndDate && adminStartDate < syncCutoffDate) {
         setIsLoadingHistorical(true);
         loadHistoricalTicketsForPeriod(adminStartDate, adminEndDate)
           .then((loaded) => {
@@ -22051,6 +22062,53 @@ function App() {
                     Mostrar Todo
                   </button>
                 )}
+              </div>
+
+              {/* Acceso rápido a meses registrados */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', width: '100%', marginTop: '4px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  📅 <strong>Meses disponibles:</strong>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-09-01' && adminEndDate === '2026-09-30' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
+                  onClick={() => { setAdminStartDate('2026-09-01'); setAdminEndDate('2026-09-30'); }}
+                >
+                  Septiembre 2026
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-08-01' && adminEndDate === '2026-08-31' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
+                  onClick={() => { setAdminStartDate('2026-08-01'); setAdminEndDate('2026-08-31'); }}
+                >
+                  Agosto 2026
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-07-01' && adminEndDate === '2026-07-31' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
+                  onClick={() => { setAdminStartDate('2026-07-01'); setAdminEndDate('2026-07-31'); }}
+                >
+                  Julio 2026
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-06-01' && adminEndDate === '2026-06-30' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
+                  onClick={() => { setAdminStartDate('2026-06-01'); setAdminEndDate('2026-06-30'); }}
+                >
+                  Junio 2026
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-06-01' && adminEndDate === '2026-09-30' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
+                  onClick={() => { setAdminStartDate('2026-06-01'); setAdminEndDate('2026-09-30'); }}
+                >
+                  Todo 2026 (Jun - Sep)
+                </button>
               </div>
             </div>
 
