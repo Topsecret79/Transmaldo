@@ -158,11 +158,12 @@ let realtimeChannel = null;
 // tabla delivery_tickets (la más pesada, ~43 MB) si alguno de los cambios de la ráfaga era
 // realmente sobre esa tabla.
 let syncDebounceTimer = null;
-let syncDebouncePendingTickets = false;
-const SYNC_DEBOUNCE_MS = 4000;
+let syncDebouncePendingTickets = true;
+const SYNC_DEBOUNCE_MS = 1200;
 
 function scheduleSyncFromCloud(changedTable) {
-  if (changedTable === 'delivery_tickets') {
+  // Siempre que haya cambios en delivery_tickets o delivery_shifts, incluir tickets
+  if (changedTable === 'delivery_tickets' || changedTable === 'delivery_shifts' || changedTable === 'delivery_settings') {
     syncDebouncePendingTickets = true;
   }
   if (syncDebounceTimer) {
@@ -171,7 +172,7 @@ function scheduleSyncFromCloud(changedTable) {
   syncDebounceTimer = setTimeout(() => {
     const includeTickets = syncDebouncePendingTickets;
     syncDebounceTimer = null;
-    syncDebouncePendingTickets = false;
+    syncDebouncePendingTickets = true;
     syncFromCloud(includeTickets);
   }, SYNC_DEBOUNCE_MS);
 }
@@ -2117,7 +2118,14 @@ export async function saveTickets(tickets) {
       // solo subimos esos. Si por algún motivo ninguno está marcado, no hay nada que
       // subir (p.ej. borrar un ticket o resetear el mes, que ya gestionan su propia
       // sincronización).
-      const pendingTickets = tickets.filter(t => t && t._syncStatus === 'pending');
+      let pendingTickets = tickets.filter(t => t && t._syncStatus === 'pending');
+
+      if (pendingTickets.length === 0) {
+        // Fallback de seguridad: si saveTickets fue invocado sin la marca explícita _syncStatus,
+        // subimos los tickets de hoy o fecha reciente para asegurar que ningún cambio se pierda
+        const todayStr = new Date().toISOString().split('T')[0];
+        pendingTickets = tickets.filter(t => t && t.date && t.date >= todayStr);
+      }
 
       if (pendingTickets.length === 0) {
         return { success: true }; // nada que subir; el finally de abajo igualmente libera isSaving
@@ -3081,7 +3089,9 @@ export async function closeShift(furgoId, date, summary) {
     startKms: summary ? summary.startKms : null,
     endKms: summary ? summary.endKms : null,
     observations: summary ? summary.observations : '',
-    summary
+    summary,
+    createdBy: existingShift.createdBy || 'admin',
+    _syncStatus: 'pending'
   };
 
   if (existingIndex !== -1) {
@@ -4658,6 +4668,11 @@ export function hasPermission(user, moduleId) {
   if (!user) return false;
   if (user.role === 'superadmin') return true; // El Super Administrador siempre tiene acceso completo
   
+  // Repartidores tienen acceso solo a sus funciones básicas
+  if (user.role === 'repartidor') {
+    return ['my_route', 'driver_map', 'profile'].includes(moduleId);
+  }
+  
   let pObj = user.permissions;
   if (pObj) {
     if (typeof pObj === 'string') {
@@ -4667,12 +4682,12 @@ export function hasPermission(user, moduleId) {
         pObj = {};
       }
     }
-    // Política restrictiva (fail-closed): solo se permite acceso si el permiso está
-    // explícitamente configurado como true. Si no está configurado o es false, se deniega.
-    return pObj[moduleId] === true;
+    // Si el permiso está explícitamente configurado como false, se deniega.
+    // Si no está configurado (undefined) o es true, se permite (compatibilidad con administradores existentes).
+    return pObj[moduleId] !== false;
   }
   
-  return false; // Sin objeto de permisos configurado → acceso denegado por defecto
+  return true; // Acceso por defecto para administradores sin objeto de restricciones configurado
 }
 
 /**

@@ -2229,6 +2229,10 @@ function App() {
             }
           })
           .catch((err) => console.error("Error cargando tickets históricos de informe diario:", err));
+      } else if (activeTab && activeTab !== 'new_ticket') {
+        syncFromCloud(true).then(() => {
+          loadDataRef.current();
+        }).catch(err => console.warn("Tab switch sync error:", err));
       }
     }, 250);
     return () => clearTimeout(timer);
@@ -2244,9 +2248,8 @@ function App() {
     let lastManualRefreshAt = 0;
     const handleRefresh = async (force = false) => {
       const now = Date.now();
-      // Cooldown de 45 segundos para evitar descargar la base de datos repetidamente
-      // al cambiar de pestañas o desbloquear el móvil con frecuencia
-      if (!force && (now - lastManualRefreshAt < 45000)) {
+      // Cooldown de 4 segundos para evitar doble disparo simultáneo de focus + visibilitychange
+      if (!force && (now - lastManualRefreshAt < 4000)) {
         if (mapInstanceRef.current) {
           try { mapInstanceRef.current.resize(); } catch (e) {}
         }
@@ -2259,8 +2262,6 @@ function App() {
       } catch (e) {
         console.warn("Background cloud sync error:", e);
       }
-      // Se pasa force=false para respetar el enfriamiento del websocket y no
-      // destruir/recrear el canal descargando la BD dos veces en cada refresco
       reinitSupabase(false);
       if (mapInstanceRef.current) {
         try { mapInstanceRef.current.resize(); } catch (e) {}
@@ -2281,19 +2282,19 @@ function App() {
             try { map.resize(); } catch (e) {}
           }
         }
-        await handleRefresh(false);
+        await handleRefresh(true);
       }
     };
 
     window.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleVisibility);
 
-    // Seguridad de fondo: comprobación ligera cada 5 minutos (NO cada 15 segundos)
+    // Comprobación de cambios en el servidor cada 25 segundos mientras la ventana esté visible
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        handleRefresh(false);
+        handleRefresh(true);
       }
-    }, 5 * 60 * 1000);
+    }, 25 * 1000);
 
     return () => {
       clearInterval(interval);
@@ -24717,6 +24718,25 @@ function App() {
               <span style={{ fontSize: '0.7rem', color: 'var(--primary)', marginLeft: '5px', fontWeight: 'bold' }}>(Coord)</span>
             )}
           </div>
+          <button 
+            type="button"
+            onClick={async () => {
+              try {
+                triggerAlert('Sincronizando con el servidor...', 'info');
+                await syncFromCloud(true);
+                loadDataRef.current();
+                triggerAlert('Sincronización completada ✓');
+              } catch (e) {
+                console.error("Error sincronizando:", e);
+                triggerAlert('Error al sincronizar con el servidor', 'error');
+              }
+            }} 
+            className="btn btn-secondary btn-small" 
+            style={{ width: 'auto', padding: '6px 10px', marginRight: '6px', background: 'rgba(16, 185, 129, 0.15)', borderColor: '#10b981', color: '#6ee7b7', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}
+            title="Sincronizar datos con el servidor ahora"
+          >
+            <span>☁️</span> Sincronizar
+          </button>
           <button 
             onClick={async () => {
               if (window.confirm('¿Quieres comprobar y forzar la descarga de la última versión de la aplicación?')) {
