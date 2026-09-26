@@ -9,13 +9,9 @@ import { Geolocation as CapGeolocation } from '@capacitor/geolocation';
 import Fuse from 'fuse.js';
 import changelogData from './changelog.json';
 
-// Helper to construct fallback Mapbox access token dynamically
+// Helper to get Mapbox access token from environment variable
 const getSplitMapboxToken = () => {
-  return [
-    'pk.eyJ1IjoidG9wc2VjcmV0NzkiLCJhIjoiY21y',
-    'MTBlbG1mMGtkaTJzc2Ewa29rczYwNCJ9.4QzF_',
-    'pTlCbPRhXI1Fl3v2A'
-  ].join('');
+  return import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
 };
 
 // Función helper para ordenar tickets de manera uniforme por routeOrder, luego por createdAt
@@ -2345,6 +2341,13 @@ function App() {
   useEffect(() => {
     let active = true;
     
+    // Fix A-5: opciones compartidas de GPS que reducen consumo de batería.
+    // maximumAge=15000 permite reutilizar una posición de hasta 15s sin encender el chip.
+    // El throttle lastGpsSave evita enviar a Supabase más de 1 vez cada 15s.
+    const GPS_OPTIONS = { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 };
+    const GPS_THROTTLE_MS = 15000;
+    let lastGpsSave = 0;
+
     const startTracking = async () => {
       if (isTrackingActive && currentUser && currentUser.role === 'repartidor') {
         if (Capacitor.isNativePlatform()) {
@@ -2357,7 +2360,7 @@ function App() {
             }
             setGpsStatus('active');
             watchIdRef.current = await CapGeolocation.watchPosition(
-              { enableHighAccuracy: true, timeout: 10000 },
+              GPS_OPTIONS,
               (position, err) => {
                 if (!active) return;
                 if (err) {
@@ -2366,8 +2369,12 @@ function App() {
                   return;
                 }
                 if (position) {
-                  const { latitude, longitude } = position.coords;
-                  saveDriverLocation(currentUser.id, latitude, longitude);
+                  const now = Date.now();
+                  if (now - lastGpsSave >= GPS_THROTTLE_MS) {
+                    lastGpsSave = now;
+                    const { latitude, longitude } = position.coords;
+                    saveDriverLocation(currentUser.id, latitude, longitude);
+                  }
                   setGpsStatus('active');
                 }
               }
@@ -2383,8 +2390,12 @@ function App() {
             watchIdRef.current = navigator.geolocation.watchPosition(
               (position) => {
                 if (!active) return;
-                const { latitude, longitude } = position.coords;
-                saveDriverLocation(currentUser.id, latitude, longitude);
+                const now = Date.now();
+                if (now - lastGpsSave >= GPS_THROTTLE_MS) {
+                  lastGpsSave = now;
+                  const { latitude, longitude } = position.coords;
+                  saveDriverLocation(currentUser.id, latitude, longitude);
+                }
                 setGpsStatus('active');
               },
               (error) => {
@@ -2392,11 +2403,7 @@ function App() {
                 console.error("GPS Tracking Error:", error);
                 setGpsStatus('error');
               },
-              {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
-              }
+              GPS_OPTIONS
             );
           } else {
             console.error("Geolocation not supported by this browser.");
@@ -3595,10 +3602,53 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // 1. Cerrar sesión en Supabase Auth (invalida el JWT del usuario)
+    try {
+      const supabaseClient = getSupabaseClient();
+      if (supabaseClient) {
+        await supabaseClient.auth.signOut();
+      }
+    } catch (e) {
+      console.warn('[Logout] No se pudo cerrar sesión en Supabase Auth:', e);
+    }
+
+    // 2. Limpiar datos de sesión y preferencias de UI
     localStorage.removeItem('delivery_session');
     localStorage.removeItem('delivery_active_tab');
     localStorage.removeItem('delivery_form_draft');
+
+    // 3. Purgar TODOS los datos operativos de negocio
+    // (evita que el siguiente usuario del dispositivo acceda a datos del anterior)
+    const operationalKeys = [
+      'delivery_tickets',
+      'delivery_shifts',
+      'delivery_users',
+      'delivery_tariffs',
+      'delivery_dormity_tariffs',
+      'delivery_driver_locations',
+      'delivery_fleet_vehicles',
+      'delivery_fleet_fuel_logs',
+      'delivery_fleet_maintenance_logs',
+      'delivery_fleet_daily_logs',
+      'delivery_deleted_tickets',
+      'delivery_employees',
+    ];
+    operationalKeys.forEach(key => localStorage.removeItem(key));
+
+    // 4. Limpiar claves dinámicas (route_kms_*, manual_route_*, payroll_*, etc.)
+    const dynamicPrefixes = [
+      'route_kms_', 'manual_route_', 'route_start_time_',
+      'shift_meta_', 'payroll_day_rates_', 'payroll_advances_',
+      'loc_',
+    ];
+    Object.keys(localStorage).forEach(key => {
+      if (dynamicPrefixes.some(prefix => key.startsWith(prefix))) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    // 5. Limpiar estado React
     setCurrentUser(null);
     setAppName('My Delivery Team');
     setAppNameInput('My Delivery Team');
@@ -3606,11 +3656,11 @@ function App() {
     setRouteEndAddr(getRouteEndAddr());
     setActiveTab('');
     setEditingTicketId(null);
-    triggerAlert('Sesión cerrada correctamente');
     setTickets([]);
     setTariffs([]);
     setUsers([]);
     setShifts([]);
+    triggerAlert('Sesión cerrada correctamente');
   };
 
   // Añadir una televisión a la lista del formulario
@@ -7596,6 +7646,11 @@ function App() {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
       if (billingFilterFurgo !== 'all' && t.furgoId !== billingFilterFurgo) return false;
+      // Fix A-8: aplicar filtro de proveedor igual que la pantalla de facturación.
+      // Antes el Excel exportaba siempre todos los proveedores sin importar el filtro activo.
+      const isDorm = t.provider === 'dormity' || (Array.isArray(t.tasks) && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')));
+      if (billingProviderFilter === 'eci' && isDorm) return false;
+      if (billingProviderFilter === 'dormity' && !isDorm) return false;
       return true;
     });
 
@@ -7607,8 +7662,10 @@ function App() {
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
-    // Resumen General (Solo suma ganancias de repartos con Éxito y kilometraje)
-    const successTickets = filteredTickets.filter(t => t.status === 'success' || !t.status);
+    // Fix A-9: solo contar como entregados los tickets con status === 'success' explícito.
+    // Antes, !t.status (null/undefined) se contaba como éxito, inflando artificialmente
+    // los totales de facturación con tickets que nunca tuvieron estado asignado.
+    const successTickets = filteredTickets.filter(t => t.status === 'success');
     const furgos = billingFilterFurgo !== 'all'
       ? activeRepartidores.filter(u => u.id === billingFilterFurgo).map(u => u.id)
       : activeRepartidores.map(u => u.id);
@@ -7653,7 +7710,7 @@ function App() {
 
     furgos.forEach(fid => {
       const fTickets = filteredTickets.filter(t => t.furgoId === fid);
-      const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
+      const fSuccess = fTickets.filter(t => t.status === 'success'); // Fix A-9
       const label = users.find(u => u.id === fid)?.label || fid;
 
       const fShifts = shifts.filter(s => 
@@ -7699,11 +7756,11 @@ function App() {
       const sheetRows = [];
 
       fTickets.forEach(t => {
-        const isSuccess = t.status === 'success' || !t.status;
-        const statusLabel = t.status === 'success' || !t.status 
-          ? 'Éxito' 
-          : t.status === 'failed' 
-            ? `Fallido${t.failureReason ? ` (${t.failureReason})` : ''}` 
+        const isSuccess = t.status === 'success'; // Fix A-9: null no es éxito
+        const statusLabel = t.status === 'success'
+          ? 'Éxito'
+          : t.status === 'failed'
+            ? `Fallido${t.failureReason ? ` (${t.failureReason})` : ''}`
             : 'Pendiente';
         (t.tasks || []).forEach(task => {
           sheetRows.push([
@@ -20229,7 +20286,7 @@ function App() {
 
       sortedDates.forEach(date => {
         const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid && t.date === date);
-        const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
+        const fSuccess = fTickets.filter(t => t.status === 'success'); // Fix A-9
         
         let pms = 0;
         let deliveries = 0;
@@ -20326,7 +20383,7 @@ function App() {
 
       const dailyStats = sortedDates.map(date => {
         const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid && t.date === date);
-        const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
+        const fSuccess = fTickets.filter(t => t.status === 'success'); // Fix A-9
         
         let pms = 0;
         let pmsBasic = 0;
@@ -20488,14 +20545,14 @@ function App() {
       );
     };
 
-    const successTickets = filteredAdminTickets.filter(t => t.status === 'success' || !t.status);
-    const furgos = billingFilterFurgo !== 'all' 
+    const successTickets = filteredAdminTickets.filter(t => t.status === 'success'); // Fix A-9
+    const furgos = billingFilterFurgo !== 'all'
       ? activeRepartidores.filter(u => u.id === billingFilterFurgo).map(u => u.id)
       : activeRepartidores.map(u => u.id);
 
     const furgoData = furgos.reduce((acc, fid) => {
       const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid);
-      const fSuccess = fTickets.filter(t => t.status === 'success' || !t.status);
+      const fSuccess = fTickets.filter(t => t.status === 'success'); // Fix A-9
       
       let pms = 0;
       let pmsBasic = 0;
@@ -20707,7 +20764,7 @@ function App() {
                   <tbody>
                     {sorted.map(t => {
                       let badge = <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>🟡 Pendiente</span>;
-                      if (t.status === 'success' || !t.status) {
+                      if (t.status === 'success') { // Fix A-9: null no muestra verde
                         badge = <span className="badge badge-success" style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff' }}>🟢 Entregado</span>;
                       } else if (t.status === 'failed') {
                         badge = <span className="badge badge-danger" style={{ fontSize: '0.7rem', background: '#ef4444', color: '#fff' }}>🔴 Fallido</span>;
@@ -25075,7 +25132,7 @@ function App() {
                     {isAdminOrSuper && (() => {
                       const isShiftClosed = existingShift && existingShift.status === 'closed';
                       const billableTickets = dayTickets.filter(t => {
-                        if (t.status === 'success' || !t.status) return true;
+                        if (t.status === 'success') return true; // Fix A-9: null no es facturable
                         if (t.status === 'failed') {
                           const parsed = parseTicketNotes(t.notes);
                           return parsed.failedChargeType && parsed.failedChargeType !== 'none';

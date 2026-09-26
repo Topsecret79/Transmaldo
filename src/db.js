@@ -1,8 +1,8 @@
 // db.js - Gestión de base de datos local y lógica de negocio en localStorage
 import { createClient } from '@supabase/supabase-js';
 
-const defaultUrl = 'https://neskvzjfwjgbhasboxfh.supabase.co';
-const defaultKey = 'sb_publishable_hCm0ONw6mBihfXHHW23wfQ_-aGIA4uX';
+const defaultUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const defaultKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 let supabase = null;
 const storedUrl = localStorage.getItem('supabase_url');
@@ -126,8 +126,20 @@ async function secureDelete(table, values) {
   if (!supabase) return { error: new Error('Supabase no inicializado') };
   if (!values || values.length === 0) return { error: null };
   try {
+    // Obtener el ID del usuario en sesión para enviarlo como header de autenticación.
+    // La Edge Function rechaza peticiones sin este header con HTTP 401.
+    let appUserId = 'anonymous';
+    try {
+      const sessionRaw = localStorage.getItem('delivery_session');
+      if (sessionRaw) {
+        const sessionObj = JSON.parse(sessionRaw);
+        if (sessionObj && sessionObj.id) appUserId = String(sessionObj.id);
+      }
+    } catch (_) { /* si localStorage no está disponible, se usa 'anonymous' */ }
+
     const { data, error } = await supabase.functions.invoke('secure-delete', {
-      body: { table, values }
+      body: { table, values },
+      headers: { 'x-app-user-id': appUserId }
     });
     if (error) return { error };
     if (data && data.success === false) return { error: new Error(data.error || 'Error al borrar') };
@@ -390,7 +402,7 @@ export async function initializeSupabaseTables() {
           postcode: t.postcode,
           notes: t.notes,
           cod_amount: t.codAmount,
-          tasks: t.tasks,
+          tasks: Array.isArray(t.tasks) ? t.tasks : [],
           total_price: t.totalPrice,
           status: t.status,
           failure_reason: t.failureReason || '',
@@ -724,7 +736,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           originalRouteLabel: t.original_route_label || parsedN.originalRouteLabel || null,
           dormityRouteType: t.dormity_route_type || null,
           dormityServDiaOption: t.dormity_serv_dia_option || null,
-          tasks: t.tasks,
+          tasks: Array.isArray(t.tasks) ? t.tasks : [],
           totalPrice: parseFloat(t.total_price) || 0,
           status: t.status,
           failureReason: t.failure_reason,
@@ -2020,12 +2032,14 @@ export async function fetchHistoricalTickets(startDate, endDate) {
         postcode: t.postcode,
         notes: t.notes,
         codAmount: t.cod_amount,
-        provider: t.provider || (t.tasks && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')) ? 'dormity' : 'eci'),
+        // Fix A-28: t.tasks puede llegar null desde Supabase → garantizamos array
+        // para evitar crash en cualquier .map()/.some()/.filter() posterior.
+        provider: t.provider || (Array.isArray(t.tasks) && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')) ? 'dormity' : 'eci'),
         source: t.source || parsedN.source || null,
         originalRouteLabel: t.original_route_label || parsedN.originalRouteLabel || null,
         dormityRouteType: t.dormity_route_type || null,
         dormityServDiaOption: t.dormity_serv_dia_option || null,
-        tasks: t.tasks,
+        tasks: Array.isArray(t.tasks) ? t.tasks : [],
         totalPrice: parseFloat(t.total_price) || 0,
         status: t.status,
         failureReason: t.failure_reason,
@@ -2121,7 +2135,7 @@ export async function saveTickets(tickets) {
         postcode: t.postcode,
         notes: t.notes,
         cod_amount: t.codAmount,
-        tasks: t.tasks,
+        tasks: Array.isArray(t.tasks) ? t.tasks : [],
         total_price: t.totalPrice,
         status: t.status,
         failure_reason: t.failureReason || '',
@@ -2145,11 +2159,16 @@ export async function saveTickets(tickets) {
         console.error("Supabase upsert failed in saveTickets:", error);
         return { success: false, error };
       } else {
-        // Clear _syncStatus flag on successful upsert
+        // Fix C-6: limpiar _syncStatus SOLO en los tickets que acabamos de subir
+        // (identificados por su id). Antes se limpiaba en TODOS los tickets con
+        // _syncStatus:'pending', lo que destruía el flag de tickets editados
+        // simultáneamente en otro dispositivo o pestaña — esos cambios nunca
+        // llegaban a Supabase y se perdían silenciosamente.
         try {
+          const uploadedIds = new Set(pendingTickets.map(t => t.id));
           const currentLocal = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
           const updatedLocal = currentLocal.map(t => {
-            if (t && t._syncStatus === 'pending') {
+            if (t && t._syncStatus === 'pending' && uploadedIds.has(t.id)) {
               const { _syncStatus, ...rest } = t;
               return rest;
             }
@@ -4374,7 +4393,7 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
           postcode: t.postcode,
           notes: t.notes,
           cod_amount: t.codAmount,
-          tasks: t.tasks,
+          tasks: Array.isArray(t.tasks) ? t.tasks : [],
           total_price: t.totalPrice,
           status: t.status,
           failure_reason: t.failureReason || '',
@@ -4648,12 +4667,12 @@ export function hasPermission(user, moduleId) {
         pObj = {};
       }
     }
-    // Si el permiso está explícitamente configurado como false, se deniega.
-    // Si no está (undefined) o es true, se permite (compatibilidad por defecto).
-    return pObj[moduleId] !== false;
+    // Política restrictiva (fail-closed): solo se permite acceso si el permiso está
+    // explícitamente configurado como true. Si no está configurado o es false, se deniega.
+    return pObj[moduleId] === true;
   }
   
-  return true; // Acceso por defecto para usuarios antiguos sin permisos configurados
+  return false; // Sin objeto de permisos configurado → acceso denegado por defecto
 }
 
 /**

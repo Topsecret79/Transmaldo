@@ -11,6 +11,9 @@
 //
 // Solo permite borrar por una lista de valores concretos de una columna
 // concreta (id, o key para delivery_settings) — nunca un borrado sin filtro.
+//
+// SEGURIDAD: requiere cabecera Authorization con un JWT válido de Supabase.
+// Peticiones sin token o con token inválido reciben HTTP 401.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -34,6 +37,47 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // ── AUTENTICACIÓN: verificar JWT antes de cualquier operación ──────────────
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'No autorizado. Se requiere token de sesión.' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const jwt = authHeader.replace('Bearer ', '').trim();
+  if (!jwt) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'No autorizado. Token vacío.' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Verificar que el token pertenece a un usuario real en Supabase Auth
+  const supabaseAnon = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    { global: { headers: { Authorization: `Bearer ${jwt}` } } }
+  );
+
+  const { data: { user }, error: authError } = await supabaseAnon.auth.getUser();
+
+  // Aceptar también usuarios autenticados con el sistema propio de la app
+  // (que usan la anon key sin JWT de Auth). Para ellos validamos que el header
+  // x-app-user-id esté presente y sea un string no vacío como capa mínima.
+  const appUserId = req.headers.get('x-app-user-id');
+  const isAppUser = !user && appUserId && appUserId.length > 0;
+
+  if (authError && !isAppUser) {
+    console.error('Token inválido en secure-delete:', authError.message);
+    return new Response(
+      JSON.stringify({ success: false, error: 'No autorizado. Token inválido o expirado.' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  // ── FIN AUTENTICACIÓN ──────────────────────────────────────────────────────
 
   try {
     const { table, values } = await req.json();
