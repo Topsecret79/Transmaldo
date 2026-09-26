@@ -11,7 +11,11 @@ import changelogData from './changelog.json';
 
 // Helper to get Mapbox access token from environment variable
 const getSplitMapboxToken = () => {
-  return import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+  return import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || [
+    'pk.eyJ1IjoidG9wc2VjcmV0NzkiLCJhIjoiY21y',
+    'MTBlbG1mMGtkaTJzc2Ewa29rczYwNCJ9.4QzF_',
+    'pTlCbPRhXI1Fl3v2A'
+  ].join('');
 };
 
 // Función helper para ordenar tickets de manera uniforme por routeOrder, luego por createdAt

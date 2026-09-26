@@ -1,8 +1,8 @@
 // db.js - Gestión de base de datos local y lógica de negocio en localStorage
 import { createClient } from '@supabase/supabase-js';
 
-const defaultUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const defaultKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const defaultUrl = import.meta.env.VITE_SUPABASE_URL || 'https://neskvzjfwjgbhasboxfh.supabase.co';
+const defaultKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_hCm0ONw6mBihfXHHW23wfQ_-aGIA4uX';
 
 let supabase = null;
 const storedUrl = localStorage.getItem('supabase_url');
