@@ -3127,7 +3127,11 @@ function App() {
     
     if (isEmail) {
       // 1. AUTENTICACIÓN POR CORREO ELECTRÓNICO (SUPABASE AUTH)
-      const supabaseClient = getSupabaseClient();
+      let supabaseClient = getSupabaseClient();
+      if (!supabaseClient) {
+        reinitSupabase();
+        supabaseClient = getSupabaseClient();
+      }
       if (!supabaseClient) {
         setLoginError('Error de red: no se pudo inicializar la base de datos.');
         return;
@@ -3225,7 +3229,11 @@ function App() {
       // clave de servicio, y solo devuelve un perfil seguro (sin la contraseña)
       // si coincide. La columna `password` queda bloqueada para la clave pública
       // (ver migración SQL de bloqueo de columna).
-      const supabaseClient = getSupabaseClient();
+      let supabaseClient = getSupabaseClient();
+      if (!supabaseClient) {
+        reinitSupabase();
+        supabaseClient = getSupabaseClient();
+      }
       if (!supabaseClient) {
         setLoginError('Error de red: no se pudo inicializar la base de datos.');
         return;
@@ -3237,7 +3245,14 @@ function App() {
         });
 
         if (fnError) {
-          setLoginError('Error de red al verificar el usuario. Comprueba tu conexión e inténtalo de nuevo.');
+          let errorMsg = 'Error al verificar el usuario. Comprueba tu conexión o tus credenciales.';
+          try {
+            if (fnError.context && typeof fnError.context.json === 'function') {
+              const errBody = await fnError.context.json();
+              if (errBody && errBody.error) errorMsg = errBody.error;
+            }
+          } catch (_) {}
+          setLoginError(errorMsg);
           return;
         }
 
@@ -3245,6 +3260,12 @@ function App() {
           foundUser = fnResult.user;
           const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
           saveUsers(updatedUsers);
+        } else if (fnResult && fnResult.error) {
+          setLoginError(fnResult.error);
+          return;
+        } else if (!foundUser) {
+          setLoginError('Usuario o contraseña incorrectos.');
+          return;
         }
       } catch (err) {
         console.error("Error llamando a verify-login:", err);

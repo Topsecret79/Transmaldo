@@ -5,17 +5,26 @@ const defaultUrl = import.meta.env.VITE_SUPABASE_URL || 'https://neskvzjfwjgbhas
 const defaultKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_hCm0ONw6mBihfXHHW23wfQ_-aGIA4uX';
 
 let supabase = null;
-const storedUrl = localStorage.getItem('supabase_url');
-const storedKey = localStorage.getItem('supabase_key');
+let storedUrl = null;
+let storedKey = null;
+try {
+  storedUrl = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_url') : null;
+  storedKey = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_key') : null;
+} catch (e) {}
 
-const activeUrl = storedUrl === 'none' ? null : (storedUrl || defaultUrl);
-const activeKey = storedUrl === 'none' ? null : (storedKey || defaultKey);
+const activeUrl = (storedUrl && storedUrl !== 'none') ? storedUrl : defaultUrl;
+const activeKey = (storedKey && storedKey !== 'none') ? storedKey : defaultKey;
 
 if (activeUrl && activeKey) {
   try {
     supabase = createClient(activeUrl, activeKey);
   } catch (e) {
     console.error("Error initializing Supabase client:", e);
+    try {
+      supabase = createClient(defaultUrl, defaultKey);
+    } catch (err2) {
+      console.error("Critical fallback failed:", err2);
+    }
   }
 }
 
@@ -105,6 +114,26 @@ const fleetopsClient = {
 };
 
 export function getSupabaseClient() {
+  if (!supabase) {
+    try {
+      let sUrl = null;
+      let sKey = null;
+      try {
+        sUrl = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_url') : null;
+        sKey = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_key') : null;
+      } catch (_) {}
+      const u = (sUrl && sUrl !== 'none') ? sUrl : defaultUrl;
+      const k = (sKey && sKey !== 'none') ? sKey : defaultKey;
+      supabase = createClient(u, k);
+    } catch (e) {
+      console.error("Error creating Supabase client:", e);
+      try {
+        supabase = createClient(defaultUrl, defaultKey);
+      } catch (err2) {
+        console.error("Critical fallback failed:", err2);
+      }
+    }
+  }
   return supabase;
 }
 
@@ -228,11 +257,15 @@ export async function reinitSupabase(force = false) {
   if (isSyncing || isSaving > 0) return;
   isSyncing = true;
   try {
-    const url = localStorage.getItem('supabase_url');
-    const key = localStorage.getItem('supabase_key');
+    let url = null;
+    let key = null;
+    try {
+      url = localStorage.getItem('supabase_url');
+      key = localStorage.getItem('supabase_key');
+    } catch (_) {}
     
-    const activeUrl = url === 'none' ? null : (url || defaultUrl);
-    const activeKey = url === 'none' ? null : (key || defaultKey);
+    const activeUrl = (url && url !== 'none') ? url : defaultUrl;
+    const activeKey = (key && key !== 'none') ? key : defaultKey;
     
     if (activeUrl && activeKey) {
       try {
