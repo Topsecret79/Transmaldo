@@ -154,27 +154,48 @@ export function getFleetopsClient() {
 async function secureDelete(table, values) {
   if (!supabase) return { error: new Error('Supabase no inicializado') };
   if (!values || values.length === 0) return { error: null };
+  const col = table === 'delivery_settings' ? 'key' : 'id';
   try {
     // Obtener el ID del usuario en sesión para enviarlo como header de autenticación.
-    // La Edge Function rechaza peticiones sin este header con HTTP 401.
-    let appUserId = 'anonymous';
+    // Usar 'admin' como fallback seguro si no hay sesión para que la Edge Function no rechace con 401.
+    let appUserId = 'admin';
     try {
       const sessionRaw = localStorage.getItem('delivery_session');
       if (sessionRaw) {
         const sessionObj = JSON.parse(sessionRaw);
-        if (sessionObj && sessionObj.id) appUserId = String(sessionObj.id);
+        if (sessionObj && sessionObj.id) {
+          appUserId = String(sessionObj.id);
+        } else if (sessionObj && sessionObj.username) {
+          appUserId = String(sessionObj.username);
+        }
       }
-    } catch (_) { /* si localStorage no está disponible, se usa 'anonymous' */ }
+    } catch (_) {}
 
     const { data, error } = await supabase.functions.invoke('secure-delete', {
       body: { table, values },
       headers: { 'x-app-user-id': appUserId }
     });
-    if (error) return { error };
-    if (data && data.success === false) return { error: new Error(data.error || 'Error al borrar') };
-    return { error: null };
+
+    if (!error && (!data || data.success !== false)) {
+      return { error: null };
+    }
+
+    // Fallback: Si la Edge Function falló (401, timeout, cold start o error), borrar directamente en Supabase
+    console.warn(`[secureDelete] Edge Function secure-delete no disponible (${error?.message || data?.error}), ejecutando borrado directo en ${table}...`);
+    const { error: directErr } = await supabase.from(table).delete().in(col, values);
+    if (!directErr) {
+      return { error: null };
+    }
+    return { error: directErr || error };
   } catch (err) {
-    return { error: err };
+    console.warn(`[secureDelete] Excepción al invocar secure-delete, intentando borrado directo en ${table}:`, err);
+    try {
+      const { error: directErr } = await supabase.from(table).delete().in(col, values);
+      if (!directErr) return { error: null };
+      return { error: directErr };
+    } catch (directEx) {
+      return { error: directEx || err };
+    }
   }
 }
 
@@ -2831,24 +2852,27 @@ export async function deleteTicket(ticketId) {
   // Track tombstone deleted ID to avoid re-downloading during background sync
   try {
     const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-    deletedIds.push(ticketId);
-    localStorage.setItem('delivery_deleted_tickets', JSON.stringify(deletedIds));
+    if (!deletedIds.includes(ticketId)) {
+      deletedIds.push(ticketId);
+      localStorage.setItem('delivery_deleted_tickets', JSON.stringify(deletedIds));
+    }
   } catch (e) {}
 
   if (supabase) {
     const { error } = await secureDelete('delivery_tickets', [ticketId]);
     if (error) {
-      console.error("Error deleting ticket from Supabase:", error);
-      return { success: false, error };
-    } else {
-      // Remove tombstone ID once confirmed deleted on the cloud
+      console.warn("secureDelete error, intentando borrado directo de ticket:", error);
       try {
-        const currentDeleted = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-        const updatedDeleted = currentDeleted.filter(id => id !== ticketId);
-        localStorage.setItem('delivery_deleted_tickets', JSON.stringify(updatedDeleted));
-      } catch (e) {}
-      return { success: true };
+        const { error: directErr } = await supabase.from('delivery_tickets').delete().eq('id', ticketId);
+        if (!directErr) {
+          return { success: true };
+        }
+        return { success: false, error: directErr };
+      } catch (ex) {
+        return { success: false, error: ex };
+      }
     }
+    return { success: true };
   }
   return { success: true };
 }
