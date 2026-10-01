@@ -2009,9 +2009,9 @@ function App() {
     if (currentUser.role === 'repartidor') {
       return t.furgoId === currentUser.id;
     }
-    // Admin role: see tickets of their own repartidores
+    // Admin role: see tickets of their own repartidores or created directly by them
     const allowedFurgoIds = activeRepartidores.map(r => r.id);
-    return allowedFurgoIds.includes(t.furgoId);
+    return allowedFurgoIds.includes(t.furgoId) || t.createdBy === currentUser.id;
   });
 
   const visibleShifts = shifts.filter(s => {
@@ -7692,9 +7692,12 @@ function App() {
     // Antes, !t.status (null/undefined) se contaba como éxito, inflando artificialmente
     // los totales de facturación con tickets que nunca tuvieron estado asignado.
     const successTickets = filteredTickets.filter(t => t.status === 'success');
+    const activeFurgoIds = activeRepartidores.map(u => u.id);
+    const ticketFurgoIds = [...new Set(filteredTickets.map(t => t.furgoId).filter(Boolean))];
+    const combinedFurgos = [...new Set([...activeFurgoIds, ...ticketFurgoIds])];
     const furgos = billingFilterFurgo !== 'all'
-      ? activeRepartidores.filter(u => u.id === billingFilterFurgo).map(u => u.id)
-      : activeRepartidores.map(u => u.id);
+      ? combinedFurgos.filter(u => u === billingFilterFurgo)
+      : (currentUser?.role === 'superadmin' ? combinedFurgos : activeFurgoIds);
 
     let totalKms = 0;
     furgos.forEach(fid => {
@@ -20793,9 +20796,12 @@ function App() {
     };
 
     const successTickets = filteredAdminTickets.filter(t => t.status === 'success'); // Fix A-9
+    const activeFurgoIds = activeRepartidores.map(u => u.id);
+    const ticketFurgoIds = [...new Set(filteredAdminTickets.map(t => t.furgoId).filter(Boolean))];
+    const combinedFurgos = [...new Set([...activeFurgoIds, ...ticketFurgoIds])];
     const furgos = billingFilterFurgo !== 'all'
-      ? activeRepartidores.filter(u => u.id === billingFilterFurgo).map(u => u.id)
-      : activeRepartidores.map(u => u.id);
+      ? combinedFurgos.filter(u => u === billingFilterFurgo)
+      : (currentUser?.role === 'superadmin' ? combinedFurgos : activeFurgoIds);
 
     const furgoData = furgos.reduce((acc, fid) => {
       const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid);
@@ -22377,7 +22383,7 @@ function App() {
                   type="button"
                   className="btn btn-secondary btn-small"
                   style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-10-01' && adminEndDate === '2026-10-31' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
-                  onClick={() => { setAdminStartDate('2026-10-01'); setAdminEndDate('2026-10-31'); }}
+                  onClick={() => { setAdminStartDate('2026-10-01'); setAdminEndDate('2026-10-31'); setTimeout(() => loadDataRef.current(), 10); }}
                 >
                   Octubre 2026
                 </button>
@@ -22385,7 +22391,7 @@ function App() {
                   type="button"
                   className="btn btn-secondary btn-small"
                   style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-09-01' && adminEndDate === '2026-09-30' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
-                  onClick={() => { setAdminStartDate('2026-09-01'); setAdminEndDate('2026-09-30'); }}
+                  onClick={() => { setAdminStartDate('2026-09-01'); setAdminEndDate('2026-09-30'); setTimeout(() => loadDataRef.current(), 10); }}
                 >
                   Septiembre 2026
                 </button>
@@ -22393,7 +22399,7 @@ function App() {
                   type="button"
                   className="btn btn-secondary btn-small"
                   style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-08-01' && adminEndDate === '2026-08-31' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
-                  onClick={() => { setAdminStartDate('2026-08-01'); setAdminEndDate('2026-08-31'); }}
+                  onClick={() => { setAdminStartDate('2026-08-01'); setAdminEndDate('2026-08-31'); setTimeout(() => loadDataRef.current(), 10); }}
                 >
                   Agosto 2026
                 </button>
@@ -22401,7 +22407,7 @@ function App() {
                   type="button"
                   className="btn btn-secondary btn-small"
                   style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-07-01' && adminEndDate === '2026-07-31' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
-                  onClick={() => { setAdminStartDate('2026-07-01'); setAdminEndDate('2026-07-31'); }}
+                  onClick={() => { setAdminStartDate('2026-07-01'); setAdminEndDate('2026-07-31'); setTimeout(() => loadDataRef.current(), 10); }}
                 >
                   Julio 2026
                 </button>
@@ -22409,7 +22415,7 @@ function App() {
                   type="button"
                   className="btn btn-secondary btn-small"
                   style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-06-01' && adminEndDate === '2026-06-30' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
-                  onClick={() => { setAdminStartDate('2026-06-01'); setAdminEndDate('2026-06-30'); }}
+                  onClick={() => { setAdminStartDate('2026-06-01'); setAdminEndDate('2026-06-30'); setTimeout(() => loadDataRef.current(), 10); }}
                 >
                   Junio 2026
                 </button>
@@ -22417,7 +22423,7 @@ function App() {
                   type="button"
                   className="btn btn-secondary btn-small"
                   style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-06-01' && adminEndDate === '2026-10-31' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
-                  onClick={() => { setAdminStartDate('2026-06-01'); setAdminEndDate('2026-10-31'); }}
+                  onClick={() => { setAdminStartDate('2026-06-01'); setAdminEndDate('2026-10-31'); setTimeout(() => loadDataRef.current(), 10); }}
                 >
                   Todo 2026 (Jun - Oct)
                 </button>

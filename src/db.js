@@ -2024,8 +2024,24 @@ export async function saveTariffs(tariffs) {
 }
 
 
+// Memoria en RAM para mantener tickets históricos consultados bajo demanda.
+// Evita que los tickets de meses pasados (como Julio o Junio) se pierdan si
+// localStorage alcanza su límite de cuota (típicamente 5MB en navegadores móviles).
+const inMemoryHistoricalTickets = new Map();
+
+export function getInMemoryHistoricalTickets() {
+  return Array.from(inMemoryHistoricalTickets.values());
+}
+
 export function safeSaveTickets(tickets) {
   if (!Array.isArray(tickets)) return false;
+  // Sincronizar memoria RAM con la colección de tickets
+  tickets.forEach(t => {
+    if (t && t.id) {
+      inMemoryHistoricalTickets.set(t.id, t);
+    }
+  });
+
   try {
     localStorage.setItem('delivery_tickets', JSON.stringify(tickets));
     return true;
@@ -2035,7 +2051,7 @@ export function safeSaveTickets(tickets) {
     const trimmed = tickets.filter(t => t && (t._syncStatus === 'pending' || (t.date && t.date >= cutoff45)));
     try {
       localStorage.setItem('delivery_tickets', JSON.stringify(trimmed));
-      console.log(`Trimmed local tickets cache from ${tickets.length} to ${trimmed.length} items`);
+      console.log(`Trimmed local tickets cache from ${tickets.length} to ${trimmed.length} items (full historical remains in memory: ${inMemoryHistoricalTickets.size} items)`);
       return true;
     } catch (err2) {
       console.warn("Second attempt failed, emergency trimming to last 30 days...", err2);
@@ -2065,6 +2081,7 @@ export async function fetchHistoricalTickets(startDate, endDate) {
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date', { ascending: false })
+        .order('id', { ascending: true })
         .range(from, from + pageSize - 1);
       if (error) {
         console.error("Error fetching historical tickets:", error);
@@ -2124,6 +2141,13 @@ export async function loadHistoricalTicketsForPeriod(startDate, endDate) {
       deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
     } catch (e) {}
 
+    // 1. Guardar de forma inmediata en la caché de memoria RAM
+    historical.forEach(h => {
+      if (h && h.id && !deletedIds.includes(h.id)) {
+        inMemoryHistoricalTickets.set(h.id, h);
+      }
+    });
+
     const current = getTickets();
     const currentMap = new Map();
     current.forEach(t => { if (t && t.id) currentMap.set(t.id, t); });
@@ -2145,15 +2169,40 @@ export async function loadHistoricalTicketsForPeriod(startDate, endDate) {
 
 export function getTickets() {
   initDB();
-  // Fix: un valor corrupto en localStorage (o ausente, donde JSON.parse(null)
-  // devuelve null en vez de un array) rompía todo lo que llama a getTickets()
-  // esperando un array (.map/.filter/.forEach) y podía tumbar pantallas enteras.
+  let local = [];
   try {
-    return JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+    local = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
   } catch (e) {
     console.error('Error parsing delivery_tickets:', e);
-    return [];
+    local = [];
   }
+
+  let deletedIds = [];
+  try {
+    deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+  } catch (e) {}
+
+  if (inMemoryHistoricalTickets.size === 0) {
+    return Array.isArray(local) ? local.filter(t => t && t.id && !deletedIds.includes(t.id)) : [];
+  }
+
+  const mergedMap = new Map();
+  // 1. Cargar tickets de la memoria RAM (histórico completo en sesión)
+  inMemoryHistoricalTickets.forEach((t, id) => {
+    if (t && id && !deletedIds.includes(id)) {
+      mergedMap.set(id, t);
+    }
+  });
+  // 2. Sobrescribir con tickets locales (pueden contener estados recientes o pendientes)
+  if (Array.isArray(local)) {
+    local.forEach(t => {
+      if (t && t.id && !deletedIds.includes(t.id)) {
+        mergedMap.set(t.id, t);
+      }
+    });
+  }
+
+  return Array.from(mergedMap.values());
 }
 
 export async function saveTickets(tickets) {
@@ -2845,6 +2894,7 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
 // en Supabase. Ahora es async y devuelve {success, error} para que quien llama
 // pueda confirmar antes de dar el borrado por hecho.
 export async function deleteTicket(ticketId) {
+  inMemoryHistoricalTickets.delete(ticketId);
   const tickets = getTickets();
   const filtered = tickets.filter(t => t.id !== ticketId);
   saveTickets(filtered);
@@ -2884,6 +2934,7 @@ export async function deleteTicket(ticketId) {
 // siguiente sincronización. Ahora se borran de verdad en Supabase y se registran
 // como tombstone, igual que el borrado individual de un ticket.
 export async function resetMonthlyTickets() {
+  inMemoryHistoricalTickets.clear();
   const tickets = getTickets();
   const idsToDelete = tickets.map(t => t.id).filter(Boolean);
 
