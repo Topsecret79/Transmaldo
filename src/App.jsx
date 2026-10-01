@@ -22376,6 +22376,14 @@ function App() {
                 <button
                   type="button"
                   className="btn btn-secondary btn-small"
+                  style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-10-01' && adminEndDate === '2026-10-31' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
+                  onClick={() => { setAdminStartDate('2026-10-01'); setAdminEndDate('2026-10-31'); }}
+                >
+                  Octubre 2026
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
                   style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-09-01' && adminEndDate === '2026-09-30' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
                   onClick={() => { setAdminStartDate('2026-09-01'); setAdminEndDate('2026-09-30'); }}
                 >
@@ -22408,10 +22416,10 @@ function App() {
                 <button
                   type="button"
                   className="btn btn-secondary btn-small"
-                  style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-06-01' && adminEndDate === '2026-09-30' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
-                  onClick={() => { setAdminStartDate('2026-06-01'); setAdminEndDate('2026-09-30'); }}
+                  style={{ padding: '4px 10px', fontSize: '0.78rem', background: adminStartDate === '2026-06-01' && adminEndDate === '2026-10-31' ? 'var(--primary)' : 'rgba(255,255,255,0.06)', color: '#fff' }}
+                  onClick={() => { setAdminStartDate('2026-06-01'); setAdminEndDate('2026-10-31'); }}
                 >
-                  Todo 2026 (Jun - Sep)
+                  Todo 2026 (Jun - Oct)
                 </button>
               </div>
             </div>
