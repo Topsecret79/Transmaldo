@@ -209,21 +209,17 @@ let realtimeChannel = null;
 // realmente sobre esa tabla.
 let syncDebounceTimer = null;
 let syncDebouncePendingTickets = true;
-const SYNC_DEBOUNCE_MS = 1200;
+const SYNC_DEBOUNCE_MS = 500;
 
 function scheduleSyncFromCloud(changedTable) {
-  // Siempre que haya cambios en delivery_tickets o delivery_shifts, incluir tickets
-  if (changedTable === 'delivery_tickets' || changedTable === 'delivery_shifts' || changedTable === 'delivery_settings') {
-    syncDebouncePendingTickets = true;
-  }
+  syncDebouncePendingTickets = true;
   if (syncDebounceTimer) {
     clearTimeout(syncDebounceTimer);
   }
   syncDebounceTimer = setTimeout(() => {
-    const includeTickets = syncDebouncePendingTickets;
     syncDebounceTimer = null;
     syncDebouncePendingTickets = true;
-    syncFromCloud(includeTickets);
+    syncFromCloud(true);
   }, SYNC_DEBOUNCE_MS);
 }
 
@@ -389,7 +385,10 @@ export function onDataSync(callback) {
 
 function notifySync() {
   if (onDataSyncCallback) {
-    onDataSyncCallback();
+    try { onDataSyncCallback(); } catch (e) { console.error("Error in onDataSyncCallback:", e); }
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('delivery-data-synced'));
   }
 }
 
@@ -2019,10 +2018,23 @@ export function getInMemoryHistoricalTickets() {
 
 export function safeSaveTickets(tickets) {
   if (!Array.isArray(tickets)) return false;
+  
+  let deletedIds = [];
+  try {
+    deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
+  } catch (e) {}
+  const deletedStrIds = deletedIds.map(String);
+
   // Sincronizar memoria RAM con la colección de tickets
   tickets.forEach(t => {
-    if (t && t.id) {
-      inMemoryHistoricalTickets.set(t.id, t);
+    if (t && t.id !== undefined && t.id !== null) {
+      const strId = String(t.id);
+      if (deletedStrIds.includes(strId)) {
+        inMemoryHistoricalTickets.delete(strId);
+        inMemoryHistoricalTickets.delete(t.id);
+      } else {
+        inMemoryHistoricalTickets.set(strId, t);
+      }
     }
   });
 
@@ -2079,7 +2091,7 @@ export async function fetchHistoricalTickets(startDate, endDate) {
     return results.map(t => {
       const parsedN = t.notes ? parseTicketNotes(t.notes) : {};
       return {
-        id: t.id,
+        id: String(t.id),
         date: t.date,
         furgoId: t.furgo_id,
         furgoLabel: t.furgo_label,
@@ -2126,23 +2138,25 @@ export async function loadHistoricalTicketsForPeriod(startDate, endDate) {
     try {
       deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
     } catch (e) {}
+    const deletedStrIds = deletedIds.map(String);
 
     // 1. Guardar de forma inmediata en la caché de memoria RAM
     historical.forEach(h => {
-      if (h && h.id && !deletedIds.includes(h.id)) {
-        inMemoryHistoricalTickets.set(h.id, h);
+      if (h && h.id !== undefined && h.id !== null && !deletedStrIds.includes(String(h.id))) {
+        inMemoryHistoricalTickets.set(String(h.id), h);
       }
     });
 
     const current = getTickets();
     const currentMap = new Map();
-    current.forEach(t => { if (t && t.id) currentMap.set(t.id, t); });
+    current.forEach(t => { if (t && t.id !== undefined && t.id !== null) currentMap.set(String(t.id), t); });
 
     historical.forEach(h => {
-      if (h && h.id && !deletedIds.includes(h.id)) {
-        const existing = currentMap.get(h.id);
+      if (h && h.id !== undefined && h.id !== null && !deletedStrIds.includes(String(h.id))) {
+        const strId = String(h.id);
+        const existing = currentMap.get(strId);
         if (existing && existing._syncStatus === 'pending') return;
-        currentMap.set(h.id, h);
+        currentMap.set(strId, h);
       }
     });
 
@@ -2167,23 +2181,24 @@ export function getTickets() {
   try {
     deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
   } catch (e) {}
+  const deletedStrIds = deletedIds.map(String);
 
   if (inMemoryHistoricalTickets.size === 0) {
-    return Array.isArray(local) ? local.filter(t => t && t.id && !deletedIds.includes(t.id)) : [];
+    return Array.isArray(local) ? local.filter(t => t && t.id !== undefined && t.id !== null && !deletedStrIds.includes(String(t.id))) : [];
   }
 
   const mergedMap = new Map();
   // 1. Cargar tickets de la memoria RAM (histórico completo en sesión)
   inMemoryHistoricalTickets.forEach((t, id) => {
-    if (t && id && !deletedIds.includes(id)) {
-      mergedMap.set(id, t);
+    if (t && id !== undefined && id !== null && !deletedStrIds.includes(String(id))) {
+      mergedMap.set(String(id), t);
     }
   });
   // 2. Sobrescribir con tickets locales (pueden contener estados recientes o pendientes)
   if (Array.isArray(local)) {
     local.forEach(t => {
-      if (t && t.id && !deletedIds.includes(t.id)) {
-        mergedMap.set(t.id, t);
+      if (t && t.id !== undefined && t.id !== null && !deletedStrIds.includes(String(t.id))) {
+        mergedMap.set(String(t.id), t);
       }
     });
   }

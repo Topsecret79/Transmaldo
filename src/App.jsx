@@ -2248,8 +2248,8 @@ function App() {
     let lastManualRefreshAt = 0;
     const handleRefresh = async (force = false) => {
       const now = Date.now();
-      // Cooldown de 4 segundos para evitar doble disparo simultáneo de focus + visibilitychange
-      if (!force && (now - lastManualRefreshAt < 4000)) {
+      // Cooldown de 2 segundos para evitar doble disparo simultáneo
+      if (!force && (now - lastManualRefreshAt < 2000)) {
         if (mapInstanceRef.current) {
           try { mapInstanceRef.current.resize(); } catch (e) {}
         }
@@ -2262,7 +2262,7 @@ function App() {
       } catch (e) {
         console.warn("Background cloud sync error:", e);
       }
-      reinitSupabase(false);
+      reinitSupabase(force);
       if (mapInstanceRef.current) {
         try { mapInstanceRef.current.resize(); } catch (e) {}
       }
@@ -2270,8 +2270,7 @@ function App() {
 
     const handleVisibility = async () => {
       if (document.visibilityState === 'visible') {
-        // Fix iOS Safari / Android: al desbloquear la pantalla, comprobar si el canvas
-        // del mapa se perdió o se congeló. Si es así, forzamos re-montado del mapa de inmediato.
+        // Al volver a la app o desbloquear el móvil: sincronizar inmediatamente
         const isMapActive = activeTab === 'map' || activeTab === 'driver_map';
         if (isMapActive) {
           const map = mapInstanceRef.current;
@@ -2286,20 +2285,34 @@ function App() {
       }
     };
 
+    const handleStorageEvent = (e) => {
+      if (e.key && e.key.startsWith('delivery_')) {
+        loadDataRef.current();
+      }
+    };
+
+    const handleCustomSyncEvent = () => {
+      loadDataRef.current();
+    };
+
     window.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleVisibility);
+    window.addEventListener('storage', handleStorageEvent);
+    window.addEventListener('delivery-data-synced', handleCustomSyncEvent);
 
-    // Comprobación de cambios en el servidor cada 25 segundos mientras la ventana esté visible
+    // Heartbeat de sincronización en segundo plano cada 8 segundos mientras la app esté visible
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        handleRefresh(true);
+        handleRefresh(false);
       }
-    }, 25 * 1000);
+    }, 8 * 1000);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleVisibility);
+      window.removeEventListener('storage', handleStorageEvent);
+      window.removeEventListener('delivery-data-synced', handleCustomSyncEvent);
     };
   }, []);
 
@@ -11190,6 +11203,7 @@ function App() {
                   setIsSyncingMap(true);
                   try {
                     await syncFromCloud(true);
+                    await reinitSupabase(true);
                     loadData();
                     if (mapInstanceRef.current) {
                       try { mapInstanceRef.current.resize(); } catch(e){}
@@ -23247,6 +23261,7 @@ function App() {
                     try {
                       triggerAlert('Sincronizando con el servidor...', 'info');
                       await syncFromCloud(true);
+                      await reinitSupabase(true);
                       loadData();
                       triggerAlert('Lista de turnos actualizada ✓');
                     } catch (e) {
@@ -23478,6 +23493,7 @@ function App() {
                     setIsSyncingMap(true);
                     try {
                       await syncFromCloud(true);
+                      await reinitSupabase(true);
                       loadData();
                       if (mapInstanceRef.current) {
                         try { mapInstanceRef.current.resize(); } catch(e){}
@@ -25145,6 +25161,7 @@ function App() {
               try {
                 triggerAlert('Sincronizando con el servidor...', 'info');
                 await syncFromCloud(true);
+                await reinitSupabase(true);
                 loadDataRef.current();
                 triggerAlert('Sincronización completada ✓');
               } catch (e) {
