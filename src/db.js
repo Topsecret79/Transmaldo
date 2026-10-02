@@ -261,8 +261,48 @@ let lastFullReinitAt = 0;
 const FORCED_RECONNECT_COOLDOWN_MS = 5000; // 5 segundos
 let lastForcedReconnectAt = 0;
 
+// Timestamp del último ping exitoso al canal Realtime (usado para detectar canales
+// "zombis" en iOS/Android: el estado dice 'joined' pero el WebSocket está muerto).
+let lastRealtimePingOkAt = 0;
+const REALTIME_STALE_THRESHOLD_MS = 30 * 1000; // 30 segundos sin confirmación = posible zombie
+
 function isRealtimeChannelHealthy() {
-  return !!(realtimeChannel && realtimeChannel.state === 'joined');
+  if (!(realtimeChannel && realtimeChannel.state === 'joined')) return false;
+  // Si nunca hemos recibido confirmación de que el canal estaba vivo, o la última
+  // fue hace más de 30s, asumimos que puede ser un canal zombi (caso típico iOS Safari)
+  const now = Date.now();
+  if (lastRealtimePingOkAt > 0 && (now - lastRealtimePingOkAt) > REALTIME_STALE_THRESHOLD_MS) {
+    return false; // forzar reinit
+  }
+  return true;
+}
+
+// Verifica si Supabase responde haciendo una query mínima (count).
+// Si falla, fuerza reinitSupabase(true). Exportada para uso desde App.jsx.
+export async function checkAndReconnectIfNeeded() {
+  if (!supabase) { await reinitSupabase(true); return; }
+  const channelHealthy = isRealtimeChannelHealthy();
+  if (!channelHealthy) {
+    console.log('Canal Realtime no saludable — forzando reconexión...');
+    await reinitSupabase(true);
+    return;
+  }
+  // Ping real: query mínima para verificar que la conexión de red sigue viva
+  try {
+    const { error } = await supabase
+      .from('delivery_settings')
+      .select('key', { count: 'exact', head: true })
+      .limit(1);
+    if (!error) {
+      lastRealtimePingOkAt = Date.now();
+    } else {
+      console.warn('Ping Supabase falló:', error.message, '— forzando reconexión');
+      await reinitSupabase(true);
+    }
+  } catch (e) {
+    console.warn('Ping Supabase excepción:', e, '— forzando reconexión');
+    await reinitSupabase(true);
+  }
 }
 
 export async function reinitSupabase(force = false) {
@@ -337,6 +377,7 @@ export async function reinitSupabase(force = false) {
               // la causa principal del exceso de egress. Ahora se agrupan los cambios que llegan
               // en ráfaga (p.ej. varios tickets seguidos) en una sola sincronización, y solo se
               // vuelve a pedir la tabla de tickets si de verdad hubo un cambio en delivery_tickets.
+              lastRealtimePingOkAt = Date.now(); // canal confirmado vivo al recibir un mensaje real
               scheduleSyncFromCloud(payload.table);
             })
             .subscribe((status) => {
@@ -349,6 +390,10 @@ export async function reinitSupabase(force = false) {
               // en cuanto ocurren, así que se reconecta de inmediato al detectarlos, en
               // vez de esperar a que el usuario refresque la página a mano o pasen los
               // 3 minutos del temporizador de respaldo.
+              if (status === 'SUBSCRIBED') {
+                lastRealtimePingOkAt = Date.now(); // canal confirmado vivo al suscribirse
+                console.log('Canal Realtime conectado correctamente ✓');
+              }
               if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
                 const now = Date.now();
                 if (now - lastForcedReconnectAt > FORCED_RECONNECT_COOLDOWN_MS) {

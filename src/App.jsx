@@ -471,7 +471,8 @@ import {
   getPayrollDayRates,
   savePayrollDayRates,
   getPayrollAdvances,
-  savePayrollAdvances
+  savePayrollAdvances,
+  checkAndReconnectIfNeeded
 } from './db';
 
 
@@ -2270,7 +2271,10 @@ function App() {
 
     const handleVisibility = async () => {
       if (document.visibilityState === 'visible') {
-        // Al volver a la app o desbloquear el móvil: sincronizar inmediatamente
+        // Al volver a la app o desbloquear el móvil: primero verificar si el canal
+        // Realtime sigue vivo (en iOS Safari puede quedar como "zombi" — .state
+        // dice 'joined' pero el WebSocket está muerto). checkAndReconnectIfNeeded
+        // hace un ping real a Supabase y fuerza reconexión si falla.
         const isMapActive = activeTab === 'map' || activeTab === 'driver_map';
         if (isMapActive) {
           const map = mapInstanceRef.current;
@@ -2281,6 +2285,8 @@ function App() {
             try { map.resize(); } catch (e) {}
           }
         }
+        // Verificar conexión y reconectar si el canal está muerto (fix canal zombi móvil)
+        await checkAndReconnectIfNeeded();
         await handleRefresh(true);
       }
     };
@@ -2300,12 +2306,15 @@ function App() {
     window.addEventListener('storage', handleStorageEvent);
     window.addEventListener('delivery-data-synced', handleCustomSyncEvent);
 
-    // Heartbeat de sincronización en segundo plano cada 8 segundos mientras la app esté visible
+    // Heartbeat de sincronización en segundo plano cada 10 segundos mientras la app esté visible.
+    // Usa force=true para SIEMPRE sincronizar, sin cooldown — en móvil el intervalo puede
+    // haberse saltado varias veces si el SO suspendió los timers, así que no queremos perder
+    // la primera oportunidad de sincronizar cuando el usuario retoma la app.
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        handleRefresh(false);
+        handleRefresh(true);
       }
-    }, 8 * 1000);
+    }, 10 * 1000);
 
     return () => {
       clearInterval(interval);
