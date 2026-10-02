@@ -775,7 +775,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       const cloudTickets = tickets.map(t => {
         const parsedN = t.notes ? parseTicketNotes(t.notes) : {};
         return {
-          id: t.id,
+          id: String(t.id),
           date: t.date,
           furgoId: t.furgo_id,
           furgoLabel: t.furgo_label,
@@ -789,6 +789,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           provider: t.provider || (t.tasks && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')) ? 'dormity' : 'eci'),
           source: t.source || parsedN.source || null,
           originalRouteLabel: t.original_route_label || parsedN.originalRouteLabel || null,
+          serviceType: parsedN.serviceType || null,
+          timeSlot: parsedN.timeSlot || null,
           dormityRouteType: t.dormity_route_type || null,
           dormityServDiaOption: t.dormity_serv_dia_option || null,
           tasks: Array.isArray(t.tasks) ? t.tasks : [],
@@ -816,13 +818,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
       } catch (e) {}
 
-      // Fix: si el borrado remoto de un ticket falló una vez (red inestable), nunca
-      // se reintentaba automáticamente — el ticket solo quedaba oculto en ESTE
-      // dispositivo gracias al tombstone local. Un dispositivo nuevo (reinstalación,
-      // caché borrada) no tiene ese tombstone y podía ver "revivir" un ticket que ya
-      // se había borrado hace tiempo. Se reintenta aquí el borrado remoto pendiente
-      // en cada sincronización, no solo la vez que se pidió borrar.
-      const stillPendingDeleteIds = cloudTickets.filter(t => t && deletedIds.includes(t.id)).map(t => t.id);
+      const deletedStrIds = deletedIds.map(String);
+      const stillPendingDeleteIds = cloudTickets.filter(t => t && deletedStrIds.includes(String(t.id))).map(t => t.id);
       if (stillPendingDeleteIds.length > 0) {
         secureDelete('delivery_tickets', stillPendingDeleteIds).then(({ error }) => {
           if (error) {
@@ -830,38 +827,28 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           } else {
             try {
               const current = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-              localStorage.setItem('delivery_deleted_tickets', JSON.stringify(current.filter(id => !stillPendingDeleteIds.includes(id))));
+              localStorage.setItem('delivery_deleted_tickets', JSON.stringify(current.filter(id => !stillPendingDeleteIds.map(String).includes(String(id)))));
             } catch (e) {}
           }
         });
       }
 
       const pendingLocal = localCurrent.filter(t => t && t._syncStatus === 'pending');
-      const filteredCloud = cloudTickets.filter(t => t && !deletedIds.includes(t.id));
+      const filteredCloud = cloudTickets.filter(t => t && !deletedStrIds.includes(String(t.id)));
 
-      // Sincronización de tickets y orden de paradas:
-      // 1. Si un ticket local está marcado como 'pending' en este dispositivo,
-      //    significa que este dispositivo está activamente guardando cambios que se están
-      //    subiendo a Supabase, por lo que se preserva el ticket local para evitar condiciones de carrera.
-      // 2. Si la nube (cloudT) tiene routeOrder definido, la nube es la fuente canónica de
-      //    verdad para todos los dispositivos (móviles de choferes, panel de administración, etc.).
-      // 3. Si la nube no tuviera routeOrder pero el local sí, se mantiene el local como respaldo.
       const localById = {};
-      localCurrent.forEach(t => { if (t && t.id) localById[t.id] = t; });
+      localCurrent.forEach(t => { if (t && t.id !== undefined && t.id !== null) localById[String(t.id)] = t; });
 
       const mergedTickets = filteredCloud.map(cloudT => {
-        const localT = localById[cloudT.id];
+        const localT = localById[String(cloudT.id)];
         if (!localT) return cloudT;
 
-        // Si el ticket local está pendiente de sync en este dispositivo, tiene prioridad total
         if (localT._syncStatus === 'pending') return localT;
 
-        // La nube es la fuente canónica de verdad para todos los dispositivos sincronizados
         if (cloudT.routeOrder !== undefined && cloudT.routeOrder !== null) {
           return cloudT;
         }
 
-        // Respaldo de seguridad: si la nube no tuviera routeOrder pero el local sí
         if (localT.routeOrder !== undefined && localT.routeOrder !== null) {
           return { ...cloudT, routeOrder: localT.routeOrder };
         }
@@ -869,9 +856,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         return cloudT;
       });
 
-      // Añadir tickets locales pendientes que no estén en la nube aún
       pendingLocal.forEach(localT => {
-        const cloudIndex = mergedTickets.findIndex(t => t.id === localT.id);
+        const cloudIndex = mergedTickets.findIndex(t => String(t.id) === String(localT.id));
         if (cloudIndex !== -1) {
           mergedTickets[cloudIndex] = localT;
         } else {
@@ -879,11 +865,9 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       });
 
-      // Preservar tickets históricos locales que sean anteriores a syncCutoffDate
-      // para no borrarlos de localStorage al hacer sincronizaciones rutinarias de los últimos 15 días
-      const historicalLocal = localCurrent.filter(t => t && t.date && t.date < syncCutoffDate && !deletedIds.includes(t.id));
+      const historicalLocal = localCurrent.filter(t => t && t.date && t.date < syncCutoffDate && !deletedStrIds.includes(String(t.id)));
       historicalLocal.forEach(histT => {
-        const existingIndex = mergedTickets.findIndex(t => t.id === histT.id);
+        const existingIndex = mergedTickets.findIndex(t => String(t.id) === String(histT.id));
         if (existingIndex === -1) {
           mergedTickets.push(histT);
         }
@@ -2111,6 +2095,8 @@ export async function fetchHistoricalTickets(startDate, endDate) {
         provider: t.provider || (Array.isArray(t.tasks) && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')) ? 'dormity' : 'eci'),
         source: t.source || parsedN.source || null,
         originalRouteLabel: t.original_route_label || parsedN.originalRouteLabel || null,
+        serviceType: parsedN.serviceType || null,
+        timeSlot: parsedN.timeSlot || null,
         dormityRouteType: t.dormity_route_type || null,
         dormityServDiaOption: t.dormity_serv_dia_option || null,
         tasks: Array.isArray(t.tasks) ? t.tasks : [],
@@ -2761,7 +2747,7 @@ export async function updateTicket(updatedTicket) {
     };
   });
 
-  const index = tickets.findIndex(t => t.id === updatedTicket.id);
+  const index = tickets.findIndex(t => String(t.id) === String(updatedTicket.id));
   if (index !== -1) {
     const users = getUsers();
     const activeShift = (JSON.parse(localStorage.getItem('delivery_shifts')) || [])

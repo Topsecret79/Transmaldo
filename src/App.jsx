@@ -4853,8 +4853,10 @@ function App() {
     // y limpiar el formulario — antes se asumía éxito sin comprobar la respuesta.
     setIsSubmittingTicket(true);
     try {
-      if (editingTicketId) {
-        const result = await updateTicket(ticketData);
+      const isEditMode = !!editingTicketId || (ticketData.id && tickets.some(t => String(t.id) === String(ticketData.id)));
+      if (isEditMode) {
+        const targetId = editingTicketId || ticketData.id;
+        const result = await updateTicket({ ...ticketData, id: targetId });
         if (!result || !result.success) {
           triggerAlert('No se pudo guardar el cambio (sin conexión o error del servidor). Vuelve a intentarlo.', 'error');
           return;
@@ -5741,22 +5743,7 @@ function App() {
     setTicketSource(cleanSource);
 
     // 4. Tipo de Servicio (Colores y selección)
-    let sType = ticket.serviceType || parsed.serviceType || '';
-    if (!sType || sType === 'entrega') {
-      if (parsed.cleanNotes.includes('[CUELGUE]')) {
-        sType = 'cuelgue';
-      } else if (parsed.cleanNotes.includes('[PUESTA_MARCHA]')) {
-        sType = 'puesta_marcha';
-      } else if (parsed.cleanNotes.includes('[VIP]')) {
-        sType = 'vip';
-      } else if (parsed.cleanNotes.includes('[PREFERENCIAL]')) {
-        sType = 'preferencial';
-      } else if (parsed.cleanNotes.includes('[TARDE]')) {
-        sType = 'tarde';
-      } else {
-        sType = getTicketServiceType(ticket);
-      }
-    }
+    let sType = ticket.serviceType || parsed.serviceType || getTicketServiceType(ticket);
     if (!sType || sType === 'entrega') {
       sType = 'estandar';
     }
