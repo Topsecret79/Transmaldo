@@ -2952,11 +2952,21 @@ function App() {
         return merged;
       });
 
-      // Auto-seleccionar la última ruta activa del chofer si no hay ninguna seleccionada
-      if (u && u.role === 'repartidor') {
-        const myExtractedRoutes = extractedRoutes.filter(r => r.furgoId === u.id);
-        if (myExtractedRoutes.length > 0 && !currentRouteId) {
-          const latestRoute = myExtractedRoutes[myExtractedRoutes.length - 1];
+      // Auto-seleccionar la ruta activa si no hay ninguna seleccionada
+      if (extractedRoutes.length > 0 && !currentRouteId) {
+        let latestRoute = null;
+        if (u && u.role === 'repartidor') {
+          const myExtractedRoutes = extractedRoutes.filter(r => r.furgoId === u.id);
+          if (myExtractedRoutes.length > 0) {
+            latestRoute = myExtractedRoutes[myExtractedRoutes.length - 1];
+          }
+        } else {
+          // Para admin / superadmin: seleccionar la ruta de hoy o la más reciente
+          const todayStr = new Date().toISOString().split('T')[0];
+          const todayRoutes = extractedRoutes.filter(r => r.date === todayStr);
+          latestRoute = todayRoutes.length > 0 ? todayRoutes[todayRoutes.length - 1] : extractedRoutes[extractedRoutes.length - 1];
+        }
+        if (latestRoute) {
           setCurrentRouteId(latestRoute.id);
           setTicketDate(latestRoute.date);
           setTicketRoute(latestRoute.furgoId);
@@ -19705,12 +19715,24 @@ function App() {
         {reportTickets.length === 0 ? (
           <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📋</div>
-            <div style={{ fontSize: '1.05rem', fontWeight: '600' }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: '600', color: 'var(--text-main)' }}>
               {reportFilterFurgo !== 'all' 
-                ? `No hay entregas completadas para el ${reportDate} con la furgoneta "${users.find(u => u.id === reportFilterFurgo)?.label || reportFilterFurgo}"`
-                : `No hay entregas completadas para el ${reportDate}`}
+                ? `No hay entregas finalizadas para el ${reportDate} con la furgoneta "${users.find(u => u.id === reportFilterFurgo)?.label || reportFilterFurgo}"`
+                : `No hay entregas finalizadas para el ${reportDate}`}
             </div>
-            <div style={{ fontSize: '0.85rem', marginTop: '6px' }}>Selecciona otra fecha, cambia de furgoneta o verifica que los repartos estén registrados</div>
+            {visibleTickets.filter(t => t.date === reportDate && (reportFilterFurgo === 'all' || t.furgoId === reportFilterFurgo) && (!t.status || t.status === 'pending' || t.status === 'transit')).length > 0 ? (
+              <div style={{ marginTop: '16px', padding: '14px 20px', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: '10px', color: '#c7d2fe', display: 'inline-block', maxWidth: '600px', textAlign: 'left' }}>
+                <div style={{ fontWeight: '700', color: '#818cf8', marginBottom: '4px' }}>🚚 Repartos en curso / planificados detectados:</div>
+                <div style={{ fontSize: '0.9rem' }}>
+                  Hay <strong>{visibleTickets.filter(t => t.date === reportDate && (reportFilterFurgo === 'all' || t.furgoId === reportFilterFurgo) && (!t.status || t.status === 'pending' || t.status === 'transit')).length} paradas</strong> en reparto hoy que los choferes aún no han marcado como finalizadas.
+                </div>
+                <div style={{ fontSize: '0.82rem', marginTop: '6px', opacity: 0.9 }}>
+                  Puedes ver el recorrido completo y el avance en vivo en la pestaña <strong>🗺️ Mapa de Control</strong> o en <strong>Repartos del Periodo</strong>. En este informe aparecerán automáticamente en cuanto se completen.
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.85rem', marginTop: '6px' }}>Selecciona otra fecha, cambia de furgoneta o verifica que los repartos estén registrados</div>
+            )}
           </div>
         ) : (
           <>
