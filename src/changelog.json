@@ -186,5 +186,20 @@
       "Incorporación de selector de fecha directo en la cabecera del mapa del chofer para alternar días cómodamente.",
       "Acceso directo y sugerencia inteligente de rutas en otras fechas cuando la fecha seleccionada no contenga paradas."
     ]
+  },
+  {
+    "id": "v1.7.5",
+    "date": "2026-10-03",
+    "version": "1.7.5",
+    "title": "Sincronización en tiempo real y visualización instantánea de paradas",
+    "category": "Sincronización / UI / Móvil",
+    "developer": "Antigravity AI",
+    "changes": [
+      "Insignias de estado visual en vivo (🟢 Entregado, 🔴 Fallido, 🚚 En Camino, 🟡 Pendiente) directamente en las tarjetas de paradas de la ruta activa.",
+      "Resumen en tiempo real en la cabecera de la ruta activa con recuento instantáneo de paradas hechas, fallidas y pendientes.",
+      "Filtros de furgoneta multicoincidencia (ID, nombre de ruta y etiqueta de chofer) en toda la aplicación para evitar que las paradas desaparezcan al filtrar.",
+      "Botón '☁️ Sincronizar' reforzado en cabecera móvil con recarga completa forzada de datos e histórico del día.",
+      "Auto-actualización de versión en Service Worker para móviles PWA (controllerchange) garantizando que todos los dispositivos carguen la última versión."
+    ]
   }
 ]

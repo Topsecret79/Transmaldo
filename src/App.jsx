@@ -2034,7 +2034,11 @@ function App() {
     // Search filters (for admin / superadmin)
     if (currentUser.role !== 'repartidor') {
       if (shiftFilterDate && s.date !== shiftFilterDate) return false;
-      if (shiftFilterFurgo !== 'all' && s.furgoId !== shiftFilterFurgo) return false;
+      if (shiftFilterFurgo !== 'all') {
+        const matchesFurgo = s.furgoId === shiftFilterFurgo;
+        const matchesRoute = s.routeName && (s.routeName.toLowerCase() === shiftFilterFurgo.toLowerCase() || s.routeName.toLowerCase().includes(shiftFilterFurgo.toLowerCase()));
+        if (!matchesFurgo && !matchesRoute) return false;
+      }
     }
 
     return true;
@@ -2111,6 +2115,24 @@ function App() {
       } catch (e) {
         console.error("Error parsing saved user session on mount:", e);
       }
+    }
+  }, []);
+
+  // Recarga suave automática cuando el Service Worker activa una nueva versión de la app en móvil
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      let refreshing = false;
+      const handleControllerChange = () => {
+        if (!refreshing) {
+          refreshing = true;
+          console.log('Nueva versión de la app instalada por Service Worker. Actualizando aplicación...');
+          window.location.reload();
+        }
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
+      return () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      };
     }
   }, []);
 
@@ -2577,7 +2599,14 @@ function App() {
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
         const dayTickets = tickets.filter(t => {
           if (!t || t.date !== targetDate) return false;
-          if (isAdminMap) { if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false; }
+          if (isAdminMap) {
+            if (mapFilterFurgo !== 'all') {
+              const matchesFurgo = t.furgoId === mapFilterFurgo;
+              const matchesRoute = t.routeName && (t.routeName.toLowerCase() === mapFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(mapFilterFurgo.toLowerCase()));
+              const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === mapFilterFurgo.toLowerCase());
+              if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+            }
+          }
           else { if (t.furgoId !== currentUser?.id) return false; }
           const la = parseFloat(t.lat), lo = parseFloat(t.lng);
           return t.lat != null && t.lng != null && !isNaN(la) && !isNaN(lo);
@@ -7689,7 +7718,12 @@ function App() {
     const filteredTickets = currentVisible.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
-      if (billingFilterFurgo !== 'all' && t.furgoId !== billingFilterFurgo) return false;
+      if (billingFilterFurgo !== 'all') {
+        const matchesFurgo = t.furgoId === billingFilterFurgo;
+        const matchesRoute = t.routeName && (t.routeName.toLowerCase() === billingFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(billingFilterFurgo.toLowerCase()));
+        const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === billingFilterFurgo.toLowerCase());
+        if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+      }
       // Fix A-8: aplicar filtro de proveedor igual que la pantalla de facturación.
       // Antes el Excel exportaba siempre todos los proveedores sin importar el filtro activo.
       const isDorm = t.provider === 'dormity' || (Array.isArray(t.tasks) && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')));
@@ -7851,7 +7885,12 @@ function App() {
         if (adminStartDate && t.date < adminStartDate) return false;
         if (adminEndDate && t.date > adminEndDate) return false;
       }
-      if (ticketFilterFurgo !== 'all' && t.furgoId !== ticketFilterFurgo) return false;
+      if (ticketFilterFurgo !== 'all') {
+        const matchesFurgo = t.furgoId === ticketFilterFurgo;
+        const matchesRoute = t.routeName && (t.routeName.toLowerCase() === ticketFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(ticketFilterFurgo.toLowerCase()));
+        const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === ticketFilterFurgo.toLowerCase());
+        if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+      }
       if (ticketFilterDate && t.date !== ticketFilterDate) return false;
       if (ticketFilterPostcode.trim()) {
         const queryPostcode = ticketFilterPostcode.trim();
@@ -10899,9 +10938,22 @@ function App() {
         
         return (
           <div className="glass-panel" style={{ textAlign: 'left', padding: '20px', marginTop: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', marginBottom: '15px' }}>
-              <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                📋 Paradas registradas en esta ruta ({sortedActiveRouteTickets.length})
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', marginBottom: '15px', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>📋 Paradas de esta ruta ({sortedActiveRouteTickets.length})</span>
+                <span style={{ fontSize: '0.76rem', fontWeight: '700', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  🟢 {sortedActiveRouteTickets.filter(t => t.status === 'success').length} Hechas
+                </span>
+                {sortedActiveRouteTickets.filter(t => t.status === 'failed').length > 0 && (
+                  <span style={{ fontSize: '0.76rem', fontWeight: '700', padding: '2px 8px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                    🔴 {sortedActiveRouteTickets.filter(t => t.status === 'failed').length} Fallidas
+                  </span>
+                )}
+                {sortedActiveRouteTickets.filter(t => !t.status || t.status === 'pending' || t.status === 'transit').length > 0 && (
+                  <span style={{ fontSize: '0.76rem', fontWeight: '700', padding: '2px 8px', borderRadius: '12px', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
+                    🟡 {sortedActiveRouteTickets.filter(t => !t.status || t.status === 'pending' || t.status === 'transit').length} Pendientes
+                  </span>
+                )}
               </h3>
               <button
                 type="button"
@@ -11019,6 +11071,26 @@ function App() {
                           <span style={{ fontSize: '0.88rem', fontWeight: '700', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {t.customerName}
                           </span>
+                          {t.status === 'success' && (
+                            <span className="badge badge-success" style={{ padding: '2px 7px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px' }}>
+                              🟢 Entregado
+                            </span>
+                          )}
+                          {t.status === 'failed' && (
+                            <span className="badge badge-danger" style={{ padding: '2px 7px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px' }}>
+                              🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}
+                            </span>
+                          )}
+                          {t.status === 'transit' && (
+                            <span className="badge badge-info" style={{ padding: '2px 7px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px' }}>
+                              🚚 En Camino
+                            </span>
+                          )}
+                          {(!t.status || t.status === 'pending') && (
+                            <span className="badge badge-warning" style={{ padding: '2px 7px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px' }}>
+                              🟡 Pendiente
+                            </span>
+                          )}
                           {(t.customerName || '').startsWith('Parada #') && (
                             <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '10px', fontWeight: '700' }}>
                               ⚠️ Faltan datos
@@ -19596,7 +19668,12 @@ function App() {
 
     const reportTickets = visibleTickets.filter(t => {
       if (t.date !== reportDate) return false;
-      if (reportFilterFurgo !== 'all' && t.furgoId !== reportFilterFurgo) return false;
+      if (reportFilterFurgo !== 'all') {
+        const matchesFurgo = t.furgoId === reportFilterFurgo;
+        const matchesRoute = t.routeName && (t.routeName.toLowerCase() === reportFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(reportFilterFurgo.toLowerCase()));
+        const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === reportFilterFurgo.toLowerCase());
+        if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+      }
       if (t.status === 'success') return true;
       if (t.status === 'failed') {
         const parsed = parseTicketNotes(t.notes);
@@ -20536,7 +20613,12 @@ function App() {
     const filteredAdminTickets = visibleTickets.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
       if (adminEndDate && t.date > adminEndDate) return false;
-      if (billingFilterFurgo !== 'all' && t.furgoId !== billingFilterFurgo) return false;
+      if (billingFilterFurgo !== 'all') {
+        const matchesFurgo = t.furgoId === billingFilterFurgo;
+        const matchesRoute = t.routeName && (t.routeName.toLowerCase() === billingFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(billingFilterFurgo.toLowerCase()));
+        const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === billingFilterFurgo.toLowerCase());
+        if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+      }
       const isDorm = t.provider === 'dormity' || (t.tasks && t.tasks.some(k => k.tariffId && String(k.tariffId).startsWith('DORMITY_')));
       if (billingProviderFilter === 'eci' && isDorm) return false;
       if (billingProviderFilter === 'dormity' && !isDorm) return false;
@@ -25169,8 +25251,13 @@ function App() {
               try {
                 triggerAlert('Sincronizando con el servidor...', 'info');
                 await syncFromCloud(true);
-                await reinitSupabase(true);
+                await checkAndReconnectIfNeeded();
+                const todayStr = new Date().toISOString().split('T')[0];
+                await loadHistoricalTicketsForPeriod(adminStartDate || todayStr, adminEndDate || todayStr);
                 loadDataRef.current();
+                if (mapInstanceRef.current) {
+                  try { mapInstanceRef.current.resize(); } catch (e) {}
+                }
                 triggerAlert('Sincronización completada ✓');
               } catch (e) {
                 console.error("Error sincronizando:", e);
@@ -25181,7 +25268,7 @@ function App() {
             style={{ width: 'auto', padding: '6px 10px', background: 'rgba(16, 185, 129, 0.15)', borderColor: '#10b981', color: '#6ee7b7', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '600', whiteSpace: 'nowrap' }}
             title="Sincronizar datos con el servidor ahora"
           >
-            <span>☁️</span><span className="hide-xs"> Sincronizar</span>
+            <span>☁️</span><span style={{ fontSize: '0.78rem' }}> Sincronizar</span>
           </button>
           <button 
             onClick={async () => {

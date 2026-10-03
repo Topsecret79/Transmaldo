@@ -2345,10 +2345,10 @@ export async function saveTickets(tickets) {
         // simultáneamente en otro dispositivo o pestaña — esos cambios nunca
         // llegaban a Supabase y se perdían silenciosamente.
         try {
-          const uploadedIds = new Set(pendingTickets.map(t => t.id));
+          const uploadedIds = new Set(pendingTickets.map(t => String(t.id)));
           const currentLocal = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
           const updatedLocal = currentLocal.map(t => {
-            if (t && t._syncStatus === 'pending' && uploadedIds.has(t.id)) {
+            if (t && t._syncStatus === 'pending' && uploadedIds.has(String(t.id))) {
               const { _syncStatus, ...rest } = t;
               return rest;
             }
