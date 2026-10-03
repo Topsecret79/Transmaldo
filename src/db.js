@@ -264,51 +264,146 @@ let lastForcedReconnectAt = 0;
 // Timestamp del último ping exitoso al canal Realtime (usado para detectar canales
 // "zombis" en iOS/Android: el estado dice 'joined' pero el WebSocket está muerto).
 let lastRealtimePingOkAt = 0;
-const REALTIME_STALE_THRESHOLD_MS = 30 * 1000; // 30 segundos sin confirmación = posible zombie
+const REALTIME_STALE_THRESHOLD_MS = 60 * 1000; // 60 segundos sin confirmación
 
 function isRealtimeChannelHealthy() {
   if (!(realtimeChannel && realtimeChannel.state === 'joined')) return false;
-  // Si nunca hemos recibido confirmación de que el canal estaba vivo, o la última
-  // fue hace más de 30s, asumimos que puede ser un canal zombi (caso típico iOS Safari)
   const now = Date.now();
   if (lastRealtimePingOkAt > 0 && (now - lastRealtimePingOkAt) > REALTIME_STALE_THRESHOLD_MS) {
-    return false; // forzar reinit
+    return false;
   }
   return true;
 }
 
+// Emite un evento en tiempo real a todos los demás dispositivos conectados vía Supabase Broadcast.
+// A diferencia de postgres_changes (que depende de la replicación WAL en BD), Broadcast es directo,
+// ultra-rápido (<50ms) y funciona entre clientes móviles garantizando sincronización instantánea.
+export async function broadcastRealtimeEvent(event, payload) {
+  if (!realtimeChannel) return;
+  try {
+    await realtimeChannel.send({
+      type: 'broadcast',
+      event,
+      payload
+    });
+  } catch (err) {
+    console.warn('Realtime broadcast warning:', err);
+  }
+}
+
+// Configura y suscribe el canal Realtime con soporte de Broadcast y postgres_changes
+export function setupRealtimeChannel() {
+  if (!supabase) return;
+  try {
+    if (realtimeChannel) {
+      try { supabase.removeChannel(realtimeChannel); } catch (e) {}
+    }
+
+    realtimeChannel = supabase
+      .channel('delivery-realtime-sync', { config: { broadcast: { self: false } } })
+      // 1. Escuchar cuando un chofer marca una parada (éxito/fallo/pendiente) en tiempo real
+      .on('broadcast', { event: 'ticket_status_changed' }, (msg) => {
+        const payload = msg.payload || msg;
+        console.log("⚡ Realtime Broadcast ticket_status_changed recibido:", payload);
+        lastRealtimePingOkAt = Date.now();
+        if (payload && payload.ticketId) {
+          try {
+            const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+            const idx = localTickets.findIndex(t => String(t.id) === String(payload.ticketId));
+            if (idx !== -1) {
+              localTickets[idx].status = payload.status;
+              if (payload.failureReason !== undefined) localTickets[idx].failureReason = payload.failureReason;
+              if (payload.completedLat !== undefined) localTickets[idx].completedLat = payload.completedLat;
+              if (payload.completedLng !== undefined) localTickets[idx].completedLng = payload.completedLng;
+              if (payload.completedAt !== undefined) localTickets[idx].completedAt = payload.completedAt;
+              if (payload.notes !== undefined) localTickets[idx].notes = payload.notes;
+              safeSaveTickets(localTickets);
+            }
+          } catch (e) {
+            console.error("Error aplicando ticket_status_changed inmediato:", e);
+          }
+          notifySync();
+        }
+        scheduleSyncFromCloud('delivery_tickets');
+      })
+      // 2. Escuchar cuando se guardan o modifican paradas/rutas completas
+      .on('broadcast', { event: 'tickets_updated' }, () => {
+        console.log("⚡ Realtime Broadcast tickets_updated recibido");
+        lastRealtimePingOkAt = Date.now();
+        scheduleSyncFromCloud('delivery_tickets');
+      })
+      // 3. Escuchar cuando se abre/cierra un turno
+      .on('broadcast', { event: 'shifts_updated' }, () => {
+        console.log("⚡ Realtime Broadcast shifts_updated recibido");
+        lastRealtimePingOkAt = Date.now();
+        scheduleSyncFromCloud('delivery_shifts');
+      })
+      // 4. postgres_changes como respaldo adicional
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        console.log("Realtime postgres_changes payload received:", payload);
+        lastRealtimePingOkAt = Date.now();
+        if (payload.table === 'delivery_settings') {
+          const record = payload.new || {};
+          if (record.key && record.key.startsWith('loc_')) {
+            const fid = record.key.substring(4);
+            try {
+              const val = JSON.parse(record.value);
+              const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+              locations[fid] = {
+                lat: parseFloat(val.lat),
+                lng: parseFloat(val.lng),
+                updatedAt: val.updatedAt || val.timestamp
+              };
+              localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+              window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: { fid, lat: val.lat, lng: val.lng } }));
+            } catch (e) {}
+            return;
+          }
+          if (record.key && record.key.startsWith('manual_route_')) {
+            try {
+              localStorage.setItem('delivery_' + record.key, record.value);
+              localStorage.setItem(record.key, record.value);
+              window.dispatchEvent(new CustomEvent('manual-route-status-updated', { detail: { key: record.key, value: record.value } }));
+            } catch (e) {}
+            return;
+          }
+        }
+        scheduleSyncFromCloud(payload.table);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          lastRealtimePingOkAt = Date.now();
+          console.log('Canal Realtime conectado y listo ✓');
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          const now = Date.now();
+          if (now - lastForcedReconnectAt > FORCED_RECONNECT_COOLDOWN_MS) {
+            lastForcedReconnectAt = now;
+            console.warn(`Canal Realtime desconectado (${status}), reconectando canal...`);
+            setupRealtimeChannel();
+          }
+        }
+      });
+  } catch (err) {
+    console.error("Error setting up Realtime channel:", err);
+  }
+}
+
 // Verifica si Supabase responde haciendo una query mínima (count).
-// Si falla, fuerza reinitSupabase(true). Exportada para uso desde App.jsx.
+// Si el canal está caído, lo reconecta de forma limpia y no destructiva.
 export async function checkAndReconnectIfNeeded() {
   if (!supabase) { await reinitSupabase(true); return; }
   const channelHealthy = isRealtimeChannelHealthy();
   if (!channelHealthy) {
-    console.log('Canal Realtime no saludable — forzando reconexión...');
-    await reinitSupabase(true);
-    return;
-  }
-  // Ping real: query mínima para verificar que la conexión de red sigue viva
-  try {
-    const { error } = await supabase
-      .from('delivery_settings')
-      .select('key', { count: 'exact', head: true })
-      .limit(1);
-    if (!error) {
-      lastRealtimePingOkAt = Date.now();
-    } else {
-      console.warn('Ping Supabase falló:', error.message, '— forzando reconexión');
-      await reinitSupabase(true);
-    }
-  } catch (e) {
-    console.warn('Ping Supabase excepción:', e, '— forzando reconexión');
-    await reinitSupabase(true);
+    console.log('Canal Realtime no saludable — reconectando canal...');
+    setupRealtimeChannel();
   }
 }
 
+let isTablesInitialized = false;
+
 export async function reinitSupabase(force = false) {
   if (!force && isRealtimeChannelHealthy() && (Date.now() - lastFullReinitAt) < REINIT_MIN_INTERVAL_MS) {
-    // El canal en tiempo real está sano y ya hicimos una reconstrucción completa hace
-    // poco: no hay motivo para recrear cliente/canal/descargar todo otra vez.
     return;
   }
   if (isSyncing || isSaving > 0) return;
@@ -326,92 +421,18 @@ export async function reinitSupabase(force = false) {
     
     if (activeUrl && activeKey) {
       try {
-        const oldClient = supabase;
-        supabase = createClient(activeUrl, activeKey);
-        
-        try {
-          if (realtimeChannel && oldClient) {
-            oldClient.removeChannel(realtimeChannel);
-          }
-        } catch (err) {}
-
-        try {
-          realtimeChannel = supabase
-            .channel('delivery-realtime-sync')
-            .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-              console.log("Realtime payload received:", payload);
-              if (payload.table === 'delivery_settings') {
-                const record = payload.new || {};
-                if (record.key && record.key.startsWith('loc_')) {
-                  const fid = record.key.substring(4);
-                  console.log("Realtime GPS update received for driver:", fid, record.value);
-                  try {
-                    const val = JSON.parse(record.value);
-                    const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
-                    locations[fid] = {
-                      lat: parseFloat(val.lat),
-                      lng: parseFloat(val.lng),
-                      updatedAt: val.updatedAt || val.timestamp
-                    };
-                    localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
-
-                    window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: { fid, lat: val.lat, lng: val.lng } }));
-                  } catch (e) {
-                    console.error("Error parsing realtime driver location:", e);
-                  }
-                  return;
-                }
-                // Sincronización instantánea de bloqueo de orden manual vía Realtime
-                if (record.key && record.key.startsWith('manual_route_')) {
-                  try {
-                    localStorage.setItem('delivery_' + record.key, record.value);
-                    localStorage.setItem(record.key, record.value);
-                    window.dispatchEvent(new CustomEvent('manual-route-status-updated', { detail: { key: record.key, value: record.value } }));
-                  } catch (e) {}
-                  return;
-                }
-              }
-              // Antes: cada cambio en CUALQUIER tabla llamaba a syncFromCloud() de inmediato,
-              // que siempre volvía a descargar las 5 tablas completas (incluida delivery_tickets,
-              // ~43 MB). Con varios dispositivos conectados esto multiplicaba el tráfico y fue
-              // la causa principal del exceso de egress. Ahora se agrupan los cambios que llegan
-              // en ráfaga (p.ej. varios tickets seguidos) en una sola sincronización, y solo se
-              // vuelve a pedir la tabla de tickets si de verdad hubo un cambio en delivery_tickets.
-              lastRealtimePingOkAt = Date.now(); // canal confirmado vivo al recibir un mensaje real
-              scheduleSyncFromCloud(payload.table);
-            })
-            .subscribe((status) => {
-              // Fix: el mapa (y cualquier vista en tiempo real) se quedaba "congelado"
-              // cuando el canal de Realtime se caía en silencio (móvil sin cobertura un
-              // instante, ordenador saliendo de reposo, etc.) — la comprobación de salud
-              // usada por el temporizador de 3 minutos (isRealtimeChannelHealthy) mira
-              // `realtimeChannel.state`, que no siempre se actualiza al momento en todos
-              // los tipos de desconexión. El propio canal SÍ avisa de estos estados aquí
-              // en cuanto ocurren, así que se reconecta de inmediato al detectarlos, en
-              // vez de esperar a que el usuario refresque la página a mano o pasen los
-              // 3 minutos del temporizador de respaldo.
-              if (status === 'SUBSCRIBED') {
-                lastRealtimePingOkAt = Date.now(); // canal confirmado vivo al suscribirse
-                console.log('Canal Realtime conectado correctamente ✓');
-              }
-              if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-                const now = Date.now();
-                if (now - lastForcedReconnectAt > FORCED_RECONNECT_COOLDOWN_MS) {
-                  lastForcedReconnectAt = now;
-                  console.warn(`Canal Realtime desconectado (${status}), reconectando...`);
-                  reinitSupabase(true);
-                }
-              }
-            });
-        } catch (err) {
-          console.error("Error subscribing to Supabase Realtime:", err);
+        if (!supabase) {
+          supabase = createClient(activeUrl, activeKey);
         }
+        setupRealtimeChannel();
 
-        await initializeSupabaseTables();
+        if (!isTablesInitialized) {
+          isTablesInitialized = true;
+          await initializeSupabaseTables();
+        }
         await syncFromCloud();
       } catch (e) {
-        console.error("Error re-initializing Supabase client:", e);
-        supabase = null;
+        console.error("Error in reinitSupabase:", e);
       }
     } else {
       supabase = null;
@@ -2337,6 +2358,10 @@ export async function saveTickets(tickets) {
         } catch (e) {
           console.error("Error clearing local sync status:", e);
         }
+        broadcastRealtimeEvent('tickets_updated', {
+          count: pendingTickets.length,
+          timestamp: Date.now()
+        });
         return { success: true };
       }
     } catch (e) {
@@ -2929,6 +2954,15 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
 
     tickets[index]._syncStatus = 'pending';
     saveTickets(tickets);
+    broadcastRealtimeEvent('ticket_status_changed', {
+      ticketId: String(ticketId),
+      status,
+      failureReason: tickets[index].failureReason || '',
+      completedLat: tickets[index].completedLat || null,
+      completedLng: tickets[index].completedLng || null,
+      completedAt: tickets[index].completedAt || null,
+      notes: tickets[index].notes || ''
+    });
     return tickets[index];
   }
   return null;
@@ -3167,6 +3201,7 @@ export async function saveShifts(shifts) {
         } catch (e) {
           console.error("Error clearing local shift sync status:", e);
         }
+        broadcastRealtimeEvent('shifts_updated', { timestamp: Date.now() });
       }
     } catch (e) {
       console.error("Error saving shifts or meta to Supabase:", e);

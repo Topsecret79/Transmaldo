@@ -2263,7 +2263,6 @@ function App() {
       } catch (e) {
         console.warn("Background cloud sync error:", e);
       }
-      reinitSupabase(force);
       if (mapInstanceRef.current) {
         try { mapInstanceRef.current.resize(); } catch (e) {}
       }
