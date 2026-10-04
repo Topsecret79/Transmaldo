@@ -1338,6 +1338,11 @@ function App() {
   const getTodayDate = () => {
     return new Date().toISOString().split('T')[0];
   };
+  const getTomorrowDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  };
 
   const getBillingMonthsList = () => {
     const months = [];
@@ -1374,7 +1379,7 @@ function App() {
         const y = parseInt(startParts[0], 10);
         const m = parseInt(startParts[1], 10);
         const lastDayOfM = new Date(y, m, 0).getDate();
-        if (parseInt(endParts[2], 10) === lastDayOfM || (adminEndDate === getTodayDate() && y === new Date().getFullYear() && m === (new Date().getMonth() + 1))) {
+        if (parseInt(endParts[2], 10) === lastDayOfM || ((adminEndDate === getTodayDate() || adminEndDate === getTomorrowDate()) && y === new Date().getFullYear() && m === (new Date().getMonth() + 1))) {
           return `${startParts[0]}-${startParts[1]}`;
         }
       }
@@ -1383,7 +1388,7 @@ function App() {
   };
 
   const [adminStartDate, setAdminStartDate] = useState(getFirstDayOfMonth());
-  const [adminEndDate, setAdminEndDate] = useState(getTodayDate());
+  const [adminEndDate, setAdminEndDate] = useState(getTomorrowDate());
   const [billingFilterFurgo, setBillingFilterFurgo] = useState('all');
   const [billingSourceFilter, setBillingSourceFilter] = useState('all');
   // Stats module filters
@@ -1464,7 +1469,10 @@ function App() {
       const parsedRoutes = savedRoutesStr ? JSON.parse(savedRoutesStr) : [];
       const foundRoute = parsedRoutes.find(r => r.id === savedId);
       const todayStr = new Date().toISOString().split('T')[0];
-      if (foundRoute && foundRoute.date === todayStr) {
+      const tmrw = new Date();
+      tmrw.setDate(tmrw.getDate() + 1);
+      const tomorrowStr = tmrw.toISOString().split('T')[0];
+      if (foundRoute && (foundRoute.date === todayStr || foundRoute.date === tomorrowStr)) {
         return savedId;
       }
     } catch (e) {
@@ -2313,7 +2321,7 @@ function App() {
             }
           })
           .catch((err) => console.error("Error cargando tickets históricos de informe diario:", err));
-      } else if (activeTab && activeTab !== 'new_ticket') {
+      } else if (activeTab) {
         syncFromCloud(true).then(() => {
           loadDataRef.current();
         }).catch(err => console.warn("Tab switch sync error:", err));
@@ -7955,7 +7963,8 @@ function App() {
       // historial sin que el corte de facturacion lo bloquee.
       if (currentUser && isAdminOrSuper && !ticketFilterDate) {
         if (adminStartDate && t.date < adminStartDate) return false;
-        if (adminEndDate && t.date > adminEndDate) return false;
+        const effectiveEndDate = (adminEndDate && adminEndDate > getTomorrowDate()) ? adminEndDate : getTomorrowDate();
+        if (t.date > effectiveEndDate) return false;
       }
       if (ticketFilterFurgo !== 'all') {
         const matchesFurgo = t.furgoId === ticketFilterFurgo;
@@ -20694,7 +20703,8 @@ function App() {
   const renderAdminPortal = () => {
     const filteredAdminTickets = visibleTickets.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
-      if (adminEndDate && t.date > adminEndDate) return false;
+      const effectiveEndDate = (adminEndDate && adminEndDate > getTomorrowDate()) ? adminEndDate : getTomorrowDate();
+      if (t.date > effectiveEndDate) return false;
       if (billingFilterFurgo !== 'all') {
         const matchesFurgo = t.furgoId === billingFilterFurgo;
         const matchesRoute = t.routeName && (t.routeName.toLowerCase() === billingFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(billingFilterFurgo.toLowerCase()));
@@ -22487,9 +22497,9 @@ function App() {
           {hasSearchPermission && (
             <button className={`tab-btn ${activeTab === 'search' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('search'); }}>🔍 Buscador General</button>
           )}
-          {editingTicketId && (
-            <button className={`tab-btn active`} onClick={() => setActiveTab('new_ticket')}>✏️ Editando...</button>
-          )}
+          <button className={`tab-btn ${activeTab === 'new_ticket' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('new_ticket'); }}>
+            {editingTicketId ? '✏️ Editando...' : '📋 Planificar Ruta'}
+          </button>
           {showStaff && (
             <button className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('employees'); }}>👥 Personal</button>
           )}
@@ -22945,6 +22955,32 @@ function App() {
                   )}
                 </div>
                 <input type="date" className="form-input" value={ticketFilterDate} onChange={(e) => setTicketFilterDate(e.target.value)} />
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  <button 
+                    type="button" 
+                    className={`btn btn-small ${ticketFilterDate === getTodayDate() ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto' }}
+                    onClick={() => setTicketFilterDate(getTodayDate())}
+                  >
+                    Hoy
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`btn btn-small ${ticketFilterDate === getTomorrowDate() ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto', background: ticketFilterDate === getTomorrowDate() ? undefined : 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
+                    onClick={() => setTicketFilterDate(getTomorrowDate())}
+                  >
+                    🚀 Mañana {tickets.filter(t => t.date === getTomorrowDate()).length > 0 ? `(${tickets.filter(t => t.date === getTomorrowDate()).length})` : ''}
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`btn btn-small ${!ticketFilterDate ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto' }}
+                    onClick={() => setTicketFilterDate('')}
+                  >
+                    Periodo
+                  </button>
+                </div>
               </div>
               <div className="input-group">
                 <span className="input-label">Buscador General</span>
@@ -23776,6 +23812,24 @@ function App() {
                   value={mapFilterDate} 
                   onChange={(e) => setMapFilterDate(e.target.value)} 
                 />
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  <button 
+                    type="button" 
+                    className={`btn btn-small ${mapFilterDate === getTodayDate() ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto' }}
+                    onClick={() => setMapFilterDate(getTodayDate())}
+                  >
+                    Hoy
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`btn btn-small ${mapFilterDate === getTomorrowDate() ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto', background: mapFilterDate === getTomorrowDate() ? undefined : 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
+                    onClick={() => setMapFilterDate(getTomorrowDate())}
+                  >
+                    🚀 Mañana {tickets.filter(t => t.date === getTomorrowDate()).length > 0 ? `(${tickets.filter(t => t.date === getTomorrowDate()).length})` : ''}
+                  </button>
+                </div>
               </div>
               <div className="input-group" style={{ marginBottom: 0 }}>
                 <span className="input-label">Filtrar por Furgoneta</span>
@@ -25467,7 +25521,9 @@ function App() {
                 await syncFromCloud(true);
                 await checkAndReconnectIfNeeded();
                 const todayStr = new Date().toISOString().split('T')[0];
-                await loadHistoricalTicketsForPeriod(adminStartDate || todayStr, adminEndDate || todayStr);
+                const tomorrowStr = getTomorrowDate();
+                const targetEndDate = (adminEndDate && adminEndDate > tomorrowStr) ? adminEndDate : tomorrowStr;
+                await loadHistoricalTicketsForPeriod(adminStartDate || todayStr, targetEndDate);
                 loadDataRef.current();
                 if (mapInstanceRef.current) {
                   try { mapInstanceRef.current.resize(); } catch (e) {}

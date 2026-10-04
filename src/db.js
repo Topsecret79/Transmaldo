@@ -267,11 +267,11 @@ let lastRealtimePingOkAt = 0;
 const REALTIME_STALE_THRESHOLD_MS = 60 * 1000; // 60 segundos sin confirmación
 
 function isRealtimeChannelHealthy() {
-  if (!(realtimeChannel && realtimeChannel.state === 'joined')) return false;
-  const now = Date.now();
-  if (lastRealtimePingOkAt > 0 && (now - lastRealtimePingOkAt) > REALTIME_STALE_THRESHOLD_MS) {
-    return false;
+  if (!supabase) return false;
+  if (supabase.realtime && typeof supabase.realtime.isConnected === 'function') {
+    if (!supabase.realtime.isConnected()) return false;
   }
+  if (!(realtimeChannel && realtimeChannel.state === 'joined')) return false;
   return true;
 }
 
