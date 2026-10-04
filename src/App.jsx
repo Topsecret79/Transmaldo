@@ -1308,6 +1308,7 @@ function App() {
   const [ticketFilterConcept, setTicketFilterConcept] = useState('all');
   const [ticketFilterPriceMin, setTicketFilterPriceMin] = useState('');
   const [ticketFilterPriceMax, setTicketFilterPriceMax] = useState('');
+  const [ticketFilterSource, setTicketFilterSource] = useState('all');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [alertMsg, setAlertMsg] = useState({ text: '', type: '' });
   const [driverFilter, setDriverFilter] = useState('active_reparto');
@@ -1322,9 +1323,53 @@ function App() {
     return new Date().toISOString().split('T')[0];
   };
 
+  const getBillingMonthsList = () => {
+    const months = [];
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const monthNames = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    for (let y = currentYear; y >= 2026; y--) {
+      const maxM = (y === currentYear) ? currentMonth : 11;
+      for (let m = maxM; m >= 0; m--) {
+        const monthNum = String(m + 1).padStart(2, '0');
+        const key = `${y}-${monthNum}`;
+        const isCurrent = (y === currentYear && m === currentMonth);
+        months.push({
+          value: key,
+          label: `${monthNames[m]} ${y}${isCurrent ? ' (Mes Actual)' : ''}`
+        });
+      }
+    }
+    return months;
+  };
+
+  const getSelectedMonthKey = () => {
+    if (adminStartDate === '2026-01-01' && adminEndDate === '2026-12-31') {
+      return 'all_2026';
+    }
+    if (adminStartDate && adminEndDate) {
+      const startParts = adminStartDate.split('-');
+      const endParts = adminEndDate.split('-');
+      if (startParts[0] === endParts[0] && startParts[1] === endParts[1] && startParts[2] === '01') {
+        const y = parseInt(startParts[0], 10);
+        const m = parseInt(startParts[1], 10);
+        const lastDayOfM = new Date(y, m, 0).getDate();
+        if (parseInt(endParts[2], 10) === lastDayOfM || (adminEndDate === getTodayDate() && y === new Date().getFullYear() && m === (new Date().getMonth() + 1))) {
+          return `${startParts[0]}-${startParts[1]}`;
+        }
+      }
+    }
+    return 'custom';
+  };
+
   const [adminStartDate, setAdminStartDate] = useState(getFirstDayOfMonth());
   const [adminEndDate, setAdminEndDate] = useState(getTodayDate());
   const [billingFilterFurgo, setBillingFilterFurgo] = useState('all');
+  const [billingSourceFilter, setBillingSourceFilter] = useState('all');
   // Stats module filters
   const [statsStartDate, setStatsStartDate] = useState(getFirstDayOfMonth());
   const [statsEndDate, setStatsEndDate] = useState(getTodayDate());
@@ -7729,6 +7774,16 @@ function App() {
       const isDorm = t.provider === 'dormity' || (Array.isArray(t.tasks) && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')));
       if (billingProviderFilter === 'eci' && isDorm) return false;
       if (billingProviderFilter === 'dormity' && !isDorm) return false;
+      if (billingSourceFilter !== 'all') {
+        const rawSrc = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+        if (billingSourceFilter === 'urbantz') {
+          if (rawSrc !== 'urbantz' && rawSrc !== 'urbanzt' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        } else if (billingSourceFilter === 'pda') {
+          if (rawSrc !== 'pda' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        } else if (billingSourceFilter === 'both') {
+          if (rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        }
+      }
       return true;
     });
 
@@ -7865,7 +7920,8 @@ function App() {
       XLSX.utils.book_append_sheet(wb, wsFurgo, label);
     });
 
-    const filename = `Facturacion_${adminStartDate || 'inicio'}_a_${adminEndDate || 'hoy'}.xlsx`;
+    const srcSuffix = billingSourceFilter !== 'all' ? `_${billingSourceFilter.toUpperCase()}` : '';
+    const filename = `Facturacion_${adminStartDate || 'inicio'}_a_${adminEndDate || 'hoy'}${srcSuffix}.xlsx`;
     XLSX.writeFile(wb, filename);
     const localPath = await saveExcelToDisk(wb, filename);
     if (localPath) {
@@ -7979,6 +8035,16 @@ function App() {
       }
       if (ticketFilterPriceMax !== '' && !isNaN(parseFloat(ticketFilterPriceMax))) {
         if (price > parseFloat(ticketFilterPriceMax)) return false;
+      }
+      if (ticketFilterSource !== 'all') {
+        const rawSrc = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+        if (ticketFilterSource === 'urbantz') {
+          if (rawSrc !== 'urbantz' && rawSrc !== 'urbanzt' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        } else if (ticketFilterSource === 'pda') {
+          if (rawSrc !== 'pda' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        } else if (ticketFilterSource === 'both') {
+          if (rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        }
       }
       return true;
     }).sort((a,b) => {
@@ -20622,8 +20688,55 @@ function App() {
       const isDorm = t.provider === 'dormity' || (t.tasks && t.tasks.some(k => k.tariffId && String(k.tariffId).startsWith('DORMITY_')));
       if (billingProviderFilter === 'eci' && isDorm) return false;
       if (billingProviderFilter === 'dormity' && !isDorm) return false;
+      if (billingSourceFilter !== 'all') {
+        const rawSrc = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+        if (billingSourceFilter === 'urbantz') {
+          if (rawSrc !== 'urbantz' && rawSrc !== 'urbanzt' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        } else if (billingSourceFilter === 'pda') {
+          if (rawSrc !== 'pda' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        } else if (billingSourceFilter === 'both') {
+          if (rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+        }
+      }
       return true;
     });
+
+    // Repartos exitosos del periodo para desglose comparativo Urbantz vs PDA en la tarjeta
+    const periodBaseTickets = visibleTickets.filter(t => {
+      if (adminStartDate && t.date < adminStartDate) return false;
+      if (adminEndDate && t.date > adminEndDate) return false;
+      if (billingFilterFurgo !== 'all') {
+        const matchesFurgo = t.furgoId === billingFilterFurgo;
+        const matchesRoute = t.routeName && (t.routeName.toLowerCase() === billingFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(billingFilterFurgo.toLowerCase()));
+        const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === billingFilterFurgo.toLowerCase());
+        if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+      }
+      const isDorm = t.provider === 'dormity' || (t.tasks && t.tasks.some(k => k.tariffId && String(k.tariffId).startsWith('DORMITY_')));
+      if (billingProviderFilter === 'eci' && isDorm) return false;
+      if (billingProviderFilter === 'dormity' && !isDorm) return false;
+      return t.status === 'success';
+    });
+
+    const urbantzPeriodTickets = periodBaseTickets.filter(t => {
+      const s = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+      return s === 'urbantz' || s === 'urbanzt' || s === 'both' || s === 'ambos';
+    });
+    const urbantzDeliveryEarnings = urbantzPeriodTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
+    const urbantzTicketsCount = urbantzPeriodTickets.length;
+
+    const pdaPeriodTickets = periodBaseTickets.filter(t => {
+      const s = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+      return s === 'pda' || s === 'both' || s === 'ambos';
+    });
+    const pdaDeliveryEarnings = pdaPeriodTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
+    const pdaTicketsCount = pdaPeriodTickets.length;
+
+    const bothPeriodTickets = periodBaseTickets.filter(t => {
+      const s = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+      return s === 'both' || s === 'ambos';
+    });
+    const bothDeliveryEarnings = bothPeriodTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
+    const bothTicketsCount = bothPeriodTickets.length;
 
     const isDormityView = billingProviderFilter === 'dormity' || (loggedInUserObj && getUserAllowedProviders(loggedInUserObj).length === 1 && getUserAllowedProviders(loggedInUserObj)[0] === 'dormity');
 
@@ -22398,32 +22511,77 @@ function App() {
                   </span>
                 )}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Desde:</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: '600' }}>📅 Mes:</span>
+                  <select 
+                    className="form-input" 
+                    style={{ padding: '6px 12px', fontSize: '0.88rem', width: 'auto', minWidth: '160px', height: '36px', fontWeight: '700', borderColor: 'var(--primary)' }}
+                    value={getSelectedMonthKey()} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'custom') return;
+                      if (val === 'all_2026') {
+                        setAdminStartDate('2026-01-01');
+                        setAdminEndDate('2026-12-31');
+                        return;
+                      }
+                      const [yStr, mStr] = val.split('-');
+                      const y = parseInt(yStr, 10);
+                      const m = parseInt(mStr, 10);
+                      const firstDay = `${yStr}-${mStr}-01`;
+                      const lastDayNum = new Date(y, m, 0).getDate();
+                      const lastDay = `${yStr}-${mStr}-${String(lastDayNum).padStart(2, '0')}`;
+                      setAdminStartDate(firstDay);
+                      setAdminEndDate(lastDay);
+                    }}
+                  >
+                    {getBillingMonthsList().map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                    <option value="all_2026">📅 Todo 2026 (Año Completo)</option>
+                    <option value="custom">⚙️ Personalizado (por días)</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: '600' }}>🏷️ Origen:</span>
+                  <select 
+                    className="form-input" 
+                    style={{ padding: '6px 12px', fontSize: '0.88rem', width: 'auto', minWidth: '185px', height: '36px', fontWeight: '700', borderColor: 'var(--primary)', color: 'var(--text-main)' }}
+                    value={billingSourceFilter} 
+                    onChange={(e) => setBillingSourceFilter(e.target.value)}
+                  >
+                    <option value="all">🌐 Los dos juntos (Urbantz + PDA / Todo)</option>
+                    <option value="urbantz">🟣 Solo Urbantz</option>
+                    <option value="pda">🔵 Solo PDA</option>
+                    <option value="both">🟡 Ambos a la vez (Urbantz y PDA)</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Desde:</span>
                   <input 
                     type="date" 
                     className="form-input" 
-                    style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto' }} 
+                    style={{ padding: '6px 10px', fontSize: '0.85rem', width: 'auto' }} 
                     value={adminStartDate} 
                     onChange={(e) => setAdminStartDate(e.target.value)} 
                   />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Hasta:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Hasta:</span>
                   <input 
                     type="date" 
                     className="form-input" 
-                    style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto' }} 
+                    style={{ padding: '6px 10px', fontSize: '0.85rem', width: 'auto' }} 
                     value={adminEndDate} 
                     onChange={(e) => setAdminEndDate(e.target.value)} 
                   />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Furgoneta:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Furgoneta:</span>
                   <select 
                     className="form-input" 
-                    style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto', minWidth: '150px', height: '36px' }}
+                    style={{ padding: '6px 10px', fontSize: '0.85rem', width: 'auto', minWidth: '140px', height: '36px' }}
                     value={billingFilterFurgo} 
                     onChange={(e) => setBillingFilterFurgo(e.target.value)}
                   >
@@ -22440,15 +22598,15 @@ function App() {
 
                   if (canECI && canDormity) {
                     return (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Proveedor:</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Proveedor:</span>
                         <select 
                           className="form-input" 
-                          style={{ padding: '6px 12px', fontSize: '0.9rem', width: 'auto', minWidth: '160px', height: '36px' }}
+                          style={{ padding: '6px 10px', fontSize: '0.85rem', width: 'auto', minWidth: '150px', height: '36px' }}
                           value={billingProviderFilter} 
                           onChange={(e) => setBillingProviderFilter(e.target.value)}
                         >
-                          <option value="all">🏬 Todos los Proveedores</option>
+                          <option value="all">🏬 Todos</option>
                           <option value="eci">📦 El Corte Inglés</option>
                           <option value="dormity">🛏️ Dormity</option>
                         </select>
@@ -22457,23 +22615,24 @@ function App() {
                   }
 
                   return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Proveedor:</span>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Proveedor:</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)' }}>
                         {canDormity ? '🛏️ Dormity' : '📦 El Corte Inglés'}
                       </span>
                     </div>
                   );
                 })()}
-                {(adminStartDate || adminEndDate || billingFilterFurgo !== 'all' || (billingProviderFilter !== 'all' && (getUserAllowedProviders(loggedInUserObj).length > 1 || loggedInUserObj?.role === 'superadmin'))) && (
+                {(adminStartDate !== getFirstDayOfMonth() || adminEndDate !== getTodayDate() || billingFilterFurgo !== 'all' || billingSourceFilter !== 'all' || (billingProviderFilter !== 'all' && (getUserAllowedProviders(loggedInUserObj).length > 1 || loggedInUserObj?.role === 'superadmin'))) && (
                   <button 
                     type="button" 
                     className="btn btn-secondary btn-small" 
                     style={{ padding: '6px 12px' }}
                     onClick={() => {
-                      setAdminStartDate('');
-                      setAdminEndDate('');
+                      setAdminStartDate(getFirstDayOfMonth());
+                      setAdminEndDate(getTodayDate());
                       setBillingFilterFurgo('all');
+                      setBillingSourceFilter('all');
                       const allowed = getUserAllowedProviders(loggedInUserObj);
                       if (allowed.length > 1 || loggedInUserObj?.role === 'superadmin') {
                         setBillingProviderFilter('all');
@@ -22482,7 +22641,7 @@ function App() {
                       }
                     }}
                   >
-                    Mostrar Todo
+                    Restablecer
                   </button>
                 )}
               </div>
@@ -22553,13 +22712,34 @@ function App() {
                 proveedor que ya esté filtrado. */}
             <div className="dashboard-grid">
               <div className="stat-card success clickable" onClick={() => setSelectedStatCardKey('total')} title="Ver repartos de Total Mes">
-                <p>Total Mes</p>
+                <p>
+                  {billingSourceFilter === 'all' 
+                    ? 'Total Facturación Mensual' 
+                    : billingSourceFilter === 'urbantz' 
+                    ? 'Total Mes (Urbantz)' 
+                    : billingSourceFilter === 'pda' 
+                    ? 'Total Mes (PDA)' 
+                    : 'Total Mes (Ambos a la vez)'}
+                </p>
                 <div className="stat-val">{totalEarnings.toFixed(2)} €</div>
                 <span>
                   {totalMileageEarnings > 0 
                     ? `Entregas: ${totalDeliveryEarnings.toFixed(2)} € | Kms: ${totalMileageEarnings.toFixed(2)} €`
                     : `Km Flota (Odómetro): ${totalKmsAllFurgos.toFixed(1)} km`}
                 </span>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px', fontSize: '0.74rem', justifyContent: 'center' }}>
+                  <span style={{ padding: '2px 7px', borderRadius: '4px', background: 'rgba(168, 85, 247, 0.2)', color: '#d8b4fe', fontWeight: 'bold' }} title="Facturación de entregas originadas en Urbantz">
+                    🟣 Urbantz: {urbantzDeliveryEarnings.toFixed(2)} € ({urbantzTicketsCount})
+                  </span>
+                  <span style={{ padding: '2px 7px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.2)', color: '#93c5fd', fontWeight: 'bold' }} title="Facturación de entregas originadas en PDA">
+                    🔵 PDA: {pdaDeliveryEarnings.toFixed(2)} € ({pdaTicketsCount})
+                  </span>
+                  {bothTicketsCount > 0 && (
+                    <span style={{ padding: '2px 7px', borderRadius: '4px', background: 'rgba(234, 179, 8, 0.2)', color: '#fde047', fontWeight: 'bold' }} title="Facturación de entregas marcadas en ambos sistemas a la vez">
+                      🟡 Ambos: {bothDeliveryEarnings.toFixed(2)} € ({bothTicketsCount})
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="stat-card info clickable" onClick={() => setSelectedStatCardKey('entregas')} title="Ver repartos de Entregas">
                 <p>Entregas</p>
@@ -22764,6 +22944,23 @@ function App() {
                   onChange={(e) => setTicketFilterPostcode(e.target.value)} 
                 />
               </div>
+              <div className="input-group">
+                <span className="input-label">🏷️ Origen</span>
+                <select 
+                  className="form-input" 
+                  value={ticketFilterSource} 
+                  onChange={(e) => setTicketFilterSource(e.target.value)}
+                  style={{
+                    fontWeight: ticketFilterSource !== 'all' ? '600' : 'normal',
+                    borderColor: ticketFilterSource === 'urbantz' ? '#a855f7' : ticketFilterSource === 'pda' ? '#3b82f6' : ticketFilterSource === 'both' ? '#eab308' : undefined
+                  }}
+                >
+                  <option value="all">🌐 Los dos juntos (Todos)</option>
+                  <option value="urbantz">🟣 Solo Urbantz</option>
+                  <option value="pda">🔵 Solo PDA</option>
+                  <option value="both">🟡 Ambos a la vez</option>
+                </select>
+              </div>
             </div>
 
             {/* Filtros avanzados del día: Cliente, Concepto Facturado y Precio */}
@@ -22829,7 +23026,7 @@ function App() {
                 />
               </div>
 
-              {(ticketFilterClient || ticketFilterConcept !== 'all' || ticketFilterPriceMin !== '' || ticketFilterPriceMax !== '' || ticketSearchQuery || ticketFilterPostcode) && (
+              {(ticketFilterClient || ticketFilterConcept !== 'all' || ticketFilterPriceMin !== '' || ticketFilterPriceMax !== '' || ticketSearchQuery || ticketFilterPostcode || ticketFilterSource !== 'all') && (
                 <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-start' }}>
                   <button
                     type="button"
@@ -22840,6 +23037,7 @@ function App() {
                       setTicketFilterPriceMax('');
                       setTicketSearchQuery('');
                       setTicketFilterPostcode('');
+                      setTicketFilterSource('all');
                     }}
                     className="btn btn-secondary"
                     style={{ height: '42px', margin: 0, padding: '0 14px', fontSize: '0.8rem', background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
