@@ -730,6 +730,22 @@ function App() {
     return null;
   };
 
+  const getEffectiveTicketSource = (t) => {
+    if (!t) return 'none';
+    const rawSrc = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase().trim();
+    if (rawSrc === 'urbantz' || rawSrc === 'urbanzt') return 'urbantz';
+    if (rawSrc === 'pda') return 'pda';
+    if (rawSrc === 'both' || rawSrc === 'ambos') return 'both';
+
+    // Si es un pedido de Dormity, no procede ni de Urbantz ni de PDA
+    const isDorm = t.provider === 'dormity' || (Array.isArray(t.tasks) && t.tasks.some(tk => tk.tariffId && String(tk.tariffId).startsWith('DORMITY_')));
+    if (isDorm) return 'dormity';
+
+    // Para El Corte Inglés (rutas 150, 151, 168, etc.), todos los repartos sin marca explícita de PDA
+    // proceden por defecto de la operativa de Urbantz (incluyendo todo el histórico sin etiqueta).
+    return 'urbantz';
+  };
+
   const renderSourceBadge = (notes, directSource = null) => {
     const source = getSourceFromNotes(notes, directSource);
     if (!source) return null;
@@ -5841,10 +5857,10 @@ function App() {
     setIsDurationManuallyEdited(true);
 
     // 3. Origen del pedido (Urbantz / PDA / Ambos)
-    const rawSource = ticket.source || parsed.source || '';
-    const cleanSource = (rawSource.toLowerCase() === 'ambos' || rawSource.toLowerCase() === 'both') ? 'both'
-      : (rawSource.toLowerCase() === 'urbantz' ? 'urbantz'
-      : (rawSource.toLowerCase() === 'pda' ? 'pda' : ''));
+    const effSrc = getEffectiveTicketSource(ticket);
+    const cleanSource = (effSrc === 'both') ? 'both'
+      : (effSrc === 'pda' ? 'pda'
+      : (effSrc === 'urbantz' ? 'urbantz' : ''));
     setTicketSource(cleanSource);
 
     // 4. Tipo de Servicio (Colores y selección)
@@ -7775,13 +7791,13 @@ function App() {
       if (billingProviderFilter === 'eci' && isDorm) return false;
       if (billingProviderFilter === 'dormity' && !isDorm) return false;
       if (billingSourceFilter !== 'all') {
-        const rawSrc = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+        const effSrc = getEffectiveTicketSource(t);
         if (billingSourceFilter === 'urbantz') {
-          if (rawSrc !== 'urbantz' && rawSrc !== 'urbanzt' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'urbantz' && effSrc !== 'both') return false;
         } else if (billingSourceFilter === 'pda') {
-          if (rawSrc !== 'pda' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'pda' && effSrc !== 'both') return false;
         } else if (billingSourceFilter === 'both') {
-          if (rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'both') return false;
         }
       }
       return true;
@@ -8037,13 +8053,13 @@ function App() {
         if (price > parseFloat(ticketFilterPriceMax)) return false;
       }
       if (ticketFilterSource !== 'all') {
-        const rawSrc = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+        const effSrc = getEffectiveTicketSource(t);
         if (ticketFilterSource === 'urbantz') {
-          if (rawSrc !== 'urbantz' && rawSrc !== 'urbanzt' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'urbantz' && effSrc !== 'both') return false;
         } else if (ticketFilterSource === 'pda') {
-          if (rawSrc !== 'pda' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'pda' && effSrc !== 'both') return false;
         } else if (ticketFilterSource === 'both') {
-          if (rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'both') return false;
         }
       }
       return true;
@@ -20689,13 +20705,13 @@ function App() {
       if (billingProviderFilter === 'eci' && isDorm) return false;
       if (billingProviderFilter === 'dormity' && !isDorm) return false;
       if (billingSourceFilter !== 'all') {
-        const rawSrc = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
+        const effSrc = getEffectiveTicketSource(t);
         if (billingSourceFilter === 'urbantz') {
-          if (rawSrc !== 'urbantz' && rawSrc !== 'urbanzt' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'urbantz' && effSrc !== 'both') return false;
         } else if (billingSourceFilter === 'pda') {
-          if (rawSrc !== 'pda' && rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'pda' && effSrc !== 'both') return false;
         } else if (billingSourceFilter === 'both') {
-          if (rawSrc !== 'both' && rawSrc !== 'ambos') return false;
+          if (effSrc !== 'both') return false;
         }
       }
       return true;
@@ -20718,22 +20734,22 @@ function App() {
     });
 
     const urbantzPeriodTickets = periodBaseTickets.filter(t => {
-      const s = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
-      return s === 'urbantz' || s === 'urbanzt' || s === 'both' || s === 'ambos';
+      const eff = getEffectiveTicketSource(t);
+      return eff === 'urbantz' || eff === 'both';
     });
     const urbantzDeliveryEarnings = urbantzPeriodTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
     const urbantzTicketsCount = urbantzPeriodTickets.length;
 
     const pdaPeriodTickets = periodBaseTickets.filter(t => {
-      const s = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
-      return s === 'pda' || s === 'both' || s === 'ambos';
+      const eff = getEffectiveTicketSource(t);
+      return eff === 'pda' || eff === 'both';
     });
     const pdaDeliveryEarnings = pdaPeriodTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
     const pdaTicketsCount = pdaPeriodTickets.length;
 
     const bothPeriodTickets = periodBaseTickets.filter(t => {
-      const s = (t.source || getSourceFromNotes(t.notes, t.source) || '').toLowerCase();
-      return s === 'both' || s === 'ambos';
+      const eff = getEffectiveTicketSource(t);
+      return eff === 'both';
     });
     const bothDeliveryEarnings = bothPeriodTickets.reduce((sum, t) => sum + (t.totalPrice || 0), 0);
     const bothTicketsCount = bothPeriodTickets.length;
