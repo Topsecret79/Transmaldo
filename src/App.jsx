@@ -25752,21 +25752,48 @@ function App() {
                     {existingShift && existingShift.status === 'closed' ? (
                       (() => {
                         const recordedKms = getRouteKms(targetFurgoId, targetDate);
-                        if (recordedKms <= 0) return null;
                         return (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px dashed var(--panel-border)', marginTop: '6px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                            {isAdminOrSuper ? (
-                              <>
-                                <span>Odómetro Flota ({recordedKms} km - Control):</span>
-                                <strong>0.00 €</strong>
-                              </>
-                            ) : (
-                              <>
-                                <span>Odómetro Flota (Control):</span>
-                                <strong>{recordedKms} km</strong>
-                              </>
+                          <>
+                            {recordedKms > 0 && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: '1px dashed var(--panel-border)', marginTop: '6px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                {isAdminOrSuper ? (
+                                  <>
+                                    <span>Odómetro Flota ({recordedKms} km - Control):</span>
+                                    <strong>0.00 €</strong>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>Odómetro Flota (Control):</span>
+                                    <strong>{recordedKms} km</strong>
+                                  </>
+                                )}
+                              </div>
                             )}
-                          </div>
+                            {isAdminOrSuper && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '10px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                                <span style={{ fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>🏁 Kilómetros de la Ruta (Facturables):</span>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                                  💡 Modifica o ingresa los kilómetros facturables para este turno cerrado y pulsa "Actualizar Kilómetros".
+                                </span>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                  <input 
+                                    type="number" 
+                                    step="0.1" 
+                                    className="form-input" 
+                                    placeholder="0 (Solo si es facturable)" 
+                                    value={shiftKmsInput} 
+                                    onChange={(e) => setShiftKmsInput(e.target.value)} 
+                                    style={{ flex: 1, padding: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', height: '36px', margin: 0 }} 
+                                  />
+                                  <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>km</span>
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                                  <span>Tarifa: {kmPrice.toFixed(2)} €/km</span>
+                                  <span>Importe Facturable: <strong style={{ color: 'var(--primary)' }}>{((parseFloat(shiftKmsInput) || 0) * kmPrice).toFixed(2)} €</strong></span>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         );
                       })()
                     ) : (
@@ -26019,14 +26046,24 @@ function App() {
                           🔒 Cierre realizado el: {new Date(existingShift.closedAt).toLocaleString()}
                         </div>
                         {isAdminOrSuper && (
-                          <button 
-                            type="button" 
-                            onClick={() => handleReopenShift(targetFurgoId, targetDate)} 
-                            className="btn btn-warning"
-                            style={{ width: '100%', marginTop: '15px', fontWeight: '700' }}
-                          >
-                            🔓 Reabrir Turno (Admin)
-                          </button>
+                          <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                            <button 
+                              type="button" 
+                              onClick={() => handleAdminUpdateShift(targetFurgoId, targetDate)} 
+                              className="btn btn-primary"
+                              style={{ flex: 1, fontWeight: '700', background: 'var(--primary)' }}
+                            >
+                              💾 Actualizar Kilómetros
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => handleReopenShift(targetFurgoId, targetDate)} 
+                              className="btn btn-warning"
+                              style={{ flex: 1, fontWeight: '700' }}
+                            >
+                              🔓 Reabrir Turno
+                            </button>
+                          </div>
                         )}
                       </>
                     )}
