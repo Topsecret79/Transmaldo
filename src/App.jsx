@@ -6742,13 +6742,14 @@ function App() {
       const updatedShift = {
         ...existingShift,
         kms: kms,
+        _syncStatus: 'pending',
         summary: {
           ...(existingShift.summary || summary),
           kms: kms
         }
       };
       shiftsList[existingIndex] = updatedShift;
-      result = await saveShifts(shiftsList);
+      result = await saveShifts(shiftsList, updatedShift.id);
     } else {
       const summary = getShiftSummary(furgoId, date);
       summary.kms = kms;
@@ -6988,7 +6989,8 @@ function App() {
     if (index !== -1) {
       updatedShifts[index] = {
         ...updatedShifts[index],
-        [field]: value
+        [field]: value,
+        _syncStatus: 'pending'
       };
     } else {
       updatedShifts.push({
@@ -7004,12 +7006,13 @@ function App() {
         customDriver: field === 'customDriver' ? value : (currentUser.label || ''),
         observations: '',
         routeName: '',
-        createdBy: 'driver'
+        createdBy: 'driver',
+        _syncStatus: 'pending'
       });
     }
     
     setShifts(updatedShifts);
-    saveShifts(updatedShifts);
+    saveShifts(updatedShifts, shiftId);
     
     let alertMsg = 'Campo de turno actualizado';
     if (field === 'customDriver') alertMsg = 'Chofer actualizado';
@@ -8495,13 +8498,16 @@ function App() {
                   setTickets(updatedTickets);
                   saveTickets(updatedTickets);
 
+                  const targetShift = shifts.find(s => s.date === date && s.furgoId === furgoId);
                   const updatedShifts = shifts.map(s =>
                     (s.date === date && s.furgoId === furgoId)
-                      ? { ...s, routeName: cleanNewName }
+                      ? { ...s, routeName: cleanNewName, _syncStatus: 'pending' }
                       : s
                   );
                   setShifts(updatedShifts);
-                  saveShifts(updatedShifts);
+                  if (targetShift) {
+                    saveShifts(updatedShifts, targetShift.id);
+                  }
 
                   const newRouteId = `${cleanNewName}|${date}|${furgoId}`;
                   const updatedRoutes = activeRoutes.map(r =>
@@ -16648,7 +16654,10 @@ function App() {
             next.helper2 = newName;
             changed = true;
           }
-          if (changed) shiftsChanged = true;
+          if (changed) {
+            next._syncStatus = 'pending';
+            shiftsChanged = true;
+          }
           return changed ? next : s;
         });
         if (shiftsChanged) {
@@ -17738,12 +17747,12 @@ function App() {
                                   }
                                   const updatedShifts = shifts.map(curr => {
                                     if (curr.id === s.id) {
-                                      return { ...curr, customDriver: newCustom };
+                                      return { ...curr, customDriver: newCustom, _syncStatus: 'pending' };
                                     }
                                     return curr;
                                   });
                                   setShifts(updatedShifts);
-                                  saveShifts(updatedShifts);
+                                  saveShifts(updatedShifts, s.id);
                                   triggerAlert('Chofer actualizado');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
@@ -17775,12 +17784,12 @@ function App() {
                                   }
                                   const updatedShifts = shifts.map(curr => {
                                     if (curr.id === s.id) {
-                                      return { ...curr, helper: newHelper };
+                                      return { ...curr, helper: newHelper, _syncStatus: 'pending' };
                                     }
                                     return curr;
                                   });
                                   setShifts(updatedShifts);
-                                  saveShifts(updatedShifts);
+                                  saveShifts(updatedShifts, s.id);
                                   triggerAlert('Ayudante actualizado');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
@@ -17812,12 +17821,12 @@ function App() {
                                   }
                                   const updatedShifts = shifts.map(curr => {
                                     if (curr.id === s.id) {
-                                      return { ...curr, helper2: newHelper2 };
+                                      return { ...curr, helper2: newHelper2, _syncStatus: 'pending' };
                                     }
                                     return curr;
                                   });
                                   setShifts(updatedShifts);
-                                  saveShifts(updatedShifts);
+                                  saveShifts(updatedShifts, s.id);
                                   triggerAlert('Segundo ayudante actualizado');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
@@ -17842,12 +17851,12 @@ function App() {
                                 onChange={(e) => {
                                   const updatedShifts = shifts.map(curr => {
                                     if (curr.id === s.id) {
-                                      return { ...curr, matricula: e.target.value };
+                                      return { ...curr, matricula: e.target.value, _syncStatus: 'pending' };
                                     }
                                     return curr;
                                   });
                                   setShifts(updatedShifts);
-                                  saveShifts(updatedShifts);
+                                  saveShifts(updatedShifts, s.id);
                                   triggerAlert('Matrícula actualizada');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
@@ -19388,12 +19397,12 @@ function App() {
                                     }
                                     const updatedShifts = shifts.map(curr => {
                                       if (curr.id === s.id) {
-                                        return { ...curr, customDriver: newCustom };
+                                        return { ...curr, customDriver: newCustom, _syncStatus: 'pending' };
                                       }
                                       return curr;
                                     });
                                     setShifts(updatedShifts);
-                                    saveShifts(updatedShifts);
+                                    saveShifts(updatedShifts, s.id);
                                     triggerAlert('Chofer actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
@@ -19425,12 +19434,12 @@ function App() {
                                     }
                                     const updatedShifts = shifts.map(curr => {
                                       if (curr.id === s.id) {
-                                        return { ...curr, helper: newHelper };
+                                        return { ...curr, helper: newHelper, _syncStatus: 'pending' };
                                       }
                                       return curr;
                                     });
                                     setShifts(updatedShifts);
-                                    saveShifts(updatedShifts);
+                                    saveShifts(updatedShifts, s.id);
                                     triggerAlert('Ayudante actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
@@ -19462,12 +19471,12 @@ function App() {
                                     }
                                     const updatedShifts = shifts.map(curr => {
                                       if (curr.id === s.id) {
-                                        return { ...curr, helper2: newHelper2 };
+                                        return { ...curr, helper2: newHelper2, _syncStatus: 'pending' };
                                       }
                                       return curr;
                                     });
                                     setShifts(updatedShifts);
-                                    saveShifts(updatedShifts);
+                                    saveShifts(updatedShifts, s.id);
                                     triggerAlert('Segundo ayudante actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
@@ -19492,12 +19501,12 @@ function App() {
                                   onChange={(e) => {
                                     const updatedShifts = shifts.map(curr => {
                                       if (curr.id === s.id) {
-                                        return { ...curr, matricula: e.target.value };
+                                        return { ...curr, matricula: e.target.value, _syncStatus: 'pending' };
                                       }
                                       return curr;
                                     });
                                     setShifts(updatedShifts);
-                                    saveShifts(updatedShifts);
+                                    saveShifts(updatedShifts, s.id);
                                     triggerAlert('Matrícula actualizada');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
@@ -23732,7 +23741,7 @@ function App() {
                       <tbody>
                         {closedShiftsList.map(s => {
                           const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
-                          const summary = getShiftSummary(s.furgoId, s.date);
+                          const summary = (s.summary && typeof s.summary === 'object') ? s.summary : getShiftSummary(s.furgoId, s.date);
                           const isShiftClosed = s.status === 'closed' || Boolean(s.closedAt);
                           return (
                             <tr key={s.id}>
@@ -25660,7 +25669,7 @@ function App() {
                 const furgoLabel = users.find(u => u.id === targetFurgoId)?.label || targetFurgoId;
                 const existingShift = shifts.find(s => s.furgoId === targetFurgoId && s.date === targetDate);
                 
-                                const summary = getShiftSummary(targetFurgoId, targetDate);
+                                const summary = (existingShift?.summary && typeof existingShift.summary === 'object') ? existingShift.summary : getShiftSummary(targetFurgoId, targetDate);
                 
                 const dayTickets = tickets.filter(t => t.furgoId === targetFurgoId && t.date === targetDate);
                 const routeNameText = existingShift?.routeName || (dayTickets.length > 0 ? dayTickets[0].routeName : '');

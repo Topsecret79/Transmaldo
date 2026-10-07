@@ -1063,7 +1063,16 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       pendingLocalShifts.forEach(localS => {
         const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
         if (cloudIdx !== -1) {
-          mergedShifts[cloudIdx] = localS;
+          const cloud = mergedShifts[cloudIdx];
+          // REGLA DE INTEGRIDAD: Si en la nube ya está CERRADO, nunca se revierte a 'open'
+          const effectiveStatus = (cloud.status === 'closed') ? 'closed' : localS.status;
+          const effectiveClosedAt = (cloud.status === 'closed') ? (cloud.closedAt || localS.closedAt) : localS.closedAt;
+          mergedShifts[cloudIdx] = {
+            ...cloud,
+            ...localS,
+            status: effectiveStatus,
+            closedAt: effectiveClosedAt
+          };
         } else {
           mergedShifts.push(localS);
         }
@@ -3138,13 +3147,26 @@ export function getShifts() {
   }
 }
 
-// Guardar turnos
-export async function saveShifts(shifts) {
+// Guardar turnos (solo sube a Supabase los turnos modificados para evitar sobreescrituras concurrentes)
+export async function saveShifts(shifts, targetShiftId = null) {
   localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
   if (supabase) {
-    isSaving++; // contador, no booleano (ver comentario junto a la declaración de isSaving)
+    isSaving++; // contador, no booleano
     try {
-      const basicShifts = shifts.map(s => ({
+      // Filtrar únicamente los turnos que realmente se modificaron
+      let shiftsToUpload = [];
+      if (targetShiftId) {
+        shiftsToUpload = shifts.filter(s => s && s.id === targetShiftId);
+      } else {
+        shiftsToUpload = shifts.filter(s => s && s._syncStatus === 'pending');
+      }
+
+      // Si no hay ningún turno modificado pendiente de subir, terminar sin sobreescribir la nube
+      if (shiftsToUpload.length === 0) {
+        return { success: true };
+      }
+
+      const basicShifts = shiftsToUpload.map(s => ({
         id: s.id,
         furgo_id: s.furgoId,
         date: s.date,
@@ -3159,8 +3181,8 @@ export async function saveShifts(shifts) {
         return { success: false, error };
       }
 
-      // Save metadata for all shifts in settings in a single batch upsert
-      const metaRows = shifts.map(s => ({
+      // Guardar metadata solo de los turnos modificados
+      const metaRows = shiftsToUpload.map(s => ({
         key: `shift_meta_${s.id}`,
         value: JSON.stringify({
           helper: s.helper || '',
@@ -3182,14 +3204,11 @@ export async function saveShifts(shifts) {
         }
       }
 
-      // Fix: si la subida del turno fue bien, limpiar _syncStatus de los turnos
-      // afectados, igual que ya hace saveTickets(). Esto es lo que permite que la
-      // protección de merge en el pull (ver más arriba) sepa quién sigue "pendiente
-      // de confirmar" y quién ya se subió con éxito.
+      // Limpiar _syncStatus de los turnos subidos con éxito
       if (!error) {
         try {
           const currentLocal = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
-          const savedIds = new Set(shifts.map(s => s.id));
+          const savedIds = new Set(shiftsToUpload.map(s => s.id));
           const updatedLocal = currentLocal.map(s => {
             if (s && savedIds.has(s.id) && s._syncStatus === 'pending') {
               const { _syncStatus, ...rest } = s;
@@ -3201,7 +3220,10 @@ export async function saveShifts(shifts) {
         } catch (e) {
           console.error("Error clearing local shift sync status:", e);
         }
-        broadcastRealtimeEvent('shifts_updated', { timestamp: Date.now() });
+        broadcastRealtimeEvent('shifts_updated', { 
+          timestamp: Date.now(),
+          shiftIds: shiftsToUpload.map(s => s.id)
+        });
       }
     } catch (e) {
       console.error("Error saving shifts or meta to Supabase:", e);
@@ -3237,6 +3259,7 @@ export async function saveShiftRoute(furgoId, date, routeName) {
   const index = shifts.findIndex(s => s.id === shiftId);
   if (index !== -1) {
     shifts[index].routeName = routeName;
+    shifts[index]._syncStatus = 'pending';
   } else {
     shifts.push({
       id: shiftId,
@@ -3245,10 +3268,11 @@ export async function saveShiftRoute(furgoId, date, routeName) {
       status: 'open',
       closedAt: null,
       routeName: routeName,
-      summary: null
+      summary: null,
+      _syncStatus: 'pending'
     });
   }
-  return await saveShifts(shifts);
+  return await saveShifts(shifts, shiftId);
 }
 
 // Cerrar el turno de un día
@@ -3291,7 +3315,7 @@ export async function closeShift(furgoId, date, summary) {
     shifts.push(newShift);
   }
 
-  const result = await saveShifts(shifts);
+  const result = await saveShifts(shifts, shiftId);
   return { ...(result || {}), shift: newShift };
 }
 
@@ -3307,6 +3331,7 @@ export async function savePlannedShift(furgoId, date, helper, matricula, customD
     shifts[index].helper2 = helper2;
     shifts[index].matricula = matricula;
     shifts[index].customDriver = customDriver;
+    shifts[index]._syncStatus = 'pending';
     if (createdBy && createdBy !== 'admin') {
       shifts[index].createdBy = createdBy;
     }
@@ -3324,10 +3349,11 @@ export async function savePlannedShift(furgoId, date, helper, matricula, customD
       customDriver,
       observations: '',
       routeName: '',
-      createdBy
+      createdBy,
+      _syncStatus: 'pending'
     });
   }
-  saveShifts(shifts);
+  return await saveShifts(shifts, shiftId);
 }
 
 // Eliminar un turno planificado
@@ -3339,7 +3365,7 @@ export async function deletePlannedShift(furgoId, date) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const filtered = shifts.filter(s => s.id !== shiftId);
-  saveShifts(filtered);
+  localStorage.setItem('delivery_shifts', JSON.stringify(filtered));
 
   try {
     const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
@@ -4968,15 +4994,27 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
   // 2. Save to Supabase directly (both the shift row and its metadata setting)
   if (supabase) {
     try {
+      const currentShift = localShifts.find(s => s.id === shiftId);
+      // Evitar sobreescribir el status si el turno ya fue cerrado en la nube o localmente
+      const { data: existingShiftRow } = await supabase
+        .from('delivery_shifts')
+        .select('status, closed_at, opened_at')
+        .eq('id', shiftId)
+        .maybeSingle();
+
+      const isClosed = (existingShiftRow?.status === 'closed') || (currentShift?.status === 'closed');
+      const closedAt = isClosed ? (existingShiftRow?.closed_at || currentShift?.closedAt || new Date().toISOString()) : null;
+      const openedAt = existingShiftRow?.opened_at || currentShift?.openedAt || new Date().toISOString();
+
       // Upsert the basic shift row
       const { error: shiftErr } = await supabase.from('delivery_shifts').upsert([{
         id: shiftId,
         furgo_id: furgoId,
         date,
-        status: localShifts.find(s => s.id === shiftId)?.status || 'open',
-        opened_at: localShifts.find(s => s.id === shiftId)?.openedAt || new Date().toISOString(),
-        closed_at: localShifts.find(s => s.id === shiftId)?.closedAt || null,
-        created_by: 'driver'
+        status: isClosed ? 'closed' : 'open',
+        opened_at: openedAt,
+        closed_at: closedAt,
+        created_by: currentShift?.createdBy || 'driver'
       }]);
       if (shiftErr) console.error('saveDriverShiftMeta: error upserting shift row:', shiftErr);
 
