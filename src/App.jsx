@@ -6756,6 +6756,60 @@ function App() {
     return false;
   };
 
+  const handleAdminCloseShiftDirect = async (s) => {
+    if (!s) return;
+    const furgoId = s.furgoId;
+    const date = s.date;
+    const driverName = s.customDriver || users.find(usr => usr.id === furgoId)?.label || furgoId;
+    
+    // Calcular kms existentes de la jornada
+    let defaultKms = '';
+    if (s.startKms != null && s.endKms != null && Number(s.endKms) >= Number(s.startKms)) {
+      defaultKms = (Number(s.endKms) - Number(s.startKms)).toString();
+    } else if (s.kms != null && Number(s.kms) > 0) {
+      defaultKms = s.kms.toString();
+    } else if (s.summary?.kms != null && Number(s.summary.kms) > 0) {
+      defaultKms = s.summary.kms.toString();
+    } else {
+      const existingKms = getRouteKms(furgoId, date);
+      if (existingKms > 0) defaultKms = existingKms.toString();
+    }
+
+    const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date);
+    const pendingCount = dayTickets.filter(t => t.status === 'pending' || !t.status).length;
+    const totalCount = dayTickets.length;
+
+    let promptMsg = `¿Deseas CERRAR el turno de "${driverName}" del día ${date}?\n(${totalCount} reparto(s) registrados`;
+    if (pendingCount > 0) {
+      promptMsg += `, ${pendingCount} pendiente(s)`;
+    }
+    promptMsg += `)\n\nIntroduce los kilómetros recorridos de la jornada:`;
+
+    const promptVal = window.prompt(promptMsg, defaultKms);
+    if (promptVal === null) return;
+
+    const parsedKms = parseFloat(promptVal) || (defaultKms ? parseFloat(defaultKms) : 0);
+
+    triggerAlert('Cerrando turno en el servidor...', 'info');
+
+    const summary = getShiftSummary(furgoId, date);
+    summary.kms = parsedKms;
+    if (s.startKms != null) summary.startKms = s.startKms;
+    if (s.endKms != null) summary.endKms = s.endKms;
+
+    await saveRouteKms(furgoId, date, parsedKms);
+    const closeResult = await closeShift(furgoId, date, summary);
+
+    if (closeResult && closeResult.success === false) {
+      triggerAlert('No se pudo confirmar el cierre en el servidor. Vuelve a intentarlo.', 'error');
+      return;
+    }
+
+    try { await syncFromCloud(true); } catch (e) {}
+    loadData();
+    triggerAlert(`✓ Turno de ${driverName} cerrado con éxito (${parsedKms} km)`);
+  };
+
   const handleAdminUpdateShift = async (furgoId, date) => {
     let kms = parseFloat(shiftKmsInput) || 0;
     await saveRouteKms(furgoId, date, kms);
@@ -17689,7 +17743,29 @@ function App() {
                                 📋 Ver Detalle
                               </button>
 
-                              {s.status === 'closed' && (
+                              {s.status !== 'closed' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAdminCloseShiftDirect(s)}
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.15)',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    color: 'var(--danger)',
+                                    padding: '3px 8px',
+                                    borderRadius: '5px',
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    fontWeight: '700',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    height: '24px'
+                                  }}
+                                  title="Cerrar este turno directamente"
+                                >
+                                  🔒 Cerrar
+                                </button>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={async () => {
@@ -18569,32 +18645,68 @@ function App() {
                               </span>
                             </td>
                             <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                              <button 
-                                type="button" 
-                                onClick={() => {
-                                  setEditingAssignment(s);
-                                  setEditAssignDriver(s.customDriver || '');
-                                  setEditAssignPlate(s.matricula || '');
-                                  setEditAssignHelper(s.helper || '');
-                                  setEditAssignHelper2(s.helper2 || '');
-                                  
-                                  const logs = getFleetDailyLogs() || [];
-                                  const matchingLog = logs.find(l => l.date === s.date && l.plate === s.matricula);
-                                  if (matchingLog) {
-                                    setEditAssignKmStart(matchingLog.kmStart !== undefined && matchingLog.kmStart !== null ? matchingLog.kmStart.toString() : '');
-                                    setEditAssignKmEnd(matchingLog.kmEnd !== undefined && matchingLog.kmEnd !== null ? matchingLog.kmEnd.toString() : '');
-                                    setEditAssignKmL(matchingLog.kmL !== null && matchingLog.kmL !== undefined ? matchingLog.kmL.toString() : '');
-                                  } else {
-                                    setEditAssignKmStart('');
-                                    setEditAssignKmEnd('');
-                                    setEditAssignKmL('');
-                                  }
-                                }}
-                                className="btn btn-secondary btn-small"
-                                style={{ margin: 0, padding: '4px 8px', fontSize: '0.72rem', border: '1px solid var(--primary)', color: 'var(--primary)', background: 'transparent' }}
-                              >
-                                ✏️ Editar
-                              </button>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <button 
+                                  type="button" 
+                                  onClick={() => {
+                                    setEditingAssignment(s);
+                                    setEditAssignDriver(s.customDriver || '');
+                                    setEditAssignPlate(s.matricula || '');
+                                    setEditAssignHelper(s.helper || '');
+                                    setEditAssignHelper2(s.helper2 || '');
+                                    
+                                    const logs = getFleetDailyLogs() || [];
+                                    const matchingLog = logs.find(l => l.date === s.date && l.plate === s.matricula);
+                                    if (matchingLog) {
+                                      setEditAssignKmStart(matchingLog.kmStart !== undefined && matchingLog.kmStart !== null ? matchingLog.kmStart.toString() : '');
+                                      setEditAssignKmEnd(matchingLog.kmEnd !== undefined && matchingLog.kmEnd !== null ? matchingLog.kmEnd.toString() : '');
+                                      setEditAssignKmL(matchingLog.kmL !== null && matchingLog.kmL !== undefined ? matchingLog.kmL.toString() : '');
+                                    } else {
+                                      setEditAssignKmStart('');
+                                      setEditAssignKmEnd('');
+                                      setEditAssignKmL('');
+                                    }
+                                  }}
+                                  className="btn btn-secondary btn-small"
+                                  style={{ margin: 0, padding: '4px 8px', fontSize: '0.72rem', border: '1px solid var(--primary)', color: 'var(--primary)', background: 'transparent' }}
+                                  title="Editar asignación de chofer y vehículo"
+                                >
+                                  ✏️ Editar
+                                </button>
+                                {s.status !== 'closed' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminCloseShiftDirect(s)}
+                                    className="btn btn-small"
+                                    style={{ margin: 0, padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700', cursor: 'pointer' }}
+                                    title="Cerrar turno de esta asignación"
+                                  >
+                                    🔒 Cerrar Turno
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (window.confirm(`¿Estás seguro de que deseas reabrir el turno de ${driverName} para el día ${s.date}?`)) {
+                                        triggerAlert('Reabriendo turno en el servidor...', 'info');
+                                        const result = await reopenShift(s.furgoId, s.date);
+                                        if (!result || !result.success) {
+                                          triggerAlert('No se pudo confirmar la reapertura en el servidor.', 'error');
+                                          return;
+                                        }
+                                        try { await syncFromCloud(true); } catch (e) {}
+                                        loadData();
+                                        triggerAlert('Turno reabierto correctamente ✓');
+                                      }
+                                    }}
+                                    className="btn btn-small"
+                                    style={{ margin: 0, padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(16, 185, 129, 0.15)', color: 'var(--success)', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: '600', cursor: 'pointer' }}
+                                    title="Reabrir este turno"
+                                  >
+                                    🔓 Reabrir
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -18823,11 +18935,22 @@ function App() {
                             {s.helper && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: '8px' }}>+ {s.helper}</span>}
                             {s.routeName && <div style={{ fontSize: '0.72rem', color: 'var(--primary)', marginTop: '2px' }}>📍 {s.routeName}</div>}
                           </div>
-                          <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{s.date.split('-').reverse().join('/')}</div>
-                            <div style={{ fontSize: '0.68rem', fontWeight: '700', color: isActive ? 'var(--shift-active-text)' : 'var(--shift-planned-text)' }}>
-                              {isActive ? '🟢 En curso' : '⚪ Planificado'}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{s.date.split('-').reverse().join('/')}</div>
+                              <div style={{ fontSize: '0.68rem', fontWeight: '700', color: isActive ? 'var(--shift-active-text)' : 'var(--shift-planned-text)' }}>
+                                {isActive ? '🟢 En curso' : '⚪ Planificado'}
+                              </div>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAdminCloseShiftDirect(s)}
+                              className="btn btn-small"
+                              style={{ margin: 0, padding: '4px 8px', fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700', cursor: 'pointer' }}
+                              title="Cerrar este turno ahora"
+                            >
+                              🔒 Cerrar Turno
+                            </button>
                           </div>
                         </div>
                       );
