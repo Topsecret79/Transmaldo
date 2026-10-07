@@ -1032,6 +1032,36 @@ function App() {
     return false;
   })();
 
+  // Comprobar si una furgoneta o repartidor está autorizada para el módulo de Calendario de Turnos.
+  // Si pertenece a un administrador que tiene desactivado shift_calendar, no debe aparecer en el calendario.
+  const isFurgoAuthorizedForCalendar = (furgoId) => {
+    if (!furgoId) return false;
+    const u = (users || []).find(usr => usr.id === furgoId);
+    if (!u) return true;
+    if (u.role !== 'repartidor') return true;
+    const parentAdminId = u.createdBy;
+    if (!parentAdminId || parentAdminId === 'admin') return true;
+    const parentAdmin = (users || []).find(usr => usr.id === parentAdminId);
+    if (!parentAdmin) return true;
+    return hasPermission(parentAdmin, 'shift_calendar');
+  };
+
+  // Para repartidores: comprobar si el administrador que los gestiona tiene activo el módulo de Turnos
+  const adminAllowsShiftModule = (() => {
+    if (!loggedInUserObj) return false;
+    if (loggedInUserObj.role === 'superadmin' || loggedInUserObj.role === 'admin') {
+      return showShiftCalendar;
+    }
+    if (loggedInUserObj.role === 'repartidor') {
+      const parentAdminId = loggedInUserObj.createdBy;
+      if (!parentAdminId || parentAdminId === 'admin') return true;
+      const parentAdmin = (users || []).find(u => u.id === parentAdminId);
+      if (!parentAdmin) return true;
+      return hasPermission(parentAdmin, 'shift_calendar');
+    }
+    return false;
+  })();
+
   // Para repartidores: comprobar si el administrador que los gestiona tiene activo
   // el módulo de Control de Flota.
   const adminAllowsFleetInput = (() => {
@@ -11471,6 +11501,7 @@ function App() {
                 </div>
                 
                 {(() => {
+                  if (!adminAllowsShiftModule) return null;
                   const isClosed = getShiftStatus(currentUser.id, targetDate) === 'closed';
                   const dayTickets = tickets.filter(t => t.furgoId === currentUser.id && t.date === targetDate);
                   const currentShift = shifts.find(s => s.furgoId === currentUser.id && s.date === targetDate);
@@ -17072,10 +17103,10 @@ function App() {
     // Obtener todos los turnos y actividad real del día (tanto planificados como trabajados/con repartos)
     const getShiftsForDay = (dateStr) => {
       if (!dateStr) return [];
-      const existingShifts = (shifts || []).filter(s => s && s.date === dateStr);
+      const existingShifts = (shifts || []).filter(s => s && s.date === dateStr && isFurgoAuthorizedForCalendar(s.furgoId));
 
       // Identificar furgonetas que tuvieron repartos este día
-      const dayTickets = (tickets || []).filter(t => t && t.date === dateStr);
+      const dayTickets = (tickets || []).filter(t => t && t.date === dateStr && isFurgoAuthorizedForCalendar(t.furgoId));
       const furgosWithTickets = new Map();
       dayTickets.forEach(t => {
         if (t.furgoId) {
@@ -17554,7 +17585,7 @@ function App() {
         {calendarViewMode === 'day' && (() => {
           const dayStr = getFormattedDateStr(calendarDate);
           const dayShifts = getShiftsForDay(dayStr);
-          const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
+          const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor' && isFurgoAuthorizedForCalendar(usr.id));
           const availableDrivers = activeRepartidores.filter(d => !dayShifts.some(s => s.furgoId === d.id));
 
           return (
@@ -19198,7 +19229,7 @@ function App() {
         {/* -------------------- COMMON PLAN MODAL (For Month/Week Views) -------------------- */}
         {plannedShiftModalOpen && selectedCalendarDay && (() => {
           const dateShifts = getShiftsForDay(selectedCalendarDay);
-          const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor');
+          const activeRepartidores = users.filter(usr => usr && usr.role === 'repartidor' && isFurgoAuthorizedForCalendar(usr.id));
           const availableDrivers = activeRepartidores.filter(d => !dateShifts.some(s => s.furgoId === d.id));
 
           return (
@@ -23655,7 +23686,7 @@ function App() {
                     style={{ height: '38px' }}
                   >
                     <option value="all">Todas las furgonetas</option>
-                    {users.filter(u => u && u.role === 'repartidor').map(u => (
+                    {users.filter(u => u && u.role === 'repartidor' && isFurgoAuthorizedForCalendar(u.id)).map(u => (
                       <option key={u.id} value={u.id}>{u.label}</option>
                     ))}
                   </select>
@@ -23690,6 +23721,9 @@ function App() {
                   .filter(s => {
                     if (!s) return false;
                     
+                    // Excluir furgonetas cuyo administrador no tiene contratado/autorizado el módulo de turnos
+                    if (!isFurgoAuthorizedForCalendar(s.furgoId)) return false;
+
                     // Filtrar por estado si se especifica
                     if (shiftFilterStatus === 'closed' && s.status !== 'closed' && !s.closedAt) return false;
                     if (shiftFilterStatus === 'open' && (s.status === 'closed' || s.closedAt)) return false;
