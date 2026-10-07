@@ -996,6 +996,7 @@ function App() {
   const [shiftKmsInput, setShiftKmsInput] = useState('');
   const [shiftFilterDate, setShiftFilterDate] = useState('');
   const [shiftFilterFurgo, setShiftFilterFurgo] = useState('all');
+  const [shiftFilterStatus, setShiftFilterStatus] = useState('all');
   const [users, setUsers] = useState([]);
   const loggedInUserObj = users.find(u => u.id === currentUser?.id) || currentUser;
   const showReportDay = hasPermission(loggedInUserObj, 'report_day');
@@ -17623,6 +17624,8 @@ function App() {
                               <button
                                 type="button"
                                 onClick={() => {
+                                  const existingKms = getRouteKms(s.furgoId, s.date);
+                                  setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
                                   setShiftSummaryDate(s.date);
                                   setShiftSummaryFurgoId(s.furgoId);
                                   setShowShiftModal(true);
@@ -19271,6 +19274,8 @@ function App() {
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    const existingKms = getRouteKms(s.furgoId, s.date);
+                                    setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
                                     setShiftSummaryDate(s.date);
                                     setShiftSummaryFurgoId(s.furgoId);
                                     setShowShiftModal(true);
@@ -23646,10 +23651,23 @@ function App() {
                     ))}
                   </select>
                 </div>
-                {(shiftFilterDate || shiftFilterFurgo !== 'all') && (
+                <div className="input-group" style={{ marginBottom: 0, flex: 1, minWidth: '150px' }}>
+                  <span className="input-label" style={{ fontSize: '0.8rem' }}>📋 Filtrar por Estado:</span>
+                  <select 
+                    className="form-input" 
+                    value={shiftFilterStatus} 
+                    onChange={(e) => setShiftFilterStatus(e.target.value)} 
+                    style={{ height: '38px' }}
+                  >
+                    <option value="all">Todos los turnos</option>
+                    <option value="closed">Solo cerrados</option>
+                    <option value="open">Solo abiertos (pendientes)</option>
+                  </select>
+                </div>
+                {(shiftFilterDate || shiftFilterFurgo !== 'all' || shiftFilterStatus !== 'all') && (
                   <button 
                     type="button" 
-                    onClick={() => { setShiftFilterDate(''); setShiftFilterFurgo('all'); }} 
+                    onClick={() => { setShiftFilterDate(''); setShiftFilterFurgo('all'); setShiftFilterStatus('all'); }} 
                     className="btn btn-secondary" 
                     style={{ height: '38px', padding: '0 15px', width: 'auto', display: 'flex', alignItems: 'center', gap: '5px' }}
                   >
@@ -23662,8 +23680,10 @@ function App() {
                 const closedShiftsList = (shifts || [])
                   .filter(s => {
                     if (!s) return false;
-                    // Mostrar turnos cerrados (con status 'closed' o fecha de cierre)
-                    if (s.status !== 'closed' && !s.closedAt) return false;
+                    
+                    // Filtrar por estado si se especifica
+                    if (shiftFilterStatus === 'closed' && s.status !== 'closed' && !s.closedAt) return false;
+                    if (shiftFilterStatus === 'open' && (s.status === 'closed' || s.closedAt)) return false;
 
                     // Role filter
                     if (currentUser?.role === 'repartidor') {
@@ -23684,7 +23704,7 @@ function App() {
                 if (shifts.length === 0) {
                   return (
                     <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
-                      No se ha registrado ningún cierre de turno todavía.
+                      No se ha registrado ningún turno todavía.
                     </div>
                   );
                 }
@@ -23692,7 +23712,7 @@ function App() {
                 if (closedShiftsList.length === 0) {
                   return (
                     <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
-                      No se encontraron cierres de turno que coincidan con los filtros aplicados.
+                      No se encontraron turnos que coincidan con los filtros aplicados.
                     </div>
                   );
                 }
@@ -23704,7 +23724,7 @@ function App() {
                         <tr>
                           <th>Fecha</th>
                           <th>Furgoneta / Chofer</th>
-                          <th>Hora de Cierre</th>
+                          <th>Estado / Cierre</th>
                           <th>Resumen de Entregas</th>
                           <th style={{ textAlign: 'right' }}>Acciones</th>
                         </tr>
@@ -23713,6 +23733,7 @@ function App() {
                         {closedShiftsList.map(s => {
                           const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
                           const summary = getShiftSummary(s.furgoId, s.date);
+                          const isShiftClosed = s.status === 'closed' || Boolean(s.closedAt);
                           return (
                             <tr key={s.id}>
                               <td style={{ fontWeight: '600' }}>
@@ -23746,7 +23767,15 @@ function App() {
                                 })()}
                               </td>
                               <td style={{ fontSize: '0.85rem' }}>
-                                {s.closedAt ? new Date(s.closedAt).toLocaleString() : 'Cerrado'}
+                                {isShiftClosed ? (
+                                  <span style={{ color: 'var(--danger)', fontWeight: '600' }}>
+                                    🔒 Cerrado {s.closedAt ? `(${new Date(s.closedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: 'var(--success)', fontWeight: '600' }}>
+                                    🟢 Abierto {s.openedAt ? `(${new Date(s.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                                  </span>
+                                )}
                               </td>
                               <td style={{ fontSize: '0.85rem' }}>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -23772,16 +23801,27 @@ function App() {
                                   className="btn btn-primary btn-small"
                                   style={{ margin: 0 }}
                                 >
-                                  Ver Resumen
+                                  {isShiftClosed ? 'Ver Resumen' : '📋 Ver / Cerrar'}
                                 </button>
-                                <button 
-                                  onClick={() => handleReopenShift(s.furgoId, s.date)} 
-                                  className="btn btn-secondary btn-small"
-                                  style={{ margin: 0, border: '1px solid var(--danger)', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.05)', fontWeight: '600' }}
-                                  title="Reabrir este turno para que el repartidor pueda seguir editando"
-                                >
-                                  🔓 Reabrir Turno
-                                </button>
+                                {isShiftClosed ? (
+                                  <button 
+                                    onClick={() => handleReopenShift(s.furgoId, s.date)} 
+                                    className="btn btn-secondary btn-small"
+                                    style={{ margin: 0, border: '1px solid var(--danger)', color: 'var(--danger)', background: 'rgba(239, 68, 68, 0.05)', fontWeight: '600' }}
+                                    title="Reabrir este turno para que el repartidor pueda seguir editando"
+                                  >
+                                    🔓 Reabrir
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleConfirmCloseShift(s.furgoId, s.date)} 
+                                    className="btn btn-secondary btn-small"
+                                    style={{ margin: 0, border: '1px solid var(--success)', color: 'var(--success)', background: 'rgba(16, 185, 129, 0.05)', fontWeight: '600' }}
+                                    title="Cerrar turno como administrador"
+                                  >
+                                    🏁 Cerrar
+                                  </button>
+                                )}
                               </td>
                             </tr>
                           );
@@ -25991,10 +26031,10 @@ function App() {
                       </>
                     )}
 
-                    {(!existingShift || existingShift.status !== 'closed') && !isAdminOrSuper && (
+                    {(!existingShift || existingShift.status !== 'closed') && (
                       <div style={{ marginTop: '20px' }}>
                         <div style={{ color: 'var(--danger)', fontSize: '0.8rem', marginBottom: '12px', lineHeight: '1.4', background: 'rgba(239, 68, 68, 0.05)', padding: '10px', borderRadius: '6px', border: '1px dashed var(--danger)' }}>
-                          ⚠️ <strong>¡Atención!</strong> Al finalizar el turno se bloqueará el registro de entregas para esta fecha. No podrás editar ni añadir más repartos de este día.
+                          ⚠️ <strong>¡Atención!</strong> Al finalizar el turno se bloqueará el registro de entregas para esta fecha.
                         </div>
                         <button 
                           type="button" 
@@ -26002,7 +26042,7 @@ function App() {
                           className="btn btn-primary"
                           style={{ width: '100%', background: 'var(--success)', fontWeight: '700' }}
                         >
-                          Confirmar Fin de Turno
+                          {isAdminOrSuper ? '🏁 Confirmar Cierre de Turno (Admin)' : 'Confirmar Fin de Turno'}
                         </button>
                       </div>
                     )}
