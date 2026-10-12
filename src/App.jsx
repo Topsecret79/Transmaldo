@@ -6762,17 +6762,17 @@ function App() {
     const date = s.date;
     const driverName = s.customDriver || users.find(usr => usr.id === furgoId)?.label || furgoId;
     
-    // Calcular kms existentes de la jornada
+    // Kms FACTURABLES existentes de la jornada (los manuales).
+    // IMPORTANTE: el odómetro (startKms/endKms) es solo control de flota y NO se factura,
+    // por eso nunca se usa como valor por defecto aquí.
     let defaultKms = '';
-    if (s.startKms != null && s.endKms != null && Number(s.endKms) >= Number(s.startKms)) {
-      defaultKms = (Number(s.endKms) - Number(s.startKms)).toString();
+    const existingKms = getRouteKms(furgoId, date);
+    if (existingKms > 0) {
+      defaultKms = existingKms.toString();
     } else if (s.kms != null && Number(s.kms) > 0) {
       defaultKms = s.kms.toString();
     } else if (s.summary?.kms != null && Number(s.summary.kms) > 0) {
       defaultKms = s.summary.kms.toString();
-    } else {
-      const existingKms = getRouteKms(furgoId, date);
-      if (existingKms > 0) defaultKms = existingKms.toString();
     }
 
     const dayTickets = tickets.filter(t => t.furgoId === furgoId && t.date === date);
