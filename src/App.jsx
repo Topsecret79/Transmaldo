@@ -8051,7 +8051,9 @@ function App() {
       // historial sin que el corte de facturacion lo bloquee.
       if (currentUser && isAdminOrSuper && !ticketFilterDate) {
         if (adminStartDate && t.date < adminStartDate) return false;
-        const effectiveEndDate = (adminEndDate && adminEndDate > getTomorrowDate()) ? adminEndDate : getTomorrowDate();
+        // Solo se extiende hasta mañana si el periodo llega hasta hoy (para ver los repartos ya planificados);
+        // si el periodo terminó en el pasado (ej. septiembre) se respeta la fecha final elegida.
+        const effectiveEndDate = !adminEndDate ? getTomorrowDate() : (adminEndDate >= getTodayDate() && adminEndDate < getTomorrowDate() ? getTomorrowDate() : adminEndDate);
         if (t.date > effectiveEndDate) return false;
       }
       if (ticketFilterFurgo !== 'all') {
@@ -20871,7 +20873,9 @@ function App() {
   const renderAdminPortal = () => {
     const filteredAdminTickets = visibleTickets.filter(t => {
       if (adminStartDate && t.date < adminStartDate) return false;
-      const effectiveEndDate = (adminEndDate && adminEndDate > getTomorrowDate()) ? adminEndDate : getTomorrowDate();
+      // Solo se extiende hasta mañana si el periodo llega hasta hoy (para ver los repartos ya planificados);
+      // si el periodo terminó en el pasado (ej. septiembre) se respeta la fecha final elegida.
+      const effectiveEndDate = !adminEndDate ? getTomorrowDate() : (adminEndDate >= getTodayDate() && adminEndDate < getTomorrowDate() ? getTomorrowDate() : adminEndDate);
       if (t.date > effectiveEndDate) return false;
       if (billingFilterFurgo !== 'all') {
         const matchesFurgo = t.furgoId === billingFilterFurgo;
