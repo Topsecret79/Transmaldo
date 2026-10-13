@@ -3502,8 +3502,8 @@ function App() {
         return;
       }
       
-      // SI ES ADMINISTRADOR O COORDINADOR Y NO TIENE EMAIL VINCULADO -> FORZAR FLUJO DE VINCULACIÓN
-      if ((foundUser.role === 'admin' || foundUser.role === 'superadmin' || foundUser.role === 'coordinador') && !foundUser.email) {
+      // SI ES ADMINISTRADOR Y NO TIENE EMAIL VINCULADO -> FORZAR FLUJO DE VINCULACIÓN (coordinadores y repartidores acceden directamente)
+      if ((foundUser.role === 'admin' || foundUser.role === 'superadmin') && !foundUser.email) {
         setEmailLinkageUser(foundUser);
         setUsernameInput('');
         setPasswordInput('');
@@ -3691,33 +3691,35 @@ function App() {
           .from('delivery_users')
           .update({
             email: email.toLowerCase(),
-            auth_uid: authUser.id,
-            must_change_password: false
+            auth_uid: authUser ? authUser.id : null
           })
           .eq('id', emailLinkageUser.id);
         if (linkUpdateErr) {
-          setLinkageError('No se pudo enlazar la cuenta. Comprueba tu conexión e inténtalo de nuevo.');
+          console.error("Error enlazando cuenta en Supabase:", linkUpdateErr);
+          setLinkageError('No se pudo enlazar la cuenta: ' + (linkUpdateErr.message || 'error en la base de datos.'));
           setIsLinking(false);
           return;
         }
       }
 
+      // Actualizar también la caché local de usuarios de inmediato
+      try {
+        const localUsers = JSON.parse(localStorage.getItem('delivery_users') || '[]');
+        const updatedUsers = localUsers.map(u => u.id === emailLinkageUser.id ? { ...u, email: email.toLowerCase(), auth_uid: authUser ? authUser.id : null } : u);
+        localStorage.setItem('delivery_users', JSON.stringify(updatedUsers));
+      } catch (e) {}
+
       const updatedUserObj = {
         ...emailLinkageUser,
         email: email.toLowerCase(),
-        auth_uid: authUser.id,
+        auth_uid: authUser ? authUser.id : null,
         mustChangePassword: false
       };
       {
-        // Nota: no hace falta tocar aquí la caché local de usuarios — el
-        // reinitSupabase()+loadData() de más abajo la refresca ya con los datos
-        // correctos recién guardados en Supabase (ver arreglo de saveUsers más
-        // arriba, que evita el guardado masivo de toda la lista).
-        
         // 3. Iniciar sesión automáticamente
         setCurrentUser(updatedUserObj);
         localStorage.setItem('delivery_session', JSON.stringify(updatedUserObj));
-        setActiveTab((updatedUserObj.role === 'admin' || updatedUserObj.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+        setActiveTab((updatedUserObj.role === 'admin' || updatedUserObj.role === 'superadmin') ? 'dashboard' : (updatedUserObj.role === 'coordinador' ? 'map' : 'new_ticket'));
         
         triggerAlert('¡Cuenta vinculada con éxito y sesión iniciada!');
         
