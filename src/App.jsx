@@ -1120,6 +1120,7 @@ function App() {
   const [editAssignKmStart, setEditAssignKmStart] = useState('');
   const [editAssignKmEnd, setEditAssignKmEnd] = useState('');
   const [editAssignKmL, setEditAssignKmL] = useState('');
+  const [editAssignBillableKms, setEditAssignBillableKms] = useState('');
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [plannedShiftModalOpen, setPlannedShiftModalOpen] = useState(false);
   const [plannedFurgoId, setPlannedFurgoId] = useState('');
@@ -2361,21 +2362,52 @@ function App() {
     return () => clearTimeout(timer);
   }, [activeTab, reportDate]);
 
-  // Fix: el modal de resumen/edición de turno solo veía los tickets de los últimos 15 días
-  // (el resto no se descarga). Al abrir un turno antiguo salía sin información. Ahora se
-  // descargan los tickets de ese día concreto al abrir el modal.
+  // Carga histórica integral: asegura que días antiguos (<15 días) tengan sus tickets
+  // cargados en memoria ya sea que el usuario consulte la fecha en:
+  // - La vista del chofer / resumen de jornada (shiftSummaryDate)
+  // - La creación/edición de paradas (ticketDate)
+  // - El día seleccionado en el calendario (selectedCalendarDay)
+  // - O la navegación mensual del calendario (calendarDate)
   useEffect(() => {
-    if (!showShiftModal || !shiftSummaryDate) return;
+    const target = shiftSummaryDate || ticketDate;
+    if (!target) return;
     const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
-    if (shiftSummaryDate >= syncCutoffDate) return;
-    loadHistoricalTicketsForPeriod(shiftSummaryDate, shiftSummaryDate)
-      .then((loaded) => {
-        if (loaded && loaded.length > 0) {
-          loadDataRef.current();
-        }
-      })
-      .catch((err) => console.error("Error cargando tickets históricos del turno:", err));
-  }, [showShiftModal, shiftSummaryDate]);
+    if (target < syncCutoffDate) {
+      loadHistoricalTicketsForPeriod(target, target)
+        .then((loaded) => {
+          if (loaded && loaded.length > 0) loadDataRef.current();
+        })
+        .catch(err => console.error("Error cargando tickets históricos de la fecha seleccionada:", err));
+    }
+  }, [shiftSummaryDate, ticketDate]);
+
+  useEffect(() => {
+    if (!selectedCalendarDay) return;
+    const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    if (selectedCalendarDay < syncCutoffDate) {
+      loadHistoricalTicketsForPeriod(selectedCalendarDay, selectedCalendarDay)
+        .then((loaded) => {
+          if (loaded && loaded.length > 0) loadDataRef.current();
+        })
+        .catch(err => console.error("Error cargando tickets históricos del día de calendario:", err));
+    }
+  }, [selectedCalendarDay]);
+
+  useEffect(() => {
+    if (activeTab !== 'calendar' || !calendarDate) return;
+    const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const firstDay = new Date(year, month, 1).toISOString().split('T')[0];
+    const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
+    if (lastDay < syncCutoffDate) {
+      loadHistoricalTicketsForPeriod(firstDay, lastDay)
+        .then((loaded) => {
+          if (loaded && loaded.length > 0) loadDataRef.current();
+        })
+        .catch(err => console.error("Error cargando histórico del mes del calendario:", err));
+    }
+  }, [activeTab, calendarDate]);
 
   useEffect(() => {
     reinitSupabase();
@@ -6943,7 +6975,11 @@ function App() {
 
     const traveled = end - start;
 
-    // 1. Guardar metadata del turno (Chofer, vehículo, ayudantes)
+    // 1. Guardar metadata del turno (Chofer, vehículo, ayudantes y kms)
+    const billableKms = editAssignBillableKms !== '' ? (parseFloat(editAssignBillableKms) || 0) : undefined;
+    const startKmVal = editAssignKmStart !== '' ? start : undefined;
+    const endKmVal = editAssignKmEnd !== '' ? end : undefined;
+
     const updatedShifts = await saveDriverShiftMeta(
       shift.id,
       shift.furgoId,
@@ -6951,9 +6987,16 @@ function App() {
       editAssignDriver,
       editAssignPlate,
       editAssignHelper,
-      editAssignHelper2
+      editAssignHelper2,
+      billableKms,
+      startKmVal,
+      endKmVal
     );
     setShifts(updatedShifts);
+
+    if (billableKms !== undefined) {
+      await saveRouteKms(shift.furgoId, shift.date, billableKms);
+    }
 
     // 2. Guardar registro diario si se introdujeron kilómetros
     if (editAssignKmStart !== '' && editAssignKmEnd !== '') {
@@ -18680,10 +18723,15 @@ function App() {
                                       setEditAssignKmEnd(matchingLog.kmEnd !== undefined && matchingLog.kmEnd !== null ? matchingLog.kmEnd.toString() : '');
                                       setEditAssignKmL(matchingLog.kmL !== null && matchingLog.kmL !== undefined ? matchingLog.kmL.toString() : '');
                                     } else {
-                                      setEditAssignKmStart('');
-                                      setEditAssignKmEnd('');
+                                      const sStart = s.startKms ?? s.summary?.startKms ?? '';
+                                      const sEnd = s.endKms ?? s.summary?.endKms ?? '';
+                                      setEditAssignKmStart(sStart !== '' ? sStart.toString() : '');
+                                      setEditAssignKmEnd(sEnd !== '' ? sEnd.toString() : '');
                                       setEditAssignKmL('');
                                     }
+
+                                    const bKms = getRouteKms(s.furgoId, s.date) || s.kms || s.summary?.kms || 0;
+                                    setEditAssignBillableKms(bKms > 0 ? bKms.toString() : '');
                                   }}
                                   className="btn btn-secondary btn-small"
                                   style={{ margin: 0, padding: '4px 8px', fontSize: '0.72rem', border: '1px solid var(--primary)', color: 'var(--primary)', background: 'transparent' }}
@@ -18873,6 +18921,33 @@ function App() {
                               </strong>
                             </div>
                           </div>
+                        </div>
+
+                        {/* Sección de Kilómetros Facturables */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                          <span style={{ fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            🏁 Kilómetros de la Ruta (Facturables):
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            💡 Kilómetros que se suman a la facturación de la ruta (× {kmPrice.toFixed(2)} €/km). Dejar en 0 si no aplica.
+                          </span>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input 
+                              type="number" 
+                              step="0.1" 
+                              className="form-input" 
+                              placeholder="0 (Solo si es facturable)" 
+                              value={editAssignBillableKms} 
+                              onChange={(e) => setEditAssignBillableKms(e.target.value)} 
+                              style={{ flex: 1, padding: '6px', textAlign: 'center', fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)', height: '36px', margin: 0 }} 
+                            />
+                            <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>km</span>
+                          </div>
+                          {editAssignBillableKms !== '' && Number(editAssignBillableKms) > 0 && (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--primary)', textAlign: 'right' }}>
+                              Importe: <strong>{(Number(editAssignBillableKms) * kmPrice).toFixed(2)} €</strong>
+                            </span>
+                          )}
                         </div>
 
                       </div>

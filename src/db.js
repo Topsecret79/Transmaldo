@@ -4955,7 +4955,7 @@ export function hasPermission(user, moduleId) {
  * AND Supabase, bypassing the full shifts array save. This prevents any race condition
  * with the periodic sync cycle overwriting data.
  */
-export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, matricula, helper, helper2) {
+export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, matricula, helper, helper2, kms, startKms, endKms) {
   // 1. Update the specific shift in localStorage directly
   let localShifts = [];
   try {
@@ -4969,7 +4969,10 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       customDriver,
       matricula,
       helper,
-      helper2
+      helper2,
+      ...(kms !== undefined ? { kms } : {}),
+      ...(startKms !== undefined ? { startKms } : {}),
+      ...(endKms !== undefined ? { endKms } : {})
     };
   } else {
     // Create new shift entry if doesn't exist
@@ -4986,7 +4989,10 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       helper2,
       observations: '',
       routeName: '',
-      createdBy: 'driver'
+      createdBy: 'driver',
+      ...(kms !== undefined ? { kms } : {}),
+      ...(startKms !== undefined ? { startKms } : {}),
+      ...(endKms !== undefined ? { endKms } : {})
     });
   }
   localStorage.setItem('delivery_shifts', JSON.stringify(localShifts));
@@ -5023,20 +5029,23 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
         .from('delivery_settings')
         .select('value')
         .eq('key', `shift_meta_${shiftId}`)
-        .single();
+        .maybeSingle();
 
       let currentMeta = {};
       if (existingMeta?.value) {
         try { currentMeta = JSON.parse(existingMeta.value); } catch (e) {}
       }
 
-      // Merge: keep existing fields, override only driver/plate/helper fields
+      // Merge: keep existing fields, override driver/plate/helper fields and kms if provided
       const newMeta = {
         ...currentMeta,
         customDriver,
         matricula,
         helper,
-        helper2
+        helper2,
+        ...(kms !== undefined ? { kms } : {}),
+        ...(startKms !== undefined ? { startKms } : {}),
+        ...(endKms !== undefined ? { endKms } : {})
       };
 
       const { error: metaErr } = await supabase.from('delivery_settings').upsert([{
