@@ -2089,25 +2089,32 @@ function App() {
   // Derived state for role-based data partitioning (independent invoicing per administrator)
   const activeRepartidores = users.filter(u => {
     if (u.role !== 'repartidor') return false;
+    if (u.active === false) return false;
     if (!currentUser) return false;
     if (currentUser.role === 'superadmin') return true;
     if (currentUser.role === 'repartidor') return u.id === currentUser.id;
+    if (currentUser.role === 'coordinador') {
+      if (currentUser.createdBy && currentUser.createdBy !== 'admin') {
+        return u.createdBy === currentUser.createdBy;
+      }
+      return true; // El coordinador apoya a todas las rutas activas de la empresa (150, 151, 168...)
+    }
     // admin role
-    return u.createdBy === currentUser.id;
-  });
+    return u.createdBy === currentUser.id || (currentUser.role === 'admin' && !u.createdBy);
+  }).sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id, undefined, { numeric: true, sensitivity: 'base' }));
 
   const teamRepartidores = users.filter(u => u.role === 'repartidor');
 
   const visibleUsers = users.filter(u => {
     if (!currentUser) return false;
-    if (currentUser.role === 'superadmin') return true;
+    if (currentUser.role === 'superadmin' || currentUser.role === 'coordinador') return true;
     // Admins see any users they created (repartidor or admin)
     return u.createdBy === currentUser.id;
   });
 
   const visibleTickets = tickets.filter(t => {
     if (!currentUser) return false;
-    if (currentUser.role === 'superadmin') return true;
+    if (currentUser.role === 'superadmin' || currentUser.role === 'coordinador') return true;
     if (currentUser.role === 'repartidor') {
       return t.furgoId === currentUser.id;
     }
@@ -13495,7 +13502,12 @@ function App() {
         if (!t) return false;
         if (t.date !== targetDate) return false;
         if (activeTab === 'map') {
-          if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+          if (mapFilterFurgo !== 'all') {
+            const matchesFurgo = t.furgoId === mapFilterFurgo || (t.furgoId && t.furgoId.toLowerCase() === mapFilterFurgo.toLowerCase());
+            const matchesRoute = t.routeName && (t.routeName.toLowerCase() === mapFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(mapFilterFurgo.toLowerCase()));
+            const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === mapFilterFurgo.toLowerCase());
+            if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+          }
         } else {
           if (t.furgoId !== currentUser?.id) return false;
         }
@@ -14079,7 +14091,12 @@ function App() {
       if (!t) return false;
       if (t.date !== targetDate) return false;
       if (isAdminMap) {
-        if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+        if (mapFilterFurgo !== 'all') {
+          const matchesFurgo = t.furgoId === mapFilterFurgo || (t.furgoId && t.furgoId.toLowerCase() === mapFilterFurgo.toLowerCase());
+          const matchesRoute = t.routeName && (t.routeName.toLowerCase() === mapFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(mapFilterFurgo.toLowerCase()));
+          const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === mapFilterFurgo.toLowerCase());
+          if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+        }
       } else {
         if (t.furgoId !== currentUser?.id) return false;
       }
@@ -14092,7 +14109,12 @@ function App() {
       const userAllTickets = (tickets || []).filter(t => {
         if (!t) return false;
         if (isAdminMap) {
-          if (mapFilterFurgo !== 'all') return t.furgoId === mapFilterFurgo;
+          if (mapFilterFurgo !== 'all') {
+            const matchesFurgo = t.furgoId === mapFilterFurgo || (t.furgoId && t.furgoId.toLowerCase() === mapFilterFurgo.toLowerCase());
+            const matchesRoute = t.routeName && (t.routeName.toLowerCase() === mapFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(mapFilterFurgo.toLowerCase()));
+            const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === mapFilterFurgo.toLowerCase());
+            if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
+          }
           return true;
         }
         return t.furgoId === currentUser?.id;
