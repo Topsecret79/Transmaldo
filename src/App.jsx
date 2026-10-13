@@ -2361,6 +2361,22 @@ function App() {
     return () => clearTimeout(timer);
   }, [activeTab, reportDate]);
 
+  // Fix: el modal de resumen/edición de turno solo veía los tickets de los últimos 15 días
+  // (el resto no se descarga). Al abrir un turno antiguo salía sin información. Ahora se
+  // descargan los tickets de ese día concreto al abrir el modal.
+  useEffect(() => {
+    if (!showShiftModal || !shiftSummaryDate) return;
+    const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    if (shiftSummaryDate >= syncCutoffDate) return;
+    loadHistoricalTicketsForPeriod(shiftSummaryDate, shiftSummaryDate)
+      .then((loaded) => {
+        if (loaded && loaded.length > 0) {
+          loadDataRef.current();
+        }
+      })
+      .catch((err) => console.error("Error cargando tickets históricos del turno:", err));
+  }, [showShiftModal, shiftSummaryDate]);
+
   useEffect(() => {
     reinitSupabase();
 
