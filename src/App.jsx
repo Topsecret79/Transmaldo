@@ -2197,11 +2197,19 @@ function App() {
           if (savedTab) {
             if (parsed.role === 'repartidor' && savedTab === 'changelog') {
               setActiveTab('new_ticket');
+            } else if (parsed.role === 'coordinador' && savedTab !== 'map' && savedTab !== 'search') {
+              setActiveTab('map');
             } else {
               setActiveTab(savedTab);
             }
           } else {
-            setActiveTab((parsed.role === 'admin' || parsed.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+            if (parsed.role === 'coordinador') {
+              setActiveTab('map');
+            } else if (parsed.role === 'admin' || parsed.role === 'superadmin') {
+              setActiveTab('dashboard');
+            } else {
+              setActiveTab('new_ticket');
+            }
           }
           // Fix: en Safari/iPhone, el canal Realtime tarda más en conectar que en
           // Android. Cuando la app se monta con una sesión ya guardada, loadData()
@@ -3529,7 +3537,7 @@ function App() {
 
       setCurrentUser(foundUser);
       localStorage.setItem('delivery_session', JSON.stringify(foundUser));
-      setActiveTab((foundUser.role === 'admin' || foundUser.role === 'superadmin') ? 'dashboard' : 'new_ticket');
+      setActiveTab((foundUser.role === 'admin' || foundUser.role === 'superadmin') ? 'dashboard' : (foundUser.role === 'coordinador' ? 'map' : 'new_ticket'));
       setUsernameInput('');
       setPasswordInput('');
       await reinitSupabase(); // Forzar sincronización inmediata de sus datos tras iniciar sesión
@@ -7590,6 +7598,15 @@ function App() {
   };
 
   const executeTicketStatusUpdate = (id, status, failureReason, observations, failedChargeType = 'none') => {
+    // Si la acción la realiza un coordinador, registramos automáticamente la autoría de apoyo en observaciones
+    let finalObservations = observations || '';
+    if (currentUser && currentUser.role === 'coordinador' && (status === 'success' || status === 'failed')) {
+      const coordTag = `[Apoyo: ${currentUser.label || currentUser.username}]`;
+      if (!finalObservations.includes(coordTag)) {
+        finalObservations = finalObservations ? `${coordTag} ${finalObservations}` : coordTag;
+      }
+    }
+
     // Update local ticket notes before database sync
     const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
     const index = localTickets.findIndex(t => t.id === id);
@@ -7599,7 +7616,7 @@ function App() {
         parsed.timeSlot, 
         parsed.estimatedDuration, 
         parsed.cleanNotes, 
-        observations, 
+        finalObservations, 
         failedChargeType,
         parsed.originalRouteLabel,
         parsed.completedAt,
@@ -13682,7 +13699,7 @@ function App() {
 
             {(() => {
               const isClosed = getShiftStatus(ticketToShow.furgoId, ticketToShow.date) === 'closed';
-              const canChangeStatus = activeTab === 'map' ? (isAdminOrSuper || !isClosed) : (!isClosed);
+              const canChangeStatus = activeTab === 'map' ? (isAdminOrSuper || currentUser?.role === 'coordinador' || !isClosed) : (!isClosed);
               if (!canChangeStatus) return null;
 
               return (
@@ -14563,6 +14580,7 @@ function App() {
                       
                       {(() => {
                         const isClosed = getShiftStatus(t.furgoId, t.date) === 'closed';
+                        if (currentUser?.role === 'coordinador') return null;
                         return (isAdminMap || (!isClosed || isAdminOrSuper)) ? (
                           <button 
                             onClick={(e) => {
@@ -14857,8 +14875,8 @@ function App() {
             );
           }
 
-          // A los repartidores con permiso solo les dejamos buscar sus propios tickets, a los administradores todos
-          const searchTickets = isAdminOrSuper ? tickets : tickets.filter(t => t.furgoId === currentUser.id);
+          // A los repartidores con permiso solo les dejamos buscar sus propios tickets, a los administradores y coordinadores todos
+          const searchTickets = (isAdminOrSuper || currentUser?.role === 'coordinador') ? tickets : tickets.filter(t => t.furgoId === currentUser.id);
 
           // Preparar tickets con información expandida para la búsqueda
           const processedTickets = searchTickets.map(t => {
@@ -15021,14 +15039,48 @@ function App() {
                           {statusBadge}
                         </td>
                         <td style={{ textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={() => startEditing(ticket)}
-                            className="btn btn-secondary btn-small"
-                            style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                          >
-                            ✏️ Editar
-                          </button>
+                          {currentUser?.role === 'coordinador' ? (
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+                              {(!ticket.status || ticket.status === 'pending') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateTicketStatus(ticket.id, 'success')}
+                                  className="btn btn-success btn-small"
+                                  style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', background: '#10b981', borderColor: '#10b981', color: '#fff', fontWeight: 'bold' }}
+                                >
+                                  🟢 Entregar
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMapFilterDate(ticket.date);
+                                  setMapFilterFurgo(ticket.furgoId);
+                                  setSelectedMapTicket(ticket);
+                                  setActiveTab('map');
+                                  const latNum = parseFloat(ticket.lat);
+                                  const lngNum = parseFloat(ticket.lng);
+                                  if (mapInstanceRef.current && !isNaN(latNum) && !isNaN(lngNum)) {
+                                    mapInstanceRef.current.flyTo({ center: [lngNum, latNum], zoom: 16 });
+                                  }
+                                }}
+                                className="btn btn-secondary btn-small"
+                                style={{ margin: 0, padding: '4px 8px', fontSize: '0.75rem', width: 'auto' }}
+                                title="Ver en el Mapa de Control"
+                              >
+                                🗺️ Mapa
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEditing(ticket)}
+                              className="btn btn-secondary btn-small"
+                              style={{ margin: 0, padding: '4px 10px', fontSize: '0.75rem', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                            >
+                              ✏️ Editar
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -20960,6 +21012,168 @@ function App() {
     );
   };
 
+  // --- RENDERIZADO DEL PORTAL DE COORDINADOR DE RUTAS (APOYO EN CALLE) ---
+  const renderCoordinatorPortal = () => {
+    return (
+      <div>
+        <div className="tab-container">
+          <button 
+            className={`tab-btn ${(activeTab === 'map' || activeTab !== 'search') ? 'active' : ''}`} 
+            onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('map'); }}
+          >
+            🗺️ Mapa de Control
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'search' ? 'active' : ''}`} 
+            onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('search'); }}
+          >
+            🔍 Buscador General
+          </button>
+        </div>
+
+        {activeTab === 'search' ? renderSearchSection() : (
+          <div className="glass-panel map-tab-panel">
+            <h2 className="map-tab-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🗺️ Mapa de Control de Rutas
+            </h2>
+            <p className="map-tab-subtitle" style={{ marginBottom: '20px' }}>
+              Visualiza en tiempo real las rutas en servicio y apoya en las entregas directamente desde la calle.
+            </p>
+
+            <div className="map-filters-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label">Filtrar por Fecha</span>
+                <input 
+                  type="date" 
+                  className="form-input" 
+                  value={mapFilterDate} 
+                  onChange={(e) => setMapFilterDate(e.target.value)} 
+                />
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  <button 
+                    type="button" 
+                    className={`btn btn-small ${mapFilterDate === getTodayDate() ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto' }}
+                    onClick={() => setMapFilterDate(getTodayDate())}
+                  >
+                    Hoy
+                  </button>
+                  <button 
+                    type="button" 
+                    className={`btn btn-small ${mapFilterDate === getTomorrowDate() ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto', background: mapFilterDate === getTomorrowDate() ? undefined : 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
+                    onClick={() => setMapFilterDate(getTomorrowDate())}
+                  >
+                    🚀 Mañana {tickets.filter(t => t.date === getTomorrowDate()).length > 0 ? `(${tickets.filter(t => t.date === getTomorrowDate()).length})` : ''}
+                  </button>
+                </div>
+              </div>
+              <div className="input-group" style={{ marginBottom: 0 }}>
+                <span className="input-label">Filtrar por Furgoneta</span>
+                <select 
+                  className="form-input" 
+                  value={mapFilterFurgo} 
+                  onChange={(e) => setMapFilterFurgo(e.target.value)}
+                >
+                  <option value="all">Todas las Furgonetas</option>
+                  {activeRepartidores.map(u => (
+                    <option key={u.id} value={u.id}>{u.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
+                <button 
+                  type="button" 
+                  onClick={async () => {
+                    setIsSyncingMap(true);
+                    try {
+                      await syncFromCloud(true);
+                      await reinitSupabase(true);
+                      loadData();
+                      if (mapInstanceRef.current) {
+                        try { mapInstanceRef.current.resize(); } catch(e){}
+                      }
+                      triggerAlert('Ubicaciones y entregas actualizadas desde el servidor');
+                    } catch (e) {
+                      triggerAlert('Error al sincronizar con el servidor', 'error');
+                    } finally {
+                      setIsSyncingMap(false);
+                    }
+                  }} 
+                  className="btn btn-secondary" 
+                  style={{ height: '45px', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  disabled={isSyncingMap}
+                >
+                  <RefreshCw size={16} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Actualizando...' : 'Actualizar Mapa'}
+                </button>
+              </div>
+            </div>
+
+            <div className="map-legend-container" style={{ display: 'flex', gap: '15px', marginTop: '5px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
+                <span>Entregado</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
+                <span>Fallido</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#38bdf8' }}></span>
+                <span>En Camino</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#fbbf24' }}></span>
+                <span>Pendiente</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', marginLeft: '10px' }}>
+                <span style={{ display: 'inline-block', width: '16px', height: '16px', borderRadius: '50%', border: '2px solid #a78bfa', background: 'rgba(139,92,246,0.2)', textAlign: 'center', lineHeight: '12px', fontSize: '10px' }}>🚚</span>
+                <span>Repartidor en Vivo (Últimas 6h)</span>
+              </div>
+            </div>
+
+            {/* Custom dark map style definitions */}
+            <style>{`
+              .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+                background: rgba(18, 12, 38, 0.9) !important;
+                backdrop-filter: blur(10px) !important;
+                border: 1px solid var(--panel-border) !important;
+                color: #fff !important;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+              }
+              .leaflet-popup-close-button {
+                color: #a78bfa !important;
+              }
+              .leaflet-container {
+                font-family: 'Inter', sans-serif !important;
+              }
+              @keyframes gpsPulse {
+                0% { transform: scale(0.9); opacity: 0.6; }
+                50% { transform: scale(1.15); opacity: 1; }
+                100% { transform: scale(0.9); opacity: 0.6; }
+              }
+            `}</style>
+
+            <div className="map-split-container">
+              <div className="map-split-left" style={{ position: 'relative' }}>
+                <div 
+                  id="admin-map" 
+                  className="map-element"
+                ></div>
+                {renderMapCenterControls(true)}
+                {renderMapFloatingPanel()}
+              </div>
+              
+              <div className="map-split-right">
+                {renderMapStopsList(true)}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // --- RENDERIZADO DEL PORTAL DE ADMINISTRADOR ---
   const renderAdminPortal = () => {
     const filteredAdminTickets = visibleTickets.filter(t => {
@@ -21930,6 +22144,7 @@ function App() {
                           style={{ background: 'var(--bg-input)', border: '1px solid var(--panel-border)', color: 'var(--text)' }}
                         >
                           <option value="repartidor">Repartidor (Furgoneta)</option>
+                          <option value="coordinador">Coordinador de Rutas (Apoyo en calle)</option>
                           <option value="admin">Administrador</option>
                         </select>
                       </div>
@@ -21989,10 +22204,10 @@ function App() {
                     // El usuario actual siempre está en la cabecera (Mi Cuenta)
                     const myAccount = users.find(u => u.id === currentUser.id);
 
-                    // Coordinadores: otros usuarios administradores/superadmins (excluyendo al usuario actual)
+                    // Coordinadores: otros usuarios administradores/superadmins o coordinadores (excluyendo al usuario actual)
                     const coordinators = filtered.filter(u => 
                       u.id !== currentUser.id && 
-                      (u.role === 'admin' || u.role === 'superadmin')
+                      (u.role === 'admin' || u.role === 'superadmin' || u.role === 'coordinador')
                     );
 
                     // Choferes directos: repartidores creados directamente por el usuario actual (o sin creador asignado si somos superadmin)
@@ -22019,8 +22234,8 @@ function App() {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                           <div>
-                            <strong style={{ fontSize: '0.9rem', color: u.active === false ? 'var(--text-muted)' : (u.role === 'repartidor' ? '#60a5fa' : 'var(--primary)') }}>
-                              {u.role === 'repartidor' ? '🚐' : '👤'} {u.label} ({u.username})
+                            <strong style={{ fontSize: '0.9rem', color: u.active === false ? 'var(--text-muted)' : (u.role === 'repartidor' ? '#60a5fa' : (u.role === 'coordinador' ? '#38bdf8' : 'var(--primary)')) }}>
+                              {u.role === 'repartidor' ? '🚐' : (u.role === 'coordinador' ? '🧭' : '👑')} {u.label} ({u.username})
                             </strong>
                             <span style={{
                               marginLeft: '8px',
@@ -25901,7 +26116,7 @@ function App() {
         </div>
       )}
 
-      {isAdminOrSuper ? renderAdminPortal() : renderDriverPortal()}
+      {isAdminOrSuper ? renderAdminPortal() : (currentUser?.role === 'coordinador' ? renderCoordinatorPortal() : renderDriverPortal())}
 
       {renderBulkSelectControls()}
 
