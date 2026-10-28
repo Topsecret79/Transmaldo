@@ -857,7 +857,7 @@ function App() {
   const getTicketColor = (t) => {
     if (!t) return '#fbbf24';
     if (t.status === 'success') return '#10b981';
-    if (t.status === 'failed') return '#ef4444';
+    if (t.status === 'failed') return '#1e293b'; // Negro Carbón
     
     const sType = getTicketServiceType(t);
     if (sType === 'vip') return '#ec4899'; // Rosa / Magenta
@@ -11346,8 +11346,8 @@ function App() {
                             </span>
                           )}
                           {t.status === 'failed' && (
-                            <span className="badge badge-danger" style={{ padding: '2px 7px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px' }}>
-                              🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}
+                            <span className="badge" style={{ padding: '2px 7px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px', background: '#1e293b', color: '#fff', border: '1px solid #94a3b8' }}>
+                              ⚫ Fallido {t.failureReason ? `(${t.failureReason})` : ''}
                             </span>
                           )}
                           {t.status === 'transit' && (
@@ -12352,7 +12352,7 @@ function App() {
                         if (isSuccess) {
                           statusBadge = <span className="badge badge-success" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#10b981', color: '#fff' }}>🟢 Entregado</span>;
                         } else if (isFailed) {
-                          statusBadge = <span className="badge badge-danger" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#ef4444', color: '#fff' }}>🔴 Fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>;
+                          statusBadge = <span className="badge" style={{ fontSize: '0.75rem', fontWeight: 'bold', background: '#1e293b', color: '#fff', border: '1px solid #94a3b8' }}>⚫ Fallido {t.failureReason ? `(${t.failureReason})` : ''}</span>;
                         } else {
                           const sType = getTicketServiceType(t);
                           if (sType === 'cuelgue') {
@@ -13530,7 +13530,7 @@ function App() {
     const isSuccess = ticketToShow.status === 'success';
     const isFailed = ticketToShow.status === 'failed';
     const isTransit = ticketToShow.status === 'transit';
-    const statusText = isSuccess ? '🟢 Completado' : isFailed ? `🔴 Fallido (${ticketToShow.failureReason || 'Sin motivo'})` : isTransit ? '🔵 En Camino' : '🟡 Pendiente';
+    const statusText = isSuccess ? '🟢 Completado' : isFailed ? `⚫ Fallido (${ticketToShow.failureReason || 'Sin motivo'})` : isTransit ? '🔵 En Camino' : '🟡 Pendiente';
 
     const furgoLabel = users.find(u => u.id === ticketToShow.furgoId)?.label || ticketToShow.furgoId || '';
     const stopIndex = (tickets || []).filter(tk => tk && ticketToShow && tk.date === ticketToShow.date && tk.furgoId === ticketToShow.furgoId)
@@ -14402,7 +14402,8 @@ function App() {
                         height: '26px',
                         borderRadius: '50%',
                         background: statusColor,
-                        color: '#000',
+                        color: isFailed ? '#fff' : '#000',
+                        border: isFailed ? '1.5px solid #94a3b8' : 'none',
                         fontWeight: '800',
                         fontSize: '0.85rem',
                         boxShadow: `0 0 8px ${statusColor}40`
@@ -14455,8 +14456,9 @@ function App() {
                     fontSize: '0.72rem',
                     padding: '2px 8px',
                     borderRadius: '12px',
-                    background: `${statusColor}20`,
-                    color: statusColor,
+                    background: isFailed ? '#1e293b' : `${statusColor}20`,
+                    color: isFailed ? '#f8fafc' : statusColor,
+                    border: isFailed ? '1px solid #94a3b8' : 'none',
                     fontWeight: '800',
                     whiteSpace: 'nowrap'
                   }}>
@@ -14966,7 +14968,7 @@ function App() {
                     if (ticket.status === 'success') {
                       statusBadge = <span className="badge badge-success" style={{ background: '#10b981', color: '#fff' }}>🟢 Entregado</span>;
                     } else if (ticket.status === 'failed') {
-                      statusBadge = <span className="badge badge-danger" style={{ background: '#ef4444', color: '#fff' }}>🔴 Fallido</span>;
+                      statusBadge = <span className="badge" style={{ background: '#1e293b', color: '#fff', border: '1px solid #94a3b8' }}>⚫ Fallido</span>;
                     } else if (ticket.status === 'transit') {
                       statusBadge = <span className="badge" style={{ background: '#38bdf8', color: '#0f172a', fontWeight: 'bold' }}>🔵 En Camino</span>;
                     }
@@ -21139,7 +21141,7 @@ function App() {
                 <span>Entregado</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
-                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#1e293b', border: '1.5px solid #94a3b8' }}></span>
                 <span>Fallido</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
@@ -21773,7 +21775,7 @@ function App() {
                       if (t.status === 'success') { // Fix A-9: null no muestra verde
                         badge = <span className="badge badge-success" style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff' }}>🟢 Entregado</span>;
                       } else if (t.status === 'failed') {
-                        badge = <span className="badge badge-danger" style={{ fontSize: '0.7rem', background: '#ef4444', color: '#fff' }}>🔴 Fallido</span>;
+                        badge = <span className="badge" style={{ fontSize: '0.7rem', background: '#1e293b', color: '#fff', border: '1px solid #94a3b8' }}>⚫ Fallido</span>;
                       } else if (t.status === 'transit') {
                         badge = <span className="badge" style={{ fontSize: '0.7rem', background: '#38bdf8', color: '#0f172a' }}>🔵 En Camino</span>;
                       }
@@ -24050,8 +24052,9 @@ function App() {
                               badgeClass = 'badge-success';
                               badgeText = '🟢 Entregado';
                             } else if (isFailed) {
-                              badgeClass = 'badge-danger';
-                              badgeText = `🔴 Fallido ${t.failureReason ? `(${t.failureReason})` : ''}`;
+                              badgeClass = '';
+                              badgeStyle = { fontSize: '0.75rem', background: '#1e293b', color: '#fff', border: '1px solid #94a3b8' };
+                              badgeText = `⚫ Fallido ${t.failureReason ? `(${t.failureReason})` : ''}`;
                             } else {
                               const sType = getTicketServiceType(t);
                               if (sType === 'cuelgue') {
@@ -24418,7 +24421,7 @@ function App() {
                 <span>Entregado</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
-                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
+                <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#1e293b', border: '1.5px solid #94a3b8' }}></span>
                 <span>Fallido</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
