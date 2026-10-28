@@ -1759,7 +1759,85 @@ function App() {
   const [routeStats, setRouteStats] = useState({});
   const watchIdRef = useRef(null);
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
-  const [mapFilterFurgo, setMapFilterFurgo] = useState('all');
+  const [mapFilterFurgo, _setMapFilterFurgo] = useState('all');
+  const [mapSelectedFurgos, setMapSelectedFurgos] = useState([]); // [] = todas las rutas
+  const [mapFilterSource, setMapFilterSource] = useState('all'); // 'all' | 'urbantz' | 'pda' | 'both'
+
+  const setMapFilterFurgo = (val) => {
+    if (!val || val === 'all') {
+      setMapSelectedFurgos([]);
+      _setMapFilterFurgo('all');
+    } else if (Array.isArray(val)) {
+      setMapSelectedFurgos(val);
+      _setMapFilterFurgo(val.length === 1 ? val[0] : 'all');
+    } else {
+      setMapSelectedFurgos([val]);
+      _setMapFilterFurgo(val);
+    }
+  };
+
+  const toggleMapFurgoSelection = (furgoId) => {
+    if (!furgoId || furgoId === 'all') {
+      setMapSelectedFurgos([]);
+      _setMapFilterFurgo('all');
+      return;
+    }
+    setMapSelectedFurgos(prev => {
+      const exists = prev.includes(furgoId);
+      const next = exists ? prev.filter(id => id !== furgoId) : [...prev, furgoId];
+      _setMapFilterFurgo(next.length === 1 ? next[0] : 'all');
+      return next;
+    });
+  };
+
+  const matchesSingleFurgo = (t, targetFurgoId) => {
+    if (!t || !targetFurgoId || targetFurgoId === 'all') return true;
+    const targetLower = String(targetFurgoId).toLowerCase();
+    const userObj = (users || []).find(u => u && u.id === targetFurgoId);
+    const labelLower = userObj?.label ? String(userObj.label).toLowerCase() : '';
+    const matchesFurgo = t.furgoId === targetFurgoId || (t.furgoId && String(t.furgoId).toLowerCase() === targetLower);
+    const matchesRoute = t.routeName && (
+      t.routeName.toLowerCase() === targetLower ||
+      t.routeName.toLowerCase().includes(targetLower) ||
+      (labelLower && (t.routeName.toLowerCase() === labelLower || t.routeName.toLowerCase().includes(labelLower)))
+    );
+    const matchesLabel = t.furgoLabel && (
+      t.furgoLabel.toLowerCase() === targetLower ||
+      (labelLower && t.furgoLabel.toLowerCase() === labelLower)
+    );
+    return Boolean(matchesFurgo || matchesRoute || matchesLabel);
+  };
+
+  const matchesMapFurgoFilter = (t) => {
+    if (!t) return false;
+    if (mapSelectedFurgos.length > 0) {
+      return mapSelectedFurgos.some(fid => matchesSingleFurgo(t, fid));
+    }
+    if (mapFilterFurgo && mapFilterFurgo !== 'all') {
+      return matchesSingleFurgo(t, mapFilterFurgo);
+    }
+    return true;
+  };
+
+  const matchesMapSourceFilter = (t) => {
+    if (!t) return false;
+    if (!mapFilterSource || mapFilterSource === 'all') return true;
+    const effSrc = getEffectiveTicketSource(t);
+    if (mapFilterSource === 'urbantz') return effSrc === 'urbantz' || effSrc === 'both';
+    if (mapFilterSource === 'pda') return effSrc === 'pda' || effSrc === 'both';
+    if (mapFilterSource === 'both') return effSrc === 'both';
+    return true;
+  };
+
+  const isDriverSelectedOnMap = (fid) => {
+    if (mapSelectedFurgos.length > 0) {
+      return mapSelectedFurgos.includes(fid);
+    }
+    if (mapFilterFurgo && mapFilterFurgo !== 'all') {
+      return fid === mapFilterFurgo;
+    }
+    return true;
+  };
   const [mapRenderKey, setMapRenderKey] = useState(0); // Trigger para re-montar mapa tras pérdida de contexto WebGL o bloqueo de pantalla
   const mapInstanceRef = useRef(null);
   const mapMarkersRef = useRef([]);          // Mapbox GL delivery stop markers
@@ -2760,27 +2838,23 @@ function App() {
       }
       const renderMapContent = () => {
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
+        const selectedFurgosKey = mapSelectedFurgos.length > 0 ? mapSelectedFurgos.join(',') : mapFilterFurgo;
+        const currentFilterKey = activeTab + '_' + targetDate + '_' + selectedFurgosKey + '_' + mapFilterSource + '_' + shiftSummaryDate;
         const dayTickets = tickets.filter(t => {
           if (!t || t.date !== targetDate) return false;
           if (isAdminMap) {
-            if (mapFilterFurgo !== 'all') {
-              const matchesFurgo = t.furgoId === mapFilterFurgo;
-              const matchesRoute = t.routeName && (t.routeName.toLowerCase() === mapFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(mapFilterFurgo.toLowerCase()));
-              const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === mapFilterFurgo.toLowerCase());
-              if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
-            }
+            if (!matchesMapFurgoFilter(t)) return false;
+            if (!matchesMapSourceFilter(t)) return false;
           }
           else { if (t.furgoId !== currentUser?.id) return false; }
           const la = parseFloat(t.lat), lo = parseFloat(t.lng);
           return t.lat != null && t.lng != null && !isNaN(la) && !isNaN(lo);
         });
 
-        // Fix: solo borramos los marcadores viejos si hay paradas nuevas que dibujar.
-        // Antes se borraban al inicio de renderMapContent siempre, de forma incondicional.
-        // Si el array tickets llegaba temporalmente vacío (por un re-render durante sync
-        // de Supabase), el mapa quedaba en blanco hasta el siguiente ciclo completo.
-        // Ahora los marcadores viejos se mantienen visibles mientras no haya datos nuevos.
-        if (dayTickets.length > 0) {
+        // Borramos los marcadores viejos si hay paradas nuevas que dibujar o si ya hay tickets cargados en memoria
+        // (evita que queden marcadores antiguos al filtrar una combinación de ruta/origen sin paradas,
+        // pero protege contra parpadeos si tickets llega temporalmente vacío durante un sync).
+        if (dayTickets.length > 0 || (tickets && tickets.length > 0)) {
           (mapRouteSourceIds.current || []).forEach(srcId => {
             try { if (map.getLayer(srcId + '-line')) map.removeLayer(srcId + '-line'); } catch(e){}
             try { if (map.getSource(srcId)) map.removeSource(srcId); } catch(e){}
@@ -2943,7 +3017,7 @@ function App() {
             if (!loc || loc.lat == null || loc.lng == null) return;
             const latNum = parseFloat(loc.lat), lngNum = parseFloat(loc.lng);
             if (isNaN(latNum) || isNaN(lngNum)) return;
-            if (isAdminMap) { if (mapFilterFurgo !== 'all' && fid !== mapFilterFurgo) return; if (!activeRepartidores.map(r => r.id).includes(fid)) return; }
+            if (isAdminMap) { if (!isDriverSelectedOnMap(fid)) return; if (!activeRepartidores.map(r => r.id).includes(fid)) return; }
             else { if (fid !== currentUser?.id) return; }
             const updatedAtStr = loc.updatedAt || loc.timestamp;
             if (!updatedAtStr) return;
@@ -2960,7 +3034,6 @@ function App() {
           });
         };
         window.updateLiveDriversOnMapFn();
-        const currentFilterKey = activeTab + '_' + targetDate + '_' + mapFilterFurgo + '_' + shiftSummaryDate;
         if (allBounds.length > 0 && lastFittedRef.current !== currentFilterKey) {
           if (allBounds.length === 1) { map.flyTo({ center: allBounds[0], zoom: 15 }); }
           else {
@@ -2997,7 +3070,7 @@ function App() {
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
 
   // Actualizar visualmente los marcadores del mapa cuando cambia bulkSelectedTickets o bulkSelectMode
   // IMPORTANTE: Nunca modificar pin.style.transform ni añadir transition:transform,
@@ -13359,7 +13432,8 @@ function App() {
               if (!t) return false;
               if (t.date !== targetDate) return false;
               if (isAdminMap) {
-                if (mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+                if (!matchesMapFurgoFilter(t)) return false;
+                if (!matchesMapSourceFilter(t)) return false;
               } else {
                 if (t.furgoId !== currentUser?.id) return false;
               }
@@ -13493,6 +13567,9 @@ function App() {
 
     // 1. Obtener el ticket a mostrar (el seleccionado o el siguiente pendiente)
     let ticketToShow = selectedMapTicket;
+    if (ticketToShow && activeTab === 'map' && (!matchesMapFurgoFilter(ticketToShow) || !matchesMapSourceFilter(ticketToShow))) {
+      ticketToShow = null;
+    }
     
     // Si no hay seleccionado, buscar la siguiente parada pendiente de los tickets visibles en este mapa
     if (!ticketToShow) {
@@ -13502,12 +13579,8 @@ function App() {
         if (!t) return false;
         if (t.date !== targetDate) return false;
         if (activeTab === 'map') {
-          if (mapFilterFurgo !== 'all') {
-            const matchesFurgo = t.furgoId === mapFilterFurgo || (t.furgoId && t.furgoId.toLowerCase() === mapFilterFurgo.toLowerCase());
-            const matchesRoute = t.routeName && (t.routeName.toLowerCase() === mapFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(mapFilterFurgo.toLowerCase()));
-            const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === mapFilterFurgo.toLowerCase());
-            if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
-          }
+          if (!matchesMapFurgoFilter(t)) return false;
+          if (!matchesMapSourceFilter(t)) return false;
         } else {
           if (t.furgoId !== currentUser?.id) return false;
         }
@@ -13857,7 +13930,7 @@ function App() {
       if (!t) return false;
       if (t.date !== targetDate) return false;
       if (!isAdminOrSuper && t.furgoId !== currentUser?.id) return false;
-      if (isAdminOrSuper && isMapTab && mapFilterFurgo !== 'all' && t.furgoId !== mapFilterFurgo) return false;
+      if (isAdminOrSuper && isMapTab && (!matchesMapFurgoFilter(t) || !matchesMapSourceFilter(t))) return false;
       return (!t.status || t.status === 'pending' || t.status === 'transit');
     });
 
@@ -14091,12 +14164,8 @@ function App() {
       if (!t) return false;
       if (t.date !== targetDate) return false;
       if (isAdminMap) {
-        if (mapFilterFurgo !== 'all') {
-          const matchesFurgo = t.furgoId === mapFilterFurgo || (t.furgoId && t.furgoId.toLowerCase() === mapFilterFurgo.toLowerCase());
-          const matchesRoute = t.routeName && (t.routeName.toLowerCase() === mapFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(mapFilterFurgo.toLowerCase()));
-          const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === mapFilterFurgo.toLowerCase());
-          if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
-        }
+        if (!matchesMapFurgoFilter(t)) return false;
+        if (!matchesMapSourceFilter(t)) return false;
       } else {
         if (t.furgoId !== currentUser?.id) return false;
       }
@@ -14109,12 +14178,8 @@ function App() {
       const userAllTickets = (tickets || []).filter(t => {
         if (!t) return false;
         if (isAdminMap) {
-          if (mapFilterFurgo !== 'all') {
-            const matchesFurgo = t.furgoId === mapFilterFurgo || (t.furgoId && t.furgoId.toLowerCase() === mapFilterFurgo.toLowerCase());
-            const matchesRoute = t.routeName && (t.routeName.toLowerCase() === mapFilterFurgo.toLowerCase() || t.routeName.toLowerCase().includes(mapFilterFurgo.toLowerCase()));
-            const matchesLabel = t.furgoLabel && (t.furgoLabel.toLowerCase() === mapFilterFurgo.toLowerCase());
-            if (!matchesFurgo && !matchesRoute && !matchesLabel) return false;
-          }
+          if (!matchesMapFurgoFilter(t)) return false;
+          if (!matchesMapSourceFilter(t)) return false;
           return true;
         }
         return t.furgoId === currentUser?.id;
@@ -14306,7 +14371,13 @@ function App() {
         )}
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {sortedDayTickets.map((t, index) => {
+          {(() => {
+            const driverSeqCounter = {};
+            return sortedDayTickets.map((t, index) => {
+            const fidKey = t.furgoId || '_none';
+            driverSeqCounter[fidKey] = (driverSeqCounter[fidKey] || 0) + 1;
+            const stopNumInRoute = driverSeqCounter[fidKey];
+
             const isSuccess = t.status === 'success';
             const isFailed = t.status === 'failed';
             const isTransit = t.status === 'transit';
@@ -14374,7 +14445,7 @@ function App() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       {bulkSelectMode && isSelectable && (
                         <input
                           type="checkbox"
@@ -14408,9 +14479,22 @@ function App() {
                         fontSize: '0.85rem',
                         boxShadow: `0 0 8px ${statusColor}40`
                       }}>
-                        {index + 1}
+                        {stopNumInRoute}
                       </span>
                       <strong style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>{t.customerName || 'Cliente sin nombre'}</strong>
+                      {isAdminMap && mapFilterFurgo === 'all' && furgoLabel && (
+                        <span style={{
+                          fontSize: '0.7rem',
+                          padding: '1px 7px',
+                          borderRadius: '6px',
+                          fontWeight: '800',
+                          background: 'rgba(99, 102, 241, 0.18)',
+                          color: '#a5b4fc',
+                          border: '1px solid rgba(99, 102, 241, 0.4)'
+                        }}>
+                          🚚 {furgoLabel}
+                        </span>
+                      )}
                     </div>
                     {/* Insignias de servicio y franja horaria (clases CSS centralizadas,
                         ver getServiceTypeBadge/getTimeSlotBadge). Fix: antes esta lista
@@ -14767,7 +14851,8 @@ function App() {
                 )}
               </div>
             );
-          })}
+          });
+          })()}
           
           {activeFurgo !== 'all' && sortedDayTickets.length > 0 && timelineSchedules.__totals && (() => {
             const totals = timelineSchedules.__totals;
@@ -21038,6 +21123,206 @@ function App() {
     );
   };
 
+  // --- FILTROS COMPARTIDOS DEL MAPA DE CONTROL (FECHA, ORIGEN URBANTZ/PDA, Y MULTI-RUTA) ---
+  const renderMapControlFilters = () => {
+    const daySourceFilteredTickets = (tickets || []).filter(t => t && t.date === mapFilterDate && matchesMapSourceFilter(t));
+    const isAllFurgosSelected = mapSelectedFurgos.length === 0 && (!mapFilterFurgo || mapFilterFurgo === 'all');
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '18px' }}>
+        <div className="map-filters-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: 0 }}>
+          <div className="input-group" style={{ marginBottom: 0 }}>
+            <span className="input-label">📅 Filtrar por Fecha</span>
+            <input 
+              type="date" 
+              className="form-input" 
+              value={mapFilterDate} 
+              onChange={(e) => setMapFilterDate(e.target.value)} 
+            />
+            <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+              <button 
+                type="button" 
+                className={`btn btn-small ${mapFilterDate === getTodayDate() ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto' }}
+                onClick={() => setMapFilterDate(getTodayDate())}
+              >
+                Hoy
+              </button>
+              <button 
+                type="button" 
+                className={`btn btn-small ${mapFilterDate === getTomorrowDate() ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto', background: mapFilterDate === getTomorrowDate() ? undefined : 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
+                onClick={() => setMapFilterDate(getTomorrowDate())}
+              >
+                🚀 Mañana {tickets.filter(t => t.date === getTomorrowDate()).length > 0 ? `(${tickets.filter(t => t.date === getTomorrowDate()).length})` : ''}
+              </button>
+            </div>
+          </div>
+
+          <div className="input-group" style={{ marginBottom: 0 }}>
+            <span className="input-label">🏷️ Filtrar por Origen (Urbantz / PDA)</span>
+            <select 
+              className="form-input" 
+              value={mapFilterSource} 
+              onChange={(e) => setMapFilterSource(e.target.value)}
+            >
+              <option value="all">🌐 Los dos (Urbantz + PDA)</option>
+              <option value="urbantz">🟣 Solo Urbantz</option>
+              <option value="pda">🔵 Solo PDA</option>
+              <option value="both">🟡 Ambos en el mismo pedido</option>
+            </select>
+            <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+              {[
+                { id: 'all', label: '🌐 Los dos', activeBg: 'rgba(99, 102, 241, 0.25)', activeBorder: '#818cf8', activeColor: '#e0e7ff' },
+                { id: 'urbantz', label: '🟣 Solo Urbantz', activeBg: 'rgba(168, 85, 247, 0.25)', activeBorder: '#c084fc', activeColor: '#f3e8ff' },
+                { id: 'pda', label: '🔵 Solo PDA', activeBg: 'rgba(59, 130, 246, 0.25)', activeBorder: '#60a5fa', activeColor: '#dbeafe' }
+              ].map(opt => {
+                const isActive = mapFilterSource === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setMapFilterSource(opt.id)}
+                    style={{
+                      fontSize: '0.72rem',
+                      padding: '3px 9px',
+                      borderRadius: '6px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      background: isActive ? opt.activeBg : 'rgba(255,255,255,0.04)',
+                      border: isActive ? `1.5px solid ${opt.activeBorder}` : '1px solid var(--panel-border)',
+                      color: isActive ? opt.activeColor : 'var(--text-muted)',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-start', display: 'flex', flexDirection: 'column' }}>
+            <span className="input-label">🔄 Sincronización en Vivo</span>
+            <button 
+              type="button" 
+              onClick={async () => {
+                setIsSyncingMap(true);
+                try {
+                  await syncFromCloud(true);
+                  await reinitSupabase(true);
+                  loadData();
+                  if (mapInstanceRef.current) {
+                    try { mapInstanceRef.current.resize(); } catch(e){}
+                  }
+                  triggerAlert('Ubicaciones y entregas actualizadas desde el servidor');
+                } catch (e) {
+                  triggerAlert('Error al sincronizar con el servidor', 'error');
+                } finally {
+                  setIsSyncingMap(false);
+                }
+              }} 
+              className="btn btn-secondary" 
+              style={{ height: '42px', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              disabled={isSyncingMap}
+            >
+              <RefreshCw size={16} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Actualizando...' : 'Actualizar Mapa'}
+            </button>
+          </div>
+        </div>
+
+        {/* Selector Múltiple de Rutas / Furgonetas */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px solid var(--panel-border)',
+          borderRadius: '10px',
+          padding: '10px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-main)' }}>
+              🚚 Filtrar por Rutas <span style={{ fontWeight: '400', color: 'var(--text-muted)' }}>(toca una o varias a la vez, ej. 150 + 151 + 168)</span>
+            </span>
+            {!isAllFurgosSelected && (
+              <button
+                type="button"
+                onClick={() => setMapFilterFurgo('all')}
+                style={{
+                  fontSize: '0.73rem',
+                  padding: '2px 9px',
+                  borderRadius: '6px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  color: '#fca5a5',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕ Ver todas las rutas
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setMapFilterFurgo('all')}
+              style={{
+                fontSize: '0.78rem',
+                padding: '5px 11px',
+                borderRadius: '8px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                background: isAllFurgosSelected ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'rgba(255, 255, 255, 0.04)',
+                border: isAllFurgosSelected ? '1.5px solid #a5b4fc' : '1px solid var(--panel-border)',
+                color: isAllFurgosSelected ? '#fff' : 'var(--text-muted)',
+                boxShadow: isAllFurgosSelected ? '0 0 10px rgba(99, 102, 241, 0.4)' : 'none',
+                transition: 'all 0.15s'
+              }}
+            >
+              🌐 Todas ({daySourceFilteredTickets.length})
+            </button>
+
+            {activeRepartidores.map(u => {
+              const isSelected = mapSelectedFurgos.includes(u.id) || (mapSelectedFurgos.length === 0 && mapFilterFurgo === u.id);
+              const routeStopsCount = daySourceFilteredTickets.filter(t => matchesSingleFurgo(t, u.id)).length;
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => toggleMapFurgoSelection(u.id)}
+                  style={{
+                    fontSize: '0.78rem',
+                    padding: '5px 11px',
+                    borderRadius: '8px',
+                    fontWeight: isSelected ? '800' : '600',
+                    cursor: 'pointer',
+                    background: isSelected
+                      ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+                      : (routeStopsCount > 0 ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255, 255, 255, 0.03)'),
+                    border: isSelected
+                      ? '1.5px solid #a5b4fc'
+                      : (routeStopsCount > 0 ? '1px solid rgba(99, 102, 241, 0.35)' : '1px solid var(--panel-border)'),
+                    color: isSelected
+                      ? '#fff'
+                      : (routeStopsCount > 0 ? '#e2e8f0' : 'var(--text-muted)'),
+                    boxShadow: isSelected ? '0 0 10px rgba(99, 102, 241, 0.45)' : 'none',
+                    transition: 'all 0.15s'
+                  }}
+                  title="Toca para activar o desactivar esta ruta en el mapa"
+                >
+                  {isSelected ? '✓ ' : '🚚 '}{u.label}{routeStopsCount > 0 ? ` (${routeStopsCount})` : ''}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // --- RENDERIZADO DEL PORTAL DE COORDINADOR DE RUTAS (APOYO EN CALLE) ---
   const renderCoordinatorPortal = () => {
     return (
@@ -21066,74 +21351,7 @@ function App() {
               Visualiza en tiempo real las rutas en servicio y apoya en las entregas directamente desde la calle.
             </p>
 
-            <div className="map-filters-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <span className="input-label">Filtrar por Fecha</span>
-                <input 
-                  type="date" 
-                  className="form-input" 
-                  value={mapFilterDate} 
-                  onChange={(e) => setMapFilterDate(e.target.value)} 
-                />
-                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                  <button 
-                    type="button" 
-                    className={`btn btn-small ${mapFilterDate === getTodayDate() ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto' }}
-                    onClick={() => setMapFilterDate(getTodayDate())}
-                  >
-                    Hoy
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`btn btn-small ${mapFilterDate === getTomorrowDate() ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto', background: mapFilterDate === getTomorrowDate() ? undefined : 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
-                    onClick={() => setMapFilterDate(getTomorrowDate())}
-                  >
-                    🚀 Mañana {tickets.filter(t => t.date === getTomorrowDate()).length > 0 ? `(${tickets.filter(t => t.date === getTomorrowDate()).length})` : ''}
-                  </button>
-                </div>
-              </div>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <span className="input-label">Filtrar por Furgoneta</span>
-                <select 
-                  className="form-input" 
-                  value={mapFilterFurgo} 
-                  onChange={(e) => setMapFilterFurgo(e.target.value)}
-                >
-                  <option value="all">Todas las Furgonetas</option>
-                  {activeRepartidores.map(u => (
-                    <option key={u.id} value={u.id}>{u.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
-                <button 
-                  type="button" 
-                  onClick={async () => {
-                    setIsSyncingMap(true);
-                    try {
-                      await syncFromCloud(true);
-                      await reinitSupabase(true);
-                      loadData();
-                      if (mapInstanceRef.current) {
-                        try { mapInstanceRef.current.resize(); } catch(e){}
-                      }
-                      triggerAlert('Ubicaciones y entregas actualizadas desde el servidor');
-                    } catch (e) {
-                      triggerAlert('Error al sincronizar con el servidor', 'error');
-                    } finally {
-                      setIsSyncingMap(false);
-                    }
-                  }} 
-                  className="btn btn-secondary" 
-                  style={{ height: '45px', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                  disabled={isSyncingMap}
-                >
-                  <RefreshCw size={16} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Actualizando...' : 'Actualizar Mapa'}
-                </button>
-              </div>
-            </div>
+            {renderMapControlFilters()}
 
             <div className="map-legend-container" style={{ display: 'flex', gap: '15px', marginTop: '5px', marginBottom: '20px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
@@ -24346,74 +24564,7 @@ function App() {
               Visualiza en tiempo real la ubicación de tus repartidores en vivo y el recorrido ordenado de sus paradas en el mapa.
             </p>
 
-            <div className="map-filters-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <span className="input-label">Filtrar por Fecha</span>
-                <input 
-                  type="date" 
-                  className="form-input" 
-                  value={mapFilterDate} 
-                  onChange={(e) => setMapFilterDate(e.target.value)} 
-                />
-                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                  <button 
-                    type="button" 
-                    className={`btn btn-small ${mapFilterDate === getTodayDate() ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto' }}
-                    onClick={() => setMapFilterDate(getTodayDate())}
-                  >
-                    Hoy
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`btn btn-small ${mapFilterDate === getTomorrowDate() ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto', background: mapFilterDate === getTomorrowDate() ? undefined : 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
-                    onClick={() => setMapFilterDate(getTomorrowDate())}
-                  >
-                    🚀 Mañana {tickets.filter(t => t.date === getTomorrowDate()).length > 0 ? `(${tickets.filter(t => t.date === getTomorrowDate()).length})` : ''}
-                  </button>
-                </div>
-              </div>
-              <div className="input-group" style={{ marginBottom: 0 }}>
-                <span className="input-label">Filtrar por Furgoneta</span>
-                <select 
-                  className="form-input" 
-                  value={mapFilterFurgo} 
-                  onChange={(e) => setMapFilterFurgo(e.target.value)}
-                >
-                  <option value="all">Todas las Furgonetas</option>
-                  {activeRepartidores.map(u => (
-                    <option key={u.id} value={u.id}>{u.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-end', display: 'flex', flexDirection: 'column' }}>
-                <button 
-                  type="button" 
-                  onClick={async () => {
-                    setIsSyncingMap(true);
-                    try {
-                      await syncFromCloud(true);
-                      await reinitSupabase(true);
-                      loadData();
-                      if (mapInstanceRef.current) {
-                        try { mapInstanceRef.current.resize(); } catch(e){}
-                      }
-                      triggerAlert('Ubicaciones y entregas actualizadas desde el servidor');
-                    } catch (e) {
-                      triggerAlert('Error al sincronizar con el servidor', 'error');
-                    } finally {
-                      setIsSyncingMap(false);
-                    }
-                  }} 
-                  className="btn btn-secondary" 
-                  style={{ height: '45px', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-                  disabled={isSyncingMap}
-                >
-                  <RefreshCw size={16} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Actualizando...' : 'Actualizar Mapa'}
-                </button>
-              </div>
-            </div>
+            {renderMapControlFilters()}
 
             <div className="map-legend-container" style={{ display: 'flex', gap: '15px', marginTop: '5px', marginBottom: '20px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
