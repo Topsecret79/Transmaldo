@@ -3044,7 +3044,12 @@ function App() {
         }
         map.resize();
       };
+      let readyHandled = false;
+      let cleanupMapReadyListeners = null;
       const onMapReady = () => {
+        if (readyHandled) return;
+        readyHandled = true;
+        if (cleanupMapReadyListeners) cleanupMapReadyListeners();
         renderMapContent();
         try { map.resize(); } catch(e){}
       };
@@ -3054,9 +3059,14 @@ function App() {
       renderMapContent();
       try { map.resize(); } catch(e){}
 
-      if (map.isStyleLoaded()) {
-        onMapReady();
-      } else {
+      if (!map.isStyleLoaded()) {
+        cleanupMapReadyListeners = () => {
+          try {
+            map.off('load', onMapReady);
+            map.off('style.load', onMapReady);
+            map.off('idle', onMapReady);
+          } catch(e){}
+        };
         map.once('load', onMapReady);
         map.once('style.load', onMapReady);
         map.once('idle', onMapReady);
@@ -4954,7 +4964,19 @@ function App() {
     }
     
     const srcLabel = ticketSource === 'urbantz' ? 'Urbantz' : ticketSource === 'pda' ? 'PDA' : ticketSource === 'both' ? 'Ambos' : '';
-    finalNotes = encodeTicketNotes(timeSlot, estimatedDuration, finalNotes, '', 'none', originalRouteLabel || '', '', srcLabel);
+    let existingDriverObs = '';
+    let existingFailedCharge = 'none';
+    let existingCompletedAt = '';
+    if (editingTicketId) {
+      const existingTicket = tickets.find(t => t && String(t.id) === String(editingTicketId));
+      if (existingTicket) {
+        const parsedExisting = parseTicketNotes(existingTicket.notes);
+        existingDriverObs = parsedExisting.driverObservations || '';
+        existingFailedCharge = parsedExisting.failedChargeType || 'none';
+        existingCompletedAt = existingTicket.completedAt || parsedExisting.completedAt || '';
+      }
+    }
+    finalNotes = encodeTicketNotes(timeSlot, estimatedDuration, finalNotes, existingDriverObs, existingFailedCharge, originalRouteLabel || '', existingCompletedAt, srcLabel);
 
     // Lógica Automática para Dormity (Asignación de modo de servicio y distancias)
     if (selectedTicketProvider === 'dormity') {
@@ -7433,7 +7455,8 @@ function App() {
         parsed.failedChargeType,
         originalRoute,
         parsed.completedAt,
-        parsed.source
+        ticket.source || parsed.source,
+        ticket.serviceType || parsed.serviceType
       );
 
       const targetDayTickets = tickets.filter(t => t.date === ticket.date && t.furgoId === targetUser.id);
@@ -7486,8 +7509,10 @@ function App() {
     }
 
     try {
-      const targetDayTickets = tickets.filter(t => t.date === validTickets[0]?.date && t.furgoId === targetUser.id);
+      const allCurrentTickets = getTickets();
+      const targetDayTickets = allCurrentTickets.filter(t => t && t.date === validTickets[0]?.date && t.furgoId === targetUser.id);
       let runningOrder = targetDayTickets.length;
+      const updatedById = new Map();
 
       for (const ticket of validTickets) {
         runningOrder += 1;
@@ -7502,20 +7527,28 @@ function App() {
           parsed.failedChargeType,
           originalRoute,
           parsed.completedAt,
-          parsed.source
+          ticket.source || parsed.source,
+          ticket.serviceType || parsed.serviceType
         );
-        const updatedTicket = {
+        updatedById.set(String(ticket.id), {
           ...ticket,
           furgoId: targetUser.id,
           furgoLabel: targetUser.label,
           originalRouteLabel: originalRoute,
           routeName: `Ruta ${targetUser.label} (${ticket.date})`,
           notes: updatedNotes,
-          routeOrder: runningOrder
-        };
-        await updateTicket(updatedTicket);
+          routeOrder: runningOrder,
+          _syncStatus: 'pending'
+        });
       }
-      triggerAlert(`${validTickets.length} parada(s) transferida(s) a ${targetUser.label} con éxito`);
+
+      const mergedAll = allCurrentTickets.map(t => (t && updatedById.has(String(t.id))) ? updatedById.get(String(t.id)) : t);
+      const saveRes = await saveTickets(mergedAll);
+      if (saveRes && saveRes.success === false) {
+        triggerAlert("Guardado en local, pero hubo un problema al subir a la nube", "warning");
+      } else {
+        triggerAlert(`${validTickets.length} parada(s) transferida(s) a ${targetUser.label} con éxito`);
+      }
       setBulkSelectedTickets(new Set());
       setBulkSelectMode(false);
       setBulkTransferModalOpen(false);
@@ -7609,7 +7642,7 @@ function App() {
     if (!ticket) return;
 
     const parsed = parseTicketNotes(ticket.notes);
-    const origLabel = parsed.originalRouteLabel;
+    const origLabel = ticket.originalRouteLabel || parsed.originalRouteLabel;
     if (!origLabel) return;
 
     // Fix: comparación insensible a mayúsculas para que pequeñas diferencias de
@@ -7635,7 +7668,8 @@ function App() {
         parsed.failedChargeType,
         '',
         parsed.completedAt,
-        parsed.source
+        ticket.source || parsed.source,
+        ticket.serviceType || parsed.serviceType
       );
 
       const targetDayTickets = tickets.filter(t => t.date === ticket.date && t.furgoId === targetUser.id);
@@ -7644,6 +7678,7 @@ function App() {
         ...ticket,
         furgoId: targetUser.id,
         furgoLabel: targetUser.label,
+        originalRouteLabel: null,
         routeName: `Ruta ${targetUser.label} (${ticket.date})`,
         notes: updatedNotes,
         routeOrder: targetDayTickets.length + 1
@@ -7700,9 +7735,10 @@ function App() {
         parsed.cleanNotes, 
         finalObservations, 
         failedChargeType,
-        parsed.originalRouteLabel,
+        localTickets[index].originalRouteLabel || parsed.originalRouteLabel,
         parsed.completedAt,
-        parsed.source
+        localTickets[index].source || parsed.source,
+        localTickets[index].serviceType || parsed.serviceType
       );
       safeSaveTickets(localTickets);
     }
@@ -8076,17 +8112,19 @@ function App() {
       ? combinedFurgos.filter(u => u === billingFilterFurgo)
       : (currentUser?.role === 'superadmin' ? combinedFurgos : activeFurgoIds);
 
+    const getFurgoPeriodDates = (fid, fTicketsList) => [
+      ...new Set([
+        ...fTicketsList.map(t => t.date),
+        ...shifts.filter(s => s.furgoId === fid && (!adminStartDate || s.date >= adminStartDate) && (!adminEndDate || s.date <= adminEndDate)).map(s => s.date)
+      ])
+    ];
+
     let totalKms = 0;
     furgos.forEach(fid => {
-      const fShifts = shifts.filter(s => 
-        s.furgoId === fid && 
-        s.status === 'closed' &&
-        (!adminStartDate || s.date >= adminStartDate) &&
-        (!adminEndDate || s.date <= adminEndDate)
-      );
-      fShifts.forEach(s => {
-        const kms = getRouteKms(fid, s.date);
-        totalKms += kms;
+      const fTickets = filteredTickets.filter(t => t.furgoId === fid);
+      const fDates = getFurgoPeriodDates(fid, fTickets);
+      fDates.forEach(d => {
+        totalKms += getRouteKms(fid, d);
       });
     });
 
@@ -8119,15 +8157,10 @@ function App() {
       const fSuccess = fTickets.filter(t => t.status === 'success'); // Fix A-9
       const label = users.find(u => u.id === fid)?.label || fid;
 
-      const fShifts = shifts.filter(s => 
-        s.furgoId === fid && 
-        s.status === 'closed' &&
-        (!adminStartDate || s.date >= adminStartDate) &&
-        (!adminEndDate || s.date <= adminEndDate)
-      );
+      const fDates = getFurgoPeriodDates(fid, fTickets);
       let fKms = 0;
-      fShifts.forEach(s => {
-        fKms += getRouteKms(fid, s.date);
+      fDates.forEach(d => {
+        fKms += getRouteKms(fid, d);
       });
 
       const deliveryEarnings = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
@@ -13921,16 +13954,17 @@ function App() {
   const renderBulkSelectControls = () => {
     if (!bulkSelectMode && !bulkTransferModalOpen) return null;
 
+    const isControlMap = activeTab === 'map' && (isAdminOrSuper || currentUser?.role === 'coordinador');
     const isMapTab = activeTab === 'map' || activeTab === 'driver_map';
     const targetDate = isMapTab
-      ? (isAdminOrSuper ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]))
+      ? (isControlMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]))
       : (shiftSummaryDate || mapFilterDate || new Date().toISOString().split('T')[0]);
 
     const selectableTickets = (tickets || []).filter(t => {
       if (!t) return false;
       if (t.date !== targetDate) return false;
-      if (!isAdminOrSuper && t.furgoId !== currentUser?.id) return false;
-      if (isAdminOrSuper && isMapTab && (!matchesMapFurgoFilter(t) || !matchesMapSourceFilter(t))) return false;
+      if (!isControlMap && !isAdminOrSuper && t.furgoId !== currentUser?.id) return false;
+      if (isControlMap && (!matchesMapFurgoFilter(t) || !matchesMapSourceFilter(t))) return false;
       return (!t.status || t.status === 'pending' || t.status === 'transit');
     });
 

@@ -2921,7 +2921,8 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
           parsed.failedChargeType,
           tickets[index].originalRouteLabel || parsed.originalRouteLabel,
           completedAt,
-          tickets[index].source || parsed.source
+          tickets[index].source || parsed.source,
+          tickets[index].serviceType || parsed.serviceType
         );
       } else {
         tickets[index].completedAt = parsed.completedAt;
@@ -2937,7 +2938,8 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
         parsed.failedChargeType,
         tickets[index].originalRouteLabel || parsed.originalRouteLabel,
         '',
-        tickets[index].source || parsed.source
+        tickets[index].source || parsed.source,
+        tickets[index].serviceType || parsed.serviceType
       );
     }
 
@@ -4489,10 +4491,27 @@ export function parseTicketNotes(notesText) {
 }
 
 // Codificar franja horaria y duración como prefijo en las notas
-export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none', originalRouteLabel = '', completedAt = '', source = '') {
+export function encodeTicketNotes(timeSlot, estimatedDuration, cleanNotesText, driverObservations = '', failedChargeType = 'none', originalRouteLabel = '', completedAt = '', source = '', serviceType = '') {
   const slotStr = timeSlot === 'morning' ? 'Mañana' : timeSlot === 'afternoon' ? 'Tarde' : 'Cualquiera';
   const prefix = `[Horario: ${slotStr}] [Duracion: ${estimatedDuration || 10} min] `;
-  let finalNotes = (prefix + (cleanNotesText || '').trim()).trim();
+  let bodyNotes = (cleanNotesText || '').trim();
+  const hasExistingServiceTag = /\[(VIP|PREFERENCIAL|EST[AÁ]NDAR|CUELGUE|CUELGUE_MA?Ñ?ANA|CUELGUE_TARDE|PUESTA_MARCHA|PUESTA_MARCHA_MA?Ñ?ANA|PUESTA_MARCHA_TARDE|TARDE)\]/i.test(bodyNotes);
+  if (serviceType && !hasExistingServiceTag) {
+    let svcTag = '';
+    if (serviceType === 'vip') svcTag = '[VIP]';
+    else if (serviceType === 'preferencial') svcTag = '[PREFERENCIAL]';
+    else if (serviceType === 'estandar') svcTag = '[ESTANDAR]';
+    else if (serviceType === 'tarde') svcTag = '[TARDE]';
+    else if (serviceType === 'cuelgue') {
+      svcTag = timeSlot === 'morning' ? '[CUELGUE_MAÑANA]' : (timeSlot === 'afternoon' ? '[CUELGUE_TARDE]' : '[CUELGUE]');
+    } else if (serviceType === 'puesta_marcha') {
+      svcTag = timeSlot === 'morning' ? '[PUESTA_MARCHA_MAÑANA]' : (timeSlot === 'afternoon' ? '[PUESTA_MARCHA_TARDE]' : '[PUESTA_MARCHA]');
+    }
+    if (svcTag) {
+      bodyNotes = `${svcTag} ${bodyNotes}`.trim();
+    }
+  }
+  let finalNotes = (prefix + bodyNotes).trim();
   if (driverObservations && driverObservations.trim()) {
     finalNotes += ` [Observacion: ${driverObservations.trim()}]`;
   }
