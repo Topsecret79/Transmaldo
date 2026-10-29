@@ -2510,7 +2510,22 @@ function App() {
     });
 
     let lastManualRefreshAt = 0;
+    let lastKnownTodayStr = new Date().toISOString().split('T')[0];
     const handleRefresh = async (force = false) => {
+      const currentTodayStr = new Date().toISOString().split('T')[0];
+      if (currentTodayStr !== lastKnownTodayStr) {
+        const prevTodayStr = lastKnownTodayStr;
+        lastKnownTodayStr = currentTodayStr;
+        setShiftSummaryDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setMapFilterDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setTicketDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setReportDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setTicketFilterDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setNewRouteDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setAdminEndDate(getTomorrowDate());
+        setStatsEndDate(currentTodayStr);
+        setCurrentRouteId(null);
+      }
       const now = Date.now();
       // Cooldown de 2 segundos para evitar doble disparo simultáneo
       if (!force && (now - lastManualRefreshAt < 2000)) {
@@ -3248,19 +3263,34 @@ function App() {
         return merged;
       });
 
-      // Auto-seleccionar la ruta activa si no hay ninguna seleccionada
+      // Auto-seleccionar la ruta activa si no hay ninguna seleccionada (solo de hoy o mañana y no cerrada)
       if (extractedRoutes.length > 0 && !currentRouteId) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const tmrw = new Date();
+        tmrw.setDate(tmrw.getDate() + 1);
+        const tomorrowStr = tmrw.toISOString().split('T')[0];
+        const openCurrentOrFutureRoutes = extractedRoutes.filter(r =>
+          (r.date === todayStr || r.date === tomorrowStr) &&
+          getShiftStatus(r.furgoId, r.date) !== 'closed'
+        );
         let latestRoute = null;
         if (u && u.role === 'repartidor') {
-          const myExtractedRoutes = extractedRoutes.filter(r => r.furgoId === u.id);
-          if (myExtractedRoutes.length > 0) {
-            latestRoute = myExtractedRoutes[myExtractedRoutes.length - 1];
+          const myTodayRoutes = openCurrentOrFutureRoutes.filter(r => r.furgoId === u.id && r.date === todayStr);
+          const myTomorrowRoutes = openCurrentOrFutureRoutes.filter(r => r.furgoId === u.id && r.date === tomorrowStr);
+          if (myTodayRoutes.length > 0) {
+            latestRoute = myTodayRoutes[myTodayRoutes.length - 1];
+          } else if (myTomorrowRoutes.length > 0) {
+            latestRoute = myTomorrowRoutes[myTomorrowRoutes.length - 1];
           }
         } else {
-          // Para admin / superadmin: seleccionar la ruta de hoy o la más reciente
-          const todayStr = new Date().toISOString().split('T')[0];
-          const todayRoutes = extractedRoutes.filter(r => r.date === todayStr);
-          latestRoute = todayRoutes.length > 0 ? todayRoutes[todayRoutes.length - 1] : extractedRoutes[extractedRoutes.length - 1];
+          // Para admin / superadmin / coordinador: priorizar ruta de hoy; si no hay de hoy, de mañana (nunca rutas pasadas)
+          const todayRoutes = openCurrentOrFutureRoutes.filter(r => r.date === todayStr);
+          const tomorrowRoutes = openCurrentOrFutureRoutes.filter(r => r.date === tomorrowStr);
+          if (todayRoutes.length > 0) {
+            latestRoute = todayRoutes[todayRoutes.length - 1];
+          } else if (tomorrowRoutes.length > 0) {
+            latestRoute = tomorrowRoutes[tomorrowRoutes.length - 1];
+          }
         }
         if (latestRoute) {
           setCurrentRouteId(latestRoute.id);
