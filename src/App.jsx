@@ -1514,6 +1514,32 @@ function App() {
   });
   const activeRouteContext = activeRoutes.find(r => r.id === currentRouteId);
 
+  // Rutas archivadas manualmente desde "📦 Archivar de la Vista" (clave: furgoId|fecha).
+  // Se guardan en localStorage para que la sincronización periódica (loadData cada 10 s)
+  // no las vuelva a meter en el desplegable "Ruta Activa" a partir de los tickets.
+  const getArchivedRouteKeys = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('delivery_archived_routes') || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) {
+      return [];
+    }
+  };
+  const setRouteArchived = (furgoId, date, archived) => {
+    if (!furgoId || !date) return;
+    const key = `${furgoId}|${date}`;
+    const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    const list = getArchivedRouteKeys().filter(k => k !== key && (k.split('|')[1] || '') >= cutoff);
+    if (archived) list.push(key);
+    localStorage.setItem('delivery_archived_routes', JSON.stringify(list));
+  };
+  // Tras archivar/cerrar una ruta, elegir solo otra ruta de hoy o futura (nunca una pasada)
+  const pickNextActiveRoute = (routesList) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const candidates = (routesList || []).filter(r => r && r.date >= todayStr);
+    return candidates.length > 0 ? candidates[candidates.length - 1] : null;
+  };
+
   useEffect(() => {
     if (!loggedInUserObj || loggedInUserObj.role === 'repartidor') return;
     
@@ -3216,82 +3242,86 @@ function App() {
       // nunca tenía nada que migrar. Esa migración ahora ocurre dentro de la Edge
       // Function "verify-login", en el momento de un login clásico exitoso.
       
-      // Extraer rutas activas de los tickets para que se sincronicen entre dispositivos
-      const extractedRoutes = [];
-      const routeKeys = new Set();
-      
-      finalTickets.forEach(t => {
-        if (t.routeName && t.date && t.furgoId) {
-          const key = `${t.routeName}|${t.date}|${t.furgoId}`;
-          if (!routeKeys.has(key)) {
-            routeKeys.add(key);
-            extractedRoutes.push({
-              id: key,
-              name: t.routeName,
-              date: t.date,
-              furgoId: t.furgoId
-            });
+      // Construcción del desplegable "Ruta Activa" (Planificar Ruta).
+      // Fix: antes se añadían TODAS las rutas de los tickets en memoria (15 días + histórico)
+      // cuyo turno no estuviera cerrado — y getShiftStatus() devuelve 'open' cuando no hay
+      // turno, así que cualquier día sin "Cerrar Turno" reaparecía. Además la clave incluía
+      // el nombre de ruta, por lo que un mismo chofer/día salía repetido (ej. "Ruta Hoy (01/11)"
+      // y "Ruta 150 (2026-11-01)" tras transferir/devolver paradas de apoyo).
+      // Ahora: UNA sola ruta por chofer = la más reciente (por hacer o, si no hay ninguna
+      // de hoy en adelante, la última hecha), excluyendo turnos cerrados y rutas archivadas.
+      // Se conserva además la ruta seleccionada actualmente para no perder la selección.
+      const buildActiveRoutes = (prevRoutes) => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const archivedSet = new Set(getArchivedRouteKeys());
+        const groups = new Map();
+        const ensureGroup = (furgoId, date) => {
+          const key = `${furgoId}|${date}`;
+          if (!groups.has(key)) {
+            groups.set(key, { furgoId, date, names: {}, prevRoute: null });
           }
-        }
-      });
+          return groups.get(key);
+        };
 
-      // Ordenar rutas por fecha ascendente
-      extractedRoutes.sort((a, b) => a.date.localeCompare(b.date));
-
-      setActiveRoutes(prev => {
-        // Fix: "Ruta Activa" acumulaba rutas para siempre porque solo se quitaban de
-        // la lista si el turno se cerraba desde el botón "Cerrar Turno" de este mismo
-        // desplegable. Si se cerraba por cualquier otro camino (p.ej. el propio
-        // repartidor cerrando su turno), la ruta se quedaba en la lista indefinidamente
-        // y el desplegable acababa mostrando todo el histórico. Ahora, cada vez que se
-        // cargan los datos, se eliminan de la lista las rutas cuyo turno ya esté cerrado.
-        const stillActive = prev.filter(r => getShiftStatus(r.furgoId, r.date) !== 'closed');
-        const merged = [...stillActive];
-        extractedRoutes.forEach(ext => {
-          const isClosed = getShiftStatus(ext.furgoId, ext.date) === 'closed';
-          if (isClosed) return; // Evitar re-introducir rutas cerradas
-          
-          const exists = merged.some(r => 
-            r.name.toLowerCase() === ext.name.toLowerCase() && 
-            r.date === ext.date && 
-            r.furgoId === ext.furgoId
-          );
-          if (!exists) {
-            merged.push(ext);
-          }
+        finalTickets.forEach(t => {
+          if (!t || !t.routeName || !t.date || !t.furgoId) return;
+          const g = ensureGroup(t.furgoId, t.date);
+          g.names[t.routeName] = (g.names[t.routeName] || 0) + 1;
         });
-        return merged;
-      });
 
-      // Auto-seleccionar la ruta activa si no hay ninguna seleccionada (solo de hoy o mañana y no cerrada)
+        // Rutas creadas a mano (aún sin paradas) guardadas en el dispositivo:
+        // solo se conservan si son de hoy en adelante (o la seleccionada actualmente).
+        (prevRoutes || []).forEach(r => {
+          if (!r || !r.date || !r.furgoId) return;
+          if (r.date < todayStr && r.id !== currentRouteId) return;
+          const g = ensureGroup(r.furgoId, r.date);
+          if (!g.prevRoute || r.id === currentRouteId) g.prevRoute = r;
+        });
+
+        const byFurgo = new Map();
+        groups.forEach(g => {
+          if (archivedSet.has(`${g.furgoId}|${g.date}`)) return;
+          if (getShiftStatus(g.furgoId, g.date) === 'closed') return;
+          let name = g.prevRoute?.name;
+          if (!name) {
+            const sortedNames = Object.entries(g.names).sort((a, b) => b[1] - a[1]);
+            name = sortedNames.length > 0 ? sortedNames[0][0] : `Ruta ${g.date}`;
+          }
+          const id = g.prevRoute?.id || `${name}|${g.date}|${g.furgoId}`;
+          if (!byFurgo.has(g.furgoId)) byFurgo.set(g.furgoId, []);
+          byFurgo.get(g.furgoId).push({ id, name, date: g.date, furgoId: g.furgoId });
+        });
+
+        const result = [];
+        byFurgo.forEach(list => {
+          list.sort((a, b) => a.date.localeCompare(b.date));
+          const latest = list[list.length - 1];
+          if (latest) result.push(latest);
+          const selected = list.find(r => r.id === currentRouteId);
+          if (selected && selected !== latest) result.push(selected);
+        });
+        result.sort((a, b) => a.date.localeCompare(b.date));
+        return result;
+      };
+
+      const extractedRoutes = buildActiveRoutes(activeRoutes);
+      setActiveRoutes(prev => buildActiveRoutes(prev));
+
+      // Auto-seleccionar la ruta activa si no hay ninguna seleccionada (solo de hoy o mañana)
       if (extractedRoutes.length > 0 && !currentRouteId) {
         const todayStr = new Date().toISOString().split('T')[0];
         const tmrw = new Date();
         tmrw.setDate(tmrw.getDate() + 1);
         const tomorrowStr = tmrw.toISOString().split('T')[0];
-        const openCurrentOrFutureRoutes = extractedRoutes.filter(r =>
+        const candidateRoutes = extractedRoutes.filter(r =>
           (r.date === todayStr || r.date === tomorrowStr) &&
-          getShiftStatus(r.furgoId, r.date) !== 'closed'
+          (!(u && u.role === 'repartidor') || r.furgoId === u.id)
         );
-        let latestRoute = null;
-        if (u && u.role === 'repartidor') {
-          const myTodayRoutes = openCurrentOrFutureRoutes.filter(r => r.furgoId === u.id && r.date === todayStr);
-          const myTomorrowRoutes = openCurrentOrFutureRoutes.filter(r => r.furgoId === u.id && r.date === tomorrowStr);
-          if (myTodayRoutes.length > 0) {
-            latestRoute = myTodayRoutes[myTodayRoutes.length - 1];
-          } else if (myTomorrowRoutes.length > 0) {
-            latestRoute = myTomorrowRoutes[myTomorrowRoutes.length - 1];
-          }
-        } else {
-          // Para admin / superadmin / coordinador: priorizar ruta de hoy; si no hay de hoy, de mañana (nunca rutas pasadas)
-          const todayRoutes = openCurrentOrFutureRoutes.filter(r => r.date === todayStr);
-          const tomorrowRoutes = openCurrentOrFutureRoutes.filter(r => r.date === tomorrowStr);
-          if (todayRoutes.length > 0) {
-            latestRoute = todayRoutes[todayRoutes.length - 1];
-          } else if (tomorrowRoutes.length > 0) {
-            latestRoute = tomorrowRoutes[tomorrowRoutes.length - 1];
-          }
-        }
+        const todayRoutes = candidateRoutes.filter(r => r.date === todayStr);
+        const tomorrowRoutes = candidateRoutes.filter(r => r.date === tomorrowStr);
+        const latestRoute = todayRoutes.length > 0
+          ? todayRoutes[todayRoutes.length - 1]
+          : (tomorrowRoutes.length > 0 ? tomorrowRoutes[tomorrowRoutes.length - 1] : null);
         if (latestRoute) {
           setCurrentRouteId(latestRoute.id);
           setTicketDate(latestRoute.date);
@@ -8480,7 +8510,10 @@ function App() {
         furgoId: selectedFurgoId
       };
 
-      setActiveRoutes(prev => [...prev, newRoute]);
+      // Si la ruta se había archivado antes, deja de estarlo; y se sustituye cualquier
+      // entrada previa del mismo chofer/fecha para no duplicarla en "Ruta Activa".
+      setRouteArchived(newRoute.furgoId, newRoute.date, false);
+      setActiveRoutes(prev => [...prev.filter(r => !(r.furgoId === newRoute.furgoId && r.date === newRoute.date)), newRoute]);
       setCurrentRouteId(newRoute.id);
       setShowCreateRouteFormFields(false);
 
@@ -8516,7 +8549,10 @@ function App() {
         furgoId: selectedFurgoId
       };
 
-      setActiveRoutes(prev => [...prev, newRoute]);
+      // Si la ruta se había archivado antes, deja de estarlo; y se sustituye cualquier
+      // entrada previa del mismo chofer/fecha para no duplicarla en "Ruta Activa".
+      setRouteArchived(newRoute.furgoId, newRoute.date, false);
+      setActiveRoutes(prev => [...prev.filter(r => !(r.furgoId === newRoute.furgoId && r.date === newRoute.date)), newRoute]);
       setCurrentRouteId(newRoute.id);
       setShowCreateRouteFormFields(false);
 
@@ -8835,9 +8871,11 @@ function App() {
                 className="btn btn-secondary btn-small"
                 onClick={() => {
                   if (window.confirm(`¿Seguro que quieres quitar la ruta "${activeRouteContext.name}" de tu lista activa? Esto solo limpia tu vista de planificador, pero NO cerrará el turno del chofer (podrá empezar hoy).`)) {
+                    // Guardar como archivada para que la sincronización no la vuelva a añadir
+                    setRouteArchived(activeRouteContext.furgoId, activeRouteContext.date, true);
                     const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
                     setActiveRoutes(remaining);
-                    const nextRoute = remaining[remaining.length - 1];
+                    const nextRoute = pickNextActiveRoute(remaining);
                     if (nextRoute) {
                       setCurrentRouteId(nextRoute.id);
                       setTicketDate(nextRoute.date);
@@ -8864,7 +8902,7 @@ function App() {
                   if (success) {
                     const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
                     setActiveRoutes(remaining);
-                    const nextRoute = remaining[remaining.length - 1];
+                    const nextRoute = pickNextActiveRoute(remaining);
                     if (nextRoute) {
                       setCurrentRouteId(nextRoute.id);
                       setTicketDate(nextRoute.date);
