@@ -1313,10 +1313,27 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         localStorage.setItem('delivery_fleet_daily_logs', dailySetting.value);
       }
 
-      // Fixed Rate Logs (Tarifa Fija por jornada y furgoneta — aislado por administrador y sincronizado entre sus dispositivos)
+      // Fixed Rate Logs (Tarifa Fija por jornada y furgoneta — aislado por administrador y con vista supervisora para Super Administrador)
+      if (sessionUser && sessionUser.role === 'superadmin') {
+        settings.forEach(s => {
+          if (s && s.key && s.key.startsWith('fixed_rate_logs_') && s.value) {
+            const targetAdm = s.key.replace('fixed_rate_logs_', '');
+            if (targetAdm && targetAdm !== 'admin') {
+              try {
+                const parsed = JSON.parse(s.value);
+                if (Array.isArray(parsed)) {
+                  const existingLocal = getFixedRateLogsRaw(targetAdm);
+                  const mergedAdm = filterFixedLogsForAdmin(mergeFixedRateLogsArrays(existingLocal, parsed), targetAdm);
+                  localStorage.setItem(`delivery_fixed_rate_logs_${targetAdm}`, JSON.stringify(mergedAdm));
+                }
+              } catch (e) {}
+            }
+          }
+        });
+      }
       const adminFixedKey = `fixed_rate_logs_${adminId}`;
       const relevantSettings = settings.filter(s => s.key === adminFixedKey || (adminId === 'admin' && s.key === 'fixed_rate_logs'));
-      let mergedFixedLogs = getFixedRateLogsRaw();
+      let mergedFixedLogs = getFixedRateLogsRaw(adminId);
       relevantSettings.forEach(s => {
         if (s && s.value) {
           try {
@@ -1327,11 +1344,12 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           } catch (e) {}
         }
       });
-      persistFixedRateLogsLocal(mergedFixedLogs);
+      mergedFixedLogs = filterFixedLogsForAdmin(mergedFixedLogs, adminId);
+      persistFixedRateLogsLocal(mergedFixedLogs, adminId);
       const adminSetting = settings.find(s => s.key === adminFixedKey);
       let cloudAdminLogs = [];
       try { cloudAdminLogs = adminSetting && adminSetting.value ? JSON.parse(adminSetting.value) : []; } catch (e) {}
-      const cloudNormalized = mergeFixedRateLogsArrays([], cloudAdminLogs);
+      const cloudNormalized = filterFixedLogsForAdmin(mergeFixedRateLogsArrays([], cloudAdminLogs), adminId);
       if (JSON.stringify(mergedFixedLogs) !== JSON.stringify(cloudNormalized) && mergedFixedLogs.length > 0) {
         const mergedStr = JSON.stringify(mergedFixedLogs);
         const upsertRows = [{ key: adminFixedKey, value: mergedStr }];
@@ -4987,9 +5005,19 @@ export function mergeFixedRateLogsArrays(arrA, arrB) {
   return Array.from(byId.values()).sort((a, b) => a.date.localeCompare(b.date) || String(a.furgoId).localeCompare(String(b.furgoId)));
 }
 
+// Selector de flota activo para el Super Administrador ('admin' por defecto = Mis Rutas 150, 151, 168, Dormity)
+let currentSuperAdminScope = 'admin';
+export function getSuperAdminScope() {
+  return currentSuperAdminScope || 'admin';
+}
+export function setSuperAdminScope(scope) {
+  currentSuperAdminScope = scope || 'admin';
+}
+
 // Filtrar registros de Tarifa Fija para conservar únicamente los choferes que pertenecen al administrador indicado
 function filterFixedLogsForAdmin(logs, adminId) {
   if (!Array.isArray(logs)) return [];
+  if (adminId === 'all') return logs;
   let users = [];
   try {
     const raw = localStorage.getItem('delivery_users');
@@ -5008,13 +5036,43 @@ function filterFixedLogsForAdmin(logs, adminId) {
   });
 }
 
-// Leer los registros crudos del administrador activo (incluyendo tombstones _deleted)
-export function getFixedRateLogsRaw() {
-  const adminId = getActiveAdminId();
+function resolveEffectiveFixedRateScope(explicitAdminId) {
+  if (explicitAdminId) return explicitAdminId;
+  try {
+    const savedUser = localStorage.getItem('delivery_session');
+    if (savedUser && savedUser !== 'null') {
+      const parsed = JSON.parse(savedUser);
+      if (parsed && parsed.role === 'superadmin') {
+        return getSuperAdminScope() || 'admin';
+      }
+    }
+  } catch (e) {}
+  return getActiveAdminId();
+}
+
+// Leer los registros crudos del administrador o vista activa (incluyendo tombstones _deleted)
+export function getFixedRateLogsRaw(explicitAdminId) {
+  const scope = resolveEffectiveFixedRateScope(explicitAdminId);
   let merged = [];
   try {
-    const keysToCheck = [`delivery_fixed_rate_logs_${adminId}`];
-    if (adminId === 'admin') keysToCheck.push('delivery_fixed_rate_logs');
+    if (scope === 'all') {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('delivery_fixed_rate_logs_')) {
+          const adm = k.replace('delivery_fixed_rate_logs_', '');
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              merged = mergeFixedRateLogsArrays(merged, filterFixedLogsForAdmin(parsed, adm));
+            }
+          }
+        }
+      }
+      return merged;
+    }
+    const keysToCheck = [`delivery_fixed_rate_logs_${scope}`];
+    if (scope === 'admin') keysToCheck.push('delivery_fixed_rate_logs');
     keysToCheck.forEach(k => {
       const raw = localStorage.getItem(k);
       if (raw) {
@@ -5025,38 +5083,59 @@ export function getFixedRateLogsRaw() {
       }
     });
   } catch (e) {}
-  return filterFixedLogsForAdmin(merged, adminId);
+  return filterFixedLogsForAdmin(merged, scope);
 }
 
-function persistFixedRateLogsLocal(logs) {
-  const adminId = getActiveAdminId();
-  const cleanLogs = filterFixedLogsForAdmin(Array.isArray(logs) ? logs : [], adminId);
+function persistFixedRateLogsLocal(logs, explicitAdminId) {
+  const scope = resolveEffectiveFixedRateScope(explicitAdminId);
+  if (scope === 'all') {
+    let users = [];
+    try { users = JSON.parse(localStorage.getItem('delivery_users') || '[]') || []; } catch (e) {}
+    const adminIds = new Set(['admin']);
+    users.forEach(u => {
+      if (u && (u.role === 'admin' || u.role === 'superadmin')) adminIds.add(u.id);
+      if (u && u.createdBy) adminIds.add(u.createdBy);
+    });
+    adminIds.forEach(adm => {
+      const admLogs = filterFixedLogsForAdmin(Array.isArray(logs) ? logs : [], adm);
+      const existingAdm = getFixedRateLogsRaw(adm);
+      const mergedAdm = filterFixedLogsForAdmin(mergeFixedRateLogsArrays(existingAdm, admLogs), adm);
+      const str = JSON.stringify(mergedAdm);
+      try {
+        localStorage.setItem(`delivery_fixed_rate_logs_${adm}`, str);
+        if (adm === 'admin') localStorage.setItem('delivery_fixed_rate_logs', str);
+      } catch (e) {}
+    });
+    return;
+  }
+  const cleanLogs = filterFixedLogsForAdmin(Array.isArray(logs) ? logs : [], scope);
   const str = JSON.stringify(cleanLogs);
   try {
-    localStorage.setItem(`delivery_fixed_rate_logs_${adminId}`, str);
-    if (adminId === 'admin') {
+    localStorage.setItem(`delivery_fixed_rate_logs_${scope}`, str);
+    if (scope === 'admin') {
       localStorage.setItem('delivery_fixed_rate_logs', str);
     }
   } catch (e) {}
 }
 
-// Obtener el registro de pagos por Tarifa Fija activos del administrador actual
-export function getFixedRateLogs() {
-  return getFixedRateLogsRaw().filter(item => item && !item._deleted);
+// Obtener el registro de pagos por Tarifa Fija activos del administrador o vista actual
+export function getFixedRateLogs(explicitAdminId) {
+  return getFixedRateLogsRaw(explicitAdminId).filter(item => item && !item._deleted);
 }
 
-// Guardar el registro de pagos por Tarifa Fija del administrador actual fusionando entre sus propios dispositivos
+// Guardar el registro de pagos por Tarifa Fija en la clave del administrador propietario de cada chofer
 export async function saveFixedRateLogs(logs) {
-  const adminId = getActiveAdminId();
+  const scope = resolveEffectiveFixedRateScope();
+  const targetAdmin = scope === 'all' ? getActiveAdminId() : scope;
   const incomingLogs = Array.isArray(logs) ? logs : [];
-  let merged = mergeFixedRateLogsArrays(getFixedRateLogsRaw(), incomingLogs);
-  persistFixedRateLogsLocal(merged);
+  let merged = filterFixedLogsForAdmin(mergeFixedRateLogsArrays(getFixedRateLogsRaw(targetAdmin), incomingLogs), targetAdmin);
+  persistFixedRateLogsLocal(merged, targetAdmin);
 
   if (supabase) {
     isSaving++;
     try {
-      const targetKeys = [`fixed_rate_logs_${adminId}`];
-      if (adminId === 'admin') targetKeys.push('fixed_rate_logs');
+      const targetKeys = [`fixed_rate_logs_${targetAdmin}`];
+      if (targetAdmin === 'admin') targetKeys.push('fixed_rate_logs');
       const { data: cloudRows } = await supabase
         .from('delivery_settings')
         .select('key, value')
@@ -5075,22 +5154,23 @@ export async function saveFixedRateLogs(logs) {
         });
       }
 
-      persistFixedRateLogsLocal(merged);
+      merged = filterFixedLogsForAdmin(merged, targetAdmin);
+      persistFixedRateLogsLocal(merged, targetAdmin);
       const logsStr = JSON.stringify(merged);
       const upsertPayload = targetKeys.map(k => ({ key: k, value: logsStr }));
 
       const { error } = await supabase.from('delivery_settings').upsert(upsertPayload);
       if (error) {
         console.error('Error saving fixed rate logs to Supabase:', error);
-        return { success: false, error, logs: merged.filter(x => !x._deleted) };
+        return { success: false, error, logs: getFixedRateLogs() };
       }
-      await broadcastRealtimeEvent('fixed_rates_updated', { adminId, logs: merged });
+      await broadcastRealtimeEvent('fixed_rates_updated', { adminId: targetAdmin, logs: merged });
       notifySync();
     } finally {
       isSaving--;
     }
   }
-  return { success: true, logs: merged.filter(x => !x._deleted) };
+  return { success: true, logs: getFixedRateLogs() };
 }
 
 // Obtener la lista de empleados configurados
