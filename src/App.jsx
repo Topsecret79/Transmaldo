@@ -1429,7 +1429,7 @@ function App() {
   const [fixedRateLogs, setFixedRateLogs] = useState(() => getFixedRateLogs() || []);
   const [fixedRateDate, setFixedRateDate] = useState(() => getTodayDate());
   const [fixedRateSelectedFurgos, setFixedRateSelectedFurgos] = useState([]);
-  const [fixedRateInputAmount, setFixedRateInputAmount] = useState('150');
+  const [fixedRateInputAmount, setFixedRateInputAmount] = useState('0');
   const [editingFixedRateId, setEditingFixedRateId] = useState(null);
   const [editingFixedRateVal, setEditingFixedRateVal] = useState('');
   const [fixedRateActiveFurgo, setFixedRateActiveFurgo] = useState(null);
@@ -1463,8 +1463,8 @@ function App() {
   const handleBulkApplyFixedRateToDates = async (furgoId, datesArray) => {
     if (!isAdminOrSuper || !furgoId || !Array.isArray(datesArray) || datesArray.length === 0) return;
     const parsedAmount = parseFloat(String(fixedRateInputAmount).replace(',', '.'));
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      triggerAlert('Introduce un importe válido mayor que 0 para la Tarifa Fija', 'error');
+    if (isNaN(parsedAmount) || parsedAmount < 0) {
+      triggerAlert('Introduce un importe válido (0 o mayor) para la Tarifa Fija', 'error');
       return;
     }
     const updated = [...(fixedRateLogs || [])];
@@ -1491,15 +1491,19 @@ function App() {
   const handleToggleCalendarDayFixedRate = async (furgoId, dateStr) => {
     if (!isAdminOrSuper || !furgoId || !dateStr) return;
     const existing = (fixedRateLogs || []).find(item => item && item.furgoId === furgoId && item.date === dateStr);
-    if (existing && Number(existing.amount) > 0) {
-      const updated = (fixedRateLogs || []).filter(item => !(item && item.furgoId === furgoId && item.date === dateStr));
-      setFixedRateLogs(updated);
-      await saveFixedRateLogs(updated);
-      triggerAlert(`Tarifa Fija quitada del día ${dateStr}`);
-    } else {
-      const parsedAmount = parseFloat(String(fixedRateInputAmount).replace(',', '.'));
-      const amountToUse = !isNaN(parsedAmount) && parsedAmount > 0 ? parsedAmount : 150;
-      await handleUpdateSingleFixedRate(furgoId, dateStr, amountToUse);
+    const currentAmt = existing ? (Number(existing.amount) || 0) : 0;
+    const parsedInput = parseFloat(String(fixedRateInputAmount).replace(',', '.'));
+    if (!isNaN(parsedInput) && parsedInput > 0 && currentAmt === 0) {
+      await handleUpdateSingleFixedRate(furgoId, dateStr, parsedInput);
+      return;
+    }
+    const fLabel = users.find(u => u.id === furgoId)?.label || furgoId;
+    const nextVal = window.prompt(
+      `Introduce la Tarifa Fija (€) para ${fLabel} el día ${dateStr}:`,
+      String(currentAmt)
+    );
+    if (nextVal !== null) {
+      await handleUpdateSingleFixedRate(furgoId, dateStr, nextVal);
     }
   };
 
@@ -1558,19 +1562,15 @@ function App() {
     const entryId = `${furgoId}_${date}`;
     const updated = [...(fixedRateLogs || [])];
     const idx = updated.findIndex(item => item && (item.id === entryId || (item.furgoId === furgoId && item.date === date)));
-    if (parsedAmount === 0) {
-      if (idx >= 0) updated.splice(idx, 1);
-    } else {
-      const newEntry = {
-        id: entryId,
-        furgoId,
-        date,
-        amount: parsedAmount,
-        updatedAt: new Date().toISOString()
-      };
-      if (idx >= 0) updated[idx] = newEntry;
-      else updated.push(newEntry);
-    }
+    const newEntry = {
+      id: entryId,
+      furgoId,
+      date,
+      amount: parsedAmount,
+      updatedAt: new Date().toISOString()
+    };
+    if (idx >= 0) updated[idx] = newEntry;
+    else updated.push(newEntry);
     setFixedRateLogs(updated);
     await saveFixedRateLogs(updated);
     setEditingFixedRateId(null);
@@ -8331,7 +8331,7 @@ function App() {
     const successTickets = filteredTickets.filter(t => t.status === 'success');
     const activeFurgoIds = activeRepartidores.map(u => u.id);
     const periodFixedForExcel = isAdminOrSuper ? (fixedRateLogs || []).filter(item => {
-      if (!item || !item.furgoId || !item.date || !(Number(item.amount) > 0)) return false;
+      if (!item || !item.furgoId || !item.date || isNaN(Number(item.amount)) || Number(item.amount) < 0) return false;
       if (adminStartDate && item.date < adminStartDate) return false;
       if (adminEndDate && item.date > adminEndDate) return false;
       if (billingFilterFurgo !== 'all' && item.furgoId !== billingFilterFurgo) return false;
@@ -23965,7 +23965,7 @@ function App() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                         <span className="input-label" style={{ margin: 0 }}>💶 Importe Tarifa Fija (€) (Editable)</span>
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {[120, 140, 150, 160, 180].map(preset => (
+                          {[0, 120, 140, 150, 160, 180].map(preset => (
                             <button
                               key={preset}
                               type="button"
@@ -24396,11 +24396,11 @@ function App() {
 
                                   {hasFixed ? (
                                     <div style={{ fontSize: '0.76rem', fontWeight: '800', color: '#6ee7b7', background: 'rgba(0,0,0,0.3)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center' }}>
-                                      ✓ {info.fixedAmt.toFixed(0)} €
+                                      ✓ {info.fixedAmt.toFixed(2)} €
                                     </div>
                                   ) : isWorked ? (
-                                    <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#93c5fd', textAlign: 'center' }}>
-                                      + {fixedRateInputAmount || '150'} €
+                                    <div style={{ fontSize: '0.74rem', fontWeight: '800', color: '#fde68a', background: 'rgba(0,0,0,0.28)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center' }}>
+                                      0.00 € ✏️
                                     </div>
                                   ) : (
                                     <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center' }}>—</div>
@@ -24431,7 +24431,7 @@ function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {periodFixedRateLogs.map(entry => {
+                            {periodFixedRateLogs.filter(entry => !fixedRateActiveFurgo || entry.furgoId === fixedRateActiveFurgo).map(entry => {
                               const fLabel = users.find(u => u.id === entry.furgoId)?.label || entry.furgoId;
                               const isEditingThis = editingFixedRateId === entry.id;
                               return (
