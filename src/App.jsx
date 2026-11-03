@@ -1443,6 +1443,7 @@ function App() {
 
   useEffect(() => {
     if (!isAdminOrSuper || (activeTab !== 'dashboard' && activeTab !== 'fixed_rate') || !fixedRateCalendarMonth) return;
+    syncFromCloud(false).then(() => loadDataRef.current()).catch(() => {});
     const [yStr, mStr] = fixedRateCalendarMonth.split('-');
     const y = parseInt(yStr, 10);
     const m = parseInt(mStr, 10);
@@ -1483,7 +1484,8 @@ function App() {
       else updated.push(newEntry);
     });
     setFixedRateLogs(updated);
-    await saveFixedRateLogs(updated);
+    const res = await saveFixedRateLogs(updated);
+    if (res && Array.isArray(res.logs)) setFixedRateLogs(res.logs);
     const fLabel = users.find(u => u.id === furgoId)?.label || furgoId;
     triggerAlert(`💶 Tarifa Fija (${parsedAmount.toFixed(2)} €) aplicada a ${datesArray.length} día(s) trabajado(s) de ${fLabel}`);
   };
@@ -1547,7 +1549,8 @@ function App() {
       }
     });
     setFixedRateLogs(updated);
-    await saveFixedRateLogs(updated);
+    const res = await saveFixedRateLogs(updated);
+    if (res && Array.isArray(res.logs)) setFixedRateLogs(res.logs);
     setFixedRateSelectedFurgos([]);
     triggerAlert(`💶 Tarifa Fija (${parsedAmount.toFixed(2)} €) asignada a ${fixedRateSelectedFurgos.length} furgoneta(s) en ${fixedRateDate}`);
   };
@@ -1572,7 +1575,8 @@ function App() {
     if (idx >= 0) updated[idx] = newEntry;
     else updated.push(newEntry);
     setFixedRateLogs(updated);
-    await saveFixedRateLogs(updated);
+    const res = await saveFixedRateLogs(updated);
+    if (res && Array.isArray(res.logs)) setFixedRateLogs(res.logs);
     setEditingFixedRateId(null);
     setEditingFixedRateVal('');
     triggerAlert('💶 Tarifa Fija actualizada');
@@ -1580,9 +1584,13 @@ function App() {
 
   const handleDeleteFixedRate = async (entryId) => {
     if (!isAdminOrSuper) return;
-    const updated = (fixedRateLogs || []).filter(item => item && item.id !== entryId);
-    setFixedRateLogs(updated);
-    await saveFixedRateLogs(updated);
+    const nowIso = new Date().toISOString();
+    const updatedWithTombstone = (fixedRateLogs || []).map(item =>
+      item && item.id === entryId ? { ...item, amount: 0, _deleted: true, updatedAt: nowIso } : item
+    );
+    setFixedRateLogs(updatedWithTombstone.filter(item => item && !item._deleted));
+    const res = await saveFixedRateLogs(updatedWithTombstone);
+    if (res && Array.isArray(res.logs)) setFixedRateLogs(res.logs);
     triggerAlert('Registro de Tarifa Fija eliminado');
   };
   // Stats module filters

@@ -338,6 +338,23 @@ export function setupRealtimeChannel() {
         lastRealtimePingOkAt = Date.now();
         scheduleSyncFromCloud('delivery_shifts');
       })
+      // 3b. Escuchar cuando se actualiza Tarifa Fija en cualquier dispositivo
+      .on('broadcast', { event: 'fixed_rates_updated' }, (msg) => {
+        const payload = msg.payload || msg;
+        console.log("⚡ Realtime Broadcast fixed_rates_updated recibido");
+        lastRealtimePingOkAt = Date.now();
+        if (payload && Array.isArray(payload.logs)) {
+          try {
+            const currentLocal = getFixedRateLogsRaw();
+            const merged = mergeFixedRateLogsArrays(currentLocal, payload.logs);
+            persistFixedRateLogsLocal(merged);
+            notifySync();
+          } catch (e) {
+            console.error("Error aplicando fixed_rates_updated inmediato:", e);
+          }
+        }
+        scheduleSyncFromCloud('delivery_settings');
+      })
       // 4. postgres_changes como respaldo adicional
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
         console.log("Realtime postgres_changes payload received:", payload);
@@ -364,6 +381,16 @@ export function setupRealtimeChannel() {
               localStorage.setItem('delivery_' + record.key, record.value);
               localStorage.setItem(record.key, record.value);
               window.dispatchEvent(new CustomEvent('manual-route-status-updated', { detail: { key: record.key, value: record.value } }));
+            } catch (e) {}
+            return;
+          }
+          if (record.key && (record.key === 'fixed_rate_logs' || record.key.startsWith('fixed_rate_logs_'))) {
+            try {
+              const incoming = JSON.parse(record.value || '[]');
+              const currentLocal = getFixedRateLogsRaw();
+              const merged = mergeFixedRateLogsArrays(currentLocal, incoming);
+              persistFixedRateLogsLocal(merged);
+              notifySync();
             } catch (e) {}
             return;
           }
@@ -1282,15 +1309,33 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         localStorage.setItem('delivery_fleet_daily_logs', dailySetting.value);
       }
 
-      // Fixed Rate Logs (Tarifa Fija por jornada y furgoneta — exclusivo Admin/Superadmin)
-      const fixedRateKey = `fixed_rate_logs_${adminId}`;
-      let fixedRateSetting = settings.find(s => s.key === fixedRateKey);
-      if (!fixedRateSetting) {
-        fixedRateSetting = settings.find(s => s.key === 'fixed_rate_logs');
-      }
-      if (fixedRateSetting && fixedRateSetting.value) {
-        localStorage.setItem(`delivery_fixed_rate_logs_${adminId}`, fixedRateSetting.value);
-        localStorage.setItem('delivery_fixed_rate_logs', fixedRateSetting.value);
+      // Fixed Rate Logs (Tarifa Fija por jornada y furgoneta — sincronización unificada entre todos los dispositivos y administradores)
+      const allFixedRateSettings = settings.filter(s => s.key === 'fixed_rate_logs' || (s.key && s.key.startsWith('fixed_rate_logs_')));
+      let mergedFixedLogs = getFixedRateLogsRaw();
+      allFixedRateSettings.forEach(s => {
+        if (s && s.value) {
+          try {
+            const parsed = JSON.parse(s.value);
+            if (Array.isArray(parsed)) {
+              mergedFixedLogs = mergeFixedRateLogsArrays(mergedFixedLogs, parsed);
+            }
+          } catch (e) {}
+        }
+      });
+      persistFixedRateLogsLocal(mergedFixedLogs);
+      // Si el dispositivo local tenía ediciones más recientes que aún no estaban en la clave maestra 'fixed_rate_logs' de la nube, subirlas automáticamente
+      const masterSetting = settings.find(s => s.key === 'fixed_rate_logs');
+      let masterLogs = [];
+      try { masterLogs = masterSetting && masterSetting.value ? JSON.parse(masterSetting.value) : []; } catch (e) {}
+      const masterNormalized = mergeFixedRateLogsArrays([], masterLogs);
+      if (JSON.stringify(mergedFixedLogs) !== JSON.stringify(masterNormalized) && mergedFixedLogs.length > 0) {
+        const mergedStr = JSON.stringify(mergedFixedLogs);
+        const upsertKeys = new Set(['fixed_rate_logs', `fixed_rate_logs_${adminId}`]);
+        allFixedRateSettings.forEach(s => { if (s && s.key) upsertKeys.add(s.key); });
+        const upsertRows = Array.from(upsertKeys).map(k => ({ key: k, value: mergedStr }));
+        supabase.from('delivery_settings').upsert(upsertRows).then(({ error: upErr }) => {
+          if (!upErr) broadcastRealtimeEvent('fixed_rates_updated', { logs: mergedFixedLogs });
+        });
       }
 
       // Km Price
@@ -4899,39 +4944,134 @@ export async function saveDriverDailyRate(driverId, rate) {
   return { success: true };
 }
 
-// Obtener el registro de pagos por Tarifa Fija (independiente de la facturación por paradas)
-export function getFixedRateLogs() {
-  const adminId = getActiveAdminId();
-  let logsStr = localStorage.getItem(`delivery_fixed_rate_logs_${adminId}`);
-  if (!logsStr) {
-    logsStr = localStorage.getItem('delivery_fixed_rate_logs');
-  }
-  try {
-    const parsed = logsStr ? JSON.parse(logsStr) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    return [];
-  }
+// Fusionar dos listas de Tarifa Fija por id (furgoId_date) respetando la edición más reciente (updatedAt)
+export function mergeFixedRateLogsArrays(arrA, arrB) {
+  const byId = new Map();
+  const processList = (list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach(item => {
+      if (!item || !item.furgoId || !item.date) return;
+      const id = item.id || `${item.furgoId}_${item.date}`;
+      const normalized = {
+        id,
+        furgoId: item.furgoId,
+        date: item.date,
+        amount: Number(item.amount) || 0,
+        updatedAt: item.updatedAt || '2026-01-01T00:00:00.000Z',
+        ...(item._deleted ? { _deleted: true } : {})
+      };
+      const existing = byId.get(id);
+      if (!existing) {
+        byId.set(id, normalized);
+      } else {
+        const isExistingSeedZero = existing.amount === 0 && !existing._deleted && existing.updatedAt <= '2026-11-03T17:46:00.000Z';
+        const isIncomingSeedZero = normalized.amount === 0 && !normalized._deleted && normalized.updatedAt <= '2026-11-03T17:46:00.000Z';
+        if (isExistingSeedZero && !isIncomingSeedZero) {
+          byId.set(id, normalized);
+        } else if (!isExistingSeedZero && isIncomingSeedZero) {
+          // Conservar la edición real del usuario frente a la semilla inicial en 0€
+        } else if (normalized.updatedAt > existing.updatedAt) {
+          byId.set(id, normalized);
+        } else if (normalized.updatedAt === existing.updatedAt && normalized.amount > existing.amount) {
+          byId.set(id, normalized);
+        }
+      }
+    });
+  };
+  processList(arrA);
+  processList(arrB);
+  return Array.from(byId.values()).sort((a, b) => a.date.localeCompare(b.date) || String(a.furgoId).localeCompare(String(b.furgoId)));
 }
 
-// Guardar el registro de pagos por Tarifa Fija en local y en Supabase
+// Leer todos los registros crudos (incluyendo tombstones _deleted) desde todas las claves locales
+export function getFixedRateLogsRaw() {
+  let merged = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k === 'delivery_fixed_rate_logs' || (k && k.startsWith('delivery_fixed_rate_logs_'))) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            merged = mergeFixedRateLogsArrays(merged, parsed);
+          }
+        }
+      }
+    }
+  } catch (e) {}
+  return merged;
+}
+
+function persistFixedRateLogsLocal(logs) {
+  const adminId = getActiveAdminId();
+  const str = JSON.stringify(Array.isArray(logs) ? logs : []);
+  try {
+    localStorage.setItem('delivery_fixed_rate_logs', str);
+    localStorage.setItem(`delivery_fixed_rate_logs_${adminId}`, str);
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('delivery_fixed_rate_logs_')) {
+        localStorage.setItem(k, str);
+      }
+    }
+  } catch (e) {}
+}
+
+// Obtener el registro de pagos por Tarifa Fija activos (independiente de la facturación por paradas)
+export function getFixedRateLogs() {
+  return getFixedRateLogsRaw().filter(item => item && !item._deleted);
+}
+
+// Guardar el registro de pagos por Tarifa Fija fusionando con local y Supabase para nunca sobrescribir otro mes/dispositivo
 export async function saveFixedRateLogs(logs) {
   const adminId = getActiveAdminId();
-  const cleanLogs = Array.isArray(logs) ? logs : [];
-  const logsStr = JSON.stringify(cleanLogs);
-  localStorage.setItem(`delivery_fixed_rate_logs_${adminId}`, logsStr);
-  localStorage.setItem('delivery_fixed_rate_logs', logsStr);
+  const incomingLogs = Array.isArray(logs) ? logs : [];
+  let merged = mergeFixedRateLogsArrays(getFixedRateLogsRaw(), incomingLogs);
+  persistFixedRateLogsLocal(merged);
+
   if (supabase) {
-    const { error } = await supabase.from('delivery_settings').upsert([
-      { key: `fixed_rate_logs_${adminId}`, value: logsStr },
-      { key: 'fixed_rate_logs', value: logsStr }
-    ]);
-    if (error) {
-      console.error('Error saving fixed rate logs to Supabase:', error);
-      return { success: false, error };
+    isSaving++;
+    try {
+      const { data: cloudRows } = await supabase
+        .from('delivery_settings')
+        .select('key, value')
+        .ilike('key', 'fixed_rate_logs%');
+
+      if (Array.isArray(cloudRows)) {
+        cloudRows.forEach(row => {
+          if (row && row.value) {
+            try {
+              const parsed = JSON.parse(row.value);
+              if (Array.isArray(parsed)) {
+                merged = mergeFixedRateLogsArrays(merged, parsed);
+              }
+            } catch (e) {}
+          }
+        });
+      }
+
+      persistFixedRateLogsLocal(merged);
+      const logsStr = JSON.stringify(merged);
+
+      const keysSet = new Set(['fixed_rate_logs', `fixed_rate_logs_${adminId}`]);
+      if (Array.isArray(cloudRows)) {
+        cloudRows.forEach(r => { if (r && r.key) keysSet.add(r.key); });
+      }
+      const upsertPayload = Array.from(keysSet).map(k => ({ key: k, value: logsStr }));
+
+      const { error } = await supabase.from('delivery_settings').upsert(upsertPayload);
+      if (error) {
+        console.error('Error saving fixed rate logs to Supabase:', error);
+        return { success: false, error, logs: merged.filter(x => !x._deleted) };
+      }
+      await broadcastRealtimeEvent('fixed_rates_updated', { logs: merged });
+      notifySync();
+    } finally {
+      isSaving--;
     }
   }
-  return { success: true };
+  return { success: true, logs: merged.filter(x => !x._deleted) };
 }
 
 // Obtener la lista de empleados configurados
