@@ -1432,6 +1432,76 @@ function App() {
   const [fixedRateInputAmount, setFixedRateInputAmount] = useState('150');
   const [editingFixedRateId, setEditingFixedRateId] = useState(null);
   const [editingFixedRateVal, setEditingFixedRateVal] = useState('');
+  const [fixedRateActiveFurgo, setFixedRateActiveFurgo] = useState(null);
+  const [fixedRateCalendarMonth, setFixedRateCalendarMonth] = useState(() => getTodayDate().slice(0, 7));
+
+  useEffect(() => {
+    if (adminStartDate && adminStartDate.length >= 7) {
+      setFixedRateCalendarMonth(adminStartDate.slice(0, 7));
+    }
+  }, [adminStartDate]);
+
+  useEffect(() => {
+    if (!isAdminOrSuper || activeTab !== 'dashboard' || !fixedRateCalendarMonth) return;
+    const [yStr, mStr] = fixedRateCalendarMonth.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10);
+    if (!y || !m) return;
+    const firstDay = `${yStr}-${mStr}-01`;
+    const lastDayNum = new Date(y, m, 0).getDate();
+    const lastDay = `${yStr}-${mStr}-${String(lastDayNum).padStart(2, '0')}`;
+    const syncCutoffDate = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    if (firstDay < syncCutoffDate) {
+      loadHistoricalTicketsForPeriod(firstDay, lastDay)
+        .then(loaded => {
+          if (loaded && loaded.length > 0) loadDataRef.current();
+        })
+        .catch(err => console.warn('Error cargando histórico para calendario de tarifa fija:', err));
+    }
+  }, [activeTab, fixedRateCalendarMonth, isAdminOrSuper]);
+
+  const handleBulkApplyFixedRateToDates = async (furgoId, datesArray) => {
+    if (!isAdminOrSuper || !furgoId || !Array.isArray(datesArray) || datesArray.length === 0) return;
+    const parsedAmount = parseFloat(String(fixedRateInputAmount).replace(',', '.'));
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      triggerAlert('Introduce un importe válido mayor que 0 para la Tarifa Fija', 'error');
+      return;
+    }
+    const updated = [...(fixedRateLogs || [])];
+    const nowIso = new Date().toISOString();
+    datesArray.forEach(dateStr => {
+      const entryId = `${furgoId}_${dateStr}`;
+      const idx = updated.findIndex(item => item && (item.id === entryId || (item.furgoId === furgoId && item.date === dateStr)));
+      const newEntry = {
+        id: entryId,
+        furgoId,
+        date: dateStr,
+        amount: parsedAmount,
+        updatedAt: nowIso
+      };
+      if (idx >= 0) updated[idx] = newEntry;
+      else updated.push(newEntry);
+    });
+    setFixedRateLogs(updated);
+    await saveFixedRateLogs(updated);
+    const fLabel = users.find(u => u.id === furgoId)?.label || furgoId;
+    triggerAlert(`💶 Tarifa Fija (${parsedAmount.toFixed(2)} €) aplicada a ${datesArray.length} día(s) trabajado(s) de ${fLabel}`);
+  };
+
+  const handleToggleCalendarDayFixedRate = async (furgoId, dateStr) => {
+    if (!isAdminOrSuper || !furgoId || !dateStr) return;
+    const existing = (fixedRateLogs || []).find(item => item && item.furgoId === furgoId && item.date === dateStr);
+    if (existing && Number(existing.amount) > 0) {
+      const updated = (fixedRateLogs || []).filter(item => !(item && item.furgoId === furgoId && item.date === dateStr));
+      setFixedRateLogs(updated);
+      await saveFixedRateLogs(updated);
+      triggerAlert(`Tarifa Fija quitada del día ${dateStr}`);
+    } else {
+      const parsedAmount = parseFloat(String(fixedRateInputAmount).replace(',', '.'));
+      const amountToUse = !isNaN(parsedAmount) && parsedAmount > 0 ? parsedAmount : 150;
+      await handleUpdateSingleFixedRate(furgoId, dateStr, amountToUse);
+    }
+  };
 
   const toggleFixedRateFurgo = (furgoId) => {
     setFixedRateSelectedFurgos(prev =>
@@ -23946,75 +24016,367 @@ function App() {
                     </button>
                   </div>
 
-                  {/* Chips de selección de furgonetas para la fecha elegida */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                      <span style={{ fontSize: '0.84rem', fontWeight: '700', color: 'var(--text-main)' }}>
-                        🚐 Selecciona las furgonetas que trabajaron el <strong style={{ color: '#fbbf24' }}>{fixedRateDate}</strong>:
-                      </span>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                  {/* Selección de Ruta para ver su Calendario de Días Trabajados + Selección múltiple del día */}
+                  <div style={{ background: 'rgba(15, 23, 42, 0.45)', border: '1px solid rgba(245, 158, 11, 0.28)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div>
+                        <div style={{ fontSize: '0.92rem', fontWeight: '800', color: '#fde68a' }}>
+                          🗓️ 1. Toca una Ruta para abrir su Calendario de Días Trabajados (Mes: {fixedRateCalendarMonth})
+                        </div>
+                        <div style={{ fontSize: '0.77rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          Al tocar cualquier ruta (ej. 150 o 151) verás iluminados todos los días que trabajó en el mes para asignarle o editar su Tarifa Fija.
+                        </div>
+                      </div>
+                      {fixedRateActiveFurgo && (
                         <button
                           type="button"
                           className="btn btn-secondary btn-small"
-                          style={{ padding: '3px 10px', fontSize: '0.74rem', margin: 0, width: 'auto' }}
-                          onClick={() => setFixedRateSelectedFurgos(activeRepartidores.map(u => u.id))}
+                          style={{ padding: '4px 10px', fontSize: '0.75rem', margin: 0, width: 'auto' }}
+                          onClick={() => setFixedRateActiveFurgo(null)}
                         >
-                          Seleccionar todas
+                          ✖️ Cerrar calendario de ruta
                         </button>
-                        {fixedRateSelectedFurgos.length > 0 && (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-small"
-                            style={{ padding: '3px 10px', fontSize: '0.74rem', margin: 0, width: 'auto' }}
-                            onClick={() => setFixedRateSelectedFurgos([])}
-                          >
-                            Limpiar selección
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </div>
+
+                    {/* Botones de rutas para abrir su calendario de días trabajados */}
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {activeRepartidores.map(u => {
-                        const isSelected = fixedRateSelectedFurgos.includes(u.id);
+                        const isCalendarOpen = fixedRateActiveFurgo === u.id;
+                        const isMultiSelected = fixedRateSelectedFurgos.includes(u.id);
                         const existingDayAmt = getFurgoFixedRateForDate(u.id, fixedRateDate);
+
+                        // Calcular cuántos días trabajó esta ruta en fixedRateCalendarMonth
+                        const workedDatesSet = new Set();
+                        (tickets || []).forEach(t => {
+                          if (t && t.furgoId === u.id && t.date && t.date.startsWith(fixedRateCalendarMonth)) {
+                            workedDatesSet.add(t.date);
+                          }
+                        });
+                        (shifts || []).forEach(s => {
+                          if (s && s.furgoId === u.id && s.date && s.date.startsWith(fixedRateCalendarMonth)) {
+                            workedDatesSet.add(s.date);
+                          }
+                        });
+                        const monthFixedLogs = (fixedRateLogs || []).filter(item => item && item.furgoId === u.id && item.date && item.date.startsWith(fixedRateCalendarMonth) && Number(item.amount) > 0);
+                        const monthFixedTotal = monthFixedLogs.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
                         return (
-                          <button
+                          <div
                             key={u.id}
-                            type="button"
-                            onClick={() => toggleFixedRateFurgo(u.id)}
                             style={{
-                              padding: '8px 14px',
-                              borderRadius: '8px',
-                              border: isSelected
-                                ? '2px solid #fbbf24'
-                                : existingDayAmt > 0
-                                  ? '1px solid rgba(16, 185, 129, 0.5)'
-                                  : '1px solid rgba(255,255,255,0.14)',
-                              background: isSelected
-                                ? 'rgba(245, 158, 11, 0.28)'
-                                : existingDayAmt > 0
-                                  ? 'rgba(16, 185, 129, 0.12)'
-                                  : 'rgba(255,255,255,0.04)',
-                              color: isSelected ? '#fde68a' : '#fff',
-                              fontWeight: isSelected || existingDayAmt > 0 ? '800' : '600',
-                              fontSize: '0.86rem',
-                              cursor: 'pointer',
                               display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              transition: 'all 0.15s ease'
+                              alignItems: 'stretch',
+                              borderRadius: '10px',
+                              overflow: 'hidden',
+                              border: isCalendarOpen
+                                ? '2px solid #fbbf24'
+                                : isMultiSelected
+                                  ? '2px solid #38bdf8'
+                                  : monthFixedTotal > 0
+                                    ? '1px solid rgba(16, 185, 129, 0.5)'
+                                    : '1px solid rgba(255,255,255,0.14)',
+                              background: isCalendarOpen
+                                ? 'rgba(245, 158, 11, 0.25)'
+                                : 'rgba(255,255,255,0.04)',
+                              boxShadow: isCalendarOpen ? '0 0 14px rgba(245, 158, 11, 0.3)' : 'none'
                             }}
                           >
-                            <span>{isSelected ? '☑️' : '⬜'} {u.label}</span>
-                            {existingDayAmt > 0 && (
-                              <span style={{ fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.25)', color: '#6ee7b7' }}>
-                                ✓ {existingDayAmt.toFixed(2)} €
-                              </span>
-                            )}
-                          </button>
+                            {/* Checkbox para asignar en bloque en la fecha de arriba (ej. hoy 150 y 151) */}
+                            <button
+                              type="button"
+                              onClick={() => toggleFixedRateFurgo(u.id)}
+                              title={`Marcar/desmarcar ${u.label} para la fecha ${fixedRateDate}`}
+                              style={{
+                                padding: '8px 10px',
+                                background: isMultiSelected ? 'rgba(56, 189, 248, 0.25)' : 'rgba(0,0,0,0.25)',
+                                border: 'none',
+                                borderRight: '1px solid rgba(255,255,255,0.1)',
+                                color: '#fff',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem'
+                              }}
+                            >
+                              {isMultiSelected ? '☑️' : '⬜'}
+                            </button>
+
+                            {/* Botón principal: abre el calendario de días trabajados de esta ruta */}
+                            <button
+                              type="button"
+                              onClick={() => setFixedRateActiveFurgo(isCalendarOpen ? null : u.id)}
+                              style={{
+                                padding: '8px 12px',
+                                background: 'transparent',
+                                border: 'none',
+                                color: isCalendarOpen ? '#fde68a' : '#fff',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-start',
+                                gap: '2px',
+                                textAlign: 'left'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '800', fontSize: '0.88rem' }}>
+                                <span>🚐 {u.label}</span>
+                                <span style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: '4px', background: workedDatesSet.size > 0 ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.08)', color: workedDatesSet.size > 0 ? '#93c5fd' : 'var(--text-muted)' }}>
+                                  🗓️ {workedDatesSet.size} d. trabajados
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', fontSize: '0.72rem', alignItems: 'center' }}>
+                                {monthFixedTotal > 0 ? (
+                                  <span style={{ color: '#6ee7b7', fontWeight: '700' }}>
+                                    💶 Mes: {monthFixedTotal.toFixed(2)} € ({monthFixedLogs.length} d.)
+                                  </span>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)' }}>Sin tarifa fija en el mes</span>
+                                )}
+                                {existingDayAmt > 0 && (
+                                  <span style={{ color: '#fde047', fontWeight: '700' }}>
+                                    • Hoy: {existingDayAmt.toFixed(2)} €
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
+
+                    {/* CALENDARIO DESPLEGABLE DE DÍAS TRABAJADOS DE LA RUTA SELECCIONADA */}
+                    {fixedRateActiveFurgo && (() => {
+                      const activeFurgoObj = users.find(u => u.id === fixedRateActiveFurgo);
+                      const furgoLabel = activeFurgoObj?.label || fixedRateActiveFurgo;
+                      const [yearStr, monthStr] = (fixedRateCalendarMonth || getTodayDate().slice(0, 7)).split('-');
+                      const calYear = parseInt(yearStr, 10);
+                      const calMonth = parseInt(monthStr, 10); // 1..12
+                      const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+                      const firstDayWeekIdx = (new Date(calYear, calMonth - 1, 1).getDay() + 6) % 7; // 0 = Lunes .. 6 = Domingo
+                      const monthNamesEs = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                      const monthTitle = `${monthNamesEs[calMonth - 1] || ''} ${calYear}`;
+
+                      // Mapear actividad por día de esta furgoneta en este mes
+                      const dayActivityMap = {};
+                      const workedDatesInMonth = [];
+                      for (let d = 1; d <= daysInMonth; d++) {
+                        const dStr = `${yearStr}-${monthStr}-${String(d).padStart(2, '0')}`;
+                        const dayTickets = (tickets || []).filter(t => t && t.furgoId === fixedRateActiveFurgo && t.date === dStr);
+                        const daySuccess = dayTickets.filter(t => t.status === 'success').length;
+                        const hasShift = (shifts || []).some(s => s && s.furgoId === fixedRateActiveFurgo && s.date === dStr);
+                        const fixedAmt = getFurgoFixedRateForDate(fixedRateActiveFurgo, dStr);
+                        const worked = dayTickets.length > 0 || hasShift;
+                        if (worked) workedDatesInMonth.push(dStr);
+                        dayActivityMap[dStr] = {
+                          dayNum: d,
+                          dateStr: dStr,
+                          ticketsCount: dayTickets.length,
+                          successCount: daySuccess,
+                          hasShift,
+                          worked,
+                          fixedAmt
+                        };
+                      }
+
+                      const monthFixedEntries = (fixedRateLogs || []).filter(item => item && item.furgoId === fixedRateActiveFurgo && item.date && item.date.startsWith(fixedRateCalendarMonth) && Number(item.amount) > 0);
+                      const monthFixedSum = monthFixedEntries.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+
+                      const shiftMonth = (delta) => {
+                        const dt = new Date(calYear, calMonth - 1 + delta, 1);
+                        const nextKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+                        setFixedRateCalendarMonth(nextKey);
+                      };
+
+                      return (
+                        <div style={{ marginTop: '6px', background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(245, 158, 11, 0.45)', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                          {/* Cabecera del Calendario de la Ruta */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '1.05rem', fontWeight: '800', color: '#fbbf24' }}>
+                                📅 Días Trabajados de Ruta {furgoLabel}
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '8px' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-small"
+                                  style={{ padding: '2px 8px', margin: 0, width: 'auto', height: '26px' }}
+                                  onClick={() => shiftMonth(-1)}
+                                >
+                                  ◀
+                                </button>
+                                <strong style={{ fontSize: '0.88rem', minWidth: '125px', textAlign: 'center', color: '#fff' }}>
+                                  {monthTitle}
+                                </strong>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-small"
+                                  style={{ padding: '2px 8px', margin: 0, width: 'auto', height: '26px' }}
+                                  onClick={() => shiftMonth(1)}
+                                >
+                                  ▶
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Botones de acción rápida para todos los días trabajados del mes */}
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              {workedDatesInMonth.length > 0 && (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-small"
+                                  onClick={() => handleBulkApplyFixedRateToDates(fixedRateActiveFurgo, workedDatesInMonth)}
+                                  style={{
+                                    margin: 0,
+                                    width: 'auto',
+                                    padding: '6px 12px',
+                                    background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                    color: '#0f172a',
+                                    fontWeight: '800',
+                                    border: 'none'
+                                  }}
+                                >
+                                  ⚡ Aplicar {fixedRateInputAmount || '150'} € a los {workedDatesInMonth.length} días trabajados de {monthTitle}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Tarjetas de resumen del mes de esta ruta */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                            <div style={{ background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.35)', borderRadius: '8px', padding: '10px 12px' }}>
+                              <div style={{ fontSize: '0.74rem', color: '#93c5fd', fontWeight: '700' }}>🔵 Días con Ruta Trabajada ({monthTitle})</div>
+                              <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#fff', marginTop: '2px' }}>{workedDatesInMonth.length} día(s)</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Detectados por repartos / turnos</div>
+                            </div>
+                            <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)', borderRadius: '8px', padding: '10px 12px' }}>
+                              <div style={{ fontSize: '0.74rem', color: '#6ee7b7', fontWeight: '700' }}>🟢 Días con Tarifa Fija Asignada</div>
+                              <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#fff', marginTop: '2px' }}>{monthFixedEntries.length} día(s)</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Toca un día del calendario para poner/quitar</div>
+                            </div>
+                            <div style={{ background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.45)', borderRadius: '8px', padding: '10px 12px' }}>
+                              <div style={{ fontSize: '0.74rem', color: '#fcd34d', fontWeight: '700' }}>💶 Total Tarifa Fija {furgoLabel} ({monthTitle})</div>
+                              <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#fde68a', marginTop: '2px' }}>{monthFixedSum.toFixed(2)} €</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Columna independiente</div>
+                            </div>
+                          </div>
+
+                          {/* Leyenda rápida */}
+                          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                            <span>🔵 <strong>Azul:</strong> Día trabajado con paradas (toca para asignar {fixedRateInputAmount || '150'} €)</span>
+                            <span>🟢 <strong>Verde/Dorado:</strong> Día con Tarifa Fija asignada (toca para quitar o ✏️ para cambiar valor)</span>
+                            <span>⚪ <strong>Gris:</strong> Sin ruta registrada (también puedes tocarlo si quieres asignar tarifa fija)</span>
+                          </div>
+
+                          {/* Cuadrícula del calendario mensual */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '6px' }}>
+                            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(wd => (
+                              <div key={wd} style={{ textAlign: 'center', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', padding: '4px 0' }}>
+                                {wd}
+                              </div>
+                            ))}
+                            {Array.from({ length: firstDayWeekIdx }).map((_, idx) => (
+                              <div key={`empty_${idx}`} style={{ minHeight: '68px' }} />
+                            ))}
+                            {Array.from({ length: daysInMonth }).map((_, idx) => {
+                              const dayNum = idx + 1;
+                              const dStr = `${yearStr}-${monthStr}-${String(dayNum).padStart(2, '0')}`;
+                              const info = dayActivityMap[dStr];
+                              const hasFixed = info.fixedAmt > 0;
+                              const isWorked = info.worked;
+                              const isToday = dStr === getTodayDate();
+
+                              return (
+                                <div
+                                  key={dStr}
+                                  onClick={() => handleToggleCalendarDayFixedRate(fixedRateActiveFurgo, dStr)}
+                                  title={
+                                    hasFixed
+                                      ? `Día ${dStr}: Tarifa Fija ${info.fixedAmt.toFixed(2)} € (${info.ticketsCount} paradas). Clic para quitar o usa ✏️ para editar.`
+                                      : isWorked
+                                        ? `Día trabajado (${info.ticketsCount} paradas). Clic para asignar ${fixedRateInputAmount || 150} € de Tarifa Fija.`
+                                        : `Día sin ruta registrada. Clic si deseas asignar ${fixedRateInputAmount || 150} € manualmente.`
+                                  }
+                                  style={{
+                                    minHeight: '72px',
+                                    borderRadius: '8px',
+                                    padding: '6px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'space-between',
+                                    position: 'relative',
+                                    border: hasFixed
+                                      ? '2px solid #10b981'
+                                      : isWorked
+                                        ? '2px solid #3b82f6'
+                                        : isToday
+                                          ? '1px dashed #fbbf24'
+                                          : '1px solid rgba(255,255,255,0.07)',
+                                    background: hasFixed
+                                      ? 'linear-gradient(145deg, rgba(16, 185, 129, 0.25) 0%, rgba(245, 158, 11, 0.2) 100%)'
+                                      : isWorked
+                                        ? 'rgba(59, 130, 246, 0.16)'
+                                        : 'rgba(255,255,255,0.02)',
+                                    opacity: (!isWorked && !hasFixed) ? 0.55 : 1,
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: '800', fontSize: '0.84rem', color: hasFixed ? '#fde68a' : isWorked ? '#93c5fd' : 'var(--text-muted)' }}>
+                                      {dayNum}
+                                    </span>
+                                    {hasFixed && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const nextVal = window.prompt(
+                                            `Editar importe de Tarifa Fija (€) para ${furgoLabel} el día ${dStr} (pon 0 para quitar):`,
+                                            String(info.fixedAmt)
+                                          );
+                                          if (nextVal !== null) {
+                                            handleUpdateSingleFixedRate(fixedRateActiveFurgo, dStr, nextVal);
+                                          }
+                                        }}
+                                        style={{
+                                          background: 'rgba(0,0,0,0.35)',
+                                          border: '1px solid rgba(255,255,255,0.2)',
+                                          borderRadius: '4px',
+                                          padding: '1px 5px',
+                                          fontSize: '0.68rem',
+                                          color: '#fde68a',
+                                          cursor: 'pointer'
+                                        }}
+                                        title="Editar importe de este día"
+                                      >
+                                        ✏️
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {isWorked && (
+                                    <div style={{ fontSize: '0.68rem', color: '#bfdbfe', fontWeight: '600', lineHeight: 1.15 }}>
+                                      🚚 {info.ticketsCount > 0 ? `${info.ticketsCount} par.` : 'Turno'}
+                                    </div>
+                                  )}
+
+                                  {hasFixed ? (
+                                    <div style={{ fontSize: '0.76rem', fontWeight: '800', color: '#6ee7b7', background: 'rgba(0,0,0,0.3)', borderRadius: '4px', padding: '2px 4px', textAlign: 'center' }}>
+                                      ✓ {info.fixedAmt.toFixed(0)} €
+                                    </div>
+                                  ) : isWorked ? (
+                                    <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#93c5fd', textAlign: 'center' }}>
+                                      + {fixedRateInputAmount || '150'} €
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center' }}>—</div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Listado de Tarifas Fijas asignadas en el periodo */}
