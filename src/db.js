@@ -4958,18 +4958,19 @@ export function mergeFixedRateLogsArrays(arrA, arrB) {
         date: item.date,
         amount: Number(item.amount) || 0,
         updatedAt: item.updatedAt || '2026-01-01T00:00:00.000Z',
-        ...(item._deleted ? { _deleted: true } : {})
+        ...(item._deleted ? { _deleted: true } : {}),
+        ...(item._explicitZero ? { _explicitZero: true } : {})
       };
       const existing = byId.get(id);
       if (!existing) {
         byId.set(id, normalized);
       } else {
-        const isExistingSeedZero = existing.amount === 0 && !existing._deleted && existing.updatedAt <= '2026-11-03T17:46:00.000Z';
-        const isIncomingSeedZero = normalized.amount === 0 && !normalized._deleted && normalized.updatedAt <= '2026-11-03T17:46:00.000Z';
-        if (isExistingSeedZero && !isIncomingSeedZero) {
+        const isExistingUneditedZero = existing.amount === 0 && !existing._deleted && !existing._explicitZero;
+        const isIncomingUneditedZero = normalized.amount === 0 && !normalized._deleted && !normalized._explicitZero;
+        if (isExistingUneditedZero && !isIncomingUneditedZero) {
           byId.set(id, normalized);
-        } else if (!isExistingSeedZero && isIncomingSeedZero) {
-          // Conservar la edición real del usuario frente a la semilla inicial en 0€
+        } else if (!isExistingUneditedZero && isIncomingUneditedZero) {
+          // Conservar siempre un importe real (> 0) frente a un registro en 0€ no editado explícitamente
         } else if (normalized.updatedAt > existing.updatedAt) {
           byId.set(id, normalized);
         } else if (normalized.updatedAt === existing.updatedAt && normalized.amount > existing.amount) {

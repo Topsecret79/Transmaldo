@@ -474,6 +474,7 @@ import {
   savePayrollAdvances,
   getFixedRateLogs,
   saveFixedRateLogs,
+  mergeFixedRateLogsArrays,
   checkAndReconnectIfNeeded
 } from './db';
 
@@ -1468,6 +1469,12 @@ function App() {
       triggerAlert('Introduce un importe válido (0 o mayor) para la Tarifa Fija', 'error');
       return;
     }
+    if (parsedAmount === 0) {
+      const fLabelConfirm = users.find(u => u.id === furgoId)?.label || furgoId;
+      if (!window.confirm(`El importe arriba está en 0 €. ¿Seguro que quieres poner en 0,00 € los ${datesArray.length} días trabajados de ${fLabelConfirm}?`)) {
+        return;
+      }
+    }
     const updated = [...(fixedRateLogs || [])];
     const nowIso = new Date().toISOString();
     datesArray.forEach(dateStr => {
@@ -1478,7 +1485,8 @@ function App() {
         furgoId,
         date: dateStr,
         amount: parsedAmount,
-        updatedAt: nowIso
+        updatedAt: nowIso,
+        ...(parsedAmount === 0 ? { _explicitZero: true } : {})
       };
       if (idx >= 0) updated[idx] = newEntry;
       else updated.push(newEntry);
@@ -1570,7 +1578,8 @@ function App() {
       furgoId,
       date,
       amount: parsedAmount,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      ...(parsedAmount === 0 ? { _explicitZero: true } : {})
     };
     if (idx >= 0) updated[idx] = newEntry;
     else updated.push(newEntry);
@@ -3535,7 +3544,10 @@ function App() {
     setFleetFuelLogs(getFleetFuelLogs() || []);
     setFleetMaintenanceLogs(getFleetMaintenanceLogs() || []);
     setFleetDailyLogs(getFleetDailyLogs() || []);
-    setFixedRateLogs(getFixedRateLogs() || []);
+    setFixedRateLogs(prev => {
+      const fromStorage = getFixedRateLogs() || [];
+      return mergeFixedRateLogsArrays(prev || [], fromStorage).filter(x => x && !x._deleted);
+    });
   };
 
   const loadDataRef = useRef(loadData);
@@ -24040,10 +24052,27 @@ function App() {
                         🔒 Exclusivo para Administrador • No modifica ni se mezcla con la facturación por paradas. Los choferes no ven ningún valor.
                       </p>
                     </div>
-                    <div style={{ background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.45)', borderRadius: '10px', padding: '8px 14px', textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#fcd34d', fontWeight: '700', textTransform: 'uppercase' }}>Acumulado Tarifa Fija (Periodo)</div>
-                      <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#fde68a' }}>{totalFixedRatePeriod.toFixed(2)} €</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{periodFixedRateLogs.length} jornada(s) registrada(s)</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-small"
+                        onClick={async () => {
+                          triggerAlert('Sincronizando Tarifa Fija con la nube...', 'info');
+                          const res = await saveFixedRateLogs(fixedRateLogs || []);
+                          await syncFromCloud(false);
+                          if (res && Array.isArray(res.logs)) setFixedRateLogs(res.logs);
+                          else loadDataRef.current();
+                          triggerAlert('☁️ Tarifa Fija sincronizada en todos los dispositivos ✓');
+                        }}
+                        style={{ padding: '8px 12px', fontSize: '0.78rem', margin: 0, width: 'auto', border: '1px solid rgba(245, 158, 11, 0.5)', color: '#fde68a', background: 'rgba(245, 158, 11, 0.12)', fontWeight: '700' }}
+                      >
+                        🔄 Sincronizar Nube
+                      </button>
+                      <div style={{ background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.45)', borderRadius: '10px', padding: '8px 14px', textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.72rem', color: '#fcd34d', fontWeight: '700', textTransform: 'uppercase' }}>Acumulado Tarifa Fija (Periodo)</div>
+                        <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#fde68a' }}>{totalFixedRatePeriod.toFixed(2)} €</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{periodFixedRateLogs.length} jornada(s) registrada(s)</div>
+                      </div>
                     </div>
                   </div>
 
