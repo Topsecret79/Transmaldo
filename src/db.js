@@ -1282,6 +1282,17 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         localStorage.setItem('delivery_fleet_daily_logs', dailySetting.value);
       }
 
+      // Fixed Rate Logs (Tarifa Fija por jornada y furgoneta — exclusivo Admin/Superadmin)
+      const fixedRateKey = `fixed_rate_logs_${adminId}`;
+      let fixedRateSetting = settings.find(s => s.key === fixedRateKey);
+      if (!fixedRateSetting) {
+        fixedRateSetting = settings.find(s => s.key === 'fixed_rate_logs');
+      }
+      if (fixedRateSetting && fixedRateSetting.value) {
+        localStorage.setItem(`delivery_fixed_rate_logs_${adminId}`, fixedRateSetting.value);
+        localStorage.setItem('delivery_fixed_rate_logs', fixedRateSetting.value);
+      }
+
       // Km Price
       if (userId) {
         const kmPriceKey = `km_price_${userId}`;
@@ -4882,6 +4893,41 @@ export async function saveDriverDailyRate(driverId, rate) {
     });
     if (error) {
       console.error(`Error saving driver rate ${driverId} to Supabase:`, error);
+      return { success: false, error };
+    }
+  }
+  return { success: true };
+}
+
+// Obtener el registro de pagos por Tarifa Fija (independiente de la facturación por paradas)
+export function getFixedRateLogs() {
+  const adminId = getActiveAdminId();
+  let logsStr = localStorage.getItem(`delivery_fixed_rate_logs_${adminId}`);
+  if (!logsStr) {
+    logsStr = localStorage.getItem('delivery_fixed_rate_logs');
+  }
+  try {
+    const parsed = logsStr ? JSON.parse(logsStr) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Guardar el registro de pagos por Tarifa Fija en local y en Supabase
+export async function saveFixedRateLogs(logs) {
+  const adminId = getActiveAdminId();
+  const cleanLogs = Array.isArray(logs) ? logs : [];
+  const logsStr = JSON.stringify(cleanLogs);
+  localStorage.setItem(`delivery_fixed_rate_logs_${adminId}`, logsStr);
+  localStorage.setItem('delivery_fixed_rate_logs', logsStr);
+  if (supabase) {
+    const { error } = await supabase.from('delivery_settings').upsert([
+      { key: `fixed_rate_logs_${adminId}`, value: logsStr },
+      { key: 'fixed_rate_logs', value: logsStr }
+    ]);
+    if (error) {
+      console.error('Error saving fixed rate logs to Supabase:', error);
       return { success: false, error };
     }
   }

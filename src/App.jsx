@@ -472,6 +472,8 @@ import {
   savePayrollDayRates,
   getPayrollAdvances,
   savePayrollAdvances,
+  getFixedRateLogs,
+  saveFixedRateLogs,
   checkAndReconnectIfNeeded
 } from './db';
 
@@ -1423,6 +1425,96 @@ function App() {
   const [adminEndDate, setAdminEndDate] = useState(getTomorrowDate());
   const [billingFilterFurgo, setBillingFilterFurgo] = useState('all');
   const [billingSourceFilter, setBillingSourceFilter] = useState('all');
+  // Estados de Pago por Tarifa Fija (independiente de la facturación por paradas, exclusivo Admin/Superadmin)
+  const [fixedRateLogs, setFixedRateLogs] = useState(() => getFixedRateLogs() || []);
+  const [fixedRateDate, setFixedRateDate] = useState(() => getTodayDate());
+  const [fixedRateSelectedFurgos, setFixedRateSelectedFurgos] = useState([]);
+  const [fixedRateInputAmount, setFixedRateInputAmount] = useState('150');
+  const [editingFixedRateId, setEditingFixedRateId] = useState(null);
+  const [editingFixedRateVal, setEditingFixedRateVal] = useState('');
+
+  const toggleFixedRateFurgo = (furgoId) => {
+    setFixedRateSelectedFurgos(prev =>
+      prev.includes(furgoId) ? prev.filter(id => id !== furgoId) : [...prev, furgoId]
+    );
+  };
+
+  const handleAssignFixedRates = async () => {
+    if (!isAdminOrSuper) return;
+    const parsedAmount = parseFloat(String(fixedRateInputAmount).replace(',', '.'));
+    if (isNaN(parsedAmount) || parsedAmount < 0) {
+      triggerAlert('Introduce un importe válido para la Tarifa Fija', 'error');
+      return;
+    }
+    if (!fixedRateDate) {
+      triggerAlert('Selecciona una fecha para la Tarifa Fija', 'error');
+      return;
+    }
+    if (!fixedRateSelectedFurgos || fixedRateSelectedFurgos.length === 0) {
+      triggerAlert('Selecciona al menos una furgoneta (ej. 150, 151)', 'error');
+      return;
+    }
+    const updated = [...(fixedRateLogs || [])];
+    const nowIso = new Date().toISOString();
+    fixedRateSelectedFurgos.forEach(fid => {
+      const entryId = `${fid}_${fixedRateDate}`;
+      const idx = updated.findIndex(item => item && (item.id === entryId || (item.furgoId === fid && item.date === fixedRateDate)));
+      const newEntry = {
+        id: entryId,
+        furgoId: fid,
+        date: fixedRateDate,
+        amount: parsedAmount,
+        updatedAt: nowIso
+      };
+      if (idx >= 0) {
+        updated[idx] = newEntry;
+      } else {
+        updated.push(newEntry);
+      }
+    });
+    setFixedRateLogs(updated);
+    await saveFixedRateLogs(updated);
+    setFixedRateSelectedFurgos([]);
+    triggerAlert(`💶 Tarifa Fija (${parsedAmount.toFixed(2)} €) asignada a ${fixedRateSelectedFurgos.length} furgoneta(s) en ${fixedRateDate}`);
+  };
+
+  const handleUpdateSingleFixedRate = async (furgoId, date, rawAmount) => {
+    if (!isAdminOrSuper) return;
+    const parsedAmount = parseFloat(String(rawAmount).replace(',', '.'));
+    if (isNaN(parsedAmount) || parsedAmount < 0) {
+      triggerAlert('Introduce un importe válido', 'error');
+      return;
+    }
+    const entryId = `${furgoId}_${date}`;
+    const updated = [...(fixedRateLogs || [])];
+    const idx = updated.findIndex(item => item && (item.id === entryId || (item.furgoId === furgoId && item.date === date)));
+    if (parsedAmount === 0) {
+      if (idx >= 0) updated.splice(idx, 1);
+    } else {
+      const newEntry = {
+        id: entryId,
+        furgoId,
+        date,
+        amount: parsedAmount,
+        updatedAt: new Date().toISOString()
+      };
+      if (idx >= 0) updated[idx] = newEntry;
+      else updated.push(newEntry);
+    }
+    setFixedRateLogs(updated);
+    await saveFixedRateLogs(updated);
+    setEditingFixedRateId(null);
+    setEditingFixedRateVal('');
+    triggerAlert('💶 Tarifa Fija actualizada');
+  };
+
+  const handleDeleteFixedRate = async (entryId) => {
+    if (!isAdminOrSuper) return;
+    const updated = (fixedRateLogs || []).filter(item => item && item.id !== entryId);
+    setFixedRateLogs(updated);
+    await saveFixedRateLogs(updated);
+    triggerAlert('Registro de Tarifa Fija eliminado');
+  };
   // Stats module filters
   const [statsStartDate, setStatsStartDate] = useState(getFirstDayOfMonth());
   const [statsEndDate, setStatsEndDate] = useState(getTodayDate());
@@ -2548,6 +2640,7 @@ function App() {
         setReportDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
         setTicketFilterDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
         setNewRouteDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setFixedRateDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
         setAdminEndDate(getTomorrowDate());
         setStatsEndDate(currentTodayStr);
         setCurrentRouteId(null);
@@ -3363,6 +3456,7 @@ function App() {
     setFleetFuelLogs(getFleetFuelLogs() || []);
     setFleetMaintenanceLogs(getFleetMaintenanceLogs() || []);
     setFleetDailyLogs(getFleetDailyLogs() || []);
+    setFixedRateLogs(getFixedRateLogs() || []);
   };
 
   const loadDataRef = useRef(loadData);
@@ -8166,8 +8260,16 @@ function App() {
     // los totales de facturación con tickets que nunca tuvieron estado asignado.
     const successTickets = filteredTickets.filter(t => t.status === 'success');
     const activeFurgoIds = activeRepartidores.map(u => u.id);
+    const periodFixedForExcel = isAdminOrSuper ? (fixedRateLogs || []).filter(item => {
+      if (!item || !item.furgoId || !item.date || !(Number(item.amount) > 0)) return false;
+      if (adminStartDate && item.date < adminStartDate) return false;
+      if (adminEndDate && item.date > adminEndDate) return false;
+      if (billingFilterFurgo !== 'all' && item.furgoId !== billingFilterFurgo) return false;
+      return true;
+    }) : [];
     const ticketFurgoIds = [...new Set(filteredTickets.map(t => t.furgoId).filter(Boolean))];
-    const combinedFurgos = [...new Set([...activeFurgoIds, ...ticketFurgoIds])];
+    const fixedRateFurgoIdsExcel = [...new Set(periodFixedForExcel.map(item => item.furgoId).filter(Boolean))];
+    const combinedFurgos = [...new Set([...activeFurgoIds, ...ticketFurgoIds, ...fixedRateFurgoIdsExcel])];
     const furgos = billingFilterFurgo !== 'all'
       ? combinedFurgos.filter(u => u === billingFilterFurgo)
       : (currentUser?.role === 'superadmin' ? combinedFurgos : activeFurgoIds);
@@ -8209,7 +8311,9 @@ function App() {
       ['Total Entregas con Éxito (Facturadas)', successTickets.length],
       ['Total Reembolsos Cobrados', `${totalCOD.toFixed(2)} €`],
       [],
-      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Kilómetros Facturables', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)', 'Reembolsos Cobrados (€)'],
+      ['Total Tarifa Fija (Columna Independiente)', `${periodFixedForExcel.reduce((s, x) => s + (Number(x.amount) || 0), 0).toFixed(2)} €`],
+      [],
+      ['Furgoneta', 'Paradas Planificadas', 'Entregas Éxito', 'Kilómetros Facturables', 'Base Imponible (€)', 'IVA 21% (€)', 'Retención 1% (€)', 'Total Neto (€)', 'Tarifa Fija Aparte (€)', 'Reembolsos Cobrados (€)'],
     ];
 
     furgos.forEach(fid => {
@@ -8239,6 +8343,7 @@ function App() {
         `${iva.toFixed(2)} €`,
         `-${ret.toFixed(2)} €`,
         `${net.toFixed(2)} €`,
+        `${periodFixedForExcel.filter(x => x.furgoId === fid).reduce((s, x) => s + (Number(x.amount) || 0), 0).toFixed(2)} €`,
         `${fCod.toFixed(2)} €`
       ]);
     });
@@ -21589,6 +21694,23 @@ function App() {
 
     const isDormityView = billingProviderFilter === 'dormity' || (loggedInUserObj && getUserAllowedProviders(loggedInUserObj).length === 1 && getUserAllowedProviders(loggedInUserObj)[0] === 'dormity');
 
+    // Registros de Pago por Tarifa Fija en el periodo filtrado (independientes de la facturación por paradas)
+    const periodFixedRateLogs = isAdminOrSuper ? (fixedRateLogs || []).filter(item => {
+      if (!item || !item.furgoId || !item.date || !(Number(item.amount) > 0)) return false;
+      if (adminStartDate && item.date < adminStartDate) return false;
+      if (adminEndDate && item.date > adminEndDate) return false;
+      if (billingFilterFurgo !== 'all' && item.furgoId !== billingFilterFurgo) return false;
+      return true;
+    }).sort((a, b) => b.date.localeCompare(a.date) || String(a.furgoId).localeCompare(String(b.furgoId))) : [];
+
+    const totalFixedRatePeriod = periodFixedRateLogs.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+    const getFurgoFixedRateForDate = (fid, date) => {
+      if (!isAdminOrSuper) return 0;
+      const found = (fixedRateLogs || []).find(item => item && item.furgoId === fid && item.date === date);
+      return found ? (Number(found.amount) || 0) : 0;
+    };
+
     const exportSingleFurgoDailyReport = async (fid) => {
       const label = users.find(u => u.id === fid)?.label || fid;
       
@@ -21600,6 +21722,7 @@ function App() {
         (!adminStartDate || s.date >= adminStartDate) &&
         (!adminEndDate || s.date <= adminEndDate)
       ).forEach(s => datesSet.add(s.date));
+      periodFixedRateLogs.filter(item => item.furgoId === fid).forEach(item => datesSet.add(item.date));
 
       const sortedDates = Array.from(datesSet).sort((a, b) => b.localeCompare(a));
 
@@ -21608,6 +21731,7 @@ function App() {
       let totalMileage = 0;
       let totalKms = 0;
       let totalNet = 0;
+      let totalFixedRate = 0;
 
       sortedDates.forEach(date => {
         const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid && t.date === date);
@@ -21655,6 +21779,9 @@ function App() {
         rowObj['Kilometraje (€)'] = mileage.toFixed(2);
         rowObj['Base Imponible (€)'] = base.toFixed(2);
         rowObj['Total Neto (€)'] = net.toFixed(2);
+        const fixedRateAmt = getFurgoFixedRateForDate(fid, date);
+        totalFixedRate += fixedRateAmt;
+        rowObj['Tarifa Fija (€) (Aparte)'] = fixedRateAmt.toFixed(2);
 
         rows.push(rowObj);
       });
@@ -21672,6 +21799,7 @@ function App() {
       totalsObj['Kilometraje (€)'] = totalMileage.toFixed(2);
       totalsObj['Base Imponible (€)'] = totalBase.toFixed(2);
       totalsObj['Total Neto (€)'] = totalNet.toFixed(2);
+      totalsObj['Tarifa Fija (€) (Aparte)'] = totalFixedRate.toFixed(2);
 
       rows.push(totalsObj);
 
@@ -21695,6 +21823,7 @@ function App() {
         (!adminStartDate || s.date >= adminStartDate) &&
         (!adminEndDate || s.date <= adminEndDate)
       ).forEach(s => datesSet.add(s.date));
+      periodFixedRateLogs.filter(item => item.furgoId === fid).forEach(item => datesSet.add(item.date));
 
       const sortedDates = Array.from(datesSet).sort((a, b) => b.localeCompare(a));
 
@@ -21705,6 +21834,7 @@ function App() {
       let totalDeliveries = 0;
       let totalTickets = 0;
       let totalSuccess = 0;
+      let totalFixedRate = 0;
 
       const dailyStats = sortedDates.map(date => {
         const fTickets = filteredAdminTickets.filter(t => t.furgoId === fid && t.date === date);
@@ -21744,6 +21874,8 @@ function App() {
         totalDeliveries += deliveries;
         totalTickets += fTickets.length;
         totalSuccess += fSuccess.length;
+        const fixedRateAmt = getFurgoFixedRateForDate(fid, date);
+        totalFixedRate += fixedRateAmt;
 
         const dateObj = new Date(date + 'T00:00:00');
         const weekday = dateObj.toLocaleDateString('es-ES', { weekday: 'long' });
@@ -21761,7 +21893,8 @@ function App() {
           kms,
           mileage,
           base,
-          net
+          net,
+          fixedRateAmt
         };
       });
 
@@ -21800,6 +21933,13 @@ function App() {
                 <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px' }}>{totalKms.toFixed(1)} km</div>
                 <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>({totalMileage.toFixed(2)} € a {kmPrice.toFixed(2)} €/km)</span>
               </div>
+              {isAdminOrSuper && (
+                <div className="stat-card warning" style={{ padding: '15px', border: '1px solid rgba(245, 158, 11, 0.45)', background: 'rgba(245, 158, 11, 0.08)' }}>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#fbbf24', fontWeight: '700' }}>💶 Tarifa Fija (Aparte)</p>
+                  <div className="stat-val" style={{ fontSize: '1.4rem', marginTop: '5px', color: '#fde68a' }}>{totalFixedRate.toFixed(2)} €</div>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>Columna independiente</span>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -21831,6 +21971,7 @@ function App() {
                       <th style={{ textAlign: 'right' }}>Kilometraje</th>
                       <th style={{ textAlign: 'right' }}>Base Imponible (€)</th>
                       <th style={{ textAlign: 'right' }}>Total Neto (+20%)</th>
+                      {isAdminOrSuper && <th style={{ textAlign: 'right', color: '#fbbf24' }} title="Columna independiente — no se mezcla con Base Imponible ni Total Neto">Tarifa Fija (€)</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -21858,6 +21999,23 @@ function App() {
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{stat.base.toFixed(2)} €</td>
                           <td style={{ textAlign: 'right', fontWeight: '500', opacity: 0.85 }}>{net.toFixed(2)} €</td>
+                          {isAdminOrSuper && (
+                            <td style={{ textAlign: 'right', fontWeight: stat.fixedRateAmt > 0 ? '700' : '500', color: stat.fixedRateAmt > 0 ? '#fbbf24' : 'var(--text-muted)', background: stat.fixedRateAmt > 0 ? 'rgba(245, 158, 11, 0.08)' : 'transparent' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextVal = window.prompt(`Importe de Tarifa Fija (€) para ${label} el día ${stat.date} (pon 0 para quitar):`, String(stat.fixedRateAmt || fixedRateInputAmount || 150));
+                                  if (nextVal !== null) {
+                                    handleUpdateSingleFixedRate(fid, stat.date, nextVal);
+                                  }
+                                }}
+                                style={{ background: 'none', border: '1px dashed rgba(245, 158, 11, 0.45)', borderRadius: '6px', padding: '3px 8px', color: stat.fixedRateAmt > 0 ? '#fbbf24' : 'var(--text-muted)', fontWeight: stat.fixedRateAmt > 0 ? '700' : '500', cursor: 'pointer', fontSize: '0.82rem' }}
+                                title="Clic para asignar o editar la Tarifa Fija de este día"
+                              >
+                                {stat.fixedRateAmt > 0 ? `${stat.fixedRateAmt.toFixed(2)} € ✏️` : '+ Asignar ✏️'}
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -21873,7 +22031,8 @@ function App() {
     const successTickets = filteredAdminTickets.filter(t => t.status === 'success'); // Fix A-9
     const activeFurgoIds = activeRepartidores.map(u => u.id);
     const ticketFurgoIds = [...new Set(filteredAdminTickets.map(t => t.furgoId).filter(Boolean))];
-    const combinedFurgos = [...new Set([...activeFurgoIds, ...ticketFurgoIds])];
+    const fixedRateFurgoIds = [...new Set(periodFixedRateLogs.map(item => item.furgoId).filter(Boolean))];
+    const combinedFurgos = [...new Set([...activeFurgoIds, ...ticketFurgoIds, ...fixedRateFurgoIds])];
     const furgos = billingFilterFurgo !== 'all'
       ? combinedFurgos.filter(u => u === billingFilterFurgo)
       : (currentUser?.role === 'superadmin' ? combinedFurgos : activeFurgoIds);
@@ -21925,6 +22084,9 @@ function App() {
       const fDeliveryEarnings = fSuccess.reduce((sum, t) => sum + t.totalPrice, 0);
       const fMileageEarnings = fKms * kmPrice;
       const fTotalEarnings = fDeliveryEarnings + fMileageEarnings;
+      const fFixedLogs = periodFixedRateLogs.filter(item => item.furgoId === fid);
+      const fFixedRateEarnings = fFixedLogs.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      const fFixedRateDays = fFixedLogs.length;
 
       acc[fid] = {
         count: fTickets.length,
@@ -21940,7 +22102,9 @@ function App() {
         cuelgues,
         recogidas,
         failed: fFailed,
-        cod: fCod
+        cod: fCod,
+        fixedRateEarnings: fFixedRateEarnings,
+        fixedRateDays: fFixedRateDays
       };
       return acc;
     }, {});
@@ -23643,9 +23807,310 @@ function App() {
                   <div className="stat-val">{totalUrgentes}</div>
                 </div>
               )}
+              {isAdminOrSuper && (
+                <div
+                  className="stat-card warning clickable"
+                  onClick={() => {
+                    const el = document.getElementById('fixed-rate-panel');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}
+                  title="Ir al bloque de Pago por Tarifa Fija (columna independiente, no se mezcla con paradas)"
+                  style={{ border: '1px solid rgba(245, 158, 11, 0.45)', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(15, 23, 42, 0.55) 100%)' }}
+                >
+                  <p style={{ color: '#fbbf24', fontWeight: '700' }}>💶 Total Tarifa Fija (Aparte)</p>
+                  <div className="stat-val" style={{ color: '#fde68a' }}>{totalFixedRatePeriod.toFixed(2)} €</div>
+                  <span>{periodFixedRateLogs.length} jornada(s) • Independiente</span>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '100%' }}>
+              {isAdminOrSuper && (
+                <div
+                  id="fixed-rate-panel"
+                  className="glass-panel"
+                  style={{
+                    textAlign: 'left',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                    background: 'linear-gradient(145deg, rgba(245, 158, 11, 0.07) 0%, rgba(15, 23, 42, 0.5) 100%)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '16px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1px solid rgba(245, 158, 11, 0.2)', paddingBottom: '12px' }}>
+                    <div>
+                      <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: '#fbbf24', fontSize: '1.15rem' }}>
+                        💶 Pago por Tarifa Fija (Control Independiente)
+                      </h2>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        🔒 Exclusivo para Administrador • No modifica ni se mezcla con la facturación por paradas. Los choferes no ven ningún valor.
+                      </p>
+                    </div>
+                    <div style={{ background: 'rgba(245, 158, 11, 0.15)', border: '1px solid rgba(245, 158, 11, 0.45)', borderRadius: '10px', padding: '8px 14px', textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#fcd34d', fontWeight: '700', textTransform: 'uppercase' }}>Acumulado Tarifa Fija (Periodo)</div>
+                      <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#fde68a' }}>{totalFixedRatePeriod.toFixed(2)} €</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{periodFixedRateLogs.length} jornada(s) registrada(s)</div>
+                    </div>
+                  </div>
+
+                  {/* Controles para asignar Tarifa Fija */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', alignItems: 'end', background: 'rgba(0,0,0,0.2)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span className="input-label" style={{ margin: 0 }}>📅 Fecha trabajada</span>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-small"
+                            style={{ padding: '2px 8px', fontSize: '0.72rem', margin: 0, width: 'auto', height: '24px' }}
+                            onClick={() => setFixedRateDate(getTodayDate())}
+                          >
+                            Hoy
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-small"
+                            style={{ padding: '2px 8px', fontSize: '0.72rem', margin: 0, width: 'auto', height: '24px' }}
+                            onClick={() => {
+                              const d = new Date();
+                              d.setDate(d.getDate() - 1);
+                              setFixedRateDate(d.toISOString().split('T')[0]);
+                            }}
+                          >
+                            Ayer
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="date"
+                        className="form-input"
+                        value={fixedRateDate}
+                        onChange={(e) => setFixedRateDate(e.target.value)}
+                        style={{ margin: 0, height: '40px' }}
+                      />
+                    </div>
+
+                    <div className="input-group" style={{ marginBottom: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span className="input-label" style={{ margin: 0 }}>💶 Importe Tarifa Fija (€) (Editable)</span>
+                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                          {[120, 140, 150, 160, 180].map(preset => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setFixedRateInputAmount(String(preset))}
+                              style={{
+                                padding: '2px 6px',
+                                fontSize: '0.7rem',
+                                borderRadius: '4px',
+                                border: String(fixedRateInputAmount) === String(preset) ? '1px solid #fbbf24' : '1px solid rgba(255,255,255,0.15)',
+                                background: String(fixedRateInputAmount) === String(preset) ? 'rgba(245, 158, 11, 0.25)' : 'rgba(255,255,255,0.05)',
+                                color: String(fixedRateInputAmount) === String(preset) ? '#fde68a' : 'var(--text-muted)',
+                                cursor: 'pointer',
+                                fontWeight: '700'
+                              }}
+                            >
+                              {preset}€
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="form-input"
+                        placeholder="Ej: 150"
+                        value={fixedRateInputAmount}
+                        onChange={(e) => setFixedRateInputAmount(e.target.value)}
+                        style={{ margin: 0, height: '40px', fontWeight: '800', color: '#fde68a', fontSize: '1rem' }}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleAssignFixedRates}
+                      style={{
+                        height: '40px',
+                        margin: 0,
+                        background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                        color: '#0f172a',
+                        fontWeight: '800',
+                        border: 'none',
+                        boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
+                      }}
+                    >
+                      💾 Asignar {fixedRateInputAmount || '0'} € a Seleccionadas ({fixedRateSelectedFurgos.length})
+                    </button>
+                  </div>
+
+                  {/* Chips de selección de furgonetas para la fecha elegida */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                      <span style={{ fontSize: '0.84rem', fontWeight: '700', color: 'var(--text-main)' }}>
+                        🚐 Selecciona las furgonetas que trabajaron el <strong style={{ color: '#fbbf24' }}>{fixedRateDate}</strong>:
+                      </span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-small"
+                          style={{ padding: '3px 10px', fontSize: '0.74rem', margin: 0, width: 'auto' }}
+                          onClick={() => setFixedRateSelectedFurgos(activeRepartidores.map(u => u.id))}
+                        >
+                          Seleccionar todas
+                        </button>
+                        {fixedRateSelectedFurgos.length > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-small"
+                            style={{ padding: '3px 10px', fontSize: '0.74rem', margin: 0, width: 'auto' }}
+                            onClick={() => setFixedRateSelectedFurgos([])}
+                          >
+                            Limpiar selección
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {activeRepartidores.map(u => {
+                        const isSelected = fixedRateSelectedFurgos.includes(u.id);
+                        const existingDayAmt = getFurgoFixedRateForDate(u.id, fixedRateDate);
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => toggleFixedRateFurgo(u.id)}
+                            style={{
+                              padding: '8px 14px',
+                              borderRadius: '8px',
+                              border: isSelected
+                                ? '2px solid #fbbf24'
+                                : existingDayAmt > 0
+                                  ? '1px solid rgba(16, 185, 129, 0.5)'
+                                  : '1px solid rgba(255,255,255,0.14)',
+                              background: isSelected
+                                ? 'rgba(245, 158, 11, 0.28)'
+                                : existingDayAmt > 0
+                                  ? 'rgba(16, 185, 129, 0.12)'
+                                  : 'rgba(255,255,255,0.04)',
+                              color: isSelected ? '#fde68a' : '#fff',
+                              fontWeight: isSelected || existingDayAmt > 0 ? '800' : '600',
+                              fontSize: '0.86rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <span>{isSelected ? '☑️' : '⬜'} {u.label}</span>
+                            {existingDayAmt > 0 && (
+                              <span style={{ fontSize: '0.72rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.25)', color: '#6ee7b7' }}>
+                                ✓ {existingDayAmt.toFixed(2)} €
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Listado de Tarifas Fijas asignadas en el periodo */}
+                  {periodFixedRateLogs.length > 0 && (
+                    <div style={{ marginTop: '4px' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: '700', color: '#fde68a', marginBottom: '8px' }}>
+                        📋 Jornadas con Tarifa Fija en el periodo seleccionado ({periodFixedRateLogs.length}):
+                      </div>
+                      <div className="table-container" style={{ maxHeight: '260px', overflowY: 'auto' }}>
+                        <table style={{ width: '100%' }}>
+                          <thead>
+                            <tr>
+                              <th>Fecha</th>
+                              <th>Furgoneta</th>
+                              <th style={{ textAlign: 'right', color: '#fbbf24' }}>Tarifa Fija (€)</th>
+                              <th style={{ textAlign: 'center', width: '170px' }}>Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {periodFixedRateLogs.map(entry => {
+                              const fLabel = users.find(u => u.id === entry.furgoId)?.label || entry.furgoId;
+                              const isEditingThis = editingFixedRateId === entry.id;
+                              return (
+                                <tr key={entry.id}>
+                                  <td style={{ fontWeight: '600' }}>{entry.date}</td>
+                                  <td style={{ fontWeight: '700' }}>🚐 {fLabel}</td>
+                                  <td style={{ textAlign: 'right', fontWeight: '800', color: '#fbbf24' }}>
+                                    {isEditingThis ? (
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        className="form-input"
+                                        value={editingFixedRateVal}
+                                        onChange={(e) => setEditingFixedRateVal(e.target.value)}
+                                        style={{ width: '110px', margin: 0, padding: '4px 8px', height: '32px', textAlign: 'right', display: 'inline-block', fontWeight: '800', color: '#fde68a' }}
+                                        autoFocus
+                                      />
+                                    ) : (
+                                      `${Number(entry.amount).toFixed(2)} €`
+                                    )}
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    {isEditingThis ? (
+                                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-primary btn-small"
+                                          style={{ padding: '4px 10px', fontSize: '0.75rem', margin: 0, width: 'auto' }}
+                                          onClick={() => handleUpdateSingleFixedRate(entry.furgoId, entry.date, editingFixedRateVal)}
+                                        >
+                                          ✅ Guardar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary btn-small"
+                                          style={{ padding: '4px 8px', fontSize: '0.75rem', margin: 0, width: 'auto' }}
+                                          onClick={() => { setEditingFixedRateId(null); setEditingFixedRateVal(''); }}
+                                        >
+                                          ✖️
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary btn-small"
+                                          style={{ padding: '4px 10px', fontSize: '0.75rem', margin: 0, width: 'auto' }}
+                                          onClick={() => {
+                                            setEditingFixedRateId(entry.id);
+                                            setEditingFixedRateVal(String(entry.amount));
+                                          }}
+                                        >
+                                          ✏️ Editar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn-secondary btn-small"
+                                          style={{ padding: '4px 10px', fontSize: '0.75rem', margin: 0, width: 'auto', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.35)' }}
+                                          onClick={() => handleDeleteFixedRate(entry.id)}
+                                        >
+                                          🗑️ Quitar
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="glass-panel" style={{ textAlign: 'left' }}>
                 <h2>Ganancias Acumuladas por Furgoneta</h2>
                 <div className="chart-bar-container">
@@ -23682,6 +24147,7 @@ function App() {
                         <th style={{ textAlign: 'right' }}>IVA (+21%)</th>
                         <th style={{ textAlign: 'right' }}>Retención (-1%)</th>
                         <th style={{ textAlign: 'right' }}>Total Neto</th>
+                        {isAdminOrSuper && <th style={{ textAlign: 'right', color: '#fbbf24' }} title="Pago por Tarifa Fija (columna independiente, no se mezcla con Base Imponible ni Total Neto)">Tarifa Fija €</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -23714,6 +24180,13 @@ function App() {
                             <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: '500' }}>+{iva.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>-{retencion.toFixed(2)} €</td>
                             <td style={{ textAlign: 'right', fontWeight: '500', opacity: 0.85 }}>{totalNeto.toFixed(2)} €</td>
+                            {isAdminOrSuper && (
+                              <td style={{ textAlign: 'right', fontWeight: (data.fixedRateEarnings || 0) > 0 ? '700' : '500', color: (data.fixedRateEarnings || 0) > 0 ? '#fbbf24' : 'var(--text-muted)', background: (data.fixedRateEarnings || 0) > 0 ? 'rgba(245, 158, 11, 0.08)' : 'transparent' }}>
+                                {(data.fixedRateEarnings || 0) > 0 ? (
+                                  <span>{data.fixedRateEarnings.toFixed(2)} € <span style={{ fontSize: '0.72rem', opacity: 0.85 }}>({data.fixedRateDays} d.)</span></span>
+                                ) : '0.00 €'}
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
