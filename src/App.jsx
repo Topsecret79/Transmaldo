@@ -1040,8 +1040,16 @@ function App() {
   const isFurgoAuthorizedForCalendar = (furgoId) => {
     if (!furgoId) return false;
     const u = (users || []).find(usr => usr.id === furgoId);
-    if (!u) return true;
-    if (u.role !== 'repartidor') return true;
+    if (!u) return false;
+    if (u.role !== 'repartidor') return false;
+    if (currentUser) {
+      if (currentUser.role === 'repartidor' && u.id !== currentUser.id) return false;
+      const myAdminId = (currentUser.role === 'repartidor' || currentUser.role === 'coordinador')
+        ? (currentUser.createdBy || 'admin')
+        : currentUser.id;
+      const driverAdminId = u.createdBy || 'admin';
+      if (driverAdminId !== myAdminId) return false;
+    }
     const parentAdminId = u.createdBy;
     if (!parentAdminId || parentAdminId === 'admin') return true;
     const parentAdmin = (users || []).find(usr => usr.id === parentAdminId);
@@ -2370,24 +2378,30 @@ function App() {
   const [mapboxTokenInput, setMapboxTokenInput] = useState(getMapboxToken());
   const [spellingSuggestions, setSpellingSuggestions] = useState([]);
 
-  // Derived state for role-based data partitioning (independent invoicing per administrator)
+  // Derived state for role-based data partitioning (independent invoicing per administrator: cada administrador solo ve sus propios choferes)
   const activeRepartidores = users.filter(u => {
     if (u.role !== 'repartidor') return false;
     if (u.active === false) return false;
     if (!currentUser) return false;
-    if (currentUser.role === 'superadmin') return true;
     if (currentUser.role === 'repartidor') return u.id === currentUser.id;
     if (currentUser.role === 'coordinador') {
-      if (currentUser.createdBy && currentUser.createdBy !== 'admin') {
-        return u.createdBy === currentUser.createdBy;
-      }
-      return true; // El coordinador apoya a todas las rutas activas de la empresa (150, 151, 168...)
+      const parentAdmin = currentUser.createdBy || 'admin';
+      return u.createdBy === parentAdmin || (parentAdmin === 'admin' && !u.createdBy);
     }
-    // admin role
-    return u.createdBy === currentUser.id || (currentUser.role === 'admin' && !u.createdBy);
+    // Tanto admin como superadmin ven únicamente los choferes creados por su cuenta
+    return u.createdBy === currentUser.id || (currentUser.id === 'admin' && !u.createdBy);
   }).sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id, undefined, { numeric: true, sensitivity: 'base' }));
 
-  const teamRepartidores = users.filter(u => u.role === 'repartidor');
+  const teamRepartidores = users.filter(u => {
+    if (u.role !== 'repartidor') return false;
+    if (u.active === false) return false;
+    if (!currentUser) return false;
+    const myAdminId = (currentUser.role === 'repartidor' || currentUser.role === 'coordinador')
+      ? (currentUser.createdBy || 'admin')
+      : currentUser.id;
+    const driverAdminId = u.createdBy || 'admin';
+    return driverAdminId === myAdminId;
+  }).sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id, undefined, { numeric: true, sensitivity: 'base' }));
 
   const visibleUsers = users.filter(u => {
     if (!currentUser) return false;
@@ -2398,11 +2412,10 @@ function App() {
 
   const visibleTickets = tickets.filter(t => {
     if (!currentUser) return false;
-    if (currentUser.role === 'superadmin' || currentUser.role === 'coordinador') return true;
     if (currentUser.role === 'repartidor') {
       return t.furgoId === currentUser.id;
     }
-    // Admin role: see tickets of their own repartidores or created directly by them
+    // Cada administrador/superadmin/coordinador ve únicamente los repartos de sus propios choferes
     const allowedFurgoIds = activeRepartidores.map(r => r.id);
     return allowedFurgoIds.includes(t.furgoId) || t.createdBy === currentUser.id;
   });
@@ -2410,14 +2423,11 @@ function App() {
   const visibleShifts = shifts.filter(s => {
     if (!currentUser) return false;
     
-    // Role filter
+    // Role filter: cada administrador ve únicamente los turnos de sus propios choferes
     let matchRole = false;
-    if (currentUser.role === 'superadmin') {
-      matchRole = true;
-    } else if (currentUser.role === 'repartidor') {
+    if (currentUser.role === 'repartidor') {
       matchRole = s.furgoId === currentUser.id;
     } else {
-      // Admin
       const allowedFurgoIds = activeRepartidores.map(r => r.id);
       matchRole = allowedFurgoIds.includes(s.furgoId);
     }
@@ -8362,8 +8372,8 @@ function App() {
     const fixedRateFurgoIdsExcel = [...new Set(periodFixedForExcel.map(item => item.furgoId).filter(Boolean))];
     const combinedFurgos = [...new Set([...activeFurgoIds, ...ticketFurgoIds, ...fixedRateFurgoIdsExcel])];
     const furgos = billingFilterFurgo !== 'all'
-      ? combinedFurgos.filter(u => u === billingFilterFurgo)
-      : (currentUser?.role === 'superadmin' ? combinedFurgos : activeFurgoIds);
+      ? activeFurgoIds.filter(u => u === billingFilterFurgo)
+      : activeFurgoIds;
 
     const getFurgoPeriodDates = (fid, fTicketsList) => [
       ...new Set([
@@ -8673,8 +8683,6 @@ function App() {
     if (!showCreateRouteFormFields) {
       return renderCreateRouteStartButton();
     }
-
-    const activeRepartidores = users.filter(u => u.role === 'repartidor');
 
     const todayStr = new Date().toISOString().split('T')[0];
     const tomorrow = new Date();
@@ -20995,10 +21003,10 @@ function App() {
 
   // --- MÓDULO DE ESTADÍSTICAS ---
   const renderEstadisticas = () => {
-    const allUsers = users.filter(u => u && u.role === 'repartidor');
+    const allUsers = activeRepartidores;
 
-    // Filtrar tickets según los filtros del módulo
-    const statsTickets = tickets.filter(t => {
+    // Filtrar tickets según los filtros del módulo (solo de los choferes de este administrador)
+    const statsTickets = visibleTickets.filter(t => {
       if (!t) return false;
       if (statsStartDate && t.date < statsStartDate) return false;
       if (statsEndDate && t.date > statsEndDate) return false;
@@ -21785,9 +21793,11 @@ function App() {
 
     const isDormityView = billingProviderFilter === 'dormity' || (loggedInUserObj && getUserAllowedProviders(loggedInUserObj).length === 1 && getUserAllowedProviders(loggedInUserObj)[0] === 'dormity');
 
-    // Registros de Pago por Tarifa Fija en el periodo filtrado (independientes de la facturación por paradas)
+    // Registros de Pago por Tarifa Fija en el periodo filtrado (estrictamente los choferes de este administrador)
+    const allowedAdminFurgoIds = activeRepartidores.map(u => u.id);
     const periodFixedRateLogs = isAdminOrSuper ? (fixedRateLogs || []).filter(item => {
       if (!item || !item.furgoId || !item.date || isNaN(Number(item.amount)) || Number(item.amount) < 0) return false;
+      if (!allowedAdminFurgoIds.includes(item.furgoId)) return false;
       if (adminStartDate && item.date < adminStartDate) return false;
       if (adminEndDate && item.date > adminEndDate) return false;
       if (billingFilterFurgo !== 'all' && item.furgoId !== billingFilterFurgo) return false;

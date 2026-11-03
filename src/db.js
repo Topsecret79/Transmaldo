@@ -338,12 +338,13 @@ export function setupRealtimeChannel() {
         lastRealtimePingOkAt = Date.now();
         scheduleSyncFromCloud('delivery_shifts');
       })
-      // 3b. Escuchar cuando se actualiza Tarifa Fija en cualquier dispositivo
+      // 3b. Escuchar cuando se actualiza Tarifa Fija en cualquier dispositivo del mismo administrador
       .on('broadcast', { event: 'fixed_rates_updated' }, (msg) => {
         const payload = msg.payload || msg;
         console.log("⚡ Realtime Broadcast fixed_rates_updated recibido");
         lastRealtimePingOkAt = Date.now();
-        if (payload && Array.isArray(payload.logs)) {
+        const myAdminId = getActiveAdminId();
+        if (payload && Array.isArray(payload.logs) && (!payload.adminId || payload.adminId === myAdminId)) {
           try {
             const currentLocal = getFixedRateLogsRaw();
             const merged = mergeFixedRateLogsArrays(currentLocal, payload.logs);
@@ -386,11 +387,14 @@ export function setupRealtimeChannel() {
           }
           if (record.key && (record.key === 'fixed_rate_logs' || record.key.startsWith('fixed_rate_logs_'))) {
             try {
-              const incoming = JSON.parse(record.value || '[]');
-              const currentLocal = getFixedRateLogsRaw();
-              const merged = mergeFixedRateLogsArrays(currentLocal, incoming);
-              persistFixedRateLogsLocal(merged);
-              notifySync();
+              const myAdminId = getActiveAdminId();
+              if (record.key === `fixed_rate_logs_${myAdminId}` || (myAdminId === 'admin' && record.key === 'fixed_rate_logs')) {
+                const incoming = JSON.parse(record.value || '[]');
+                const currentLocal = getFixedRateLogsRaw();
+                const merged = mergeFixedRateLogsArrays(currentLocal, incoming);
+                persistFixedRateLogsLocal(merged);
+                notifySync();
+              }
             } catch (e) {}
             return;
           }
@@ -1309,10 +1313,11 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         localStorage.setItem('delivery_fleet_daily_logs', dailySetting.value);
       }
 
-      // Fixed Rate Logs (Tarifa Fija por jornada y furgoneta — sincronización unificada entre todos los dispositivos y administradores)
-      const allFixedRateSettings = settings.filter(s => s.key === 'fixed_rate_logs' || (s.key && s.key.startsWith('fixed_rate_logs_')));
+      // Fixed Rate Logs (Tarifa Fija por jornada y furgoneta — aislado por administrador y sincronizado entre sus dispositivos)
+      const adminFixedKey = `fixed_rate_logs_${adminId}`;
+      const relevantSettings = settings.filter(s => s.key === adminFixedKey || (adminId === 'admin' && s.key === 'fixed_rate_logs'));
       let mergedFixedLogs = getFixedRateLogsRaw();
-      allFixedRateSettings.forEach(s => {
+      relevantSettings.forEach(s => {
         if (s && s.value) {
           try {
             const parsed = JSON.parse(s.value);
@@ -1323,18 +1328,16 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       });
       persistFixedRateLogsLocal(mergedFixedLogs);
-      // Si el dispositivo local tenía ediciones más recientes que aún no estaban en la clave maestra 'fixed_rate_logs' de la nube, subirlas automáticamente
-      const masterSetting = settings.find(s => s.key === 'fixed_rate_logs');
-      let masterLogs = [];
-      try { masterLogs = masterSetting && masterSetting.value ? JSON.parse(masterSetting.value) : []; } catch (e) {}
-      const masterNormalized = mergeFixedRateLogsArrays([], masterLogs);
-      if (JSON.stringify(mergedFixedLogs) !== JSON.stringify(masterNormalized) && mergedFixedLogs.length > 0) {
+      const adminSetting = settings.find(s => s.key === adminFixedKey);
+      let cloudAdminLogs = [];
+      try { cloudAdminLogs = adminSetting && adminSetting.value ? JSON.parse(adminSetting.value) : []; } catch (e) {}
+      const cloudNormalized = mergeFixedRateLogsArrays([], cloudAdminLogs);
+      if (JSON.stringify(mergedFixedLogs) !== JSON.stringify(cloudNormalized) && mergedFixedLogs.length > 0) {
         const mergedStr = JSON.stringify(mergedFixedLogs);
-        const upsertKeys = new Set(['fixed_rate_logs', `fixed_rate_logs_${adminId}`]);
-        allFixedRateSettings.forEach(s => { if (s && s.key) upsertKeys.add(s.key); });
-        const upsertRows = Array.from(upsertKeys).map(k => ({ key: k, value: mergedStr }));
+        const upsertRows = [{ key: adminFixedKey, value: mergedStr }];
+        if (adminId === 'admin') upsertRows.push({ key: 'fixed_rate_logs', value: mergedStr });
         supabase.from('delivery_settings').upsert(upsertRows).then(({ error: upErr }) => {
-          if (!upErr) broadcastRealtimeEvent('fixed_rates_updated', { logs: mergedFixedLogs });
+          if (!upErr) broadcastRealtimeEvent('fixed_rates_updated', { adminId, logs: mergedFixedLogs });
         });
       }
 
@@ -4984,47 +4987,65 @@ export function mergeFixedRateLogsArrays(arrA, arrB) {
   return Array.from(byId.values()).sort((a, b) => a.date.localeCompare(b.date) || String(a.furgoId).localeCompare(String(b.furgoId)));
 }
 
-// Leer todos los registros crudos (incluyendo tombstones _deleted) desde todas las claves locales
+// Filtrar registros de Tarifa Fija para conservar únicamente los choferes que pertenecen al administrador indicado
+function filterFixedLogsForAdmin(logs, adminId) {
+  if (!Array.isArray(logs)) return [];
+  let users = [];
+  try {
+    const raw = localStorage.getItem('delivery_users');
+    if (raw) users = JSON.parse(raw) || [];
+  } catch (e) {}
+  if (!Array.isArray(users) || users.length === 0) return logs;
+  const userMap = new Map();
+  users.forEach(u => {
+    if (u && u.id) userMap.set(u.id, u.createdBy || 'admin');
+  });
+  return logs.filter(item => {
+    if (!item || !item.furgoId) return false;
+    const owner = userMap.get(item.furgoId);
+    if (!owner) return adminId === 'admin';
+    return owner === adminId;
+  });
+}
+
+// Leer los registros crudos del administrador activo (incluyendo tombstones _deleted)
 export function getFixedRateLogsRaw() {
+  const adminId = getActiveAdminId();
   let merged = [];
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k === 'delivery_fixed_rate_logs' || (k && k.startsWith('delivery_fixed_rate_logs_'))) {
-        const raw = localStorage.getItem(k);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            merged = mergeFixedRateLogsArrays(merged, parsed);
-          }
+    const keysToCheck = [`delivery_fixed_rate_logs_${adminId}`];
+    if (adminId === 'admin') keysToCheck.push('delivery_fixed_rate_logs');
+    keysToCheck.forEach(k => {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          merged = mergeFixedRateLogsArrays(merged, parsed);
         }
       }
-    }
+    });
   } catch (e) {}
-  return merged;
+  return filterFixedLogsForAdmin(merged, adminId);
 }
 
 function persistFixedRateLogsLocal(logs) {
   const adminId = getActiveAdminId();
-  const str = JSON.stringify(Array.isArray(logs) ? logs : []);
+  const cleanLogs = filterFixedLogsForAdmin(Array.isArray(logs) ? logs : [], adminId);
+  const str = JSON.stringify(cleanLogs);
   try {
-    localStorage.setItem('delivery_fixed_rate_logs', str);
     localStorage.setItem(`delivery_fixed_rate_logs_${adminId}`, str);
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith('delivery_fixed_rate_logs_')) {
-        localStorage.setItem(k, str);
-      }
+    if (adminId === 'admin') {
+      localStorage.setItem('delivery_fixed_rate_logs', str);
     }
   } catch (e) {}
 }
 
-// Obtener el registro de pagos por Tarifa Fija activos (independiente de la facturación por paradas)
+// Obtener el registro de pagos por Tarifa Fija activos del administrador actual
 export function getFixedRateLogs() {
   return getFixedRateLogsRaw().filter(item => item && !item._deleted);
 }
 
-// Guardar el registro de pagos por Tarifa Fija fusionando con local y Supabase para nunca sobrescribir otro mes/dispositivo
+// Guardar el registro de pagos por Tarifa Fija del administrador actual fusionando entre sus propios dispositivos
 export async function saveFixedRateLogs(logs) {
   const adminId = getActiveAdminId();
   const incomingLogs = Array.isArray(logs) ? logs : [];
@@ -5034,10 +5055,12 @@ export async function saveFixedRateLogs(logs) {
   if (supabase) {
     isSaving++;
     try {
+      const targetKeys = [`fixed_rate_logs_${adminId}`];
+      if (adminId === 'admin') targetKeys.push('fixed_rate_logs');
       const { data: cloudRows } = await supabase
         .from('delivery_settings')
         .select('key, value')
-        .ilike('key', 'fixed_rate_logs%');
+        .in('key', targetKeys);
 
       if (Array.isArray(cloudRows)) {
         cloudRows.forEach(row => {
@@ -5054,19 +5077,14 @@ export async function saveFixedRateLogs(logs) {
 
       persistFixedRateLogsLocal(merged);
       const logsStr = JSON.stringify(merged);
-
-      const keysSet = new Set(['fixed_rate_logs', `fixed_rate_logs_${adminId}`]);
-      if (Array.isArray(cloudRows)) {
-        cloudRows.forEach(r => { if (r && r.key) keysSet.add(r.key); });
-      }
-      const upsertPayload = Array.from(keysSet).map(k => ({ key: k, value: logsStr }));
+      const upsertPayload = targetKeys.map(k => ({ key: k, value: logsStr }));
 
       const { error } = await supabase.from('delivery_settings').upsert(upsertPayload);
       if (error) {
         console.error('Error saving fixed rate logs to Supabase:', error);
         return { success: false, error, logs: merged.filter(x => !x._deleted) };
       }
-      await broadcastRealtimeEvent('fixed_rates_updated', { logs: merged });
+      await broadcastRealtimeEvent('fixed_rates_updated', { adminId, logs: merged });
       notifySync();
     } finally {
       isSaving--;
