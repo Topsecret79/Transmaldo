@@ -24018,25 +24018,60 @@ function App() {
 
                   {/* Selección de Ruta para ver su Calendario de Días Trabajados + Selección múltiple del día */}
                   <div style={{ background: 'rgba(15, 23, 42, 0.45)', border: '1px solid rgba(245, 158, 11, 0.28)', borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                       <div>
                         <div style={{ fontSize: '0.92rem', fontWeight: '800', color: '#fde68a' }}>
-                          🗓️ 1. Toca una Ruta para abrir su Calendario de Días Trabajados (Mes: {fixedRateCalendarMonth})
+                          🗓️ 1. Toca una Ruta para abrir su Calendario de Días Trabajados (Mes activo: {fixedRateCalendarMonth})
                         </div>
                         <div style={{ fontSize: '0.77rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          Al tocar cualquier ruta (ej. 150 o 151) verás iluminados todos los días que trabajó en el mes para asignarle o editar su Tarifa Fija.
+                          Elige primero el mes (ej. Octubre 2026) y toca la ruta (150, 151, 168...) para ver y asignar todos sus días trabajados.
                         </div>
                       </div>
-                      {fixedRateActiveFurgo && (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-small"
-                          style={{ padding: '4px 10px', fontSize: '0.75rem', margin: 0, width: 'auto' }}
-                          onClick={() => setFixedRateActiveFurgo(null)}
-                        >
-                          ✖️ Cerrar calendario de ruta
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {[
+                          { key: '2026-11', label: 'Noviembre 2026', start: '2026-11-01', end: '2026-11-30' },
+                          { key: '2026-10', label: '📅 Octubre 2026', start: '2026-10-01', end: '2026-10-31' },
+                          { key: '2026-09', label: 'Septiembre 2026', start: '2026-09-01', end: '2026-09-30' }
+                        ].map(mObj => {
+                          const isCurrentM = fixedRateCalendarMonth === mObj.key;
+                          return (
+                            <button
+                              key={mObj.key}
+                              type="button"
+                              onClick={() => {
+                                setFixedRateCalendarMonth(mObj.key);
+                                setAdminStartDate(mObj.start);
+                                setAdminEndDate(mObj.end);
+                                loadHistoricalTicketsForPeriod(mObj.start, mObj.end)
+                                  .then(() => loadDataRef.current())
+                                  .catch(() => {});
+                              }}
+                              style={{
+                                padding: '5px 11px',
+                                fontSize: '0.76rem',
+                                fontWeight: '800',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                border: isCurrentM ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.16)',
+                                background: isCurrentM ? 'rgba(245, 158, 11, 0.28)' : 'rgba(255,255,255,0.05)',
+                                color: isCurrentM ? '#fde68a' : '#fff'
+                              }}
+                            >
+                              {mObj.label}
+                            </button>
+                          );
+                        })}
+                        {fixedRateActiveFurgo && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-small"
+                            style={{ padding: '5px 10px', fontSize: '0.75rem', margin: 0, width: 'auto' }}
+                            onClick={() => setFixedRateActiveFurgo(null)}
+                          >
+                            ✖️ Cerrar calendario
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Botones de rutas para abrir su calendario de días trabajados */}
