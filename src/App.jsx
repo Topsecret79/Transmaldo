@@ -11908,79 +11908,8 @@ function App() {
 
     const timelineSchedules = calculateTimelineSchedules(dateTickets, routeStartCoords, routeStartTime, routeEndCoords);
 
-    const allAdminAccounts = (users || []).filter(u => u && u.role === 'admin' && u.id !== 'admin' && u.active !== false);
-
     return (
       <div>
-        {currentUser?.role === 'superadmin' && (
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '10px',
-            marginBottom: '12px',
-            padding: '10px 14px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(15, 23, 42, 0.9) 100%)',
-            border: '1px solid rgba(245, 158, 11, 0.38)',
-            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.2)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: '800', color: '#fbbf24', letterSpacing: '0.02em' }}>
-                👑 Super Administrador · Viendo flota de:
-              </span>
-              <button
-                type="button"
-                onClick={() => handleSuperAdminFleetScopeChange('admin')}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '999px',
-                  fontSize: '0.78rem',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  border: superAdminFleetScope === 'admin' ? '1px solid #fbbf24' : '1px solid rgba(255,255,255,0.18)',
-                  background: superAdminFleetScope === 'admin' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'rgba(15, 23, 42, 0.7)',
-                  color: superAdminFleetScope === 'admin' ? '#0f172a' : '#e2e8f0'
-                }}
-              >
-                🚐 Mis Rutas (150, 151, 168, Dormity)
-              </button>
-              <select
-                value={superAdminFleetScope}
-                onChange={(e) => handleSuperAdminFleetScopeChange(e.target.value)}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '8px',
-                  fontSize: '0.8rem',
-                  fontWeight: '700',
-                  background: 'rgba(15, 23, 42, 0.9)',
-                  color: '#fde68a',
-                  border: '1px solid rgba(245, 158, 11, 0.45)',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="admin">🚐 Mis Rutas (Ruta 150, 151, 168, Dormity)</option>
-                {allAdminAccounts.map(adm => {
-                  const admDrivers = (users || []).filter(u => u && u.role === 'repartidor' && u.active !== false && u.createdBy === adm.id);
-                  const driverNames = admDrivers.map(d => d.label || d.id).join(', ');
-                  return (
-                    <option key={adm.id} value={adm.id}>
-                      👤 Admin: {adm.label || adm.username} {driverNames ? `(${driverNames})` : '(Sin choferes)'}
-                    </option>
-                  );
-                })}
-                <option value="all">🌐 Todas las Flotas (Vista Global)</option>
-              </select>
-            </div>
-            <div style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: '600' }}>
-              Choferes activos en vista ({activeRepartidores.length}):{' '}
-              <strong style={{ color: '#fde68a' }}>
-                {activeRepartidores.length > 0 ? activeRepartidores.map(r => r.label || r.id).join(' · ') : 'Ninguno'}
-              </strong>
-            </div>
-          </div>
-        )}
         <div className="tab-container">
           <button className={`tab-btn ${activeTab === 'new_ticket' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('new_ticket'); }}>
             {editingTicketId ? '✏️ Editando Parada' : '📋 Planificar Ruta'}
@@ -23665,8 +23594,95 @@ function App() {
     );
   };
 
+    const allAdminAccounts = (users || []).filter(u => u && u.role === 'admin' && u.id !== 'admin' && u.active !== false);
+
     return (
       <div>
+        {currentUser?.role === 'superadmin' && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '10px',
+            marginBottom: '12px',
+            padding: '10px 14px',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(15, 23, 42, 0.9) 100%)',
+            border: '1px solid rgba(245, 158, 11, 0.38)',
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.2)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: '800', color: '#fbbf24', letterSpacing: '0.02em' }}>
+                👑 Super Administrador · Viendo flota de:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSuperAdminFleetScopeChange('admin')}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '999px',
+                  fontSize: '0.78rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  border: superAdminFleetScope === 'admin' ? '1px solid #fbbf24' : '1px solid rgba(255,255,255,0.18)',
+                  background: superAdminFleetScope === 'admin' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'rgba(15, 23, 42, 0.7)',
+                  color: superAdminFleetScope === 'admin' ? '#0f172a' : '#e2e8f0'
+                }}
+              >
+                🚐 Mis Rutas (150, 151, 168, Dormity)
+              </button>
+              <select
+                value={superAdminFleetScope}
+                onChange={(e) => handleSuperAdminFleetScopeChange(e.target.value)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  background: 'rgba(15, 23, 42, 0.9)',
+                  color: '#fde68a',
+                  border: '1px solid rgba(245, 158, 11, 0.45)',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="admin">🚐 Mis Rutas (Ruta 150, 151, 168, Dormity)</option>
+                {allAdminAccounts.map(adm => {
+                  const admDrivers = (users || []).filter(u => u && u.role === 'repartidor' && u.active !== false && u.createdBy === adm.id);
+                  const driverNames = admDrivers.map(d => d.label || d.id).join(', ');
+                  return (
+                    <option key={adm.id} value={adm.id}>
+                      👤 Admin: {adm.label || adm.username} {driverNames ? `(${driverNames})` : '(Sin choferes)'}
+                    </option>
+                  );
+                })}
+                <option value="all">🌐 Todas las Flotas (Vista Global)</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('users'); }}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '8px',
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  border: '1px solid rgba(56, 189, 248, 0.4)',
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  color: '#7dd3fc'
+                }}
+              >
+                👥 Gestionar Administradores y Choferes
+              </button>
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#cbd5e1', fontWeight: '600' }}>
+              Choferes activos en vista ({activeRepartidores.length}):{' '}
+              <strong style={{ color: '#fde68a' }}>
+                {activeRepartidores.length > 0 ? activeRepartidores.map(r => r.label || r.id).join(' · ') : 'Ninguno'}
+              </strong>
+            </div>
+          </div>
+        )}
         <div className="tab-container">
           {showReportDay && (
             <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('dashboard'); }}>Dashboard</button>
