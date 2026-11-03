@@ -1442,7 +1442,7 @@ function App() {
   }, [adminStartDate]);
 
   useEffect(() => {
-    if (!isAdminOrSuper || activeTab !== 'dashboard' || !fixedRateCalendarMonth) return;
+    if (!isAdminOrSuper || (activeTab !== 'dashboard' && activeTab !== 'fixed_rate') || !fixedRateCalendarMonth) return;
     const [yStr, mStr] = fixedRateCalendarMonth.split('-');
     const y = parseInt(yStr, 10);
     const m = parseInt(mStr, 10);
@@ -1708,6 +1708,7 @@ function App() {
     // Lista de pestañas de administrador y sus condiciones
     const adminTabAccess = [
       { tab: 'dashboard', allowed: showReportDay },
+      { tab: 'fixed_rate', allowed: isAdminOrSuper },
       { tab: 'daily_report', allowed: showReportDay },
       { tab: 'tickets', allowed: showDeliveriesPeriod },
       { tab: 'map', allowed: showMapControl },
@@ -21766,7 +21767,7 @@ function App() {
 
     // Registros de Pago por Tarifa Fija en el periodo filtrado (independientes de la facturación por paradas)
     const periodFixedRateLogs = isAdminOrSuper ? (fixedRateLogs || []).filter(item => {
-      if (!item || !item.furgoId || !item.date || !(Number(item.amount) > 0)) return false;
+      if (!item || !item.furgoId || !item.date || isNaN(Number(item.amount)) || Number(item.amount) < 0) return false;
       if (adminStartDate && item.date < adminStartDate) return false;
       if (adminEndDate && item.date > adminEndDate) return false;
       if (billingFilterFurgo !== 'all' && item.furgoId !== billingFilterFurgo) return false;
@@ -23540,6 +23541,9 @@ function App() {
           {showReportDay && (
             <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('dashboard'); }}>Dashboard</button>
           )}
+          {isAdminOrSuper && (
+            <button className={`tab-btn ${activeTab === 'fixed_rate' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('fixed_rate'); }} style={activeTab === 'fixed_rate' ? { background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: '#0f172a', fontWeight: '800', borderColor: '#fbbf24' } : { borderColor: 'rgba(245, 158, 11, 0.45)', color: '#fde68a' }}>💶 Tarifa Fija</button>
+          )}
           {showReportDay && (
             <button className={`tab-btn ${activeTab === 'daily_report' ? 'active' : ''}`} onClick={() => { if(editingTicketId) cancelEditing(); setActiveTab('daily_report'); }}>📊 Informe del Día</button>
           )}
@@ -23881,10 +23885,9 @@ function App() {
                 <div
                   className="stat-card warning clickable"
                   onClick={() => {
-                    const el = document.getElementById('fixed-rate-panel');
-                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setActiveTab('fixed_rate');
                   }}
-                  title="Ir al bloque de Pago por Tarifa Fija (columna independiente, no se mezcla con paradas)"
+                  title="Abrir pestaña de Pago por Tarifa Fija (columna independiente, no se mezcla con paradas)"
                   style={{ border: '1px solid rgba(245, 158, 11, 0.45)', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(15, 23, 42, 0.55) 100%)' }}
                 >
                   <p style={{ color: '#fbbf24', fontWeight: '700' }}>💶 Total Tarifa Fija (Aparte)</p>
@@ -23895,6 +23898,118 @@ function App() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '100%' }}>
+              <div className="glass-panel" style={{ textAlign: 'left' }}>
+                <h2>Ganancias Acumuladas por Furgoneta</h2>
+                <div className="chart-bar-container">
+                  {furgos.map(fid => {
+                    const data = furgoData[fid];
+                    const percent = (data.earnings / maxEarnings) * 80;
+                    const uIdx = users.findIndex(u => u.id === fid);
+                    const barColor = uIdx % 3 === 0 ? 'var(--primary)' : uIdx % 3 === 1 ? 'var(--warning)' : 'var(--success)';
+                    return (
+                      <div className="chart-bar-column" key={fid} onClick={() => setSelectedDrilldownFurgoId(fid)} title={`Ver detalle diario de ${users.find(u => u.id === fid)?.label || fid}`}>
+                        <span className="chart-val-label">{data.earnings.toFixed(2)} €</span>
+                        <div className="chart-bar" style={{ height: `${percent || 2}%`, backgroundColor: barColor }}></div>
+                        <span className="chart-label">{(users.find(u => u.id === fid)?.label) || fid} ({data.successCount}/{data.count} éxitos)</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="table-container" style={{ marginTop: '30px' }}>
+                  <table style={{ width: '100%', minWidth: '1000px' }}>
+                    <thead>
+                      <tr>
+                        <th>Furgoneta</th>
+                        <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
+                        <th style={{ textAlign: 'center' }}>Fallidos</th>
+                        <th style={{ textAlign: 'center' }}>PMs</th>
+                        <th style={{ textAlign: 'center' }}>Cuelgues</th>
+                        <th style={{ textAlign: 'center' }}>Entregas</th>
+                        <th style={{ textAlign: 'center' }}>Recogidas</th>
+                        <th style={{ textAlign: 'center' }}>COD</th>
+                        <th style={{ textAlign: 'center' }}>Kms</th>
+                        <th style={{ textAlign: 'right' }}>Kilometraje €</th>
+                        <th style={{ textAlign: 'right' }}>Base Imponible</th>
+                        <th style={{ textAlign: 'right' }}>IVA (+21%)</th>
+                        <th style={{ textAlign: 'right' }}>Retención (-1%)</th>
+                        <th style={{ textAlign: 'right' }}>Total Neto</th>
+                        {isAdminOrSuper && <th style={{ textAlign: 'right', color: '#fbbf24' }} title="Pago por Tarifa Fija (columna independiente, no se mezcla con Base Imponible ni Total Neto)">Tarifa Fija €</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {furgos.map(fid => {
+                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0, mileageEarnings: 0, kms: 0, pms: 0, deliveries: 0, cuelgues: 0, recogidas: 0, failed: 0, cod: 0 };
+                        const base = data.earnings;
+                        const iva = base * 0.21;
+                        const retencion = base * 0.01;
+                        const totalNeto = base + iva - retencion;
+                        const label = users.find(u => u.id === fid)?.label || fid;
+                        return (
+                          <tr key={fid} className="interactive-row" onClick={() => setSelectedDrilldownFurgoId(fid)} title={`Ver detalle diario de ${label}`}>
+                            <td style={{ fontWeight: '600' }}>{label}</td>
+                            <td style={{ textAlign: 'center' }}>{data.successCount} / {data.count}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500', color: data.failed > 0 ? 'var(--danger)' : 'inherit' }}>{data.failed}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>
+                              {data.pms > 0 ? (
+                                <span>{data.pms} <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>({data.pmsBasic} B. / {data.pmsComplex} C.)</span></span>
+                              ) : '0'}
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.cuelgues}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.deliveries}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.recogidas}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.cod > 0 ? `${data.cod.toFixed(2)} €` : '-'}</td>
+                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.kms.toFixed(1)} km</td>
+                            <td style={{ textAlign: 'right', fontWeight: data.mileageEarnings > 0 ? '600' : '500', color: data.mileageEarnings > 0 ? '#10b981' : 'var(--text-muted)' }}>
+                              {data.mileageEarnings > 0 ? `${data.mileageEarnings.toFixed(2)} €` : '0.00 €'}
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{base.toFixed(2)} €</td>
+                            <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: '500' }}>+{iva.toFixed(2)} €</td>
+                            <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>-{retencion.toFixed(2)} €</td>
+                            <td style={{ textAlign: 'right', fontWeight: '500', opacity: 0.85 }}>{totalNeto.toFixed(2)} €</td>
+                            {isAdminOrSuper && (
+                              <td style={{ textAlign: 'right', fontWeight: (data.fixedRateEarnings || 0) > 0 ? '700' : '500', color: (data.fixedRateEarnings || 0) > 0 ? '#fbbf24' : 'var(--text-muted)', background: (data.fixedRateEarnings || 0) > 0 ? 'rgba(245, 158, 11, 0.08)' : 'transparent' }}>
+                                {(data.fixedRateEarnings || 0) > 0 ? (
+                                  <span>{data.fixedRateEarnings.toFixed(2)} € <span style={{ fontSize: '0.72rem', opacity: 0.85 }}>({data.fixedRateDays} d.)</span></span>
+                                ) : '0.00 €'}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="glass-panel" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <h2>Cortes de Facturación y Exportación</h2>
+                <p>
+                  Descarga el informe completo a un Excel detallado con los repartos del periodo seleccionado 
+                  {adminStartDate || adminEndDate ? (
+                    <strong> (del {adminStartDate || 'inicio'} al {adminEndDate || 'hoy'}</strong>
+                  ) : (
+                    <strong> (todo el historial</strong>
+                  )}
+                  {billingFilterFurgo !== 'all' ? (
+                    <span> - Furgoneta: <strong>{users.find(u => u.id === billingFilterFurgo)?.label || billingFilterFurgo}</strong>)</span>
+                  ) : (
+                    <span>)</span>
+                  )}
+                  .
+                </p>
+                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                  <button onClick={handleExportExcel} className="btn btn-success" style={{ width: 'auto', flex: 1, minWidth: '200px' }}>
+                    <FileSpreadsheet size={18} /> Exportar Excel del Periodo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'fixed_rate' && isAdminOrSuper && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '100%' }}>
               {isAdminOrSuper && (
                 <div
                   id="fixed-rate-panel"
@@ -24219,6 +24334,9 @@ function App() {
                         const dt = new Date(calYear, calMonth - 1 + delta, 1);
                         const nextKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
                         setFixedRateCalendarMonth(nextKey);
+                        const lastDayNext = new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate();
+                        setAdminStartDate(`${nextKey}-01`);
+                        setAdminEndDate(`${nextKey}-${String(lastDayNext).padStart(2, '0')}`);
                       };
 
                       return (
@@ -24508,113 +24626,6 @@ function App() {
                   )}
                 </div>
               )}
-              <div className="glass-panel" style={{ textAlign: 'left' }}>
-                <h2>Ganancias Acumuladas por Furgoneta</h2>
-                <div className="chart-bar-container">
-                  {furgos.map(fid => {
-                    const data = furgoData[fid];
-                    const percent = (data.earnings / maxEarnings) * 80;
-                    const uIdx = users.findIndex(u => u.id === fid);
-                    const barColor = uIdx % 3 === 0 ? 'var(--primary)' : uIdx % 3 === 1 ? 'var(--warning)' : 'var(--success)';
-                    return (
-                      <div className="chart-bar-column" key={fid} onClick={() => setSelectedDrilldownFurgoId(fid)} title={`Ver detalle diario de ${users.find(u => u.id === fid)?.label || fid}`}>
-                        <span className="chart-val-label">{data.earnings.toFixed(2)} €</span>
-                        <div className="chart-bar" style={{ height: `${percent || 2}%`, backgroundColor: barColor }}></div>
-                        <span className="chart-label">{(users.find(u => u.id === fid)?.label) || fid} ({data.successCount}/{data.count} éxitos)</span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="table-container" style={{ marginTop: '30px' }}>
-                  <table style={{ width: '100%', minWidth: '1000px' }}>
-                    <thead>
-                      <tr>
-                        <th>Furgoneta</th>
-                        <th style={{ textAlign: 'center' }}>Éxitos / Total</th>
-                        <th style={{ textAlign: 'center' }}>Fallidos</th>
-                        <th style={{ textAlign: 'center' }}>PMs</th>
-                        <th style={{ textAlign: 'center' }}>Cuelgues</th>
-                        <th style={{ textAlign: 'center' }}>Entregas</th>
-                        <th style={{ textAlign: 'center' }}>Recogidas</th>
-                        <th style={{ textAlign: 'center' }}>COD</th>
-                        <th style={{ textAlign: 'center' }}>Kms</th>
-                        <th style={{ textAlign: 'right' }}>Kilometraje €</th>
-                        <th style={{ textAlign: 'right' }}>Base Imponible</th>
-                        <th style={{ textAlign: 'right' }}>IVA (+21%)</th>
-                        <th style={{ textAlign: 'right' }}>Retención (-1%)</th>
-                        <th style={{ textAlign: 'right' }}>Total Neto</th>
-                        {isAdminOrSuper && <th style={{ textAlign: 'right', color: '#fbbf24' }} title="Pago por Tarifa Fija (columna independiente, no se mezcla con Base Imponible ni Total Neto)">Tarifa Fija €</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {furgos.map(fid => {
-                        const data = furgoData[fid] || { count: 0, successCount: 0, earnings: 0, mileageEarnings: 0, kms: 0, pms: 0, deliveries: 0, cuelgues: 0, recogidas: 0, failed: 0, cod: 0 };
-                        const base = data.earnings;
-                        const iva = base * 0.21;
-                        const retencion = base * 0.01;
-                        const totalNeto = base + iva - retencion;
-                        const label = users.find(u => u.id === fid)?.label || fid;
-                        return (
-                          <tr key={fid} className="interactive-row" onClick={() => setSelectedDrilldownFurgoId(fid)} title={`Ver detalle diario de ${label}`}>
-                            <td style={{ fontWeight: '600' }}>{label}</td>
-                            <td style={{ textAlign: 'center' }}>{data.successCount} / {data.count}</td>
-                            <td style={{ textAlign: 'center', fontWeight: '500', color: data.failed > 0 ? 'var(--danger)' : 'inherit' }}>{data.failed}</td>
-                            <td style={{ textAlign: 'center', fontWeight: '500' }}>
-                              {data.pms > 0 ? (
-                                <span>{data.pms} <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>({data.pmsBasic} B. / {data.pmsComplex} C.)</span></span>
-                              ) : '0'}
-                            </td>
-                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.cuelgues}</td>
-                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.deliveries}</td>
-                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.recogidas}</td>
-                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.cod > 0 ? `${data.cod.toFixed(2)} €` : '-'}</td>
-                            <td style={{ textAlign: 'center', fontWeight: '500' }}>{data.kms.toFixed(1)} km</td>
-                            <td style={{ textAlign: 'right', fontWeight: data.mileageEarnings > 0 ? '600' : '500', color: data.mileageEarnings > 0 ? '#10b981' : 'var(--text-muted)' }}>
-                              {data.mileageEarnings > 0 ? `${data.mileageEarnings.toFixed(2)} €` : '0.00 €'}
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>{base.toFixed(2)} €</td>
-                            <td style={{ textAlign: 'right', color: 'var(--success)', fontWeight: '500' }}>+{iva.toFixed(2)} €</td>
-                            <td style={{ textAlign: 'right', color: 'var(--danger)', fontWeight: '500' }}>-{retencion.toFixed(2)} €</td>
-                            <td style={{ textAlign: 'right', fontWeight: '500', opacity: 0.85 }}>{totalNeto.toFixed(2)} €</td>
-                            {isAdminOrSuper && (
-                              <td style={{ textAlign: 'right', fontWeight: (data.fixedRateEarnings || 0) > 0 ? '700' : '500', color: (data.fixedRateEarnings || 0) > 0 ? '#fbbf24' : 'var(--text-muted)', background: (data.fixedRateEarnings || 0) > 0 ? 'rgba(245, 158, 11, 0.08)' : 'transparent' }}>
-                                {(data.fixedRateEarnings || 0) > 0 ? (
-                                  <span>{data.fixedRateEarnings.toFixed(2)} € <span style={{ fontSize: '0.72rem', opacity: 0.85 }}>({data.fixedRateDays} d.)</span></span>
-                                ) : '0.00 €'}
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="glass-panel" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <h2>Cortes de Facturación y Exportación</h2>
-                <p>
-                  Descarga el informe completo a un Excel detallado con los repartos del periodo seleccionado 
-                  {adminStartDate || adminEndDate ? (
-                    <strong> (del {adminStartDate || 'inicio'} al {adminEndDate || 'hoy'}</strong>
-                  ) : (
-                    <strong> (todo el historial</strong>
-                  )}
-                  {billingFilterFurgo !== 'all' ? (
-                    <span> - Furgoneta: <strong>{users.find(u => u.id === billingFilterFurgo)?.label || billingFilterFurgo}</strong>)</span>
-                  ) : (
-                    <span>)</span>
-                  )}
-                  .
-                </p>
-                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                  <button onClick={handleExportExcel} className="btn btn-success" style={{ width: 'auto', flex: 1, minWidth: '200px' }}>
-                    <FileSpreadsheet size={18} /> Exportar Excel del Periodo
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
