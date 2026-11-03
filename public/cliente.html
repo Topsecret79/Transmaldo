@@ -17,6 +17,7 @@
     --line:#E2E6EC; --accent:#1F3864; --accent2:#2A5DA8;
     --ok:#1E6B2E; --okbg:#EAF4EC; --warn:#A05A00; --warnbg:#FBF3E6;
     --err:#B01515; --errbg:#FBEBEB;
+    --amber:#B45309; --amberbg:#FEF3C7; --amberline:#F59E0B;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
@@ -71,28 +72,68 @@
   .routeNav select{border:none;background:transparent;font-size:.86rem;font-weight:600;
                    color:var(--ink);padding:6px 4px;cursor:pointer;max-width:180px}
 
-  .periods{display:flex;gap:6px;background:var(--surface);border:1px solid var(--line);
+  .periods{display:flex;flex-wrap:wrap;gap:6px;background:var(--surface);border:1px solid var(--line);
            border-radius:9px;padding:3px}
-  .period{padding:7px 13px;border-radius:7px;font-size:.83rem;color:var(--ink2);
+  .period{padding:7px 12px;border-radius:7px;font-size:.82rem;color:var(--ink2);
           cursor:pointer;font-weight:600;user-select:none}
   .period.active{background:var(--accent);color:#fff}
 
-  .rangeRow{display:none;gap:8px;align-items:center;margin:-6px 0 14px}
+  .rangeRow{display:none;gap:8px;align-items:center;margin:-6px 0 14px;flex-wrap:wrap}
   .rangeRow.active{display:flex}
   .rangeRow input{padding:7px 10px;border:1px solid var(--line);border-radius:7px;font-size:.83rem}
   .rangeRow button{padding:7px 14px;border:none;border-radius:7px;background:var(--accent);
                    color:#fff;font-size:.82rem;font-weight:600;cursor:pointer}
 
   .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;
-           margin-bottom:22px}
+           margin-bottom:18px}
   .summary .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
                  padding:16px 18px}
   .summary .card.total{background:var(--accent);border-color:var(--accent)}
+  .summary .card.fixed{background:linear-gradient(135deg,#FFFBEB 0%,#FEF3C7 100%);border-color:var(--amberline);cursor:pointer;transition:transform .15s}
+  .summary .card.fixed:hover{transform:translateY(-1px)}
   .summary .card dt{font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;
                     color:var(--ink3);margin:0 0 6px}
   .summary .card.total dt{color:#c9d6ec}
+  .summary .card.fixed dt{color:var(--amber);font-weight:700}
   .summary .card dd{margin:0;font-size:1.5rem;font-weight:700;color:var(--ink)}
   .summary .card.total dd{color:#fff}
+  .summary .card.fixed dd{color:#92400E}
+  .summary .card .sub{font-size:.75rem;color:var(--ink3);margin-top:4px}
+  .summary .card.fixed .sub{color:var(--amber);font-weight:600}
+
+  /* --- Pestañas de vista (Paradas vs Tarifa Fija) --- */
+  .view-tabs{display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:10px;flex-wrap:wrap}
+  .view-tab{padding:9px 16px;border-radius:9px;border:1px solid var(--line);background:var(--surface);
+            color:var(--ink2);font-size:.86rem;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .view-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .view-tab.fixed-tab.active{background:linear-gradient(135deg,#F59E0B 0%,#D97706 100%);color:#fff;border-color:#D97706}
+
+  /* --- Tarjetas de rutas en Tarifa Fija --- */
+  .fixed-routes-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:18px}
+  .fixed-route-card{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:13px 15px;
+                    cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:4px}
+  .fixed-route-card:hover{border-color:var(--amberline);background:#FFFDF7}
+  .fixed-route-card.active{border:2px solid var(--amberline);background:var(--amberbg)}
+  .fixed-route-card .r-name{font-weight:700;font-size:.92rem;color:var(--ink);display:flex;justify-content:space-between;align-items:center}
+  .fixed-route-card .r-amount{font-size:1.25rem;font-weight:800;color:#92400E}
+  .fixed-route-card .r-meta{font-size:.76rem;color:var(--ink2);font-weight:600}
+
+  /* --- Calendario mensual de días trabajados (Solo lectura) --- */
+  .cal-box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:18px}
+  .cal-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+  .cal-title{font-weight:700;font-size:.96rem;color:var(--ink)}
+  .cal-nav{display:flex;align-items:center;gap:6px}
+  .cal-nav button{padding:5px 10px;border:1px solid var(--line);background:var(--bg);border-radius:7px;cursor:pointer;font-weight:700;color:var(--ink)}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+  .cal-dow{text-align:center;font-size:.72rem;font-weight:700;color:var(--ink3);text-transform:uppercase;padding:4px 0}
+  .cal-day{min-height:66px;border:1px solid var(--line);border-radius:8px;padding:6px;display:flex;flex-direction:column;justify-content:space-between;background:var(--bg)}
+  .cal-day.empty-cell{background:transparent;border-color:transparent;min-height:0}
+  .cal-day.worked{background:var(--okbg);border-color:#86EFAC}
+  .cal-day .d-top{display:flex;justify-content:space-between;align-items:center;font-size:.76rem;font-weight:700;color:var(--ink2)}
+  .cal-day.worked .d-top{color:var(--ok)}
+  .cal-day .d-stops{font-size:.66rem;background:#DCFCE7;color:var(--ok);padding:1px 5px;border-radius:99px;font-weight:700}
+  .cal-day .d-amt{font-size:.8rem;font-weight:800;color:var(--ok);text-align:right;margin-top:4px}
+  .cal-day .d-zero{font-size:.72rem;color:var(--ink3);text-align:right;margin-top:4px}
 
   table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);
         border-radius:12px;overflow:hidden;font-size:.86rem}
@@ -115,6 +156,11 @@
   .note{margin-top:18px;padding:14px 18px;border-left:3px solid var(--accent2);
         background:#EAF0FA;border-radius:0 8px 8px 0;font-size:.85rem;color:var(--ink2)}
   footer{margin-top:40px;color:var(--ink3);font-size:.78rem;text-align:center}
+  @media (max-width:640px){
+    .cal-day{min-height:54px;padding:4px}
+    .cal-day .d-amt{font-size:.7rem}
+    .cal-day .d-stops{display:none}
+  }
 </style>
 </head>
 <body>
@@ -151,7 +197,7 @@
     </div>
 
     <div class="toolbar">
-      <div class="search">
+      <div class="search" id="searchBoxWrap">
         <input id="searchInput" type="text" placeholder="Buscar por cliente, dirección o teléfono…">
       </div>
       <div class="routeNav">
@@ -163,6 +209,7 @@
         <div class="period" data-p="hoy">Hoy</div>
         <div class="period" data-p="semana">Últimos 7 días</div>
         <div class="period active" data-p="mes">Este mes</div>
+        <div class="period" data-p="mes_anterior">Mes anterior</div>
         <div class="period" data-p="rango">Rango…</div>
       </div>
     </div>
@@ -175,9 +222,14 @@
     </div>
 
     <div class="summary">
-      <dl class="card total">
-        <dt id="totalLabel">Total facturado</dt>
+      <dl class="card total" id="cardStopsTotal" style="cursor:pointer" title="Ver desglose por paradas">
+        <dt id="totalLabel">Total facturado (Paradas)</dt>
         <dd id="totalAmount">—</dd>
+      </dl>
+      <dl class="card fixed" id="cardFixedTotal" title="Pulsar para ver el calendario y desglose de Tarifa Fija">
+        <dt>💶 Total Tarifa Fija</dt>
+        <dd id="fixedTotalAmount">—</dd>
+        <div class="sub" id="fixedDaysSummary">0 jornadas en el periodo</div>
       </dl>
       <dl class="card">
         <dt>Repartos mostrados</dt>
@@ -189,20 +241,54 @@
       </dl>
     </div>
 
-    <div id="tableContainer">
+    <div class="view-tabs">
+      <button type="button" class="view-tab active" id="tabStopsBtn">📦 Repartos por Paradas</button>
+      <button type="button" class="view-tab fixed-tab" id="tabFixedBtn">💶 Tarifa Fija (Calendario y Jornadas)</button>
+    </div>
+
+    <!-- VISTA 1: TABLA DE PARADAS -->
+    <div id="stopsViewContainer">
+      <div id="tableContainer">
+        <table>
+          <thead>
+            <tr><th>Ruta</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Detalle</th><th>Importe</th><th>Estado</th></tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+        <div class="empty" id="emptyMsg" style="display:none">No se encontraron repartos con ese criterio.</div>
+      </div>
+    </div>
+
+    <!-- VISTA 2: TARIFA FIJA (SOLO LECTURA) -->
+    <div id="fixedViewContainer" style="display:none">
+      <div class="fixed-routes-grid" id="fixedRoutesGrid"></div>
+
+      <div class="cal-box" id="fixedCalendarBox">
+        <div class="cal-header">
+          <div class="cal-title" id="fixedCalTitle">📅 Calendario de Días Trabajados</div>
+          <div class="cal-nav">
+            <button type="button" id="calPrevMonth">◀ Mes anterior</button>
+            <span id="calMonthLabel" style="font-weight:700;font-size:.88rem;min-width:130px;text-align:center"></span>
+            <button type="button" id="calNextMonth">Mes siguiente ▶</button>
+          </div>
+        </div>
+        <div class="cal-grid" id="fixedCalGrid"></div>
+      </div>
+
       <table>
         <thead>
-          <tr><th>Ruta</th><th>Fecha</th><th>Cliente</th><th>Dirección</th><th>Detalle</th><th>Importe</th><th>Estado</th></tr>
+          <tr><th>Ruta</th><th>Fecha</th><th>Paradas realizadas</th><th>Importe Tarifa Fija</th><th>Estado</th></tr>
         </thead>
-        <tbody id="tableBody"></tbody>
+        <tbody id="fixedTableBody"></tbody>
       </table>
-      <div class="empty" id="emptyMsg" style="display:none">No se encontraron repartos con ese criterio.</div>
-      <div class="loading" id="loadingMsg" style="display:none">Cargando…</div>
+      <div class="empty" id="fixedEmptyMsg" style="display:none">No hay jornadas de Tarifa Fija registradas en este periodo.</div>
     </div>
+
+    <div class="loading" id="loadingMsg" style="display:none">Cargando…</div>
 
     <div class="note">
       Esta pantalla es únicamente de consulta: no existe ninguna opción para crear, editar
-      ni borrar repartos desde aquí.
+      ni borrar repartos ni tarifas desde aquí.
     </div>
   </div>
 
@@ -213,6 +299,8 @@
 (function(){
   "use strict";
   const API_URL = "https://neskvzjfwjgbhasboxfh.supabase.co/functions/v1/client-portal";
+  const SUPABASE_REST_URL = "https://neskvzjfwjgbhasboxfh.supabase.co/rest/v1";
+  const SUPABASE_ANON_KEY = "sb_publishable_hCm0ONw6mBihfXHHW23wfQ_-aGIA4uX";
   const SESSION_KEY = "mdt_client_portal_session";
 
   const screens = { login: document.getElementById('screen-login'), panel: document.getElementById('screen-panel') };
@@ -229,19 +317,27 @@
     const [y,m,d] = iso.split('-');
     return `${d}/${m}/${y}`;
   }
+  function toLocalISO(d){
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
   function todayISO(){
-    const d = new Date();
-    return d.toISOString().slice(0,10);
+    return toLocalISO(new Date());
   }
   function isoDaysAgo(n){
     const d = new Date();
     d.setDate(d.getDate()-n);
-    return d.toISOString().slice(0,10);
+    return toLocalISO(d);
   }
   function firstOfMonthISO(){
     const d = new Date();
     d.setDate(1);
-    return d.toISOString().slice(0,10);
+    return toLocalISO(d);
+  }
+  function prevMonthRangeISO(){
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const last = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { dateFrom: toLocalISO(first), dateTo: toLocalISO(last) };
   }
 
   let session = null; // { username, password, company }
@@ -251,6 +347,34 @@
   } catch(e){ session = null; }
 
   const companyLabels = { corte_ingles: 'El Corte Inglés', dormity: 'Dormity' };
+
+  // Estado para Tarifa Fija y pestañas
+  let activeView = 'stops'; // 'stops' | 'fixed'
+  let allFixedRateLogs = [];
+  let lastTicketsLoaded = [];
+  let lastFurgosLoaded = [];
+  let calendarYearMonth = todayISO().slice(0, 7); // 'YYYY-MM'
+
+  const tabStopsBtn = document.getElementById('tabStopsBtn');
+  const tabFixedBtn = document.getElementById('tabFixedBtn');
+  const stopsViewContainer = document.getElementById('stopsViewContainer');
+  const fixedViewContainer = document.getElementById('fixedViewContainer');
+  const cardStopsTotal = document.getElementById('cardStopsTotal');
+  const cardFixedTotal = document.getElementById('cardFixedTotal');
+
+  function setViewMode(mode){
+    activeView = mode;
+    tabStopsBtn.classList.toggle('active', mode === 'stops');
+    tabFixedBtn.classList.toggle('active', mode === 'fixed');
+    stopsViewContainer.style.display = mode === 'stops' ? 'block' : 'none';
+    fixedViewContainer.style.display = mode === 'fixed' ? 'block' : 'none';
+    renderFixedRateView();
+  }
+
+  tabStopsBtn.addEventListener('click', () => setViewMode('stops'));
+  tabFixedBtn.addEventListener('click', () => setViewMode('fixed'));
+  cardStopsTotal.addEventListener('click', () => setViewMode('stops'));
+  cardFixedTotal.addEventListener('click', () => setViewMode('fixed'));
 
   // --- Login ---
   const loginForm = document.getElementById('loginForm');
@@ -268,6 +392,56 @@
     return data;
   }
 
+  // Leer registros de Tarifa Fija de todas las rutas desde Supabase (solo lectura)
+  async function fetchFixedRateLogs(){
+    try {
+      const res = await fetch(`${SUPABASE_REST_URL}/delivery_settings?key=like.fixed_rate_logs*&select=key,value`, {
+        headers: { 'apikey': SUPABASE_ANON_KEY }
+      });
+      if (!res.ok) return [];
+      const rows = await res.json();
+      const byId = new Map();
+      (rows || []).forEach(r => {
+        if (!r || !r.value) return;
+        try {
+          const list = JSON.parse(r.value);
+          if (!Array.isArray(list)) return;
+          list.forEach(item => {
+            if (!item || !item.furgoId || !item.date || item._deleted) return;
+            const id = item.id || `${item.furgoId}_${item.date}`;
+            const norm = {
+              id,
+              furgoId: String(item.furgoId),
+              date: String(item.date),
+              amount: Number(item.amount) || 0,
+              updatedAt: item.updatedAt || '2026-01-01T00:00:00.000Z',
+              _explicitZero: !!item._explicitZero
+            };
+            const ex = byId.get(id);
+            if (!ex) {
+              byId.set(id, norm);
+            } else {
+              const exUneditedZero = ex.amount === 0 && !ex._explicitZero;
+              const inUneditedZero = norm.amount === 0 && !norm._explicitZero;
+              if (exUneditedZero && !inUneditedZero) {
+                byId.set(id, norm);
+              } else if (!exUneditedZero && inUneditedZero) {
+                // Conservar importe > 0
+              } else if (norm.updatedAt > ex.updatedAt) {
+                byId.set(id, norm);
+              } else if (norm.updatedAt === ex.updatedAt && norm.amount > ex.amount) {
+                byId.set(id, norm);
+              }
+            }
+          });
+        } catch(e){}
+      });
+      return Array.from(byId.values());
+    } catch(e){
+      return [];
+    }
+  }
+
   loginForm.addEventListener('submit', async (e)=>{
     e.preventDefault();
     loginError.style.display = 'none';
@@ -276,7 +450,12 @@
     loginBtn.disabled = true;
     loginBtn.textContent = 'Entrando…';
     try {
-      const data = await callApi({ username, password, dateFrom: isoDaysAgo(6), dateTo: todayISO() });
+      const { dateFrom, dateTo } = periodDates();
+      const [data, fixedLogs] = await Promise.all([
+        callApi({ username, password, dateFrom, dateTo }),
+        fetchFixedRateLogs()
+      ]);
+      allFixedRateLogs = fixedLogs;
       session = { username, password, company: data.company };
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
       enterPanel(data);
@@ -304,7 +483,7 @@
   const routeNext = document.getElementById('routeNext');
   const rangeRow = document.getElementById('rangeRow');
   let currentPeriod = 'mes';
-  let currentFurgos = []; // array de ids, en el mismo orden que aparecen en el selector
+  let currentFurgos = [];
   let searchDebounce = null;
 
   function capitalize(s){
@@ -315,6 +494,7 @@
   function periodDates(){
     if (currentPeriod === 'hoy') return { dateFrom: todayISO(), dateTo: todayISO() };
     if (currentPeriod === 'mes') return { dateFrom: firstOfMonthISO(), dateTo: todayISO() };
+    if (currentPeriod === 'mes_anterior') return prevMonthRangeISO();
     if (currentPeriod === 'rango') {
       return { dateFrom: document.getElementById('dateFrom').value, dateTo: document.getElementById('dateTo').value };
     }
@@ -328,10 +508,16 @@
       currentPeriod = p.dataset.p;
       rangeRow.classList.toggle('active', currentPeriod === 'rango');
       document.getElementById('totalLabel').textContent = 'Total facturado — ' + p.textContent.toLowerCase();
+      const { dateFrom } = periodDates();
+      if (dateFrom) calendarYearMonth = dateFrom.slice(0, 7);
       if (currentPeriod !== 'rango') loadData();
     });
   });
-  document.getElementById('applyRange').addEventListener('click', loadData);
+  document.getElementById('applyRange').addEventListener('click', () => {
+    const { dateFrom } = periodDates();
+    if (dateFrom) calendarYearMonth = dateFrom.slice(0, 7);
+    loadData();
+  });
 
   routeSelect.addEventListener('change', loadData);
   routePrev.addEventListener('click', ()=>{
@@ -350,13 +536,39 @@
     searchDebounce = setTimeout(loadData, 350);
   });
 
-  // furgos: [{id, label}] — las furgonetas/usuarios activos (Ruta 150, Ruta 151, Ruta 168,
-  // Sprinter, Boxer), no el texto libre de route_name que cambia cada día.
+  // Navegación de mes en el calendario de Tarifa Fija
+  document.getElementById('calPrevMonth').addEventListener('click', () => {
+    const [y, m] = calendarYearMonth.split('-').map(Number);
+    const d = new Date(y, m - 2, 1);
+    calendarYearMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    renderFixedRateView();
+  });
+  document.getElementById('calNextMonth').addEventListener('click', () => {
+    const [y, m] = calendarYearMonth.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    calendarYearMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    renderFixedRateView();
+  });
+
   function renderFurgos(furgos){
-    currentFurgos = furgos.map(f => f.id);
+    // Asegurar que también aparezcan todas las rutas con registros de Tarifa Fija
+    const map = new Map();
+    (furgos || []).forEach(f => { if (f && f.id) map.set(f.id, f.label || f.id); });
+    (allFixedRateLogs || []).forEach(item => {
+      if (item && item.furgoId && !map.has(item.furgoId)) {
+        if (session && session.company === 'corte_ingles' && item.furgoId.toLowerCase().includes('dormity')) return;
+        if (session && session.company === 'dormity' && !item.furgoId.toLowerCase().includes('dormity')) return;
+        map.set(item.furgoId, capitalize(item.furgoId));
+      }
+    });
+    const combined = Array.from(map.entries()).map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es', { numeric: true, sensitivity: 'base' }));
+
+    lastFurgosLoaded = combined;
+    currentFurgos = combined.map(f => f.id);
     const prevVal = routeSelect.value;
     routeSelect.innerHTML = '<option value="">Todas las rutas</option>' +
-      furgos.map(f => `<option value="${escapeHtml(f.id)}">${escapeHtml(capitalize(f.label))}</option>`).join('');
+      combined.map(f => `<option value="${escapeHtml(f.id)}">${escapeHtml(capitalize(f.label))}</option>`).join('');
     if (currentFurgos.includes(prevVal)) routeSelect.value = prevVal;
   }
 
@@ -394,6 +606,164 @@
     }).join('');
   }
 
+  // Renderizar vista y tarjetas de Tarifa Fija (100% solo lectura)
+  function renderFixedRateView(){
+    const { dateFrom, dateTo } = periodDates();
+    const selectedFurgo = routeSelect.value;
+
+    // Mapa de paradas realizadas por furgoId_date
+    const stopsByFurgoDate = new Map();
+    (lastTicketsLoaded || []).forEach(t => {
+      if (!t || !t.furgo_id || !t.date) return;
+      if (t.status === 'failed') return;
+      const k = `${t.furgo_id}_${t.date}`;
+      stopsByFurgoDate.set(k, (stopsByFurgoDate.get(k) || 0) + 1);
+    });
+
+    // Filtrar registros de Tarifa Fija según empresa (El Corte Inglés vs Dormity), fechas y ruta
+    const companyLogs = (allFixedRateLogs || []).filter(item => {
+      if (!item || !item.furgoId || !item.date) return false;
+      const isDorm = item.furgoId.toLowerCase().includes('dormity');
+      if (session && session.company === 'dormity' && !isDorm) return false;
+      if (session && session.company === 'corte_ingles' && isDorm) return false;
+      return true;
+    });
+
+    const periodLogs = companyLogs.filter(item => {
+      if (dateFrom && item.date < dateFrom) return false;
+      if (dateTo && item.date > dateTo) return false;
+      if (selectedFurgo && item.furgoId !== selectedFurgo) return false;
+      return true;
+    }).sort((a, b) => b.date.localeCompare(a.date) || a.furgoId.localeCompare(b.furgoId, 'es', { numeric: true }));
+
+    const fixedTotal = periodLogs.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+    const workedDaysCount = periodLogs.length;
+
+    document.getElementById('fixedTotalAmount').textContent = fmtEUR(fixedTotal);
+    document.getElementById('fixedDaysSummary').textContent =
+      `${workedDaysCount} ${workedDaysCount === 1 ? 'jornada registrada' : 'jornadas registradas'}`;
+
+    // Tarjetas resumen por ruta en el periodo
+    const routeStatsMap = new Map();
+    (lastFurgosLoaded || []).forEach(f => {
+      routeStatsMap.set(f.id, { id: f.id, label: capitalize(f.label), days: 0, total: 0 });
+    });
+    companyLogs.filter(item => {
+      if (dateFrom && item.date < dateFrom) return false;
+      if (dateTo && item.date > dateTo) return false;
+      return true;
+    }).forEach(item => {
+      if (!routeStatsMap.has(item.furgoId)) {
+        routeStatsMap.set(item.furgoId, { id: item.furgoId, label: capitalize(item.furgoId), days: 0, total: 0 });
+      }
+      const st = routeStatsMap.get(item.furgoId);
+      st.days += 1;
+      st.total += (Number(item.amount) || 0);
+    });
+
+    const routesGrid = document.getElementById('fixedRoutesGrid');
+    const routeCards = Array.from(routeStatsMap.values());
+    routesGrid.innerHTML = routeCards.map(r => {
+      const isSelected = selectedFurgo === r.id;
+      return `<div class="fixed-route-card ${isSelected ? 'active' : ''}" data-furgo="${escapeHtml(r.id)}">
+        <div class="r-name">
+          <span>🚐 ${escapeHtml(r.label)}</span>
+          <span style="font-size:.74rem;color:var(--amber)">${isSelected ? '✓ Viendo ruta' : 'Ver calendario →'}</span>
+        </div>
+        <div class="r-amount">${fmtEUR(r.total)}</div>
+        <div class="r-meta">${r.days} ${r.days === 1 ? 'día trabajado' : 'días trabajados'} en el periodo</div>
+      </div>`;
+    }).join('');
+
+    routesGrid.querySelectorAll('.fixed-route-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const fId = card.getAttribute('data-furgo');
+        routeSelect.value = (routeSelect.value === fId) ? '' : fId;
+        loadData();
+      });
+    });
+
+    // Calendario mensual visual (solo lectura)
+    const [calYear, calMonth] = (calendarYearMonth || todayISO().slice(0, 7)).split('-').map(Number);
+    const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    document.getElementById('calMonthLabel').textContent = `${monthNames[(calMonth || 1) - 1]} ${calYear}`;
+    const routeTitleLabel = selectedFurgo
+      ? capitalize((lastFurgosLoaded.find(f => f.id === selectedFurgo)?.label) || selectedFurgo)
+      : 'Todas las rutas';
+    document.getElementById('fixedCalTitle').textContent = `📅 Calendario de Días Trabajados — ${routeTitleLabel}`;
+
+    const firstDayObj = new Date(calYear, calMonth - 1, 1);
+    const daysInMonth = new Date(calYear, calMonth, 0).getDate();
+    const startOffset = (firstDayObj.getDay() + 6) % 7; // Lunes = 0
+
+    // Agrupar importe de Tarifa Fija por fecha en el mes del calendario
+    const monthPrefix = `${calYear}-${String(calMonth).padStart(2, '0')}-`;
+    const dayTotalsMap = new Map();
+    companyLogs.forEach(item => {
+      if (!item.date.startsWith(monthPrefix)) return;
+      if (selectedFurgo && item.furgoId !== selectedFurgo) return;
+      const cur = dayTotalsMap.get(item.date) || { amount: 0, routesCount: 0 };
+      cur.amount += (Number(item.amount) || 0);
+      cur.routesCount += 1;
+      dayTotalsMap.set(item.date, cur);
+    });
+
+    const dows = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+    let calHtml = dows.map(d => `<div class="cal-dow">${d}</div>`).join('');
+    for (let i = 0; i < startOffset; i++) {
+      calHtml += `<div class="cal-day empty-cell"></div>`;
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateIso = `${monthPrefix}${String(day).padStart(2, '0')}`;
+      const info = dayTotalsMap.get(dateIso);
+      const isWorked = !!info;
+      const badgeText = info
+        ? (selectedFurgo
+            ? ((stopsByFurgoDate.get(`${selectedFurgo}_${dateIso}`) || 0) > 0
+                ? `${stopsByFurgoDate.get(`${selectedFurgo}_${dateIso}`)} par.`
+                : 'Trabajado')
+            : `${info.routesCount} ${info.routesCount === 1 ? 'ruta' : 'rutas'}`)
+        : '';
+      calHtml += `<div class="cal-day ${isWorked ? 'worked' : ''}">
+        <div class="d-top">
+          <span>${day}</span>
+          ${isWorked ? `<span class="d-stops">${escapeHtml(badgeText)}</span>` : ''}
+        </div>
+        ${isWorked
+          ? `<div class="d-amt">${fmtEUR(info.amount)}</div>`
+          : `<div class="d-zero">—</div>`}
+      </div>`;
+    }
+    document.getElementById('fixedCalGrid').innerHTML = calHtml;
+
+    // Tabla de jornadas de Tarifa Fija
+    const fixedBody = document.getElementById('fixedTableBody');
+    const fixedEmpty = document.getElementById('fixedEmptyMsg');
+    if (!periodLogs.length) {
+      fixedBody.innerHTML = '';
+      fixedEmpty.style.display = 'block';
+    } else {
+      fixedEmpty.style.display = 'none';
+      const rowsHtml = periodLogs.map(item => {
+        const rLabel = capitalize((lastFurgosLoaded.find(f => f.id === item.furgoId)?.label) || item.furgoId);
+        const stopsCount = stopsByFurgoDate.get(`${item.furgoId}_${item.date}`) || 0;
+        return `<tr class="row">
+          <td><span class="route-chip">🚐 ${escapeHtml(rLabel)}</span></td>
+          <td><strong>${fmtDate(item.date)}</strong></td>
+          <td>${stopsCount > 0 ? `${stopsCount} paradas entregadas` : 'Jornada operativa'}</td>
+          <td class="amount" style="color:#92400E">${fmtEUR(item.amount)}</td>
+          <td><span class="status success">Jornada trabajada</span></td>
+        </tr>`;
+      }).join('');
+      const totalRowHtml = `<tr style="background:#FFFBEB;font-weight:800">
+        <td colspan="3" style="text-align:right;color:#92400E;text-transform:uppercase;font-size:.78rem">Total Tarifa Fija del periodo (${periodLogs.length} jornadas):</td>
+        <td class="amount" style="color:#92400E;font-size:1rem">${fmtEUR(fixedTotal)}</td>
+        <td></td>
+      </tr>`;
+      fixedBody.innerHTML = rowsHtml + totalRowHtml;
+    }
+  }
+
   async function loadData(){
     if (!session) return;
     const { dateFrom, dateTo } = periodDates();
@@ -402,19 +772,26 @@
     document.getElementById('loadingMsg').style.display = 'block';
     document.getElementById('emptyMsg').style.display = 'none';
     try {
-      const data = await callApi({
-        username: session.username,
-        password: session.password,
-        search: searchInput.value,
-        furgo: routeSelect.value,
-        dateFrom, dateTo
-      });
+      const [data, fixedLogs] = await Promise.all([
+        callApi({
+          username: session.username,
+          password: session.password,
+          search: searchInput.value,
+          furgo: routeSelect.value,
+          dateFrom, dateTo
+        }),
+        fetchFixedRateLogs()
+      ]);
+      allFixedRateLogs = fixedLogs;
+      lastTicketsLoaded = data.tickets || [];
       renderFurgos(data.furgos || []);
-      renderTable(data.tickets || []);
+      renderTable(lastTicketsLoaded);
+      renderFixedRateView();
+
       document.getElementById('totalAmount').textContent = fmtEUR(data.total);
       document.getElementById('totalCount').textContent = data.count;
       document.getElementById('pendingCount').textContent =
-        (data.tickets || []).filter(t => t.status === 'pending').length;
+        lastTicketsLoaded.filter(t => t.status === 'pending').length;
 
       const idx = currentFurgos.indexOf(routeSelect.value);
       routePrev.disabled = (routeSelect.value === '');
@@ -436,12 +813,14 @@
     document.getElementById('dateFrom').value = isoDaysAgo(6);
     document.getElementById('dateTo').value = todayISO();
     showScreen('panel');
+    lastTicketsLoaded = initialData.tickets || [];
     renderFurgos(initialData.furgos || []);
-    renderTable(initialData.tickets || []);
+    renderTable(lastTicketsLoaded);
+    renderFixedRateView();
     document.getElementById('totalAmount').textContent = fmtEUR(initialData.total);
     document.getElementById('totalCount').textContent = initialData.count;
     document.getElementById('pendingCount').textContent =
-      (initialData.tickets || []).filter(t => t.status === 'pending').length;
+      lastTicketsLoaded.filter(t => t.status === 'pending').length;
   }
 
   // Si ya había una sesión guardada en este navegador, recargar directamente el panel.
@@ -449,7 +828,11 @@
     (async ()=>{
       try {
         const { dateFrom, dateTo } = periodDates();
-        const data = await callApi({ username: session.username, password: session.password, dateFrom, dateTo });
+        const [data, fixedLogs] = await Promise.all([
+          callApi({ username: session.username, password: session.password, dateFrom, dateTo }),
+          fetchFixedRateLogs()
+        ]);
+        allFixedRateLogs = fixedLogs;
         session.company = data.company;
         enterPanel(data);
       } catch(e){
