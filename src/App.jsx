@@ -18894,6 +18894,22 @@ function App() {
           });
           const duplicateEmployeeNames = Object.keys(activeNameCounts).filter(k => activeNameCounts[k] > 1);
 
+          // Guardar el adelanto solo si cambió, comprobando que la nube lo confirma
+          const commitAdvance = async (item) => {
+            const raw = editingAdvances[item.id];
+            if (raw === undefined) return;
+            const amt = parseFloat(raw) || 0;
+            const previous = loadedAdvances[item.id] || 0;
+            setEditingAdvances(prev => { const n = { ...prev }; delete n[item.id]; return n; });
+            if (amt === previous) return;
+            const result = await savePayrollAdvances(adminIdPayroll, item.id, year, month, amt);
+            if (result && result.success) {
+              triggerAlert('Adelanto guardado: ' + amt.toFixed(2) + ' €');
+            } else {
+              triggerAlert('Adelanto guardado en este dispositivo, pero NO confirmado en la nube. Se reintentará automáticamente.', 'warning');
+            }
+          };
+
           const saveRate = (item, newRateStr) => {
             const newRate = parseFloat(newRateStr);
             if (isNaN(newRate) || newRate < 0) {
@@ -19016,18 +19032,25 @@ function App() {
                           <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
                               <input
-                                type="number" min="0" step="0.01" placeholder="0.00"
+                                type="number" inputMode="decimal" min="0" step="0.01" placeholder="0.00"
                                 value={editingAdvances[item.id] !== undefined ? editingAdvances[item.id] : (loadedAdvances[item.id] || '')}
                                 onChange={e => setEditingAdvances(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                onBlur={async (e) => {
-                                  const amt = parseFloat(e.target.value) || 0;
-                                  await savePayrollAdvances(adminIdPayroll, item.id, year, month, amt);
-                                  setEditingAdvances(prev => { const n = {...prev}; delete n[item.id]; return n; });
-                                  triggerAlert('Adelanto guardado: ' + amt.toFixed(2) + ' €');
-                                }}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitAdvance(item); } }}
+                                onBlur={() => commitAdvance(item)}
                                 style={{ width: '75px', padding: '3px 6px', fontSize: '0.8rem', margin: 0, height: '26px', background: '#1e1e2e', border: '1px solid rgba(251,146,60,0.5)', borderRadius: '6px', color: '#fb923c', textAlign: 'right' }}
                               />
                               <span style={{ fontSize: '0.75rem', color: '#fb923c' }}>€</span>
+                              {editingAdvances[item.id] !== undefined && (
+                                <button
+                                  type="button"
+                                  onMouseDown={e => e.preventDefault()}
+                                  onClick={() => commitAdvance(item)}
+                                  className="btn btn-primary"
+                                  style={{ padding: '4px 8px', fontSize: '0.75rem', margin: 0, height: '26px', whiteSpace: 'nowrap' }}
+                                >
+                                  💾 Guardar
+                                </button>
+                              )}
                             </div>
                           </td>
                           <td style={{ padding: '12px 16px', fontSize: '0.95rem', textAlign: 'right', fontWeight: '700', color: '#10b981' }}>

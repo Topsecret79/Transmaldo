@@ -1372,6 +1372,22 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       }
 
+      // Nóminas: adelantos y tarifas por día (descargar de la nube para verlos en cualquier dispositivo,
+      // sin pisar los cambios locales que todavía no se han podido subir)
+      try {
+        const dirtyPayroll = new Set(getPayrollDirtyKeys());
+        settings.forEach(s => {
+          if (!s || !s.key) return;
+          if (!(s.key.startsWith('payroll_advances_') || s.key.startsWith('payroll_day_rates_'))) return;
+          if (dirtyPayroll.has(s.key)) return;
+          if (s.value !== null && s.value !== undefined) localStorage.setItem(s.key, String(s.value));
+        });
+        // Reintentar subir lo pendiente
+        if (dirtyPayroll.size > 0) retryPendingPayrollUploads();
+      } catch (e) {
+        console.error('Error sincronizando nóminas desde la nube:', e);
+      }
+
       // Route Kilometers and Driver Daily Rates
       settings.forEach(s => {
         if (s.key && s.key.startsWith('route_kms_')) {
@@ -5830,6 +5846,54 @@ export async function savePvgvCatalog(catalog) {
   }
 }
 
+// ── NÓMINAS: subida a la nube con reintento ──────────────────────────────────
+function getPayrollDirtyKeys() {
+  try {
+    const arr = JSON.parse(localStorage.getItem('delivery_payroll_dirty_keys') || '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function setPayrollDirtyKeys(arr) {
+  try { localStorage.setItem('delivery_payroll_dirty_keys', JSON.stringify(Array.from(new Set(arr)))); } catch {}
+}
+function markPayrollKeyDirty(key) {
+  setPayrollDirtyKeys([...getPayrollDirtyKeys(), key]);
+}
+function markPayrollKeyClean(key) {
+  setPayrollDirtyKeys(getPayrollDirtyKeys().filter(k => k !== key));
+}
+
+// Sube una clave de nómina a Supabase comprobando el error real. Si falla, queda marcada como
+// pendiente y se reintenta en la siguiente sincronización.
+async function uploadPayrollKey(key, val) {
+  markPayrollKeyDirty(key);
+  if (!supabase) return { success: false, error: 'Sin conexión a la nube' };
+  try {
+    const { error } = await supabase.from('delivery_settings').upsert({ key, value: val });
+    if (error) {
+      console.error('Error guardando nómina en Supabase:', error);
+      return { success: false, error: error.message || String(error) };
+    }
+    markPayrollKeyClean(key);
+    return { success: true };
+  } catch (e) {
+    console.error('Error guardando nómina en Supabase:', e);
+    return { success: false, error: (e && e.message) || String(e) };
+  }
+}
+
+async function retryPendingPayrollUploads() {
+  if (!supabase) return;
+  for (const key of getPayrollDirtyKeys()) {
+    const val = localStorage.getItem(key);
+    if (val === null) { markPayrollKeyClean(key); continue; }
+    try {
+      const { error } = await supabase.from('delivery_settings').upsert({ key, value: val });
+      if (!error) markPayrollKeyClean(key);
+    } catch (e) {}
+  }
+}
+
 // ── NÓMINAS: Tarifa por día ───────────────────────────────────────────────────
 export function getPayrollDayRates(arg1, arg2, arg3, arg4) {
   let employeeId, year, month;
@@ -5868,10 +5932,7 @@ export async function savePayrollDayRates(arg1, arg2, arg3, arg4, arg5) {
   const key = 'payroll_day_rates_' + adminId + '_' + employeeId + '_' + year + '_' + monthStr;
   const val = JSON.stringify(rates || {});
   localStorage.setItem(key, val);
-  if (supabase) {
-    await supabase.from('delivery_settings').upsert({ key, value: val });
-  }
-  return { success: true };
+  return await uploadPayrollKey(key, val);
 }
 
 // ── NÓMINAS: Adelantos por mes ────────────────────────────────────────────────
@@ -5913,8 +5974,5 @@ export async function savePayrollAdvances(arg1, arg2, arg3, arg4, arg5) {
   const key = 'payroll_advances_' + adminId + '_' + employeeId + '_' + year + '_' + monthStr;
   const val = String(amount || 0);
   localStorage.setItem(key, val);
-  if (supabase) {
-    await supabase.from('delivery_settings').upsert({ key, value: val });
-  }
-  return { success: true };
+  return await uploadPayrollKey(key, val);
 }
