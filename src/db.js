@@ -332,6 +332,22 @@ export function setupRealtimeChannel() {
         lastRealtimePingOkAt = Date.now();
         scheduleSyncFromCloud('delivery_tickets');
       })
+      .on('broadcast', { event: 'ticket_deleted' }, (msg) => {
+        const payload = msg.payload || msg;
+        lastRealtimePingOkAt = Date.now();
+        if (payload && payload.ticketId) {
+          const delId = String(payload.ticketId);
+          inMemoryHistoricalTickets.delete(delId);
+          inMemoryHistoricalTickets.delete(payload.ticketId);
+          try {
+            const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+            const filtered = localTickets.filter(t => t && String(t.id) !== delId);
+            localStorage.setItem('delivery_tickets', JSON.stringify(filtered));
+          } catch (e) {}
+          notifySync();
+        }
+        scheduleSyncFromCloud('delivery_tickets');
+      })
       // 3. Escuchar cuando se abre/cierra un turno
       .on('broadcast', { event: 'shifts_updated' }, () => {
         console.log("⚡ Realtime Broadcast shifts_updated recibido");
@@ -398,6 +414,16 @@ export function setupRealtimeChannel() {
             } catch (e) {}
             return;
           }
+        }
+        if (payload.table === 'delivery_tickets' && payload.eventType === 'DELETE' && payload.old && payload.old.id !== undefined) {
+          const delId = String(payload.old.id);
+          inMemoryHistoricalTickets.delete(delId);
+          inMemoryHistoricalTickets.delete(payload.old.id);
+          try {
+            const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+            const filtered = localTickets.filter(t => t && String(t.id) !== delId);
+            localStorage.setItem('delivery_tickets', JSON.stringify(filtered));
+          } catch (e) {}
         }
         scheduleSyncFromCloud(payload.table);
       })
@@ -929,7 +955,14 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         });
       }
 
-      const pendingLocal = localCurrent.filter(t => t && t._syncStatus === 'pending');
+      const nowMs = Date.now();
+      const isFreshPending = (t) => {
+        if (!t || t._syncStatus !== 'pending' || force) return false;
+        if (isSaving > 0) return true;
+        const ts = t._pendingAt || (t.createdAt ? new Date(t.createdAt).getTime() : 0);
+        return ts > 0 && (nowMs - ts) < 90000;
+      };
+      const pendingLocal = localCurrent.filter(isFreshPending);
       const filteredCloud = cloudTickets.filter(t => t && !deletedStrIds.includes(String(t.id)));
 
       const localById = {};
@@ -939,7 +972,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         const localT = localById[String(cloudT.id)];
         if (!localT) return cloudT;
 
-        if (localT._syncStatus === 'pending') return localT;
+        if (isFreshPending(localT)) return localT;
 
         if (cloudT.routeOrder !== undefined && cloudT.routeOrder !== null) {
           return cloudT;
@@ -966,6 +999,15 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         const existingIndex = mergedTickets.findIndex(t => String(t.id) === String(histT.id));
         if (existingIndex === -1) {
           mergedTickets.push(histT);
+        }
+      });
+
+      // Purgar de la memoria RAM (inMemoryHistoricalTickets) cualquier ticket del periodo activo
+      // (>= syncCutoffDate) que ya no exista en Supabase (ej. eliminado o movido desde otro dispositivo).
+      const mergedIdsSet = new Set(mergedTickets.map(t => String(t.id)));
+      inMemoryHistoricalTickets.forEach((memT, memId) => {
+        if (!memT || !memT.date || (memT.date >= syncCutoffDate && !mergedIdsSet.has(String(memId)))) {
+          inMemoryHistoricalTickets.delete(memId);
         }
       });
 
@@ -3083,8 +3125,9 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
 // pueda confirmar antes de dar el borrado por hecho.
 export async function deleteTicket(ticketId) {
   inMemoryHistoricalTickets.delete(ticketId);
+  inMemoryHistoricalTickets.delete(String(ticketId));
   const tickets = getTickets();
-  const filtered = tickets.filter(t => t.id !== ticketId);
+  const filtered = tickets.filter(t => String(t.id) !== String(ticketId));
   saveTickets(filtered);
 
   // Track tombstone deleted ID to avoid re-downloading during background sync
@@ -3103,6 +3146,7 @@ export async function deleteTicket(ticketId) {
       try {
         const { error: directErr } = await supabase.from('delivery_tickets').delete().eq('id', ticketId);
         if (!directErr) {
+          broadcastRealtimeEvent('ticket_deleted', { ticketId: String(ticketId), timestamp: Date.now() });
           return { success: true };
         }
         return { success: false, error: directErr };
@@ -3110,6 +3154,7 @@ export async function deleteTicket(ticketId) {
         return { success: false, error: ex };
       }
     }
+    broadcastRealtimeEvent('ticket_deleted', { ticketId: String(ticketId), timestamp: Date.now() });
     return { success: true };
   }
   return { success: true };

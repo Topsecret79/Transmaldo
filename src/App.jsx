@@ -5788,7 +5788,7 @@ function App() {
         return match ? match : t;
       });
       setTickets(updatedAllTickets);
-      saveTickets(updatedAllTickets);
+      await saveTickets(updatedAllTickets);
 
       saveRouteManualStatus(targetFurgo, targetDate, false);
 
@@ -6077,7 +6077,7 @@ function App() {
         const match = orderedSequence.find(x => x.id === t.id);
         return match ? match : t;
       });
-      saveTickets(updatedAll);
+      await saveTickets(updatedAll);
 
       loadData();
     } catch (err) {
