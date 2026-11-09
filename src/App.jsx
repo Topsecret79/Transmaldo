@@ -19181,8 +19181,19 @@ function App() {
                         // Calculate traveled kms
                         let kmText = '-';
                         if (s.status === 'closed') {
+                          const sStart = s.startKms ?? s.summary?.startKms ?? null;
+                          const sEnd = s.endKms ?? s.summary?.endKms ?? null;
+                          const odoKms = (sStart != null && sEnd != null && Number(sEnd) >= Number(sStart))
+                            ? (Number(sEnd) - Number(sStart))
+                            : 0;
                           const routeKms = getRouteKms(s.furgoId, s.date);
-                          kmText = routeKms > 0 ? `${routeKms} km` : 'Sin Kms';
+                          if (odoKms > 0) {
+                            kmText = `${odoKms} km (${Number(sStart).toLocaleString('es-ES')} → ${Number(sEnd).toLocaleString('es-ES')})`;
+                          } else if (routeKms > 0) {
+                            kmText = `${routeKms} km`;
+                          } else {
+                            kmText = 'Sin Kms';
+                          }
                         } else if (s.openedAt) {
                           kmText = 'En curso';
                         } else {
@@ -27509,8 +27520,12 @@ function App() {
                   <>
                     <div><strong>Furgoneta:</strong> {furgoLabel}</div>
                     <div><strong>Fecha:</strong> {targetDate}</div>
+                    {existingShift?.customDriver && <div><strong>Chofer:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>👤 {existingShift.customDriver}</span></div>}
                     {routeNameText && <div><strong>Ruta:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📍 {routeNameText}</span></div>}
                     {existingShift?.matricula && <div><strong>Vehículo (Matrícula):</strong> <span style={{ color: 'var(--danger)', fontWeight: '600' }}>🚐 {existingShift.matricula}</span></div>}
+                    {((existingShift?.startKms ?? summary?.startKms) != null && (existingShift?.endKms ?? summary?.endKms) != null) && (
+                      <div><strong>Odómetro:</strong> <span style={{ color: '#10b981', fontWeight: '700' }}>🚗 {Number(existingShift?.startKms ?? summary?.startKms).toLocaleString('es-ES')} → {Number(existingShift?.endKms ?? summary?.endKms).toLocaleString('es-ES')} ({Number(existingShift?.endKms ?? summary?.endKms) - Number(existingShift?.startKms ?? summary?.startKms)} km)</span></div>
+                    )}
                     {existingShift?.helper && <div><strong>Ayudante:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>🤝 {existingShift.helper}</span></div>}
                     {existingShift?.helper2 && <div><strong>Ayudante 2:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>🤝 {existingShift.helper2}</span></div>}
                     <div style={{ borderBottom: '1px dashed var(--panel-border)', margin: '5px 0' }}></div>
