@@ -1090,11 +1090,15 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       // and the cloud version is empty, prefer the local data to avoid losing unsaved state
       const mergedShifts = [...filteredCloudShifts];
 
+      const todayIsoStr = new Date().toISOString().split('T')[0];
       const pendingLocalShifts = localExisting.filter(s => s && s._syncStatus === 'pending');
       pendingLocalShifts.forEach(localS => {
         const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
         if (cloudIdx !== -1) {
           const cloud = mergedShifts[cloudIdx];
+          if (cloud.status === 'closed' && cloud.date && cloud.date < todayIsoStr) {
+            return;
+          }
           // REGLA DE INTEGRIDAD: Si en la nube ya está CERRADO, nunca se revierte a 'open'
           const effectiveStatus = (cloud.status === 'closed') ? 'closed' : localS.status;
           const effectiveClosedAt = (cloud.status === 'closed') ? (cloud.closedAt || localS.closedAt) : localS.closedAt;

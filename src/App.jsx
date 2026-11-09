@@ -15898,7 +15898,12 @@ function App() {
               </select>
             </div>
             <button
-              onClick={() => { reinitSupabase(); setAlertMsg({ text: 'Sincronizando con la nube...', type: 'success' }); }}
+              onClick={async () => {
+                setAlertMsg({ text: 'Sincronizando con la nube...', type: 'info' });
+                try { await syncFromCloud(true); } catch (e) {}
+                loadData();
+                setAlertMsg({ text: 'Datos de flota sincronizados con la nube ✓', type: 'success' });
+              }}
               className="action-btn"
               style={{ padding: '8px 12px', fontSize: '0.8rem', background: 'rgba(255, 255, 255, 0.05)', display: 'flex', alignItems: 'center', gap: '4px' }}
             >
