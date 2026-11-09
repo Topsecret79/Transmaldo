@@ -722,6 +722,18 @@ function getDraftVal(key, defaultVal) {
   return defaultVal;
 }
 
+// Decide si un registro del diario de km corresponde al mismo turno que se está guardando.
+// Misma fecha y matrícula NO basta: dos choferes pueden usar la misma furgoneta el mismo día
+// (uno detrás de otro) y no deben pisarse. Es el mismo turno si coincide el km de inicio,
+// el km de fin o el chofer registrado en las notas.
+const isSameDailyLogSlot = (log, date, plate, kmStart, kmEnd, driverName) => {
+  if (!log || log.date !== date || log.plate !== plate) return false;
+  if (Number(log.kmStart) === Number(kmStart)) return true;
+  if (Number(log.kmEnd) === Number(kmEnd)) return true;
+  if (driverName && typeof log.notes === 'string' && log.notes.includes(driverName)) return true;
+  return false;
+};
+
 function App() {
   const getSourceFromNotes = (notes, directSource = null) => {
     if (directSource) {
@@ -7111,7 +7123,7 @@ function App() {
         // uno para esa fecha y matrícula — si el turno se reabre y se vuelve a
         // cerrar, el registro se duplicaba sin parar. Ahora se reemplaza el
         // existente (si lo hay) en vez de añadir uno nuevo encima.
-        const existingIdx = currentDailyLogs.findIndex(l => l.date === date && l.plate === (driverMatricula || 'DESCONOCIDO'));
+        const existingIdx = currentDailyLogs.findIndex(l => isSameDailyLogSlot(l, date, driverMatricula || 'DESCONOCIDO', start, end, driverCustomDriver || currentUser.label));
         let updatedDailyLogs;
         if (existingIdx !== -1) {
           updatedDailyLogs = currentDailyLogs.map((l, i) => i === existingIdx ? newDailyLog : l);
@@ -7408,7 +7420,7 @@ function App() {
         notes: `Editado por administrador en control de flota`
       };
 
-      const existingIdx = currentDailyLogs.findIndex(l => l.date === shift.date && l.plate === (editAssignPlate || 'DESCONOCIDO'));
+      const existingIdx = currentDailyLogs.findIndex(l => isSameDailyLogSlot(l, shift.date, editAssignPlate || 'DESCONOCIDO', start, end, shift.customDriver));
       let updatedDailyLogs;
       if (existingIdx !== -1) {
         updatedDailyLogs = currentDailyLogs.map((l, i) => i === existingIdx ? newDailyLog : l);
