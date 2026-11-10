@@ -27899,85 +27899,41 @@ function App() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'nowrap' }}>
           {!isAdminOrSuper && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              {isTrackingActive ? (
-                <>
-                  <div 
-                    className="user-badge"
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '5px', 
-                      cursor: 'pointer',
-                      borderColor: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.35)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.35)' : 'rgba(255, 255, 255, 0.1)',
-                      background: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.08)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.08)' : 'rgba(255, 255, 255, 0.02)',
-                    }}
-                    onClick={() => {
-                      localStorage.setItem('delivery_device_gps_enabled', 'true');
-                      setIsTrackingActive(false);
-                      setTimeout(() => setIsTrackingActive(true), 200);
-                      triggerAlert('Reconectando GPS y enviando ubicación...');
-                    }}
-                    title="GPS activo en este móvil. Toca para refrescar señal."
-                  >
-                    <span style={{ 
-                      width: '8px', 
-                      height: '8px', 
-                      borderRadius: '50%', 
-                      backgroundColor: gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af',
-                      boxShadow: gpsStatus === 'active' ? '0 0 8px var(--success)' : 'none',
-                      display: 'inline-block'
-                    }}></span>
-                    <span style={{ fontSize: '0.76rem', fontWeight: '700', color: gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af' }}>
-                      {gpsStatus === 'active' ? 'GPS Activo' : gpsStatus === 'error' ? 'GPS Offline' : 'GPS...'}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      localStorage.setItem('delivery_device_gps_enabled', 'false');
-                      setIsTrackingActive(false);
-                      triggerAlert('👁️ Modo Consulta activado en este móvil: tu GPS está pausado para no sobrescribir al chofer en ruta.', 'info');
-                    }}
-                    style={{
-                      fontSize: '0.71rem',
-                      padding: '4px 7px',
-                      borderRadius: '8px',
-                      background: 'rgba(245, 158, 11, 0.12)',
-                      border: '1px solid rgba(245, 158, 11, 0.35)',
-                      color: '#fde68a',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                    title="Si abriste esta ruta desde otro móvil solo para mirar, pulsa aquí para no enviar tu ubicación GPS"
-                  >
-                    👁️ Solo mirar
-                  </button>
-                </>
-              ) : (
-                <div
-                  className="user-badge"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    cursor: 'pointer',
-                    borderColor: 'rgba(245, 158, 11, 0.45)',
-                    background: 'rgba(245, 158, 11, 0.14)',
-                  }}
-                  onClick={() => {
-                    localStorage.setItem('delivery_device_gps_enabled', 'true');
-                    setIsTrackingActive(true);
-                    triggerAlert('🟢 GPS reactivado en este móvil: enviando ubicación de la ruta.', 'success');
-                  }}
-                  title="Modo Consulta activo (este móvil NO envía GPS). Toca aquí si eres el chofer en calle para activar el GPS."
-                >
-                  <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#fde68a' }}>
-                    👁️ Solo mirar (Activar GPS)
-                  </span>
-                </div>
-              )}
+            <div 
+              className="user-badge"
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '5px', 
+                cursor: 'pointer',
+                padding: '4px 8px',
+                borderColor: !isTrackingActive ? 'rgba(245, 158, 11, 0.45)' : gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.3)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                background: !isTrackingActive ? 'rgba(245, 158, 11, 0.12)' : gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.05)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.05)' : 'rgba(255, 255, 255, 0.02)',
+              }}
+              onClick={() => {
+                if (isTrackingActive) {
+                  localStorage.setItem('delivery_device_gps_enabled', 'false');
+                  setIsTrackingActive(false);
+                  triggerAlert('👁️ GPS pausado en este móvil (Modo solo mirar)', 'info');
+                } else {
+                  localStorage.setItem('delivery_device_gps_enabled', 'true');
+                  setIsTrackingActive(true);
+                  triggerAlert('🟢 GPS activado en este móvil', 'success');
+                }
+              }}
+              title={isTrackingActive ? 'GPS activo. Toca para pausar GPS en este móvil (modo solo mirar).' : 'GPS pausado en este móvil. Toca para volver a activar el GPS.'}
+            >
+              <span style={{ 
+                width: '8px', 
+                height: '8px', 
+                borderRadius: '50%', 
+                backgroundColor: !isTrackingActive ? '#fbbf24' : gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af',
+                boxShadow: (isTrackingActive && gpsStatus === 'active') ? '0 0 8px var(--success)' : 'none',
+                display: 'inline-block'
+              }}></span>
+              <span style={{ fontSize: '0.75rem', fontWeight: '600', color: !isTrackingActive ? '#fde68a' : gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                {!isTrackingActive ? 'GPS Off' : gpsStatus === 'active' ? 'GPS' : gpsStatus === 'error' ? 'GPS Err' : 'GPS'}
+              </span>
             </div>
           )}
           <div className="user-badge" title={`Rol: ${currentUser.role}\nPermisos: ${JSON.stringify(loggedInUserObj?.permissions || {})}`}>
