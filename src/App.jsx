@@ -1989,8 +1989,15 @@ function App() {
     }));
   };
   const [changelogSearch, setChangelogSearch] = useState('');
-  const [isTrackingActive, setIsTrackingActive] = useState(true);
+  const [isTrackingActive, setIsTrackingActive] = useState(() => {
+    try {
+      return localStorage.getItem('delivery_device_gps_enabled') !== 'false';
+    } catch (e) {
+      return true;
+    }
+  });
   const [gpsStatus, setGpsStatus] = useState('inactive'); // 'active' | 'error' | 'inactive'
+  const [driverLocationsTick, setDriverLocationsTick] = useState(0);
   const [routeStats, setRouteStats] = useState({});
   const watchIdRef = useRef(null);
   const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
@@ -3060,6 +3067,7 @@ function App() {
     };
 
     const handleDriverLocationUpdate = () => {
+      setDriverLocationsTick(t => t + 1);
       if (typeof window.updateLiveDriversOnMapFn === 'function') {
         window.updateLiveDriversOnMapFn();
       }
@@ -3095,6 +3103,7 @@ function App() {
               });
               if (Object.keys(locations).length > 0) {
                 localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+                setDriverLocationsTick(t => t + 1);
                 if (typeof window.updateLiveDriversOnMapFn === 'function') {
                   window.updateLiveDriversOnMapFn();
                 }
@@ -3339,13 +3348,27 @@ function App() {
             if (!updatedAtStr) return;
             const locTime = new Date(updatedAtStr).getTime();
             if (isNaN(locTime) || Date.now() - locTime > 48 * 3600 * 1000) return;
-            const furgoLabel = escapeHtml(users.find(u => u.id === fid)?.label || fid);
+            const rawLabel = users.find(u => u.id === fid)?.label || fid;
+            const furgoLabel = escapeHtml(rawLabel);
+            const diffMins = Math.max(0, Math.round((Date.now() - locTime) / 60000));
+            const isRecentGps = diffMins <= 15;
+            const relAgeText = diffMins < 1 ? 'ahora mismo' : (diffMins < 60 ? 'hace ' + diffMins + ' min' : 'hace ' + Math.floor(diffMins / 60) + 'h ' + (diffMins % 60) + 'm');
             const dEl = document.createElement('div');
-            dEl.style.cssText = 'width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.2);border:2px solid #a78bfa;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px #a78bfa;animation:gpsPulse 2s infinite ease-in-out;font-size:17px;cursor:pointer;position:absolute;';
-            dEl.textContent = '🚚';
-            const dPopupHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.83rem;color:#fff;padding:4px;"><strong style="color:#a78bfa;">🚚 ' + furgoLabel + ' (En Vivo)</strong><div style="margin-top:4px;">Última señal: <strong>' + new Date(locTime).toLocaleTimeString() + '</strong></div><div style="margin-top:2px;font-size:0.73rem;color:#9ca3af;">GPS: ' + latNum.toFixed(5) + ', ' + lngNum.toFixed(5) + '</div></div>';
+            dEl.className = 'map-driver-live-marker';
+            dEl.dataset.furgoId = fid;
+            dEl.style.cssText = 'padding:3px 9px;border-radius:999px;background:' + (isRecentGps ? 'linear-gradient(135deg,#065f46,#047857)' : 'linear-gradient(135deg,#312e81,#4c1d95)') + ';border:2px solid ' + (isRecentGps ? '#34d399' : '#c084fc') + ';color:#ffffff;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;white-space:nowrap;box-shadow:0 0 14px ' + (isRecentGps ? 'rgba(16,185,129,0.9)' : 'rgba(167,139,250,0.85)') + ',0 2px 8px rgba(0,0,0,0.65);cursor:pointer;user-select:none;z-index:65;';
+            dEl.textContent = (isRecentGps ? '🟢 🚚 ' : '🚚 ') + rawLabel;
+            const gmapsUrl = 'https://www.google.com/maps?q=' + latNum + ',' + lngNum;
+            const dPopupHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.82rem;color:#fff;padding:4px;min-width:170px;">' +
+              '<div style="font-weight:800;font-size:0.9rem;color:' + (isRecentGps ? '#34d399' : '#c084fc') + ';margin-bottom:4px;">🚚 ' + furgoLabel + '</div>' +
+              '<div style="margin-top:2px;">Señal: <strong>' + (isRecentGps ? '🟢 En vivo (' + relAgeText + ')' : '🟡 ' + relAgeText) + '</strong></div>' +
+              '<div style="margin-top:2px;font-size:0.76rem;color:#cbd5e1;">Hora: <strong>' + new Date(locTime).toLocaleTimeString() + '</strong></div>' +
+              '<div style="margin-top:2px;font-size:0.72rem;color:#9ca3af;">GPS: ' + latNum.toFixed(5) + ', ' + lngNum.toFixed(5) + '</div>' +
+              '<div style="margin-top:6px;"><a href="' + gmapsUrl + '" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;font-weight:700;text-decoration:none;font-size:0.76rem;">📍 Abrir ubicación en Google Maps ↗</a></div>' +
+              '</div>';
             const dPopup = new mapboxgl.Popup({ offset: 18, className: 'mapbox-custom-popup' }).setHTML(dPopupHtml);
             const dMarker = new mapboxgl.Marker({ element: dEl }).setLngLat([lngNum, latNum]).setPopup(dPopup).addTo(map);
+            dMarker._furgoId = fid;
             mapDriverMarkersRef.current.push(dMarker);
           });
         };
@@ -21916,6 +21939,212 @@ function App() {
               );
             })}
           </div>
+
+          {/* Barra rápida: Localizar Choferes en Vivo por GPS */}
+          <div style={{
+            marginTop: '4px',
+            paddingTop: '7px',
+            borderTop: '1px dashed rgba(255, 255, 255, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '6px'
+          }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#a7f3d0', whiteSpace: 'nowrap' }}>
+              📍 Localizar Chofer (GPS):
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center', flex: 1 }}>
+              {(() => {
+                // Lectura reactiva ligada a driverLocationsTick
+                void driverLocationsTick;
+                const liveLocations = getDriverLocations() || {};
+
+                const pullFreshLocations = async () => {
+                  const supabaseClient = getSupabaseClient();
+                  if (!supabaseClient) return liveLocations;
+                  try {
+                    const { data, error } = await supabaseClient.from('delivery_settings').select('key, value').like('key', 'loc_%');
+                    if (data && !error) {
+                      const fresh = { ...liveLocations };
+                      data.forEach(s => {
+                        if (s.key && s.key.startsWith('loc_')) {
+                          const fid = s.key.substring(4);
+                          try {
+                            const val = JSON.parse(s.value);
+                            if (val && val.lat !== undefined && val.lng !== undefined) {
+                              fresh[fid] = {
+                                lat: parseFloat(val.lat),
+                                lng: parseFloat(val.lng),
+                                updatedAt: val.updatedAt || new Date().toISOString()
+                              };
+                            }
+                          } catch (e) {}
+                        }
+                      });
+                      localStorage.setItem('delivery_driver_locations', JSON.stringify(fresh));
+                      setDriverLocationsTick(t => t + 1);
+                      if (typeof window.updateLiveDriversOnMapFn === 'function') {
+                        window.updateLiveDriversOnMapFn();
+                      }
+                      return fresh;
+                    }
+                  } catch (e) {}
+                  return liveLocations;
+                };
+
+                const handleFlyToDriver = async (driverObj) => {
+                  const fid = driverObj.id;
+                  const label = driverObj.label || fid;
+                  // Asegurar que la ruta esté visible en el filtro del mapa
+                  if (!isAllFurgosSelected && !mapSelectedFurgos.includes(fid)) {
+                    setMapSelectedFurgos(prev => [...prev, fid]);
+                  }
+                  const freshLocs = await pullFreshLocations();
+                  const loc = freshLocs[fid];
+                  const map = mapInstanceRef.current;
+                  if (loc && loc.lat != null && loc.lng != null && !isNaN(parseFloat(loc.lat)) && !isNaN(parseFloat(loc.lng))) {
+                    const latNum = parseFloat(loc.lat);
+                    const lngNum = parseFloat(loc.lng);
+                    const locTime = new Date(loc.updatedAt || Date.now()).getTime();
+                    const diffMins = Math.max(0, Math.round((Date.now() - locTime) / 60000));
+                    const ageTxt = diffMins < 1 ? 'ahora mismo' : (diffMins < 60 ? `hace ${diffMins} min` : `hace ${Math.floor(diffMins / 60)}h ${diffMins % 60}m`);
+                    if (map) {
+                      map.flyTo({ center: [lngNum, latNum], zoom: 16, essential: true });
+                      setTimeout(() => {
+                        try {
+                          if (typeof window.updateLiveDriversOnMapFn === 'function') window.updateLiveDriversOnMapFn();
+                          const marker = (mapDriverMarkersRef.current || []).find(m => m && m._furgoId === fid);
+                          if (marker && marker.getPopup() && !marker.getPopup().isOpen()) {
+                            marker.togglePopup();
+                          }
+                        } catch (e) {}
+                      }, 350);
+                    }
+                    triggerAlert(`📍 ${label}: ubicación GPS localizada (${ageTxt})`, 'info');
+                    return;
+                  }
+                  // Fallback: última parada completada o primera pendiente del día
+                  const driverDayStops = tickets.filter(t => t && t.date === mapFilterDate && matchesSingleFurgo(t, fid) && t.lat != null && t.lng != null);
+                  const lastDone = [...driverDayStops].reverse().find(t => t.status === 'success' || t.status === 'failed');
+                  const targetStop = lastDone || driverDayStops[0];
+                  if (targetStop && map) {
+                    const sLat = parseFloat(targetStop.completedLat || targetStop.lat);
+                    const sLng = parseFloat(targetStop.completedLng || targetStop.lng);
+                    if (!isNaN(sLat) && !isNaN(sLng)) {
+                      map.flyTo({ center: [sLng, sLat], zoom: 15, essential: true });
+                      triggerAlert(`ℹ️ ${label} no tiene señal GPS reciente. Mostrando su parada en ruta.`, 'info');
+                      return;
+                    }
+                  }
+                  triggerAlert(`⚠️ No hay señal GPS ni paradas con coordenadas para ${label}.`, 'error');
+                };
+
+                const handleFitAllTrucks = async () => {
+                  const freshLocs = await pullFreshLocations();
+                  const map = mapInstanceRef.current;
+                  if (!map) return;
+                  const coords = [];
+                  activeRepartidores.forEach(u => {
+                    const loc = freshLocs[u.id];
+                    if (loc && loc.lat != null && loc.lng != null) {
+                      const la = parseFloat(loc.lat), lo = parseFloat(loc.lng);
+                      const locTime = new Date(loc.updatedAt || 0).getTime();
+                      if (!isNaN(la) && !isNaN(lo) && Date.now() - locTime <= 48 * 3600 * 1000) {
+                        coords.push([lo, la]);
+                      }
+                    }
+                  });
+                  if (coords.length === 0) {
+                    triggerAlert('⚠️ Ningún chofer tiene señal GPS activa en las últimas 48h.', 'error');
+                    return;
+                  }
+                  if (!isAllFurgosSelected) {
+                    setMapFilterFurgo('all');
+                  }
+                  if (coords.length === 1) {
+                    map.flyTo({ center: coords[0], zoom: 15, essential: true });
+                  } else {
+                    const lngs = coords.map(c => c[0]), lats = coords.map(c => c[1]);
+                    map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 70, maxZoom: 15 });
+                  }
+                  triggerAlert(`🛰️ Mostrando ${coords.length} furgoneta(s) en vivo en el mapa`, 'info');
+                };
+
+                return (
+                  <>
+                    {activeRepartidores.map(u => {
+                      const loc = liveLocations[u.id];
+                      const locTime = loc && (loc.updatedAt || loc.timestamp) ? new Date(loc.updatedAt || loc.timestamp).getTime() : 0;
+                      const hasValidGps = loc && loc.lat != null && loc.lng != null && !isNaN(locTime) && (Date.now() - locTime <= 48 * 3600 * 1000);
+                      const diffMins = hasValidGps ? Math.max(0, Math.round((Date.now() - locTime) / 60000)) : null;
+                      const isLive = hasValidGps && diffMins <= 15;
+                      const timeBadge = !hasValidGps
+                        ? 'sin GPS'
+                        : diffMins < 1
+                          ? 'ahora'
+                          : diffMins < 60
+                            ? `${diffMins}m`
+                            : new Date(locTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                      return (
+                        <button
+                          key={`gps_loc_${u.id}`}
+                          type="button"
+                          onClick={() => handleFlyToDriver(u)}
+                          style={{
+                            fontSize: '0.73rem',
+                            padding: '3px 9px',
+                            borderRadius: '999px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: isLive
+                              ? 'rgba(16, 185, 129, 0.18)'
+                              : hasValidGps
+                                ? 'rgba(139, 92, 246, 0.15)'
+                                : 'rgba(255, 255, 255, 0.04)',
+                            border: isLive
+                              ? '1.5px solid #34d399'
+                              : hasValidGps
+                                ? '1px solid rgba(167, 139, 250, 0.45)'
+                                : '1px solid var(--panel-border)',
+                            color: isLive ? '#a7f3d0' : hasValidGps ? '#ddd6fe' : 'var(--text-muted)',
+                            transition: 'all 0.15s'
+                          }}
+                          title={hasValidGps ? `Ir a la ubicación GPS de ${u.label} (última señal: ${new Date(locTime).toLocaleTimeString()})` : `${u.label} sin señal GPS reciente (toca para ir a su ruta)`}
+                        >
+                          <span>{isLive ? '🟢' : hasValidGps ? '🟣' : '⚪'}</span>
+                          <span>📍 {u.label}</span>
+                          <span style={{ fontSize: '0.67rem', opacity: 0.85 }}>({timeBadge})</span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={handleFitAllTrucks}
+                      style={{
+                        fontSize: '0.72rem',
+                        padding: '3px 9px',
+                        borderRadius: '999px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        background: 'rgba(56, 189, 248, 0.14)',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                        color: '#bae6fd',
+                        marginLeft: 'auto'
+                      }}
+                      title="Actualizar GPS desde la nube y encuadrar todas las furgonetas en el mapa"
+                    >
+                      🛰️ Ver todos los camiones
+                    </button>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -27579,34 +27808,85 @@ function App() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'nowrap' }}>
           {!isAdminOrSuper && (
-            <div 
-              className="user-badge"
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '6px', 
-                cursor: 'pointer',
-                borderColor: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.3)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.3)' : 'rgba(255, 255, 255, 0.1)',
-                background: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.05)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.05)' : 'rgba(255, 255, 255, 0.02)',
-              }}
-              onClick={() => {
-                setIsTrackingActive(false);
-                setTimeout(() => setIsTrackingActive(true), 200);
-                triggerAlert('Reconectando GPS y solicitando ubicación...');
-              }}
-              title={gpsStatus === 'active' ? 'GPS Conectado. Haz clic para refrescar.' : gpsStatus === 'error' ? 'GPS Offline. Haz clic para reconectar.' : 'GPS Apagado'}
-            >
-              <span style={{ 
-                width: '8px', 
-                height: '8px', 
-                borderRadius: '50%', 
-                backgroundColor: gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af',
-                boxShadow: gpsStatus === 'active' ? '0 0 8px var(--success)' : 'none',
-                display: 'inline-block'
-              }}></span>
-              <span style={{ fontSize: '0.78rem', fontWeight: '600', color: gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af' }}>
-                {gpsStatus === 'active' ? 'GPS' : gpsStatus === 'error' ? 'GPS Offline' : 'GPS Apagado'}
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {isTrackingActive ? (
+                <>
+                  <div 
+                    className="user-badge"
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '5px', 
+                      cursor: 'pointer',
+                      borderColor: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.35)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.35)' : 'rgba(255, 255, 255, 0.1)',
+                      background: gpsStatus === 'active' ? 'rgba(52, 211, 153, 0.08)' : gpsStatus === 'error' ? 'rgba(248, 113, 113, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                    }}
+                    onClick={() => {
+                      localStorage.setItem('delivery_device_gps_enabled', 'true');
+                      setIsTrackingActive(false);
+                      setTimeout(() => setIsTrackingActive(true), 200);
+                      triggerAlert('Reconectando GPS y enviando ubicación...');
+                    }}
+                    title="GPS activo en este móvil. Toca para refrescar señal."
+                  >
+                    <span style={{ 
+                      width: '8px', 
+                      height: '8px', 
+                      borderRadius: '50%', 
+                      backgroundColor: gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af',
+                      boxShadow: gpsStatus === 'active' ? '0 0 8px var(--success)' : 'none',
+                      display: 'inline-block'
+                    }}></span>
+                    <span style={{ fontSize: '0.76rem', fontWeight: '700', color: gpsStatus === 'active' ? 'var(--success)' : gpsStatus === 'error' ? 'var(--danger)' : '#9ca3af' }}>
+                      {gpsStatus === 'active' ? 'GPS Activo' : gpsStatus === 'error' ? 'GPS Offline' : 'GPS...'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.setItem('delivery_device_gps_enabled', 'false');
+                      setIsTrackingActive(false);
+                      triggerAlert('👁️ Modo Consulta activado en este móvil: tu GPS está pausado para no sobrescribir al chofer en ruta.', 'info');
+                    }}
+                    style={{
+                      fontSize: '0.71rem',
+                      padding: '4px 7px',
+                      borderRadius: '8px',
+                      background: 'rgba(245, 158, 11, 0.12)',
+                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                      color: '#fde68a',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                    title="Si abriste esta ruta desde otro móvil solo para mirar, pulsa aquí para no enviar tu ubicación GPS"
+                  >
+                    👁️ Solo mirar
+                  </button>
+                </>
+              ) : (
+                <div
+                  className="user-badge"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    cursor: 'pointer',
+                    borderColor: 'rgba(245, 158, 11, 0.45)',
+                    background: 'rgba(245, 158, 11, 0.14)',
+                  }}
+                  onClick={() => {
+                    localStorage.setItem('delivery_device_gps_enabled', 'true');
+                    setIsTrackingActive(true);
+                    triggerAlert('🟢 GPS reactivado en este móvil: enviando ubicación de la ruta.', 'success');
+                  }}
+                  title="Modo Consulta activo (este móvil NO envía GPS). Toca aquí si eres el chofer en calle para activar el GPS."
+                >
+                  <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#fde68a' }}>
+                    👁️ Solo mirar (Activar GPS)
+                  </span>
+                </div>
+              )}
             </div>
           )}
           <div className="user-badge" title={`Rol: ${currentUser.role}\nPermisos: ${JSON.stringify(loggedInUserObj?.permissions || {})}`}>
