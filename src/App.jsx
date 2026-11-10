@@ -1997,6 +1997,8 @@ function App() {
   const [mapFilterFurgo, _setMapFilterFurgo] = useState('all');
   const [mapSelectedFurgos, setMapSelectedFurgos] = useState([]); // [] = todas las rutas
   const [mapFilterSource, setMapFilterSource] = useState('all'); // 'all' | 'urbantz' | 'pda' | 'both'
+  const [mapFilterTimeSlot, setMapFilterTimeSlot] = useState('all'); // 'all' | 'morning' | 'afternoon' | 'any' (SuperAdmin)
+  const [mapFilterCompletion, setMapFilterCompletion] = useState('all'); // 'all' | 'pending' | 'completed' (SuperAdmin)
 
   const setMapFilterFurgo = (val) => {
     if (!val || val === 'all') {
@@ -2062,6 +2064,42 @@ function App() {
     if (mapFilterSource === 'pda') return effSrc === 'pda' || effSrc === 'both';
     if (mapFilterSource === 'both') return effSrc === 'both';
     return true;
+  };
+
+  const getEffectiveMapTimeSlot = (t) => {
+    if (!t) return 'any';
+    const parsed = parseTicketNotes(t.notes);
+    const rawSlot = (t.timeSlot && t.timeSlot !== 'any') ? t.timeSlot : (parsed.timeSlot || 'any');
+    if (rawSlot === 'morning') return 'morning';
+    if (rawSlot === 'afternoon' || getTicketServiceType(t) === 'tarde') return 'afternoon';
+    return 'any';
+  };
+
+  const matchesMapTimeSlotFilter = (t) => {
+    if (!t) return false;
+    if (currentUser?.role !== 'superadmin' || !mapFilterTimeSlot || mapFilterTimeSlot === 'all') return true;
+    return getEffectiveMapTimeSlot(t) === mapFilterTimeSlot;
+  };
+
+  const matchesMapCompletionFilter = (t) => {
+    if (!t) return false;
+    if (currentUser?.role !== 'superadmin' || !mapFilterCompletion || mapFilterCompletion === 'all') return true;
+    const isDone = t.status === 'success' || t.status === 'failed';
+    if (mapFilterCompletion === 'pending') return !isDone;
+    if (mapFilterCompletion === 'completed') return isDone;
+    return true;
+  };
+
+  const getRealRouteStopNumbersMap = (targetDate) => {
+    const stopMap = {};
+    const perFurgoTotal = {};
+    const allDaySorted = sortTicketsByRouteOrder((tickets || []).filter(tk => tk && tk.date === targetDate));
+    allDaySorted.forEach(tk => {
+      const fid = tk.furgoId || '_none';
+      perFurgoTotal[fid] = (perFurgoTotal[fid] || 0) + 1;
+      stopMap[tk.id] = perFurgoTotal[fid];
+    });
+    return { stopMap, perFurgoTotal };
   };
 
   const isDriverSelectedOnMap = (fid) => {
@@ -3112,12 +3150,14 @@ function App() {
       const renderMapContent = () => {
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
         const selectedFurgosKey = mapSelectedFurgos.length > 0 ? mapSelectedFurgos.join(',') : mapFilterFurgo;
-        const currentFilterKey = activeTab + '_' + targetDate + '_' + selectedFurgosKey + '_' + mapFilterSource + '_' + shiftSummaryDate;
+        const currentFilterKey = activeTab + '_' + targetDate + '_' + selectedFurgosKey + '_' + mapFilterSource + '_' + mapFilterTimeSlot + '_' + mapFilterCompletion + '_' + shiftSummaryDate;
         const dayTickets = tickets.filter(t => {
           if (!t || t.date !== targetDate) return false;
           if (isAdminMap) {
             if (!matchesMapFurgoFilter(t)) return false;
             if (!matchesMapSourceFilter(t)) return false;
+            if (!matchesMapTimeSlotFilter(t)) return false;
+            if (!matchesMapCompletionFilter(t)) return false;
           }
           else { if (t.furgoId !== currentUser?.id) return false; }
           const la = parseFloat(t.lat), lo = parseFloat(t.lng);
@@ -3140,6 +3180,7 @@ function App() {
         }
 
         const sortedDayTickets = sortTicketsByRouteOrder(dayTickets);
+        const { stopMap: realStopMap, perFurgoTotal: realFurgoTotal } = getRealRouteStopNumbersMap(targetDate);
         const ticketsByDriver = {};
         sortedDayTickets.forEach(t => { if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = []; ticketsByDriver[t.furgoId].push(t); });
         const allBounds = [];
@@ -3149,6 +3190,8 @@ function App() {
           const driverColor = COLORS[idx % COLORS.length];
           const isClosed = getShiftStatus(fid, targetDate) === 'closed';
           driverTickets.forEach((t, seqIndex) => {
+            const displayStopNum = realStopMap[t.id] || (seqIndex + 1);
+            const totalDriverStops = realFurgoTotal[fid] || driverTickets.length;
             // Fix: antes, si construir el marcador de UNA parada fallaba (por
             // ejemplo, datos inesperados en esa parada concreta), la excepción
             // interrumpía todo el bucle — y como los marcadores viejos ya se
@@ -3176,7 +3219,7 @@ function App() {
             el.dataset.markerBorder = markerBorderColor;
             const isInitiallySelected = bulkSelectModeRef.current && bulkSelectedTickets.has(t.id);
             el.style.cssText = 'width:26px;height:26px;border-radius:50%;background-color:' + statusColor + ';color:' + textColor + ';font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;border:2.5px solid ' + (isInitiallySelected ? '#818cf8' : markerBorderColor) + ';box-shadow:' + (isInitiallySelected ? '0 0 16px rgba(99, 102, 241, 0.95), 0 0 0 3px #818cf8' : '0 2px 10px rgba(0,0,0,0.45)') + ';cursor:pointer;user-select:none;' + (isInitiallySelected ? 'z-index:50;' : '');
-            el.textContent = seqIndex + 1;
+            el.textContent = displayStopNum;
 
             el.addEventListener('click', (ev) => {
               ev.stopPropagation();
@@ -3194,12 +3237,12 @@ function App() {
             // Construir el popup informativo en bloque aislado (si fallara cualquier detalle cosmético, el marcador ya está en el mapa)
             try {
               let optHtml = '';
-              for (let i = 1; i <= driverTickets.length; i++) { optHtml += '<option value="' + i + '"' + (i === seqIndex + 1 ? ' selected' : '') + '>Parada #' + i + '</option>'; }
+              for (let i = 1; i <= totalDriverStops; i++) { optHtml += '<option value="' + i + '"' + (i === displayStopNum ? ' selected' : '') + '>Parada #' + i + '</option>'; }
               // Seguridad: escapar nombre/dirección antes de insertarlos en el HTML del
               // popup (ver escapeHtml arriba) — evita XSS almacenado vía estos campos.
               const cAddr = escapeHtml(getShortAddressString(t.address));
               const cName = escapeHtml(t.customerName || 'Cliente');
-              const posBlock = (!isClosed || isAdminOrSuper) ? '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#9ca3af;font-weight:600;">Posición:</span><select onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder(\'' + t.id + '\', this.value)" style="background:var(--primary);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;">' + optHtml + '</select></div>' : '<div style="font-size:0.74rem;color:#9ca3af;font-weight:700;margin-top:3px;">Parada #' + (seqIndex + 1) + '</div>';
+              const posBlock = (!isClosed || isAdminOrSuper) ? '<div style="margin-top:5px;display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;"><span style="font-size:0.74rem;color:#9ca3af;font-weight:600;">Posición:</span><select onchange="if(window.handleChangeMapStopOrder) window.handleChangeMapStopOrder(\'' + t.id + '\', this.value)" style="background:var(--primary);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:4px;padding:2px 4px;font-size:0.74rem;font-weight:700;cursor:pointer;outline:none;height:24px;">' + optHtml + '</select></div>' : '<div style="font-size:0.74rem;color:#9ca3af;font-weight:700;margin-top:3px;">Parada #' + displayStopNum + '</div>';
 
               // Construir insignias para el Popup informativo (clases CSS centralizadas,
               // ver getServiceTypeBadge/getTimeSlotBadge más arriba en el componente)
@@ -3353,7 +3396,7 @@ function App() {
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
 
   // Actualizar visualmente los marcadores del mapa cuando cambia bulkSelectedTickets o bulkSelectMode
   // IMPORTANTE: Nunca modificar pin.style.transform ni añadir transition:transform,
@@ -13780,6 +13823,8 @@ function App() {
               if (isAdminMap) {
                 if (!matchesMapFurgoFilter(t)) return false;
                 if (!matchesMapSourceFilter(t)) return false;
+                if (!matchesMapTimeSlotFilter(t)) return false;
+                if (!matchesMapCompletionFilter(t)) return false;
               } else {
                 if (t.furgoId !== currentUser?.id) return false;
               }
@@ -13913,7 +13958,7 @@ function App() {
 
     // 1. Obtener el ticket a mostrar (el seleccionado o el siguiente pendiente)
     let ticketToShow = selectedMapTicket;
-    if (ticketToShow && activeTab === 'map' && (!matchesMapFurgoFilter(ticketToShow) || !matchesMapSourceFilter(ticketToShow))) {
+    if (ticketToShow && activeTab === 'map' && (!matchesMapFurgoFilter(ticketToShow) || !matchesMapSourceFilter(ticketToShow) || !matchesMapTimeSlotFilter(ticketToShow) || !matchesMapCompletionFilter(ticketToShow))) {
       ticketToShow = null;
     }
     
@@ -13927,6 +13972,8 @@ function App() {
         if (activeTab === 'map') {
           if (!matchesMapFurgoFilter(t)) return false;
           if (!matchesMapSourceFilter(t)) return false;
+          if (!matchesMapTimeSlotFilter(t)) return false;
+          if (!matchesMapCompletionFilter(t)) return false;
         } else {
           if (t.furgoId !== currentUser?.id) return false;
         }
@@ -14277,7 +14324,7 @@ function App() {
       if (!t) return false;
       if (t.date !== targetDate) return false;
       if (!isControlMap && !isAdminOrSuper && t.furgoId !== currentUser?.id) return false;
-      if (isControlMap && (!matchesMapFurgoFilter(t) || !matchesMapSourceFilter(t))) return false;
+      if (isControlMap && (!matchesMapFurgoFilter(t) || !matchesMapSourceFilter(t) || !matchesMapTimeSlotFilter(t) || !matchesMapCompletionFilter(t))) return false;
       return (!t.status || t.status === 'pending' || t.status === 'transit');
     });
 
@@ -14506,19 +14553,22 @@ function App() {
 
   const renderMapStopsList = (isAdminMap) => {
     const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
-    
-    const dayTickets = (tickets || []).filter(t => {
+    const { stopMap: realStopMap } = getRealRouteStopNumbersMap(targetDate);
+
+    const routeAndSlotTickets = (tickets || []).filter(t => {
       if (!t) return false;
       if (t.date !== targetDate) return false;
       if (isAdminMap) {
         if (!matchesMapFurgoFilter(t)) return false;
         if (!matchesMapSourceFilter(t)) return false;
+        if (!matchesMapTimeSlotFilter(t)) return false;
       } else {
         if (t.furgoId !== currentUser?.id) return false;
       }
       return true;
     });
 
+    const dayTickets = routeAndSlotTickets.filter(t => !isAdminMap || matchesMapCompletionFilter(t));
     const sortedDayTickets = sortTicketsByRouteOrder(dayTickets);
 
     if (sortedDayTickets.length === 0) {
@@ -14533,9 +14583,28 @@ function App() {
       });
       const otherDates = [...new Set(userAllTickets.map(t => t.date))].sort().filter(d => d !== targetDate);
 
+      const hasUnfilteredDayStops = isAdminMap && currentUser?.role === 'superadmin' && (mapFilterTimeSlot !== 'all' || mapFilterCompletion !== 'all') && (tickets || []).some(t => t && t.date === targetDate && matchesMapFurgoFilter(t) && matchesMapSourceFilter(t));
+
       return (
         <div style={{ padding: '25px', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-          <span>No hay paradas planificadas para este día ({targetDate}).</span>
+          {hasUnfilteredDayStops ? (
+            <>
+              <span>No hay paradas que coincidan con el filtro de turno/estado seleccionado ({targetDate}).</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapFilterTimeSlot('all');
+                  setMapFilterCompletion('all');
+                }}
+                className="btn btn-secondary btn-small"
+                style={{ margin: 0, padding: '5px 12px', fontSize: '0.8rem', background: 'rgba(99, 102, 241, 0.18)', color: '#c7d2fe', border: '1px solid rgba(99, 102, 241, 0.45)', fontWeight: '700' }}
+              >
+                👀 Mostrar todas las paradas del día
+              </button>
+            </>
+          ) : (
+            <span>No hay paradas planificadas para este día ({targetDate}).</span>
+          )}
           {otherDates.length > 0 && (
             <div style={{ marginTop: '4px', fontSize: '0.82rem' }}>
               <div style={{ color: 'var(--text-main)', fontWeight: '600', marginBottom: '6px' }}>
@@ -14633,8 +14702,10 @@ function App() {
 
           return (
             <div style={{ borderBottom: '1px solid var(--panel-border)', paddingBottom: '8px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '8px', margin: '0 0 5px 0' }}>
-              <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>📋 Secuencia de Paradas ({sortedDayTickets.length})</span>
+              <h3 style={{ fontSize: '1.05rem', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>
+                  📋 Secuencia de Paradas ({sortedDayTickets.length}{isAdminMap && currentUser?.role === 'superadmin' && mapFilterCompletion !== 'all' && routeAndSlotTickets.length !== sortedDayTickets.length ? ` de ${routeAndSlotTickets.length}` : ''})
+                </span>
               </h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 {activeFurgo !== 'all' && sortedDayTickets.length > 0 && (
@@ -14723,7 +14794,7 @@ function App() {
             return sortedDayTickets.map((t, index) => {
             const fidKey = t.furgoId || '_none';
             driverSeqCounter[fidKey] = (driverSeqCounter[fidKey] || 0) + 1;
-            const stopNumInRoute = driverSeqCounter[fidKey];
+            const stopNumInRoute = realStopMap[t.id] || driverSeqCounter[fidKey];
 
             const isSuccess = t.status === 'success';
             const isFailed = t.status === 'failed';
@@ -21509,59 +21580,113 @@ function App() {
     );
   };
 
-  // --- FILTROS COMPARTIDOS DEL MAPA DE CONTROL (FECHA, ORIGEN URBANTZ/PDA, Y MULTI-RUTA) ---
+  // --- FILTROS COMPARTIDOS DEL MAPA DE CONTROL (FECHA, ORIGEN URBANTZ/PDA, FRANJA, ESTADO Y MULTI-RUTA) ---
   const renderMapControlFilters = () => {
-    const daySourceFilteredTickets = (tickets || []).filter(t => t && t.date === mapFilterDate && matchesMapSourceFilter(t));
+    const isSuper = currentUser?.role === 'superadmin';
+    // Tickets del día filtrados por origen (base para contadores de turno/estado de las rutas seleccionadas)
+    const daySourceFiltered = (tickets || []).filter(t => t && t.date === mapFilterDate && matchesMapSourceFilter(t));
+    const dayRouteAndSourceFiltered = daySourceFiltered.filter(t => matchesMapFurgoFilter(t));
+
+    // Contadores para el selector de Franja Horaria (respetando ruta y estado de avance actual)
+    const forTimeSlotCounts = dayRouteAndSourceFiltered.filter(t => matchesMapCompletionFilter(t));
+    const countSlotAll = forTimeSlotCounts.length;
+    const countSlotMorning = forTimeSlotCounts.filter(t => getEffectiveMapTimeSlot(t) === 'morning').length;
+    const countSlotAfternoon = forTimeSlotCounts.filter(t => getEffectiveMapTimeSlot(t) === 'afternoon').length;
+    const countSlotAny = forTimeSlotCounts.filter(t => getEffectiveMapTimeSlot(t) === 'any').length;
+
+    // Contadores para el selector de Vista de Paradas (respetando ruta y franja horaria actual)
+    const forCompletionCounts = dayRouteAndSourceFiltered.filter(t => matchesMapTimeSlotFilter(t));
+    const countCompAll = forCompletionCounts.length;
+    const countCompPending = forCompletionCounts.filter(t => t.status !== 'success' && t.status !== 'failed').length;
+    const countCompDone = forCompletionCounts.filter(t => t.status === 'success' || t.status === 'failed').length;
+
+    // Base para contadores de cada botón de ruta (respetando origen, franja y estado de avance)
+    const daySourceSlotCompletionTickets = daySourceFiltered.filter(t => matchesMapTimeSlotFilter(t) && matchesMapCompletionFilter(t));
     const isAllFurgosSelected = mapSelectedFurgos.length === 0 && (!mapFilterFurgo || mapFilterFurgo === 'all');
 
+    const compactBoxStyle = {
+      background: 'rgba(255, 255, 255, 0.02)',
+      border: '1px solid var(--panel-border)',
+      borderRadius: '10px',
+      padding: '8px 11px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '6px',
+      marginBottom: 0
+    };
+
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '18px' }}>
-        <div className="map-filters-container" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: 0 }}>
-          <div className="input-group" style={{ marginBottom: 0 }}>
-            <span className="input-label">📅 Filtrar por Fecha</span>
-            <input 
-              type="date" 
-              className="form-input" 
-              value={mapFilterDate} 
-              onChange={(e) => setMapFilterDate(e.target.value)} 
-            />
-            <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
+        {/* Fila 1: Fecha + Origen + Vista de Paradas (SuperAdmin) */}
+        <div className="map-filters-container" style={{ display: 'grid', gridTemplateColumns: isSuper ? 'repeat(auto-fit, minmax(235px, 1fr))' : 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: 0 }}>
+          {/* Caja 1: Fecha + Hoy/Mañana + Actualizar */}
+          <div style={compactBoxStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+              <span style={{ fontSize: '0.76rem', fontWeight: '700', color: 'var(--text-main)' }}>📅 Fecha</span>
+              <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                <button 
+                  type="button" 
+                  className={`btn btn-small ${mapFilterDate === getTodayDate() ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.7rem', padding: '2px 7px', margin: 0, width: 'auto', height: '22px' }}
+                  onClick={() => setMapFilterDate(getTodayDate())}
+                >
+                  Hoy
+                </button>
+                <button 
+                  type="button" 
+                  className={`btn btn-small ${mapFilterDate === getTomorrowDate() ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.7rem', padding: '2px 7px', margin: 0, width: 'auto', height: '22px', background: mapFilterDate === getTomorrowDate() ? undefined : 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
+                  onClick={() => setMapFilterDate(getTomorrowDate())}
+                >
+                  🚀 Mañana {tickets.filter(t => t.date === getTomorrowDate()).length > 0 ? `(${tickets.filter(t => t.date === getTomorrowDate()).length})` : ''}
+                </button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input 
+                type="date" 
+                className="form-input" 
+                value={mapFilterDate} 
+                onChange={(e) => setMapFilterDate(e.target.value)}
+                style={{ height: '34px', padding: '4px 8px', fontSize: '0.82rem', flex: 1, margin: 0 }}
+              />
               <button 
                 type="button" 
-                className={`btn btn-small ${mapFilterDate === getTodayDate() ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto' }}
-                onClick={() => setMapFilterDate(getTodayDate())}
+                onClick={async () => {
+                  setIsSyncingMap(true);
+                  try {
+                    await syncFromCloud(true);
+                    await reinitSupabase(true);
+                    loadData();
+                    if (mapInstanceRef.current) {
+                      try { mapInstanceRef.current.resize(); } catch(e){}
+                    }
+                    triggerAlert('Ubicaciones y entregas actualizadas desde el servidor');
+                  } catch (e) {
+                    triggerAlert('Error al sincronizar con el servidor', 'error');
+                  } finally {
+                    setIsSyncingMap(false);
+                  }
+                }} 
+                className="btn btn-secondary btn-small" 
+                style={{ height: '34px', padding: '0 10px', margin: 0, width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem', fontWeight: '700', flexShrink: 0 }}
+                disabled={isSyncingMap}
+                title="Sincronizar ubicaciones y entregas con el servidor"
               >
-                Hoy
-              </button>
-              <button 
-                type="button" 
-                className={`btn btn-small ${mapFilterDate === getTomorrowDate() ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ fontSize: '0.72rem', padding: '2px 8px', margin: 0, width: 'auto', background: mapFilterDate === getTomorrowDate() ? undefined : 'rgba(99, 102, 241, 0.15)', borderColor: 'var(--primary)' }}
-                onClick={() => setMapFilterDate(getTomorrowDate())}
-              >
-                🚀 Mañana {tickets.filter(t => t.date === getTomorrowDate()).length > 0 ? `(${tickets.filter(t => t.date === getTomorrowDate()).length})` : ''}
+                <RefreshCw size={13} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? '...' : 'Actualizar'}
               </button>
             </div>
           </div>
 
-          <div className="input-group" style={{ marginBottom: 0 }}>
-            <span className="input-label">🏷️ Filtrar por Origen (Urbantz / PDA)</span>
-            <select 
-              className="form-input" 
-              value={mapFilterSource} 
-              onChange={(e) => setMapFilterSource(e.target.value)}
-            >
-              <option value="all">🌐 Los dos (Urbantz + PDA)</option>
-              <option value="urbantz">🟣 Solo Urbantz</option>
-              <option value="pda">🔵 Solo PDA</option>
-              <option value="both">🟡 Ambos en el mismo pedido</option>
-            </select>
-            <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
+          {/* Caja 2: Origen (Urbantz / PDA) compacto en píldoras */}
+          <div style={compactBoxStyle}>
+            <span style={{ fontSize: '0.76rem', fontWeight: '700', color: 'var(--text-main)' }}>🏷️ Origen (Urbantz / PDA)</span>
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center', minHeight: '34px' }}>
               {[
-                { id: 'all', label: '🌐 Los dos', activeBg: 'rgba(99, 102, 241, 0.25)', activeBorder: '#818cf8', activeColor: '#e0e7ff' },
-                { id: 'urbantz', label: '🟣 Solo Urbantz', activeBg: 'rgba(168, 85, 247, 0.25)', activeBorder: '#c084fc', activeColor: '#f3e8ff' },
-                { id: 'pda', label: '🔵 Solo PDA', activeBg: 'rgba(59, 130, 246, 0.25)', activeBorder: '#60a5fa', activeColor: '#dbeafe' }
+                { id: 'all', label: '🌐 Todos', activeBg: 'rgba(99, 102, 241, 0.25)', activeBorder: '#818cf8', activeColor: '#e0e7ff' },
+                { id: 'urbantz', label: '🟣 Urbantz', activeBg: 'rgba(168, 85, 247, 0.25)', activeBorder: '#c084fc', activeColor: '#f3e8ff' },
+                { id: 'pda', label: '🔵 PDA', activeBg: 'rgba(59, 130, 246, 0.25)', activeBorder: '#60a5fa', activeColor: '#dbeafe' },
+                { id: 'both', label: '🟡 Ambos', activeBg: 'rgba(234, 179, 8, 0.22)', activeBorder: '#facc15', activeColor: '#fef08a' }
               ].map(opt => {
                 const isActive = mapFilterSource === opt.id;
                 return (
@@ -21570,11 +21695,13 @@ function App() {
                     type="button"
                     onClick={() => setMapFilterSource(opt.id)}
                     style={{
-                      fontSize: '0.72rem',
-                      padding: '3px 9px',
-                      borderRadius: '6px',
+                      fontSize: '0.74rem',
+                      padding: '5px 9px',
+                      borderRadius: '7px',
                       fontWeight: '700',
                       cursor: 'pointer',
+                      flex: 1,
+                      whiteSpace: 'nowrap',
                       background: isActive ? opt.activeBg : 'rgba(255,255,255,0.04)',
                       border: isActive ? `1.5px solid ${opt.activeBorder}` : '1px solid var(--panel-border)',
                       color: isActive ? opt.activeColor : 'var(--text-muted)',
@@ -21588,66 +21715,151 @@ function App() {
             </div>
           </div>
 
-          <div className="input-group" style={{ marginBottom: 0, justifyContent: 'flex-start', display: 'flex', flexDirection: 'column' }}>
-            <span className="input-label">🔄 Sincronización en Vivo</span>
-            <button 
-              type="button" 
-              onClick={async () => {
-                setIsSyncingMap(true);
-                try {
-                  await syncFromCloud(true);
-                  await reinitSupabase(true);
-                  loadData();
-                  if (mapInstanceRef.current) {
-                    try { mapInstanceRef.current.resize(); } catch(e){}
-                  }
-                  triggerAlert('Ubicaciones y entregas actualizadas desde el servidor');
-                } catch (e) {
-                  triggerAlert('Error al sincronizar con el servidor', 'error');
-                } finally {
-                  setIsSyncingMap(false);
-                }
-              }} 
-              className="btn btn-secondary" 
-              style={{ height: '42px', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-              disabled={isSyncingMap}
-            >
-              <RefreshCw size={16} className={isSyncingMap ? 'spin' : ''} /> {isSyncingMap ? 'Actualizando...' : 'Actualizar Mapa'}
-            </button>
-          </div>
+          {/* Caja 3 (Exclusivo SuperAdmin): Vista de Paradas (Todas vs Faltan / Ocultar realizadas) */}
+          {isSuper && (
+            <div style={compactBoxStyle}>
+              <span style={{ fontSize: '0.76rem', fontWeight: '700', color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>👁️ Vista de Paradas</span>
+                {mapFilterCompletion === 'pending' && (
+                  <span style={{ fontSize: '0.68rem', color: '#fbbf24', fontWeight: '700' }}>Ocultando entregadas/fallidas</span>
+                )}
+              </span>
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center', minHeight: '34px' }}>
+                {[
+                  { id: 'all', label: `📋 Todas (${countCompAll})`, activeBg: 'rgba(99, 102, 241, 0.25)', activeBorder: '#818cf8', activeColor: '#e0e7ff', title: 'Mostrar todas las paradas de la ruta' },
+                  { id: 'pending', label: `⏳ Faltan (${countCompPending})`, activeBg: 'rgba(245, 158, 11, 0.25)', activeBorder: '#fbbf24', activeColor: '#fef3c7', title: 'Ocultar paradas ya entregadas y fallidas para ver solo lo que falta' },
+                  { id: 'completed', label: `✅ Realizadas (${countCompDone})`, activeBg: 'rgba(16, 185, 129, 0.22)', activeBorder: '#34d399', activeColor: '#d1fae5', title: 'Ver solo paradas ya visitadas (entregadas o fallidas)' }
+                ].map(opt => {
+                  const isActive = mapFilterCompletion === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setMapFilterCompletion(opt.id)}
+                      title={opt.title}
+                      style={{
+                        fontSize: '0.74rem',
+                        padding: '5px 9px',
+                        borderRadius: '7px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        flex: 1,
+                        whiteSpace: 'nowrap',
+                        background: isActive ? opt.activeBg : 'rgba(255,255,255,0.04)',
+                        border: isActive ? `1.5px solid ${opt.activeBorder}` : '1px solid var(--panel-border)',
+                        color: isActive ? opt.activeColor : 'var(--text-muted)',
+                        boxShadow: isActive ? `0 0 8px ${opt.activeBg}` : 'none',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Selector Múltiple de Rutas / Furgonetas */}
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.02)',
-          border: '1px solid var(--panel-border)',
-          borderRadius: '10px',
-          padding: '10px 12px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-main)' }}>
-              🚚 Filtrar por Rutas <span style={{ fontWeight: '400', color: 'var(--text-muted)' }}>(toca una o varias a la vez, ej. 150 + 151 + 168)</span>
+        {/* Fila 2 (Exclusivo SuperAdmin): Franja Horaria / Turno (mismas opciones que el formulario del chofer) */}
+        {isSuper && (
+          <div style={{
+            ...compactBoxStyle,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '8px',
+            padding: '7px 12px'
+          }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: '700', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+              ⏳ Franja Horaria (Turno):
             </span>
-            {!isAllFurgosSelected && (
-              <button
-                type="button"
-                onClick={() => setMapFilterFurgo('all')}
-                style={{
-                  fontSize: '0.73rem',
-                  padding: '2px 9px',
-                  borderRadius: '6px',
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  color: '#fca5a5',
-                  fontWeight: '700',
-                  cursor: 'pointer'
-                }}
-              >
-                ✕ Ver todas las rutas
-              </button>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+              {[
+                { id: 'all', label: `🌐 Todas (${countSlotAll})`, activeBg: 'rgba(99, 102, 241, 0.25)', activeBorder: '#818cf8', activeColor: '#fff' },
+                { id: 'morning', label: `☀️ Mañana 09:00-14:00 (${countSlotMorning})`, activeBg: 'rgba(251, 191, 36, 0.22)', activeBorder: '#fbbf24', activeColor: '#fef08a' },
+                { id: 'afternoon', label: `🌙 Tarde 16:00-20:00 (${countSlotAfternoon})`, activeBg: 'rgba(37, 99, 235, 0.28)', activeBorder: '#60a5fa', activeColor: '#dbeafe' },
+                { id: 'any', label: `🕒 Indiferente / Todo el día (${countSlotAny})`, activeBg: 'rgba(148, 163, 184, 0.22)', activeBorder: '#cbd5e1', activeColor: '#f1f5f9' }
+              ].map(opt => {
+                const isActive = mapFilterTimeSlot === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setMapFilterTimeSlot(opt.id)}
+                    style={{
+                      fontSize: '0.74rem',
+                      padding: '4px 10px',
+                      borderRadius: '7px',
+                      fontWeight: isActive ? '800' : '600',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      background: isActive ? opt.activeBg : 'rgba(255,255,255,0.04)',
+                      border: isActive ? `1.5px solid ${opt.activeBorder}` : '1px solid var(--panel-border)',
+                      color: isActive ? opt.activeColor : 'var(--text-muted)',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Fila 3: Selector Múltiple de Rutas / Furgonetas */}
+        <div style={{
+          ...compactBoxStyle,
+          padding: '8px 12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: '700', color: 'var(--text-main)' }}>
+              🚚 Filtrar por Rutas <span style={{ fontWeight: '400', color: 'var(--text-muted)', fontSize: '0.73rem' }}>(toca una o varias a la vez)</span>
+            </span>
+            {(!isAllFurgosSelected || (isSuper && (mapFilterTimeSlot !== 'all' || mapFilterCompletion !== 'all'))) && (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {isSuper && (mapFilterTimeSlot !== 'all' || mapFilterCompletion !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMapFilterTimeSlot('all');
+                      setMapFilterCompletion('all');
+                    }}
+                    style={{
+                      fontSize: '0.71rem',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                      color: '#fde68a',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✕ Quitar filtro turno/estado
+                  </button>
+                )}
+                {!isAllFurgosSelected && (
+                  <button
+                    type="button"
+                    onClick={() => setMapFilterFurgo('all')}
+                    style={{
+                      fontSize: '0.71rem',
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(239, 68, 68, 0.4)',
+                      color: '#fca5a5',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ✕ Ver todas las rutas
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -21656,9 +21868,9 @@ function App() {
               type="button"
               onClick={() => setMapFilterFurgo('all')}
               style={{
-                fontSize: '0.78rem',
-                padding: '5px 11px',
-                borderRadius: '8px',
+                fontSize: '0.76rem',
+                padding: '4px 10px',
+                borderRadius: '7px',
                 fontWeight: '800',
                 cursor: 'pointer',
                 background: isAllFurgosSelected ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'rgba(255, 255, 255, 0.04)',
@@ -21668,21 +21880,21 @@ function App() {
                 transition: 'all 0.15s'
               }}
             >
-              🌐 Todas ({daySourceFilteredTickets.length})
+              🌐 Todas ({daySourceSlotCompletionTickets.length})
             </button>
 
             {activeRepartidores.map(u => {
               const isSelected = mapSelectedFurgos.includes(u.id) || (mapSelectedFurgos.length === 0 && mapFilterFurgo === u.id);
-              const routeStopsCount = daySourceFilteredTickets.filter(t => matchesSingleFurgo(t, u.id)).length;
+              const routeStopsCount = daySourceSlotCompletionTickets.filter(t => matchesSingleFurgo(t, u.id)).length;
               return (
                 <button
                   key={u.id}
                   type="button"
                   onClick={() => toggleMapFurgoSelection(u.id)}
                   style={{
-                    fontSize: '0.78rem',
-                    padding: '5px 11px',
-                    borderRadius: '8px',
+                    fontSize: '0.76rem',
+                    padding: '4px 10px',
+                    borderRadius: '7px',
                     fontWeight: isSelected ? '800' : '600',
                     cursor: 'pointer',
                     background: isSelected
