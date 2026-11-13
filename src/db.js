@@ -372,17 +372,23 @@ export function setupRealtimeChannel() {
         }
         scheduleSyncFromCloud('delivery_settings');
       })
-      // 3c. Escuchar ubicaciones GPS de choferes en tiempo real (<50ms vía Broadcast)
+      // 3c. Escuchar ubicaciones GPS y estado (pantalla / 2º plano) en tiempo real (<50ms vía Broadcast)
       .on('broadcast', { event: 'driver_location_updated' }, (msg) => {
         const payload = msg.payload || msg;
         lastRealtimePingOkAt = Date.now();
-        if (payload && payload.fid && payload.lat !== undefined && payload.lng !== undefined) {
+        if (payload && payload.fid) {
           try {
             const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+            const prev = locations[payload.fid] || {};
+            const lat = payload.lat !== undefined && payload.lat !== null ? parseFloat(payload.lat) : prev.lat;
+            const lng = payload.lng !== undefined && payload.lng !== null ? parseFloat(payload.lng) : prev.lng;
             locations[payload.fid] = {
-              lat: parseFloat(payload.lat),
-              lng: parseFloat(payload.lng),
-              updatedAt: payload.updatedAt || new Date().toISOString()
+              ...prev,
+              ...(lat !== undefined && !isNaN(lat) ? { lat } : {}),
+              ...(lng !== undefined && !isNaN(lng) ? { lng } : {}),
+              updatedAt: payload.updatedAt || prev.updatedAt || new Date().toISOString(),
+              ...(payload.appState ? { appState: payload.appState } : {}),
+              ...(payload.appStateAt ? { appStateAt: payload.appStateAt } : {})
             };
             localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
             window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: payload }));
@@ -403,7 +409,9 @@ export function setupRealtimeChannel() {
               locations[fid] = {
                 lat: parseFloat(val.lat),
                 lng: parseFloat(val.lng),
-                updatedAt: val.updatedAt || val.timestamp
+                updatedAt: val.updatedAt || val.timestamp,
+                ...(val.appState ? { appState: val.appState } : {}),
+                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
               };
               localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
               window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: { fid, lat: val.lat, lng: val.lng } }));
@@ -1487,7 +1495,9 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
               locations[fid] = {
                 lat: parseFloat(val.lat),
                 lng: parseFloat(val.lng),
-                updatedAt: val.updatedAt || new Date().toISOString()
+                updatedAt: val.updatedAt || new Date().toISOString(),
+                ...(val.appState ? { appState: val.appState } : {}),
+                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
               };
             }
           } catch (e) {
@@ -4160,6 +4170,14 @@ const DRIVER_LOCATION_THROTTLE_MS = 15000; // 8 segundos entre envíos por condu
 const lastLocationSentAt = {};
 const pendingLocationTimers = {};
 
+function getCurrentDeviceAppState() {
+  try {
+    return (typeof document !== 'undefined' && document.visibilityState === 'hidden') ? 'background' : 'active';
+  } catch {
+    return 'active';
+  }
+}
+
 export async function saveDriverLocation(furgoId, lat, lng) {
   try {
     if (localStorage.getItem('delivery_device_gps_enabled') === 'false') {
@@ -4169,11 +4187,15 @@ export async function saveDriverLocation(furgoId, lat, lng) {
       }
       return { success: false, paused: true };
     }
+    const appState = getCurrentDeviceAppState();
+    const nowIso = new Date().toISOString();
     const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
     locations[furgoId] = {
       lat: parseFloat(lat),
       lng: parseFloat(lng),
-      updatedAt: new Date().toISOString()
+      updatedAt: nowIso,
+      appState,
+      appStateAt: nowIso
     };
     localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
 
@@ -4183,7 +4205,7 @@ export async function saveDriverLocation(furgoId, lat, lng) {
 
     if (elapsed >= DRIVER_LOCATION_THROTTLE_MS) {
       lastLocationSentAt[furgoId] = now;
-      return await pushDriverLocationToSupabase(furgoId, lat, lng);
+      return await pushDriverLocationToSupabase(furgoId, lat, lng, appState);
     }
 
     // Aún dentro de la ventana de espera: guarda la última posición y programa
@@ -4195,7 +4217,7 @@ export async function saveDriverLocation(furgoId, lat, lng) {
         const latestLoc = JSON.parse(localStorage.getItem('delivery_driver_locations') || '{}')[furgoId];
         if (latestLoc) {
           lastLocationSentAt[furgoId] = Date.now();
-          pushDriverLocationToSupabase(furgoId, latestLoc.lat, latestLoc.lng);
+          pushDriverLocationToSupabase(furgoId, latestLoc.lat, latestLoc.lng, getCurrentDeviceAppState());
         }
       }, remaining);
     }
@@ -4206,16 +4228,24 @@ export async function saveDriverLocation(furgoId, lat, lng) {
   }
 }
 
-async function pushDriverLocationToSupabase(furgoId, lat, lng) {
+async function pushDriverLocationToSupabase(furgoId, lat, lng, appStateOverride) {
   try {
     if (localStorage.getItem('delivery_device_gps_enabled') === 'false') {
       return { success: false, paused: true };
     }
     if (supabase) {
       const updatedAt = new Date().toISOString();
+      const appState = appStateOverride || getCurrentDeviceAppState();
+      const payloadObj = {
+        lat: parseFloat(lat),
+        lng: parseFloat(lng),
+        updatedAt,
+        appState,
+        appStateAt: updatedAt
+      };
       const { error } = await supabase.from('delivery_settings').upsert({
         key: `loc_${furgoId}`,
-        value: JSON.stringify({ lat: parseFloat(lat), lng: parseFloat(lng), updatedAt })
+        value: JSON.stringify(payloadObj)
       });
       if (error) {
         console.error("Error pushing driver location to Supabase:", error);
@@ -4223,9 +4253,7 @@ async function pushDriverLocationToSupabase(furgoId, lat, lng) {
       }
       broadcastRealtimeEvent('driver_location_updated', {
         fid: furgoId,
-        lat: parseFloat(lat),
-        lng: parseFloat(lng),
-        updatedAt
+        ...payloadObj
       });
     }
     return { success: true };
@@ -4233,6 +4261,37 @@ async function pushDriverLocationToSupabase(furgoId, lat, lng) {
     console.error("Error saving driver location:", e);
     return { success: false, error: e };
   }
+}
+
+export async function updateDeviceAppState(furgoId, appState) {
+  try {
+    if (!furgoId || localStorage.getItem('delivery_device_gps_enabled') === 'false') return;
+    const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+    const existing = locations[furgoId];
+    if (!existing || existing.lat == null || existing.lng == null) return;
+    const nowIso = new Date().toISOString();
+    const updatedLoc = {
+      ...existing,
+      appState,
+      appStateAt: nowIso
+    };
+    locations[furgoId] = updatedLoc;
+    localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+    if (supabase) {
+      await supabase.from('delivery_settings').upsert({
+        key: `loc_${furgoId}`,
+        value: JSON.stringify(updatedLoc)
+      });
+      broadcastRealtimeEvent('driver_location_updated', {
+        fid: furgoId,
+        lat: updatedLoc.lat,
+        lng: updatedLoc.lng,
+        updatedAt: updatedLoc.updatedAt,
+        appState,
+        appStateAt: nowIso
+      });
+    }
+  } catch (e) {}
 }
 
 // Obtener todas las ubicaciones actuales de repartidores

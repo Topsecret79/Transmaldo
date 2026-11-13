@@ -416,6 +416,7 @@ import {
   normalizeSpanishAddressQuery,
   saveDriverLocation,
   getDriverLocations,
+  updateDeviceAppState,
   toggleUserSearchPermission,
   onDataSync,
   reinitSupabase,
@@ -2000,6 +2001,8 @@ function App() {
   const [driverLocationsTick, setDriverLocationsTick] = useState(0);
   const [showLiveTrucksOnMap, setShowLiveTrucksOnMap] = useState(false);
   const showLiveTrucksOnMapRef = useRef(false);
+  const [showCoordinatorsOnMap, setShowCoordinatorsOnMap] = useState(false);
+  const showCoordinatorsOnMapRef = useRef(false);
   const [showMapFiltersPanel, setShowMapFiltersPanel] = useState(true);
   const [routeStats, setRouteStats] = useState({});
   const watchIdRef = useRef(null);
@@ -2958,8 +2961,18 @@ function App() {
     const GPS_THROTTLE_MS = 15000;
     let lastGpsSave = 0;
 
+    const isTrackedRole = currentUser && (currentUser.role === 'repartidor' || currentUser.role === 'coordinador');
+    const handleAppVisibilityForGps = () => {
+      if (!active || !isTrackingActive || !isTrackedRole) return;
+      const nextAppState = document.visibilityState === 'hidden' ? 'background' : 'active';
+      updateDeviceAppState(currentUser.id, nextAppState);
+    };
+    if (isTrackingActive && isTrackedRole) {
+      document.addEventListener('visibilitychange', handleAppVisibilityForGps);
+    }
+
     const startTracking = async () => {
-      if (isTrackingActive && currentUser && currentUser.role === 'repartidor') {
+      if (isTrackingActive && isTrackedRole) {
         if (Capacitor.isNativePlatform()) {
           try {
             const permission = await CapGeolocation.requestPermissions();
@@ -3041,6 +3054,7 @@ function App() {
 
     return () => {
       active = false;
+      document.removeEventListener('visibilitychange', handleAppVisibilityForGps);
       stopTracking();
     };
   }, [isTrackingActive, currentUser]);
@@ -3098,7 +3112,9 @@ function App() {
                       locations[fid] = {
                         lat: parseFloat(val.lat),
                         lng: parseFloat(val.lng),
-                        updatedAt: val.updatedAt || new Date().toISOString()
+                        updatedAt: val.updatedAt || new Date().toISOString(),
+                        ...(val.appState ? { appState: val.appState } : {}),
+                        ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
                       };
                     }
                   } catch (e) {}
@@ -3340,33 +3356,70 @@ function App() {
         window.updateLiveDriversOnMapFn = () => {
           (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
           mapDriverMarkersRef.current = [];
-          if (isAdminMap && !showLiveTrucksOnMapRef.current) return;
+          const isSuperUser = currentUser?.role === 'superadmin';
+          const showDriversNow = !isAdminMap || showLiveTrucksOnMapRef.current;
+          const showCoordsNow = isAdminMap && isSuperUser && showCoordinatorsOnMapRef.current;
+          if (!showDriversNow && !showCoordsNow) return;
+
           const liveLocations = getDriverLocations();
+          const driverIds = activeRepartidores.map(r => r.id);
+          const coordIds = users.filter(u => u && u.role === 'coordinador').map(u => u.id);
+
           Object.entries(liveLocations).forEach(([fid, loc]) => {
             if (!loc || loc.lat == null || loc.lng == null) return;
             const latNum = parseFloat(loc.lat), lngNum = parseFloat(loc.lng);
             if (isNaN(latNum) || isNaN(lngNum)) return;
-            if (isAdminMap) { if (!isDriverSelectedOnMap(fid)) return; if (!activeRepartidores.map(r => r.id).includes(fid)) return; }
-            else { if (fid !== currentUser?.id) return; }
+
+            const isCoordMarker = coordIds.includes(fid);
+            const isDriverMarker = driverIds.includes(fid);
+
+            if (isAdminMap) {
+              if (isCoordMarker) {
+                if (!showCoordsNow) return;
+              } else if (isDriverMarker) {
+                if (!showDriversNow || !isDriverSelectedOnMap(fid)) return;
+              } else {
+                return;
+              }
+            } else {
+              if (fid !== currentUser?.id) return;
+            }
+
             const updatedAtStr = loc.updatedAt || loc.timestamp;
             if (!updatedAtStr) return;
             const locTime = new Date(updatedAtStr).getTime();
             if (isNaN(locTime) || Date.now() - locTime > 48 * 3600 * 1000) return;
+
             const rawLabel = users.find(u => u.id === fid)?.label || fid;
             const furgoLabel = escapeHtml(rawLabel);
             const diffMins = Math.max(0, Math.round((Date.now() - locTime) / 60000));
             const isRecentGps = diffMins <= 15;
+            const isBackground = loc.appState === 'background';
             const relAgeText = diffMins < 1 ? 'ahora mismo' : (diffMins < 60 ? 'hace ' + diffMins + ' min' : 'hace ' + Math.floor(diffMins / 60) + 'h ' + (diffMins % 60) + 'm');
+            const bgInfo = isBackground
+              ? '<div style="margin-top:2px;font-size:0.76rem;color:#fde68a;">📱 Estado: <strong>🟡 En 2º plano' + (loc.appStateAt ? ' (' + new Date(loc.appStateAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')' : '') + '</strong></div>'
+              : (isRecentGps ? '<div style="margin-top:2px;font-size:0.76rem;color:#a7f3d0;">📱 Estado: <strong>🟢 En pantalla</strong></div>' : '');
+
             const dEl = document.createElement('div');
             dEl.className = 'map-driver-live-marker';
             dEl.dataset.furgoId = fid;
-            dEl.title = rawLabel + ' (' + relAgeText + ')';
-            dEl.style.cssText = 'width:30px;height:30px;border-radius:50%;background:' + (isRecentGps ? 'rgba(16,185,129,0.28)' : 'rgba(139,92,246,0.25)') + ';border:2px solid ' + (isRecentGps ? '#34d399' : '#a78bfa') + ';display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px ' + (isRecentGps ? '#34d399' : '#a78bfa') + ',0 2px 6px rgba(0,0,0,0.6);font-size:15px;cursor:pointer;user-select:none;z-index:65;';
-            dEl.textContent = '🚚';
+            dEl.title = (isCoordMarker ? 'Coordinador ' : '') + rawLabel + ' (' + relAgeText + (isBackground ? ' · en 2º plano' : '') + ')';
+
+            if (isCoordMarker) {
+              dEl.style.cssText = 'width:30px;height:30px;border-radius:50%;background:' + (isRecentGps ? 'rgba(14,165,233,0.3)' : 'rgba(100,116,139,0.28)') + ';border:2px solid ' + (isRecentGps ? '#38bdf8' : '#94a3b8') + ';display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px ' + (isRecentGps ? '#38bdf8' : '#94a3b8') + ',0 2px 6px rgba(0,0,0,0.6);font-size:15px;cursor:pointer;user-select:none;z-index:66;';
+              dEl.textContent = '🧭';
+            } else {
+              dEl.style.cssText = 'width:30px;height:30px;border-radius:50%;background:' + (isBackground ? 'rgba(245,158,11,0.24)' : isRecentGps ? 'rgba(16,185,129,0.28)' : 'rgba(139,92,246,0.25)') + ';border:2px solid ' + (isBackground ? '#fbbf24' : isRecentGps ? '#34d399' : '#a78bfa') + ';display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px ' + (isBackground ? '#fbbf24' : isRecentGps ? '#34d399' : '#a78bfa') + ',0 2px 6px rgba(0,0,0,0.6);font-size:15px;cursor:pointer;user-select:none;z-index:65;';
+              dEl.textContent = '🚚';
+            }
+
             const gmapsUrl = 'https://www.google.com/maps?q=' + latNum + ',' + lngNum;
-            const dPopupHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.82rem;color:#fff;padding:4px;min-width:170px;">' +
-              '<div style="font-weight:800;font-size:0.9rem;color:' + (isRecentGps ? '#34d399' : '#c084fc') + ';margin-bottom:4px;">🚚 ' + furgoLabel + '</div>' +
+            const titleColor = isCoordMarker ? '#38bdf8' : (isRecentGps ? '#34d399' : '#c084fc');
+            const titleIcon = isCoordMarker ? '🧭 ' : '🚚 ';
+            const dPopupHtml = '<div style="font-family:\'Inter\',sans-serif;font-size:0.82rem;color:#fff;padding:4px;min-width:175px;">' +
+              '<div style="font-weight:800;font-size:0.9rem;color:' + titleColor + ';margin-bottom:4px;">' + titleIcon + furgoLabel + (isCoordMarker ? ' (Coord.)' : '') + '</div>' +
               '<div style="margin-top:2px;">Señal: <strong>' + (isRecentGps ? '🟢 En vivo (' + relAgeText + ')' : '🟡 ' + relAgeText) + '</strong></div>' +
+              bgInfo +
               '<div style="margin-top:2px;font-size:0.76rem;color:#cbd5e1;">Hora: <strong>' + new Date(locTime).toLocaleTimeString() + '</strong></div>' +
               '<div style="margin-top:2px;font-size:0.72rem;color:#9ca3af;">GPS: ' + latNum.toFixed(5) + ', ' + lngNum.toFixed(5) + '</div>' +
               '<div style="margin-top:6px;"><a href="' + gmapsUrl + '" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;font-weight:700;text-decoration:none;font-size:0.76rem;">📍 Abrir ubicación en Google Maps ↗</a></div>' +
@@ -21650,15 +21703,22 @@ function App() {
       if (typeof window.updateLiveDriversOnMapFn === 'function') {
         window.updateLiveDriversOnMapFn();
       }
-      if (!nextVal && mapInstanceRef.current) {
-        (mapDriverMarkersRef.current || []).forEach(m => { try { m.remove(); } catch(e){} });
-        mapDriverMarkersRef.current = [];
+    };
+
+    const toggleCoordinatorsVisibility = () => {
+      const nextVal = !showCoordinatorsOnMap;
+      showCoordinatorsOnMapRef.current = nextVal;
+      setShowCoordinatorsOnMap(nextVal);
+      if (typeof window.updateLiveDriversOnMapFn === 'function') {
+        window.updateLiveDriversOnMapFn();
       }
     };
 
+    const activeCoordinators = isSuper ? users.filter(u => u && u.role === 'coordinador') : [];
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-        {/* Barra superior ultracompacta: Mostrar/Ocultar Camiones GPS y Plegar/Desplegar Filtros */}
+        {/* Barra superior ultracompacta: Mostrar/Ocultar Camiones GPS, Coordinadores (SuperAdmin) y Filtros */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -21697,6 +21757,35 @@ function App() {
             >
               {showLiveTrucksOnMap ? '🚚 Ocultar Carritos GPS ▴' : '🚚 Mostrar Carritos GPS ▾'}
             </button>
+
+            {isSuper && activeCoordinators.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleCoordinatorsVisibility}
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '4px 10px',
+                  borderRadius: '8px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: showCoordinatorsOnMap
+                    ? 'linear-gradient(135deg, #0284c7, #0ea5e9)'
+                    : 'rgba(56, 189, 248, 0.08)',
+                  border: showCoordinatorsOnMap
+                    ? '1.5px solid #7dd3fc'
+                    : '1px solid rgba(56, 189, 248, 0.3)',
+                  color: showCoordinatorsOnMap ? '#ffffff' : '#bae6fd',
+                  boxShadow: showCoordinatorsOnMap ? '0 0 10px rgba(14, 165, 233, 0.35)' : 'none',
+                  transition: 'all 0.15s'
+                }}
+                title="Muestra u oculta en el mapa la ubicación en vivo de tus coordinadores (Gusor, transmaldo)"
+              >
+                {showCoordinatorsOnMap ? '🧭 Ocultar Coordinadores ▴' : '🧭 Mostrar Coordinadores ▾'}
+              </button>
+            )}
 
             <button
               type="button"
@@ -21762,7 +21851,9 @@ function App() {
                               fresh[fid] = {
                                 lat: parseFloat(val.lat),
                                 lng: parseFloat(val.lng),
-                                updatedAt: val.updatedAt || new Date().toISOString()
+                                updatedAt: val.updatedAt || new Date().toISOString(),
+                                ...(val.appState ? { appState: val.appState } : {}),
+                                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
                               };
                             }
                           } catch (e) {}
@@ -21867,13 +21958,14 @@ function App() {
                       const hasValidGps = loc && loc.lat != null && loc.lng != null && !isNaN(locTime) && (Date.now() - locTime <= 48 * 3600 * 1000);
                       const diffMins = hasValidGps ? Math.max(0, Math.round((Date.now() - locTime) / 60000)) : null;
                       const isLive = hasValidGps && diffMins <= 15;
+                      const isBg = hasValidGps && loc.appState === 'background';
                       const timeBadge = !hasValidGps
                         ? 'sin GPS'
-                        : diffMins < 1
-                          ? 'ahora'
-                          : diffMins < 60
-                            ? `${diffMins}m`
-                            : new Date(locTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        : (diffMins < 1
+                            ? 'ahora'
+                            : diffMins < 60
+                              ? `${diffMins}m`
+                              : new Date(locTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + (isBg ? ' · 2º plano' : '');
 
                       return (
                         <button
@@ -21889,20 +21981,25 @@ function App() {
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
-                            background: isLive
-                              ? 'rgba(16, 185, 129, 0.18)'
-                              : hasValidGps
-                                ? 'rgba(139, 92, 246, 0.15)'
-                                : 'rgba(255, 255, 255, 0.04)',
-                            border: isLive
-                              ? '1.5px solid #34d399'
-                              : hasValidGps
-                                ? '1px solid rgba(167, 139, 250, 0.45)'
-                                : '1px solid var(--panel-border)',
-                            color: isLive ? '#a7f3d0' : hasValidGps ? '#ddd6fe' : 'var(--text-muted)'
+                            background: isBg
+                              ? 'rgba(245, 158, 11, 0.16)'
+                              : isLive
+                                ? 'rgba(16, 185, 129, 0.18)'
+                                : hasValidGps
+                                  ? 'rgba(139, 92, 246, 0.15)'
+                                  : 'rgba(255, 255, 255, 0.04)',
+                            border: isBg
+                              ? '1.5px solid #fbbf24'
+                              : isLive
+                                ? '1.5px solid #34d399'
+                                : hasValidGps
+                                  ? '1px solid rgba(167, 139, 250, 0.45)'
+                                  : '1px solid var(--panel-border)',
+                            color: isBg ? '#fde68a' : isLive ? '#a7f3d0' : hasValidGps ? '#ddd6fe' : 'var(--text-muted)'
                           }}
+                          title={isBg ? `${u.label}: app minimizada / en 2º plano` : undefined}
                         >
-                          <span>{isLive ? '🟢' : hasValidGps ? '🟣' : '⚪'}</span>
+                          <span>{isBg ? '🟡' : isLive ? '🟢' : hasValidGps ? '🟣' : '⚪'}</span>
                           <span>🚚 {u.label}</span>
                           <span style={{ fontSize: '0.66rem', opacity: 0.85 }}>({timeBadge})</span>
                         </button>
@@ -21911,6 +22008,197 @@ function App() {
                     <button
                       type="button"
                       onClick={handleFitAllTrucks}
+                      style={{
+                        fontSize: '0.71rem',
+                        padding: '3px 8px',
+                        borderRadius: '999px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        background: 'rgba(56, 189, 248, 0.14)',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
+                        color: '#bae6fd',
+                        marginLeft: 'auto'
+                      }}
+                    >
+                      🛰️ Ver todos
+                    </button>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Panel desplegable de Coordinadores GPS (solo Super Administrador, cuando pulsa Mostrar Coordinadores) */}
+        {isSuper && showCoordinatorsOnMap && activeCoordinators.length > 0 && (
+          <div style={{
+            ...compactBoxStyle,
+            padding: '7px 11px',
+            background: 'rgba(14, 165, 233, 0.07)',
+            borderColor: 'rgba(56, 189, 248, 0.35)'
+          }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.74rem', fontWeight: '800', color: '#7dd3fc', marginRight: '4px' }}>
+                🧭 Coordinadores:
+              </span>
+              {(() => {
+                void driverLocationsTick;
+                const liveLocations = getDriverLocations() || {};
+
+                const pullCoordLocations = async () => {
+                  const supabaseClient = getSupabaseClient();
+                  if (!supabaseClient) return liveLocations;
+                  try {
+                    const { data, error } = await supabaseClient.from('delivery_settings').select('key, value').like('key', 'loc_%');
+                    if (data && !error) {
+                      const fresh = { ...liveLocations };
+                      data.forEach(s => {
+                        if (s.key && s.key.startsWith('loc_')) {
+                          const fid = s.key.substring(4);
+                          try {
+                            const val = JSON.parse(s.value);
+                            if (val && val.lat !== undefined && val.lng !== undefined) {
+                              fresh[fid] = {
+                                lat: parseFloat(val.lat),
+                                lng: parseFloat(val.lng),
+                                updatedAt: val.updatedAt || new Date().toISOString(),
+                                ...(val.appState ? { appState: val.appState } : {}),
+                                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
+                              };
+                            }
+                          } catch (e) {}
+                        }
+                      });
+                      localStorage.setItem('delivery_driver_locations', JSON.stringify(fresh));
+                      setDriverLocationsTick(t => t + 1);
+                      if (typeof window.updateLiveDriversOnMapFn === 'function') {
+                        window.updateLiveDriversOnMapFn();
+                      }
+                      return fresh;
+                    }
+                  } catch (e) {}
+                  return liveLocations;
+                };
+
+                const handleFlyToCoordinator = async (coordObj) => {
+                  const fid = coordObj.id;
+                  const label = coordObj.label || fid;
+                  showCoordinatorsOnMapRef.current = true;
+                  setShowCoordinatorsOnMap(true);
+                  const freshLocs = await pullCoordLocations();
+                  const loc = freshLocs[fid];
+                  const map = mapInstanceRef.current;
+                  if (loc && loc.lat != null && loc.lng != null && !isNaN(parseFloat(loc.lat)) && !isNaN(parseFloat(loc.lng))) {
+                    const latNum = parseFloat(loc.lat);
+                    const lngNum = parseFloat(loc.lng);
+                    const locTime = new Date(loc.updatedAt || Date.now()).getTime();
+                    const diffMins = Math.max(0, Math.round((Date.now() - locTime) / 60000));
+                    const ageTxt = diffMins < 1 ? 'ahora mismo' : (diffMins < 60 ? `hace ${diffMins} min` : `hace ${Math.floor(diffMins / 60)}h ${diffMins % 60}m`);
+                    if (map) {
+                      map.flyTo({ center: [lngNum, latNum], zoom: 16, essential: true });
+                      setTimeout(() => {
+                        try {
+                          if (typeof window.updateLiveDriversOnMapFn === 'function') window.updateLiveDriversOnMapFn();
+                          const marker = (mapDriverMarkersRef.current || []).find(m => m && m._furgoId === fid);
+                          if (marker && marker.getPopup() && !marker.getPopup().isOpen()) {
+                            marker.togglePopup();
+                          }
+                        } catch (e) {}
+                      }, 350);
+                    }
+                    triggerAlert(`🧭 ${label}: ubicado (${ageTxt}${loc.appState === 'background' ? ' · en 2º plano' : ''})`, 'info');
+                    return;
+                  }
+                  triggerAlert(`⚠️ ${label} todavía no ha enviado señal GPS (debe abrir la app y aceptar ubicación).`, 'error');
+                };
+
+                const handleFitAllCoordinators = async () => {
+                  showCoordinatorsOnMapRef.current = true;
+                  setShowCoordinatorsOnMap(true);
+                  const freshLocs = await pullCoordLocations();
+                  const map = mapInstanceRef.current;
+                  if (!map) return;
+                  const coords = [];
+                  activeCoordinators.forEach(c => {
+                    const loc = freshLocs[c.id];
+                    if (loc && loc.lat != null && loc.lng != null) {
+                      const la = parseFloat(loc.lat), lo = parseFloat(loc.lng);
+                      const locTime = new Date(loc.updatedAt || 0).getTime();
+                      if (!isNaN(la) && !isNaN(lo) && Date.now() - locTime <= 48 * 3600 * 1000) {
+                        coords.push([lo, la]);
+                      }
+                    }
+                  });
+                  if (coords.length === 0) {
+                    triggerAlert('⚠️ Ningún coordinador tiene señal GPS reciente.', 'error');
+                    return;
+                  }
+                  if (coords.length === 1) {
+                    map.flyTo({ center: coords[0], zoom: 15, essential: true });
+                  } else {
+                    const lngs = coords.map(c => c[0]), lats = coords.map(c => c[1]);
+                    map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 70, maxZoom: 15 });
+                  }
+                  triggerAlert(`🛰️ Mostrando ${coords.length} coordinador(es) 🧭 en el mapa`, 'info');
+                };
+
+                return (
+                  <>
+                    {activeCoordinators.map(c => {
+                      const loc = liveLocations[c.id];
+                      const locTime = loc && (loc.updatedAt || loc.timestamp) ? new Date(loc.updatedAt || loc.timestamp).getTime() : 0;
+                      const hasValidGps = loc && loc.lat != null && loc.lng != null && !isNaN(locTime) && (Date.now() - locTime <= 48 * 3600 * 1000);
+                      const diffMins = hasValidGps ? Math.max(0, Math.round((Date.now() - locTime) / 60000)) : null;
+                      const isLive = hasValidGps && diffMins <= 15;
+                      const isBg = hasValidGps && loc.appState === 'background';
+                      const timeBadge = !hasValidGps
+                        ? 'sin GPS'
+                        : (diffMins < 1
+                            ? 'ahora'
+                            : diffMins < 60
+                              ? `${diffMins}m`
+                              : new Date(locTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + (isBg ? ' · 2º plano' : '');
+
+                      return (
+                        <button
+                          key={`coord_loc_${c.id}`}
+                          type="button"
+                          onClick={() => handleFlyToCoordinator(c)}
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: isBg
+                              ? 'rgba(245, 158, 11, 0.16)'
+                              : isLive
+                                ? 'rgba(14, 165, 233, 0.2)'
+                                : hasValidGps
+                                  ? 'rgba(100, 116, 139, 0.2)'
+                                  : 'rgba(255, 255, 255, 0.04)',
+                            border: isBg
+                              ? '1.5px solid #fbbf24'
+                              : isLive
+                                ? '1.5px solid #38bdf8'
+                                : hasValidGps
+                                  ? '1px solid rgba(148, 163, 184, 0.45)'
+                                  : '1px solid var(--panel-border)',
+                            color: isBg ? '#fde68a' : isLive ? '#bae6fd' : hasValidGps ? '#e2e8f0' : 'var(--text-muted)'
+                          }}
+                        >
+                          <span>{isBg ? '🟡' : isLive ? '🟢' : hasValidGps ? '🔵' : '⚪'}</span>
+                          <span>🧭 {c.label}</span>
+                          <span style={{ fontSize: '0.66rem', opacity: 0.85 }}>({timeBadge})</span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={handleFitAllCoordinators}
                       style={{
                         fontSize: '0.71rem',
                         padding: '3px 8px',
