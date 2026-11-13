@@ -2066,6 +2066,9 @@ function App() {
     if (mapFilterFurgo && mapFilterFurgo !== 'all') {
       return matchesSingleFurgo(t, mapFilterFurgo);
     }
+    if (currentUser && currentUser.role !== 'repartidor') {
+      return activeRepartidores.some(r => matchesSingleFurgo(t, r.id));
+    }
     return true;
   };
 
@@ -2455,6 +2458,7 @@ function App() {
     const cleanScope = newScope || 'admin';
     setSuperAdminScope(cleanScope);
     setSuperAdminFleetScopeState(cleanScope);
+    setMapFilterFurgo('all');
     setBillingFilterFurgo('all');
     setTicketFilterFurgo('all');
     setShiftFilterFurgo('all');
@@ -3178,7 +3182,7 @@ function App() {
       const renderMapContent = () => {
         const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
         const selectedFurgosKey = mapSelectedFurgos.length > 0 ? mapSelectedFurgos.join(',') : mapFilterFurgo;
-        const currentFilterKey = activeTab + '_' + targetDate + '_' + selectedFurgosKey + '_' + mapFilterSource + '_' + mapFilterTimeSlot + '_' + mapFilterCompletion + '_' + shiftSummaryDate;
+        const currentFilterKey = activeTab + '_' + targetDate + '_' + superAdminFleetScope + '_' + selectedFurgosKey + '_' + mapFilterSource + '_' + mapFilterTimeSlot + '_' + mapFilterCompletion + '_' + shiftSummaryDate;
         const dayTickets = tickets.filter(t => {
           if (!t || t.date !== targetDate) return false;
           if (isAdminMap) {
@@ -3477,7 +3481,7 @@ function App() {
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, superAdminFleetScope, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
 
   // Actualizar visualmente los marcadores del mapa cuando cambia bulkSelectedTickets o bulkSelectMode
   // IMPORTANTE: Nunca modificar pin.style.transform ni añadir transition:transform,
