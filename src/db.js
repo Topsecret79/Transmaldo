@@ -277,6 +277,32 @@ function isRealtimeChannelHealthy() {
 
 // Emite un evento en tiempo real a todos los demás dispositivos conectados vía Supabase Broadcast.
 // A diferencia de postgres_changes (que depende de la replicación WAL en BD), Broadcast es directo,
+// Devuelve la fecha local en formato YYYY-MM-DD (evita el desfase UTC de las 00:00 a 02:00 en España)
+export function getLocalDateISO(dateInput = new Date()) {
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Cuenta cuántos registros (paradas y turnos) están pendientes de subir a la nube en este dispositivo
+export function getPendingSyncCount() {
+  try {
+    const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+    const localShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+    const pendingTickets = localTickets.filter(t => t && t._syncStatus === 'pending').length;
+    const pendingShifts = localShifts.filter(s => s && s._syncStatus === 'pending').length;
+    return pendingTickets + pendingShifts;
+  } catch {
+    return 0;
+  }
+}
+
 // ultra-rápido (<50ms) y funciona entre clientes móviles garantizando sincronización instantánea.
 export async function broadcastRealtimeEvent(event, payload) {
   if (!realtimeChannel) return;
@@ -335,6 +361,14 @@ export function setupRealtimeChannel() {
         lastRealtimePingOkAt = Date.now();
         scheduleSyncFromCloud('delivery_tickets');
       })
+      // 2b. Escuchar transferencias/devoluciones de paradas de apoyo en tiempo real
+      .on('broadcast', { event: 'support_transfer_received' }, (msg) => {
+        const payload = msg.payload || msg;
+        console.log("⚡ Realtime Broadcast support_transfer_received recibido:", payload);
+        lastRealtimePingOkAt = Date.now();
+        window.dispatchEvent(new CustomEvent('support-transfer-received', { detail: payload }));
+        scheduleSyncFromCloud('delivery_tickets');
+      })
       .on('broadcast', { event: 'ticket_deleted' }, (msg) => {
         const payload = msg.payload || msg;
         lastRealtimePingOkAt = Date.now();
@@ -391,7 +425,8 @@ export function setupRealtimeChannel() {
               ...(lng !== undefined && !isNaN(lng) ? { lng } : {}),
               updatedAt: payload.updatedAt || prev.updatedAt || new Date().toISOString(),
               ...(payload.appState ? { appState: payload.appState } : {}),
-              ...(payload.appStateAt ? { appStateAt: payload.appStateAt } : {})
+              ...(payload.appStateAt ? { appStateAt: payload.appStateAt } : {}),
+              ...(payload.navTarget !== undefined ? { navTarget: payload.navTarget } : (prev.navTarget ? { navTarget: prev.navTarget } : {}))
             };
             localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
             window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: payload }));
@@ -414,7 +449,8 @@ export function setupRealtimeChannel() {
                 lng: parseFloat(val.lng),
                 updatedAt: val.updatedAt || val.timestamp,
                 ...(val.appState ? { appState: val.appState } : {}),
-                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
+                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {}),
+                ...(val.navTarget ? { navTarget: val.navTarget } : {})
               };
               localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
               window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: { fid, lat: val.lat, lng: val.lng } }));
@@ -1329,7 +1365,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       // and the cloud version is empty, prefer the local data to avoid losing unsaved state
       const mergedShifts = [...filteredCloudShifts];
 
-      const todayIsoStr = new Date().toISOString().split('T')[0];
+      const todayIsoStr = getLocalDateISO();
       const pendingLocalShifts = localExisting.filter(s => s && s._syncStatus === 'pending');
       pendingLocalShifts.forEach(localS => {
         const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
@@ -1669,7 +1705,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
                 lng: parseFloat(val.lng),
                 updatedAt: val.updatedAt || new Date().toISOString(),
                 ...(val.appState ? { appState: val.appState } : {}),
-                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
+                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {}),
+                ...(val.navTarget ? { navTarget: val.navTarget } : {})
               };
             }
           } catch (e) {
@@ -3047,7 +3084,7 @@ export async function addTicket(ticketData) {
 
   const users = getUsers();
   const activeShift = (JSON.parse(localStorage.getItem('delivery_shifts')) || [])
-    .find(s => s.furgoId === ticketData.furgoId && s.date === (ticketData.date || new Date().toISOString().split('T')[0]));
+    .find(s => s.furgoId === ticketData.furgoId && s.date === (ticketData.date || getLocalDateISO()));
 
   const inferredProvider = ticketData.provider || (ticketData.tasks && ticketData.tasks.some(t => t.tariffId && t.tariffId.startsWith('DORMITY_')) ? 'dormity' : 'eci');
   const parsedNotesForTicket = ticketData.notes ? parseTicketNotes(ticketData.notes) : {};
@@ -3058,7 +3095,7 @@ export async function addTicket(ticketData) {
     // trabajando a la vez). Añadimos un sufijo aleatorio, igual que ya se hace en otros
     // puntos de la app (ver App.jsx) para IDs generados en el cliente.
     id: Date.now().toString() + Math.random().toString(36).substring(2, 7),
-    date: ticketData.date || new Date().toISOString().split('T')[0],
+    date: ticketData.date || getLocalDateISO(),
     furgoId: ticketData.furgoId,
     furgoLabel: users.find(u => u.id === ticketData.furgoId)?.label || ticketData.furgoId,
     routeName: ticketData.routeName || users.find(u => u.id === ticketData.furgoId)?.label || ticketData.furgoId,
@@ -3238,6 +3275,7 @@ export async function updateTicketStatus(ticketId, status, failureReason = '', c
   const tickets = getTickets();
   const index = tickets.findIndex(t => String(t.id) === String(ticketId));
   if (index !== -1) {
+    const activeDriverIdBeforeStatus = tickets[index].furgoId;
     tickets[index].status = status;
     if (status === 'failed') {
       tickets[index].failureReason = failureReason;
@@ -3308,6 +3346,10 @@ export async function updateTicketStatus(ticketId, status, failureReason = '', c
     tickets[index]._pendingAt = Date.now();
     // Guardar primero en localStorage de forma síncrona e inmediata
     safeSaveTickets(tickets);
+    // Si la parada se acaba de finalizar (éxito o fallo), limpiar telemetría de navegación en ruta
+    if ((status === 'success' || status === 'failed') && activeDriverIdBeforeStatus) {
+      updateDriverNavigationTarget(activeDriverIdBeforeStatus, null);
+    }
     // Emitir Broadcast inmediatamente para actualización instantánea en dispositivos abiertos
     broadcastRealtimeEvent('ticket_status_changed', {
       ticketId: String(ticketId),
@@ -4417,12 +4459,14 @@ export async function saveDriverLocation(furgoId, lat, lng) {
     const appState = getCurrentDeviceAppState();
     const nowIso = new Date().toISOString();
     const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+    const existingNavTarget = locations[furgoId]?.navTarget || null;
     locations[furgoId] = {
       lat: parseFloat(lat),
       lng: parseFloat(lng),
       updatedAt: nowIso,
       appState,
-      appStateAt: nowIso
+      appStateAt: nowIso,
+      ...(existingNavTarget ? { navTarget: existingNavTarget } : {})
     };
     localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
 
@@ -4463,12 +4507,15 @@ async function pushDriverLocationToSupabase(furgoId, lat, lng, appStateOverride)
     if (supabase) {
       const updatedAt = new Date().toISOString();
       const appState = appStateOverride || getCurrentDeviceAppState();
+      const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+      const existingNavTarget = locations[furgoId]?.navTarget || null;
       const payloadObj = {
         lat: parseFloat(lat),
         lng: parseFloat(lng),
         updatedAt,
         appState,
-        appStateAt: updatedAt
+        appStateAt: updatedAt,
+        ...(existingNavTarget ? { navTarget: existingNavTarget } : {})
       };
       const { error } = await supabase.from('delivery_settings').upsert({
         key: `loc_${furgoId}`,
@@ -4515,7 +4562,44 @@ export async function updateDeviceAppState(furgoId, appState) {
         lng: updatedLoc.lng,
         updatedAt: updatedLoc.updatedAt,
         appState,
-        appStateAt: nowIso
+        appStateAt: nowIso,
+        ...(updatedLoc.navTarget ? { navTarget: updatedLoc.navTarget } : {})
+      });
+    }
+  } catch (e) {}
+}
+
+// Registra en tiempo real hacia qué parada está navegando el chofer (Google Maps / Waze)
+export async function updateDriverNavigationTarget(furgoId, navTarget) {
+  try {
+    if (!furgoId) return;
+    const locations = JSON.parse(localStorage.getItem('delivery_driver_locations')) || {};
+    const existing = locations[furgoId] || {};
+    const updatedLoc = {
+      ...existing,
+      updatedAt: existing.updatedAt || new Date().toISOString(),
+      navTarget: navTarget || null
+    };
+    if (!navTarget) {
+      delete updatedLoc.navTarget;
+    }
+    locations[furgoId] = updatedLoc;
+    localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+    if (supabase) {
+      if (updatedLoc.lat != null && updatedLoc.lng != null) {
+        await supabase.from('delivery_settings').upsert({
+          key: `loc_${furgoId}`,
+          value: JSON.stringify(updatedLoc)
+        });
+      }
+      broadcastRealtimeEvent('driver_location_updated', {
+        fid: furgoId,
+        ...(updatedLoc.lat != null ? { lat: updatedLoc.lat } : {}),
+        ...(updatedLoc.lng != null ? { lng: updatedLoc.lng } : {}),
+        updatedAt: updatedLoc.updatedAt,
+        ...(updatedLoc.appState ? { appState: updatedLoc.appState } : {}),
+        ...(updatedLoc.appStateAt ? { appStateAt: updatedLoc.appStateAt } : {}),
+        navTarget: navTarget || null
       });
     }
   } catch (e) {}

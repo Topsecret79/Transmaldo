@@ -478,7 +478,11 @@ import {
   mergeFixedRateLogsArrays,
   getSuperAdminScope,
   setSuperAdminScope,
-  checkAndReconnectIfNeeded
+  checkAndReconnectIfNeeded,
+  getLocalDateISO,
+  getPendingSyncCount,
+  broadcastRealtimeEvent,
+  updateDriverNavigationTarget
 } from './db';
 
 
@@ -1182,12 +1186,12 @@ function App() {
   const [fleetMaintenanceLogs, setFleetMaintenanceLogs] = useState(() => getFleetMaintenanceLogs() || []);
   const [fleetDailyLogs, setFleetDailyLogs] = useState(() => getFleetDailyLogs() || []);
   const [fleetSubTab, setFleetSubTab] = useState('dashboard'); // 'dashboard', 'vehicles', 'daily', 'fuel', 'maintenance'
-  const [dailyForm, setDailyForm] = useState({ plate: '', date: new Date().toISOString().split('T')[0], kmStart: '', kmEnd: '', kmL: '', notes: '' });
+  const [dailyForm, setDailyForm] = useState({ plate: '', date: getLocalDateISO(), kmStart: '', kmEnd: '', kmL: '', notes: '' });
   const [selectedFleetVehicleFilter, setSelectedFleetVehicleFilter] = useState('all');
   const [editingVehicleId, setEditingVehicleId] = useState(null);
   const [vehicleForm, setVehicleForm] = useState({ plate: '', brand: '', model: '', year: new Date().getFullYear().toString(), currentKm: '0', itvExpiry: '', insuranceExpiry: '', status: 'active' });
-  const [fuelForm, setFuelForm] = useState({ plate: '', date: new Date().toISOString().split('T')[0], driver: '', liters: '', costPerLiter: '', totalCost: '', gasStation: '', notes: '' });
-  const [maintForm, setMaintForm] = useState({ plate: '', type: 'Cambio de Aceite', date: new Date().toISOString().split('T')[0], kmAtService: '', cost: '', provider: '', invoiceNumber: '', notes: '' });
+  const [fuelForm, setFuelForm] = useState({ plate: '', date: getLocalDateISO(), driver: '', liters: '', costPerLiter: '', totalCost: '', gasStation: '', notes: '' });
+  const [maintForm, setMaintForm] = useState({ plate: '', type: 'Cambio de Aceite', date: getLocalDateISO(), kmAtService: '', cost: '', provider: '', invoiceNumber: '', notes: '' });
   const [editEmpRole, setEditEmpRole] = useState('chofer');
   const [editEmpRate, setEditEmpRate] = useState('');
   const [empSearchQuery, setEmpSearchQuery] = useState('');
@@ -1196,6 +1200,8 @@ function App() {
   const [navModalOpen, setNavModalOpen] = useState(false);
   const [navTarget, setNavTarget] = useState({ address: '', latitude: null, longitude: null, ticketId: null });
   const [navRememberChoice, setNavRememberChoice] = useState(false);
+  const [isOnlineState, setIsOnlineState] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [pendingSyncCount, setPendingSyncCount] = useState(() => getPendingSyncCount());
 
   // Estados para la sincronización con PrimeDriveCar
   const [syncAutoEnabled, setSyncAutoEnabled] = useState(() => getPrimeDriveCarSyncSettings().autoSync);
@@ -1379,8 +1385,8 @@ function App() {
     return localStorage.getItem('delivery_active_tab') || '';
   }); 
   const [ticketFilterFurgo, setTicketFilterFurgo] = useState('all');
-  const [ticketFilterDate, setTicketFilterDate] = useState(new Date().toISOString().split('T')[0]);
-  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  const [ticketFilterDate, setTicketFilterDate] = useState(() => getLocalDateISO());
+  const [reportDate, setReportDate] = useState(() => getLocalDateISO());
   const [reportFilterFurgo, setReportFilterFurgo] = useState('all');
   const [ticketSearchQuery, setTicketSearchQuery] = useState('');
   const [isSyncingMap, setIsSyncingMap] = useState(false);
@@ -1401,12 +1407,12 @@ function App() {
     return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-01`;
   };
   const getTodayDate = () => {
-    return new Date().toISOString().split('T')[0];
+    return getLocalDateISO();
   };
   const getTomorrowDate = () => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+    return getLocalDateISO(d);
   };
 
   const getBillingMonthsList = () => {
@@ -1664,7 +1670,7 @@ function App() {
   const mapSelectTimerRef = useRef(null);
   const formMapRef = useRef(null);
   const formMarkerRef = useRef(null);
-  const [ticketDate, setTicketDate] = useState(new Date().toISOString().split('T')[0]);
+  const [ticketDate, setTicketDate] = useState(() => getLocalDateISO());
   const [notes, setNotes] = useState(() => getDraftVal('notes', ''));
   const [ticketSource, setTicketSource] = useState(() => getDraftVal('ticketSource', ''));
   const [timeSlot, setTimeSlot] = useState(() => getDraftVal('timeSlot', 'any'));
@@ -1709,10 +1715,10 @@ function App() {
       const savedRoutesStr = localStorage.getItem('delivery_active_routes');
       const parsedRoutes = savedRoutesStr ? JSON.parse(savedRoutesStr) : [];
       const foundRoute = parsedRoutes.find(r => r.id === savedId);
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getLocalDateISO();
       const tmrw = new Date();
       tmrw.setDate(tmrw.getDate() + 1);
-      const tomorrowStr = tmrw.toISOString().split('T')[0];
+      const tomorrowStr = getLocalDateISO(tmrw);
       if (foundRoute && (foundRoute.date === todayStr || foundRoute.date === tomorrowStr)) {
         return savedId;
       }
@@ -1737,14 +1743,14 @@ function App() {
   const setRouteArchived = (furgoId, date, archived) => {
     if (!furgoId || !date) return;
     const key = `${furgoId}|${date}`;
-    const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().split('T')[0];
+    const cutoff = getLocalDateISO(new Date(Date.now() - 30 * 24 * 3600 * 1000));
     const list = getArchivedRouteKeys().filter(k => k !== key && (k.split('|')[1] || '') >= cutoff);
     if (archived) list.push(key);
     localStorage.setItem('delivery_archived_routes', JSON.stringify(list));
   };
   // Tras archivar/cerrar una ruta, elegir solo otra ruta de hoy o futura (nunca una pasada)
   const pickNextActiveRoute = (routesList) => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateISO();
     const candidates = (routesList || []).filter(r => r && r.date >= todayStr);
     return candidates.length > 0 ? candidates[candidates.length - 1] : null;
   };
@@ -1868,7 +1874,7 @@ function App() {
   };
   const [showCreateRouteFormFields, setShowCreateRouteFormFields] = useState(false);
   const [newRouteName, setNewRouteName] = useState('');
-  const [newRouteDate, setNewRouteDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newRouteDate, setNewRouteDate] = useState(() => getLocalDateISO());
   const [newRouteFurgoId, setNewRouteFurgoId] = useState('');
 
   // Estados temporales para añadir una TV nueva al listado
@@ -1889,7 +1895,7 @@ function App() {
 
   // Cierre de turno
   const [showShiftModal, setShowShiftModal] = useState(false);
-  const [shiftSummaryDate, setShiftSummaryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [shiftSummaryDate, setShiftSummaryDate] = useState(() => getLocalDateISO());
   const [shiftSummaryFurgoId, setShiftSummaryFurgoId] = useState('');
 
   // States and useEffect for driver shift self-configuration (declared after shiftSummaryDate initialization)
@@ -1901,7 +1907,7 @@ function App() {
 
   useEffect(() => {
     if (currentUser && currentUser.role === 'repartidor') {
-      const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+      const activeDate = shiftSummaryDate || getLocalDateISO();
       const shiftId = `${currentUser.id}_${activeDate}`;
       const s = Array.isArray(shifts) ? shifts.find(item => item.id === shiftId) : undefined;
       
@@ -2006,7 +2012,7 @@ function App() {
   const [showMapFiltersPanel, setShowMapFiltersPanel] = useState(true);
   const [routeStats, setRouteStats] = useState({});
   const watchIdRef = useRef(null);
-  const [mapFilterDate, setMapFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [mapFilterDate, setMapFilterDate] = useState(() => getLocalDateISO());
   const [mapFilterFurgo, _setMapFilterFurgo] = useState('all');
   const [mapSelectedFurgos, setMapSelectedFurgos] = useState([]); // [] = todas las rutas
   const [mapFilterSource, setMapFilterSource] = useState('all'); // 'all' | 'urbantz' | 'pda' | 'both'
@@ -2816,9 +2822,9 @@ function App() {
 
     let lastManualRefreshAt = 0;
     let lastHiddenAt = 0;
-    let lastKnownTodayStr = new Date().toISOString().split('T')[0];
+    let lastKnownTodayStr = getLocalDateISO();
     const handleRefresh = async (force = false) => {
-      const currentTodayStr = new Date().toISOString().split('T')[0];
+      const currentTodayStr = getLocalDateISO();
       if (currentTodayStr !== lastKnownTodayStr) {
         const prevTodayStr = lastKnownTodayStr;
         lastKnownTodayStr = currentTodayStr;
@@ -2831,7 +2837,7 @@ function App() {
         setFixedRateDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
         setSelectedCalendarDay(prev => (prev === prevTodayStr ? currentTodayStr : prev));
         setCalendarDate(prev => {
-          const prevIso = prev instanceof Date ? prev.toISOString().split('T')[0] : '';
+          const prevIso = prev instanceof Date ? getLocalDateISO(prev) : '';
           return prevIso === prevTodayStr ? new Date() : prev;
         });
         setAdminEndDate(getTomorrowDate());
@@ -2884,10 +2890,32 @@ function App() {
     };
 
     const handleOnlineOrPageShow = async () => {
+      setIsOnlineState(typeof navigator !== 'undefined' ? navigator.onLine : true);
       if (document.visibilityState === 'visible') {
         await checkAndReconnectIfNeeded(true);
         await handleRefresh(true);
       }
+    };
+
+    const handleOfflineEvent = () => {
+      setIsOnlineState(false);
+      setPendingSyncCount(getPendingSyncCount());
+    };
+
+    const handleSupportTransferReceived = async (e) => {
+      const detail = e?.detail || {};
+      try {
+        const savedUser = localStorage.getItem('delivery_session');
+        const myUser = savedUser ? JSON.parse(savedUser) : null;
+        if (myUser && detail.targetFurgoId && String(myUser.id) === String(detail.targetFurgoId)) {
+          const msg = detail.isReturn
+            ? `🔄 ${detail.senderLabel || 'Tu compañero'} te ha devuelto ${detail.count || 1} parada(s) a tu ruta.`
+            : `🚨 Has recibido ${detail.count || 1} parada(s) de apoyo de ${detail.senderLabel || 'un compañero'}.`;
+          setAlertMsg({ text: msg, type: 'info' });
+          setTimeout(() => setAlertMsg({ text: '', type: '' }), 6000);
+        }
+      } catch {}
+      await handleRefresh(true);
     };
 
     const handleStorageEvent = (e) => {
@@ -2904,6 +2932,8 @@ function App() {
     window.addEventListener('focus', handleVisibility);
     window.addEventListener('pageshow', handleOnlineOrPageShow);
     window.addEventListener('online', handleOnlineOrPageShow);
+    window.addEventListener('offline', handleOfflineEvent);
+    window.addEventListener('support-transfer-received', handleSupportTransferReceived);
     window.addEventListener('storage', handleStorageEvent);
     window.addEventListener('delivery-data-synced', handleCustomSyncEvent);
 
@@ -2920,6 +2950,8 @@ function App() {
       window.removeEventListener('focus', handleVisibility);
       window.removeEventListener('pageshow', handleOnlineOrPageShow);
       window.removeEventListener('online', handleOnlineOrPageShow);
+      window.removeEventListener('offline', handleOfflineEvent);
+      window.removeEventListener('support-transfer-received', handleSupportTransferReceived);
       window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('delivery-data-synced', handleCustomSyncEvent);
     };
@@ -3128,7 +3160,8 @@ function App() {
                         lng: parseFloat(val.lng),
                         updatedAt: val.updatedAt || new Date().toISOString(),
                         ...(val.appState ? { appState: val.appState } : {}),
-                        ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
+                        ...(val.appStateAt ? { appStateAt: val.appStateAt } : {}),
+                        ...(val.navTarget ? { navTarget: val.navTarget } : {})
                       };
                     }
                   } catch (e) {}
@@ -3190,7 +3223,7 @@ function App() {
         mapInstanceRef.current = map;
       }
       const renderMapContent = () => {
-        const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || new Date().toISOString().split('T')[0]);
+        const targetDate = isAdminMap ? mapFilterDate : (shiftSummaryDate || getLocalDateISO());
         const selectedFurgosKey = mapSelectedFurgos.length > 0 ? mapSelectedFurgos.join(',') : mapFilterFurgo;
         const currentFilterKey = activeTab + '_' + targetDate + '_' + superAdminFleetScope + '_' + selectedFurgosKey + '_' + mapFilterSource + '_' + mapFilterTimeSlot + '_' + mapFilterCompletion + '_' + shiftSummaryDate;
         const dayTickets = tickets.filter(t => {
@@ -3413,11 +3446,16 @@ function App() {
             const bgInfo = isBackground
               ? '<div style="margin-top:2px;font-size:0.76rem;color:#fde68a;">📱 Estado: <strong>🟡 En 2º plano' + (loc.appStateAt ? ' (' + new Date(loc.appStateAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ')' : '') + '</strong></div>'
               : (isRecentGps ? '<div style="margin-top:2px;font-size:0.76rem;color:#a7f3d0;">📱 Estado: <strong>🟢 En pantalla</strong></div>' : '');
+            const navAtTime = loc.navTarget?.at ? new Date(loc.navTarget.at).getTime() : 0;
+            const hasActiveNav = Boolean(loc.navTarget && (!navAtTime || (Date.now() - navAtTime <= 2 * 3600 * 1000)));
+            const navInfo = hasActiveNav
+              ? '<div style="margin-top:3px;padding:3px 6px;border-radius:5px;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.4);font-size:0.75rem;color:#bae6fd;">🧭 <strong>Rumbo a Parada #' + escapeHtml(String(loc.navTarget.stopIndex || '?')) + '</strong>' + (loc.navTarget.customerName ? ' — ' + escapeHtml(loc.navTarget.customerName) : '') + '</div>'
+              : '';
 
             const dEl = document.createElement('div');
             dEl.className = 'map-driver-live-marker';
             dEl.dataset.furgoId = fid;
-            dEl.title = (isCoordMarker ? 'Coordinador ' : '') + rawLabel + ' (' + relAgeText + (isBackground ? ' · en 2º plano' : '') + ')';
+            dEl.title = (isCoordMarker ? 'Coordinador ' : '') + rawLabel + ' (' + relAgeText + (isBackground ? ' · en 2º plano' : '') + (hasActiveNav ? ' · rumbo a #' + (loc.navTarget.stopIndex || '?') : '') + ')';
 
             if (isCoordMarker) {
               dEl.style.cssText = 'width:30px;height:30px;border-radius:50%;background:' + (isRecentGps ? 'rgba(14,165,233,0.3)' : 'rgba(100,116,139,0.28)') + ';border:2px solid ' + (isRecentGps ? '#38bdf8' : '#94a3b8') + ';display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px ' + (isRecentGps ? '#38bdf8' : '#94a3b8') + ',0 2px 6px rgba(0,0,0,0.6);font-size:15px;cursor:pointer;user-select:none;z-index:66;';
@@ -3434,6 +3472,7 @@ function App() {
               '<div style="font-weight:800;font-size:0.9rem;color:' + titleColor + ';margin-bottom:4px;">' + titleIcon + furgoLabel + (isCoordMarker ? ' (Coord.)' : '') + '</div>' +
               '<div style="margin-top:2px;">Señal: <strong>' + (isRecentGps ? '🟢 En vivo (' + relAgeText + ')' : '🟡 ' + relAgeText) + '</strong></div>' +
               bgInfo +
+              navInfo +
               '<div style="margin-top:2px;font-size:0.76rem;color:#cbd5e1;">Hora: <strong>' + new Date(locTime).toLocaleTimeString() + '</strong></div>' +
               '<div style="margin-top:2px;font-size:0.72rem;color:#9ca3af;">GPS: ' + latNum.toFixed(5) + ', ' + lngNum.toFixed(5) + '</div>' +
               '<div style="margin-top:6px;"><a href="' + gmapsUrl + '" target="_blank" rel="noopener noreferrer" style="color:#38bdf8;font-weight:700;text-decoration:none;font-size:0.76rem;">📍 Abrir ubicación en Google Maps ↗</a></div>' +
@@ -3592,11 +3631,22 @@ function App() {
         }
       }
       
-      setTickets(finalTickets);
-      setTariffs(finalTariffs);
-      setDormityTariffs(getDormityTariffs() || []);
-      setUsers(finalUsers);
-      setShifts(finalShifts);
+      const setIfChanged = (setter, nextVal) => {
+        setter(prev => {
+          try {
+            if (JSON.stringify(prev) === JSON.stringify(nextVal)) return prev;
+          } catch {}
+          return nextVal;
+        });
+      };
+
+      setIfChanged(setTickets, finalTickets);
+      setIfChanged(setTariffs, finalTariffs);
+      setIfChanged(setDormityTariffs, getDormityTariffs() || []);
+      setIfChanged(setUsers, finalUsers);
+      setIfChanged(setShifts, finalShifts);
+      setPendingSyncCount(getPendingSyncCount());
+      setIsOnlineState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
       if (u) {
         const freshUser = rawUsers.find(usr => usr.id === u.id);
@@ -3622,7 +3672,7 @@ function App() {
       // de hoy en adelante, la última hecha), excluyendo turnos cerrados y rutas archivadas.
       // Se conserva además la ruta seleccionada actualmente para no perder la selección.
       const buildActiveRoutes = (prevRoutes) => {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateISO();
         const archivedSet = new Set(getArchivedRouteKeys());
         const groups = new Map();
         const ensureGroup = (furgoId, date) => {
@@ -3681,14 +3731,20 @@ function App() {
       };
 
       const extractedRoutes = buildActiveRoutes(activeRoutes);
-      setActiveRoutes(prev => buildActiveRoutes(prev));
+      setActiveRoutes(prev => {
+        const nextRoutes = buildActiveRoutes(prev);
+        try {
+          if (JSON.stringify(prev) === JSON.stringify(nextRoutes)) return prev;
+        } catch {}
+        return nextRoutes;
+      });
 
       // Auto-seleccionar la ruta activa si no hay ninguna seleccionada (solo de hoy o mañana)
       if (extractedRoutes.length > 0 && !currentRouteId) {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getLocalDateISO();
         const tmrw = new Date();
         tmrw.setDate(tmrw.getDate() + 1);
-        const tomorrowStr = tmrw.toISOString().split('T')[0];
+        const tomorrowStr = getLocalDateISO(tmrw);
         const candidateRoutes = extractedRoutes.filter(r =>
           (r.date === todayStr || r.date === tomorrowStr) &&
           (!(u && u.role === 'repartidor') || r.furgoId === u.id)
@@ -3720,6 +3776,14 @@ function App() {
       console.error("Error loading data in App.jsx:", err);
     }
     
+    const setIfChangedOuter = (setter, nextVal) => {
+      setter(prev => {
+        try {
+          if (JSON.stringify(prev) === JSON.stringify(nextVal)) return prev;
+        } catch {}
+        return nextVal;
+      });
+    };
     const targetUserId = (u && u.role === 'repartidor') ? (u.createdBy || 'admin') : (u?.id);
     setModulePrice(getModulePrice(targetUserId) || 3.81);
     setKmPrice(getKmPrice(targetUserId) || 0.43);
@@ -3732,16 +3796,20 @@ function App() {
     setGoogleKeyInput(getGoogleMapsKey());
     setMapboxTokenInput(getMapboxToken());
     setAllowDriverSupportTransfer(getAllowDriverSupportTransfer());
-    setHelpersList(getHelpersList() || []);
-    setPlatesList(getPlatesList() || []);
-    setEmployeesList(getEmployeesList() || []);
-    setFleetVehicles(getFleetVehicles() || []);
-    setFleetFuelLogs(getFleetFuelLogs() || []);
-    setFleetMaintenanceLogs(getFleetMaintenanceLogs() || []);
-    setFleetDailyLogs(getFleetDailyLogs() || []);
+    setIfChangedOuter(setHelpersList, getHelpersList() || []);
+    setIfChangedOuter(setPlatesList, getPlatesList() || []);
+    setIfChangedOuter(setEmployeesList, getEmployeesList() || []);
+    setIfChangedOuter(setFleetVehicles, getFleetVehicles() || []);
+    setIfChangedOuter(setFleetFuelLogs, getFleetFuelLogs() || []);
+    setIfChangedOuter(setFleetMaintenanceLogs, getFleetMaintenanceLogs() || []);
+    setIfChangedOuter(setFleetDailyLogs, getFleetDailyLogs() || []);
     setFixedRateLogs(prev => {
       const fromStorage = getFixedRateLogs() || [];
-      return mergeFixedRateLogsArrays(prev || [], fromStorage).filter(x => x && !x._deleted);
+      const merged = mergeFixedRateLogsArrays(prev || [], fromStorage).filter(x => x && !x._deleted);
+      try {
+        if (JSON.stringify(prev) === JSON.stringify(merged)) return prev;
+      } catch {}
+      return merged;
     });
   };
 
@@ -7915,7 +7983,8 @@ function App() {
         ticket.serviceType || parsed.serviceType
       );
 
-      const targetDayTickets = tickets.filter(t => t.date === ticket.date && t.furgoId === targetUser.id);
+      const allCurrentTickets = getTickets();
+      const targetDayTickets = allCurrentTickets.filter(t => t && t.date === ticket.date && t.furgoId === targetUser.id);
 
       const updatedTicket = {
         ...ticket,
@@ -7928,6 +7997,14 @@ function App() {
       };
 
       await updateTicket(updatedTicket);
+      broadcastRealtimeEvent('support_transfer_received', {
+        targetFurgoId: targetUser.id,
+        targetLabel: targetUser.label,
+        senderLabel: currentOwnerLabel,
+        count: 1,
+        date: ticket.date,
+        isReturn: false
+      });
       triggerAlert(`Parada transferida de apoyo a ${targetUser.label} con éxito`);
       loadData();
     } catch (err) {
@@ -7994,12 +8071,21 @@ function App() {
           routeName: `Ruta ${targetUser.label} (${ticket.date})`,
           notes: updatedNotes,
           routeOrder: runningOrder,
-          _syncStatus: 'pending'
+          _syncStatus: 'pending',
+          _pendingAt: Date.now()
         });
       }
 
       const mergedAll = allCurrentTickets.map(t => (t && updatedById.has(String(t.id))) ? updatedById.get(String(t.id)) : t);
       const saveRes = await saveTickets(mergedAll);
+      broadcastRealtimeEvent('support_transfer_received', {
+        targetFurgoId: targetUser.id,
+        targetLabel: targetUser.label,
+        senderLabel: currentUser?.label || 'Ruta',
+        count: validTickets.length,
+        date: validTickets[0]?.date,
+        isReturn: false
+      });
       if (saveRes && saveRes.success === false) {
         triggerAlert("Guardado en local, pero hubo un problema al subir a la nube", "warning");
       } else {
@@ -8128,7 +8214,8 @@ function App() {
         ticket.serviceType || parsed.serviceType
       );
 
-      const targetDayTickets = tickets.filter(t => t.date === ticket.date && t.furgoId === targetUser.id);
+      const allCurrentTickets = getTickets();
+      const targetDayTickets = allCurrentTickets.filter(t => t && t.date === ticket.date && t.furgoId === targetUser.id);
 
       const updatedTicket = {
         ...ticket,
@@ -8141,6 +8228,14 @@ function App() {
       };
 
       await updateTicket(updatedTicket);
+      broadcastRealtimeEvent('support_transfer_received', {
+        targetFurgoId: targetUser.id,
+        targetLabel: targetUser.label,
+        senderLabel: currentUser?.label || ticket.furgoLabel || 'Apoyo',
+        count: 1,
+        date: ticket.date,
+        isReturn: true
+      });
       triggerAlert(`Cliente devuelto a ${targetUser.label} con éxito`);
       loadData();
     } catch (err) {
@@ -8451,10 +8546,23 @@ function App() {
   const handleNavigate = (address, latitude = null, longitude = null, ticketId = null) => {
     if (ticketId) {
       const ticket = tickets.find(t => t.id === ticketId);
-      if (ticket && (!ticket.status || ticket.status === 'pending')) {
-        updateTicketStatus(ticketId, 'transit', '');
-        loadData();
-        triggerAlert('Iniciando viaje de reparto. ¡Buen viaje!', 'success');
+      if (ticket) {
+        if (!ticket.status || ticket.status === 'pending') {
+          updateTicketStatus(ticketId, 'transit', '');
+          loadData();
+          triggerAlert('Iniciando viaje de reparto. ¡Buen viaje!', 'success');
+        }
+        if (currentUser && currentUser.role === 'repartidor') {
+          const dayDriverStops = sortTicketsByRouteOrder(tickets.filter(tk => tk && tk.date === ticket.date && tk.furgoId === ticket.furgoId));
+          const stopIdx = dayDriverStops.findIndex(tk => tk.id === ticket.id);
+          updateDriverNavigationTarget(currentUser.id, {
+            ticketId: String(ticket.id),
+            stopIndex: stopIdx !== -1 ? stopIdx + 1 : (ticket.routeOrder || '?'),
+            customerName: ticket.customerName || 'Cliente',
+            address: getShortAddressString(ticket.address || address),
+            at: new Date().toISOString()
+          });
+        }
       }
     }
 
@@ -8480,7 +8588,7 @@ function App() {
   const handleNavigateFullRoute = () => {
     if (!currentUser || currentUser.role !== 'repartidor') return;
 
-    const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+    const targetDate = shiftSummaryDate || getLocalDateISO();
     const userTickets = tickets.filter(t => t.furgoId === currentUser.id && t.date === targetDate);
     
     if (userTickets.length === 0) {
@@ -21987,7 +22095,8 @@ function App() {
                                 lng: parseFloat(val.lng),
                                 updatedAt: val.updatedAt || new Date().toISOString(),
                                 ...(val.appState ? { appState: val.appState } : {}),
-                                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
+                                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {}),
+                                ...(val.navTarget ? { navTarget: val.navTarget } : {})
                               };
                             }
                           } catch (e) {}
@@ -22093,13 +22202,15 @@ function App() {
                       const diffMins = hasValidGps ? Math.max(0, Math.round((Date.now() - locTime) / 60000)) : null;
                       const isLive = hasValidGps && diffMins <= 15;
                       const isBg = hasValidGps && loc.appState === 'background';
+                      const navAtMs = loc?.navTarget?.at ? new Date(loc.navTarget.at).getTime() : 0;
+                      const hasActiveNav = Boolean(loc?.navTarget && (!navAtMs || (Date.now() - navAtMs <= 2 * 3600 * 1000)));
                       const timeBadge = !hasValidGps
                         ? 'sin GPS'
                         : (diffMins < 1
                             ? 'ahora'
                             : diffMins < 60
                               ? `${diffMins}m`
-                              : new Date(locTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + (isBg ? ' · 2º plano' : '');
+                              : new Date(locTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) + (isBg ? ' · 2º plano' : '') + (hasActiveNav ? ` · 🧭 #${loc.navTarget.stopIndex || '?'}` : '');
 
                       return (
                         <button
@@ -22131,7 +22242,7 @@ function App() {
                                   : '1px solid var(--panel-border)',
                             color: isBg ? '#fde68a' : isLive ? '#a7f3d0' : hasValidGps ? '#ddd6fe' : 'var(--text-muted)'
                           }}
-                          title={isBg ? `${u.label}: app minimizada / en 2º plano` : undefined}
+                          title={hasActiveNav ? `${u.label}: navegando a Parada #${loc.navTarget.stopIndex || '?'} (${loc.navTarget.customerName || 'Cliente'})` : (isBg ? `${u.label}: app minimizada / en 2º plano` : undefined)}
                         >
                           <span>{isBg ? '🟡' : isLive ? '🟢' : hasValidGps ? '🟣' : '⚪'}</span>
                           <span>🚚 {u.label}</span>
@@ -22197,7 +22308,8 @@ function App() {
                                 lng: parseFloat(val.lng),
                                 updatedAt: val.updatedAt || new Date().toISOString(),
                                 ...(val.appState ? { appState: val.appState } : {}),
-                                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {})
+                                ...(val.appStateAt ? { appStateAt: val.appStateAt } : {}),
+                                ...(val.navTarget ? { navTarget: val.navTarget } : {})
                               };
                             }
                           } catch (e) {}
@@ -28399,7 +28511,7 @@ function App() {
                 triggerAlert('Sincronizando con el servidor...', 'info');
                 await syncFromCloud(true);
                 await checkAndReconnectIfNeeded();
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getLocalDateISO();
                 const tomorrowStr = getTomorrowDate();
                 const targetEndDate = (adminEndDate && adminEndDate > tomorrowStr) ? adminEndDate : tomorrowStr;
                 await loadHistoricalTicketsForPeriod(adminStartDate || todayStr, targetEndDate);
@@ -28414,10 +28526,46 @@ function App() {
               }
             }} 
             className="btn btn-secondary btn-small" 
-            style={{ width: 'auto', padding: '6px 10px', background: 'rgba(16, 185, 129, 0.15)', borderColor: '#10b981', color: '#6ee7b7', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: '600', whiteSpace: 'nowrap' }}
-            title="Sincronizar datos con el servidor ahora"
+            style={{
+              width: 'auto',
+              padding: '6px 10px',
+              background: !isOnlineState
+                ? 'rgba(239, 68, 68, 0.18)'
+                : pendingSyncCount > 0
+                  ? 'rgba(245, 158, 11, 0.18)'
+                  : 'rgba(16, 185, 129, 0.15)',
+              borderColor: !isOnlineState
+                ? '#ef4444'
+                : pendingSyncCount > 0
+                  ? '#f59e0b'
+                  : '#10b981',
+              color: !isOnlineState
+                ? '#fca5a5'
+                : pendingSyncCount > 0
+                  ? '#fde68a'
+                  : '#6ee7b7',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontWeight: '600',
+              whiteSpace: 'nowrap'
+            }}
+            title={
+              !isOnlineState
+                ? `Sin cobertura de internet. ${pendingSyncCount > 0 ? `${pendingSyncCount} cambio(s) guardado(s) en el móvil se subirán solos al recuperar señal.` : 'Modo sin conexión activo.'}`
+                : pendingSyncCount > 0
+                  ? `Subiendo ${pendingSyncCount} cambio(s) pendiente(s) a la nube... Toca para forzar ahora.`
+                  : 'En línea y 100% sincronizado. Toca para sincronizar ahora.'
+            }
           >
-            <span>☁️</span><span style={{ fontSize: '0.78rem' }}> Sincronizar</span>
+            <span>{!isOnlineState ? '🔴' : pendingSyncCount > 0 ? '🟡' : '🟢'}</span>
+            <span style={{ fontSize: '0.78rem' }}>
+              {!isOnlineState
+                ? ` Sin red${pendingSyncCount > 0 ? ` (${pendingSyncCount})` : ''}`
+                : pendingSyncCount > 0
+                  ? ` Subiendo (${pendingSyncCount})`
+                  : ' Sincronizar'}
+            </span>
           </button>
           <button 
             onClick={async () => {
