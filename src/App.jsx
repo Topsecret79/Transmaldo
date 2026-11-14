@@ -2624,23 +2624,16 @@ function App() {
     }
   }, []);
 
-  // Recarga suave automática cuando el Service Worker activa una nueva versión de la app en móvil
+  // Control de estado ocupado (modales o formularios críticos abiertos) para posponer
+  // recargas automáticas del Service Worker hasta que el usuario termine su acción.
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      let refreshing = false;
-      const handleControllerChange = () => {
-        if (!refreshing) {
-          refreshing = true;
-          console.log('Nueva versión de la app instalada por Service Worker. Actualizando aplicación...');
-          window.location.reload();
-        }
-      };
-      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
-      return () => {
-        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
-      };
+    const isBusy = Boolean(showShiftModal || plannedShiftModalOpen || editingAssignment || obsModalTicketId);
+    window.__isAppBusyForReload = isBusy;
+    if (!isBusy && window.__pendingSwReload) {
+      window.__pendingSwReload = false;
+      window.location.reload();
     }
-  }, []);
+  }, [showShiftModal, plannedShiftModalOpen, editingAssignment, obsModalTicketId]);
 
   // Detecta cuando el usuario llega desde el enlace de recuperación de contraseña
   // (correo enviado por Supabase Auth) para mostrarle el formulario de nueva contraseña.
@@ -2822,6 +2815,7 @@ function App() {
     });
 
     let lastManualRefreshAt = 0;
+    let lastHiddenAt = 0;
     let lastKnownTodayStr = new Date().toISOString().split('T')[0];
     const handleRefresh = async (force = false) => {
       const currentTodayStr = new Date().toISOString().split('T')[0];
@@ -2835,6 +2829,11 @@ function App() {
         setTicketFilterDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
         setNewRouteDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
         setFixedRateDate(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setSelectedCalendarDay(prev => (prev === prevTodayStr ? currentTodayStr : prev));
+        setCalendarDate(prev => {
+          const prevIso = prev instanceof Date ? prev.toISOString().split('T')[0] : '';
+          return prevIso === prevTodayStr ? new Date() : prev;
+        });
         setAdminEndDate(getTomorrowDate());
         setStatsEndDate(currentTodayStr);
         setCurrentRouteId(null);
@@ -2860,11 +2859,13 @@ function App() {
     };
 
     const handleVisibility = async () => {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenAt = Date.now();
+        return;
+      }
       if (document.visibilityState === 'visible') {
-        // Al volver a la app o desbloquear el móvil: primero verificar si el canal
-        // Realtime sigue vivo (en iOS Safari puede quedar como "zombi" — .state
-        // dice 'joined' pero el WebSocket está muerto). checkAndReconnectIfNeeded
-        // hace un ping real a Supabase y fuerza reconexión si falla.
+        const hiddenDurationMs = lastHiddenAt > 0 ? (Date.now() - lastHiddenAt) : 0;
+        lastHiddenAt = 0;
         const isMapActive = activeTab === 'map' || activeTab === 'driver_map';
         if (isMapActive) {
           const map = mapInstanceRef.current;
@@ -2875,8 +2876,16 @@ function App() {
             try { map.resize(); } catch (e) {}
           }
         }
-        // Verificar conexión y reconectar si el canal está muerto (fix canal zombi móvil)
-        await checkAndReconnectIfNeeded();
+        // Si estuvo en segundo plano > 15s, forzar reconexión limpia del canal Realtime
+        // para eliminar sockets "zombis" de iOS/Android que aparentan estar conectados.
+        await checkAndReconnectIfNeeded(hiddenDurationMs > 15000);
+        await handleRefresh(true);
+      }
+    };
+
+    const handleOnlineOrPageShow = async () => {
+      if (document.visibilityState === 'visible') {
+        await checkAndReconnectIfNeeded(true);
         await handleRefresh(true);
       }
     };
@@ -2891,15 +2900,14 @@ function App() {
       loadDataRef.current();
     };
 
-    window.addEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleVisibility);
+    window.addEventListener('pageshow', handleOnlineOrPageShow);
+    window.addEventListener('online', handleOnlineOrPageShow);
     window.addEventListener('storage', handleStorageEvent);
     window.addEventListener('delivery-data-synced', handleCustomSyncEvent);
 
     // Heartbeat de sincronización en segundo plano cada 10 segundos mientras la app esté visible.
-    // Usa force=true para SIEMPRE sincronizar, sin cooldown — en móvil el intervalo puede
-    // haberse saltado varias veces si el SO suspendió los timers, así que no queremos perder
-    // la primera oportunidad de sincronizar cuando el usuario retoma la app.
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         handleRefresh(true);
@@ -2908,8 +2916,10 @@ function App() {
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleVisibility);
+      window.removeEventListener('pageshow', handleOnlineOrPageShow);
+      window.removeEventListener('online', handleOnlineOrPageShow);
       window.removeEventListener('storage', handleStorageEvent);
       window.removeEventListener('delivery-data-synced', handleCustomSyncEvent);
     };
@@ -3625,6 +3635,12 @@ function App() {
 
         finalTickets.forEach(t => {
           if (!t || !t.routeName || !t.date || !t.furgoId) return;
+          // Para el repartidor, no auto-resucitar rutas de días pasados que hubieran quedado sin cerrar
+          // (evita que al cerrar el turno de hoy salte automáticamente una ruta abierta de días atrás).
+          if (u && u.role === 'repartidor' && t.date < todayStr) {
+            const candidateId = `${t.routeName}|${t.date}|${t.furgoId}`;
+            if (candidateId !== currentRouteId) return;
+          }
           const g = ensureGroup(t.furgoId, t.date);
           g.names[t.routeName] = (g.names[t.routeName] || 0) + 1;
         });
@@ -4952,18 +4968,25 @@ function App() {
       orderMap[t.id] = i + 1;
     });
 
-    const updatedTickets = tickets.map(t => {
-      if (t.date === ticketA.date && t.furgoId === ticketA.furgoId) {
+    const allCurrentTickets = getTickets();
+    const updatedAllTickets = allCurrentTickets.map(t => {
+      if (t && t.date === ticketA.date && t.furgoId === ticketA.furgoId) {
         const newOrder = orderMap[t.id] || t.routeOrder || 1;
-        return { ...t, routeOrder: Number(newOrder), _syncStatus: 'pending' };
+        return { ...t, routeOrder: Number(newOrder), _syncStatus: 'pending', _pendingAt: Date.now() };
       }
       return t;
     });
 
-    setTickets(updatedTickets);
+    setTickets(prev => prev.map(t => {
+      if (t && t.date === ticketA.date && t.furgoId === ticketA.furgoId) {
+        const newOrder = orderMap[t.id] || t.routeOrder || 1;
+        return { ...t, routeOrder: Number(newOrder), _syncStatus: 'pending', _pendingAt: Date.now() };
+      }
+      return t;
+    }));
 
     try {
-      saveTickets(updatedTickets);
+      saveTickets(updatedAllTickets);
       saveRouteManualStatus(ticketA.furgoId, ticketA.date, true);
     } catch (e) {
       console.error("Error saving manual route order:", e);
@@ -4997,20 +5020,26 @@ function App() {
     // Insertar en la nueva posición
     dayTickets.splice(targetIdx, 0, movedTicket);
 
-    // Actualizar el orden secuencial
-    const updatedTickets = tickets.map(t => {
+    // Actualizar el orden secuencial sobre el catálogo completo en localStorage (getTickets)
+    const allCurrentTickets = getTickets();
+    const updatedAllTickets = allCurrentTickets.map(t => {
       if (t && t.date === ticketToMove.date && t.furgoId === ticketToMove.furgoId) {
         const idx = dayTickets.findIndex(x => x.id === t.id);
-        // Fix: marcar como 'pending' para que saveTickets() solo suba estos tickets.
-        return { ...t, routeOrder: idx + 1, _syncStatus: 'pending' };
+        return { ...t, routeOrder: idx + 1, _syncStatus: 'pending', _pendingAt: Date.now() };
       }
       return t;
     });
 
-    setTickets(updatedTickets);
+    setTickets(prev => prev.map(t => {
+      if (t && t.date === ticketToMove.date && t.furgoId === ticketToMove.furgoId) {
+        const idx = dayTickets.findIndex(x => x.id === t.id);
+        return { ...t, routeOrder: idx + 1, _syncStatus: 'pending', _pendingAt: Date.now() };
+      }
+      return t;
+    }));
 
     try {
-      saveTickets(updatedTickets);
+      saveTickets(updatedAllTickets);
       saveRouteManualStatus(ticketToMove.furgoId, ticketToMove.date, true);
       triggerAlert(`📍 Parada reordenada con éxito a la posición ${targetPos}`);
     } catch (err) {
@@ -5907,15 +5936,18 @@ function App() {
       const optimizedWithOrder = route.map((ticket, index) => ({
         ...ticket,
         routeOrder: index + 1,
-        // Fix: marcar como 'pending' para que saveTickets() solo suba los tickets de
-        // esta ruta optimizada, no el array completo de todos los repartos.
-        _syncStatus: 'pending'
+        _syncStatus: 'pending',
+        _pendingAt: Date.now()
       }));
-      const updatedAllTickets = tickets.map(t => {
+      const allCurrentTickets = getTickets();
+      const updatedAllTickets = allCurrentTickets.map(t => {
         const match = optimizedWithOrder.find(x => x.id === t.id);
         return match ? match : t;
       });
-      setTickets(updatedAllTickets);
+      setTickets(prev => prev.map(t => {
+        const match = optimizedWithOrder.find(x => x.id === t.id);
+        return match ? match : t;
+      }));
       await saveTickets(updatedAllTickets);
 
       saveRouteManualStatus(targetFurgo, targetDate, false);
@@ -8167,13 +8199,15 @@ function App() {
       safeSaveTickets(localTickets);
     }
 
-    const performUpdate = async (latitude = null, longitude = null) => {
+    const performUpdate = async () => {
       const currentTickets = getTickets();
-      const ticketObj = currentTickets.find(t => t.id === id);
+      const ticketObj = currentTickets.find(t => String(t.id) === String(id));
       const furgoId = ticketObj ? ticketObj.furgoId : null;
       const date = ticketObj ? ticketObj.date : null;
 
-      await updateTicketStatus(id, status, failureReason, latitude, longitude);
+      // 1. Guardar y emitir el cambio de estado INMEDIATAMENTE sin esperar al GPS (0ms de bloqueo).
+      // Si el chofer bloquea la pantalla o cambia a WhatsApp/Google Maps tras pulsar, el estado ya está a salvo.
+      await updateTicketStatus(id, status, failureReason, null, null);
       
       if (status === 'success' || status === 'failed') {
         const isRouteManual = (furgoId && date) ? getRouteManualStatus(furgoId, date) : false;
@@ -8187,23 +8221,35 @@ function App() {
       }
       
       triggerAlert(`Reparto marcado como: ${status === 'success' ? 'Entregado' : status === 'failed' ? 'Fallido' : 'Pendiente'}`);
+
+      // 2. En segundo plano (no bloqueante), adjuntar coordenadas GPS si el móvil las entrega rápido
+      if ('geolocation' in navigator && (status === 'success' || status === 'failed')) {
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              const { latitude, longitude } = position.coords;
+              if (latitude != null && longitude != null) {
+                const latestTickets = getTickets();
+                const tIdx = latestTickets.findIndex(t => String(t.id) === String(id));
+                if (tIdx !== -1) {
+                  latestTickets[tIdx].completedLat = latitude;
+                  latestTickets[tIdx].completedLng = longitude;
+                  latestTickets[tIdx]._syncStatus = 'pending';
+                  latestTickets[tIdx]._pendingAt = Date.now();
+                  await saveTickets(latestTickets);
+                }
+              }
+            } catch (gpsErr) {
+              console.warn("Aviso adjuntando coordenadas GPS posteriores:", gpsErr);
+            }
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 3000, maximumAge: 30000 }
+        );
+      }
     };
 
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          performUpdate(latitude, longitude);
-        },
-        (error) => {
-          console.warn("GPS Location capture failed:", error);
-          performUpdate();
-        },
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    } else {
-      performUpdate();
-    }
+    performUpdate();
   };
 
   const submitStatusWithObservations = () => {
@@ -9206,13 +9252,18 @@ function App() {
                   // Actualiza también el nombre en todos los tickets y en el turno de
                   // ese mismo día/furgoneta, para que quede coherente en toda la app
                   // (no solo en la lista de "Ruta Activa").
-                  const updatedTickets = tickets.map(t =>
-                    (t.date === date && t.furgoId === furgoId)
-                      ? { ...t, routeName: cleanNewName, _syncStatus: 'pending' }
+                  const allCurrentTickets = getTickets();
+                  const updatedAllTickets = allCurrentTickets.map(t =>
+                    (t && t.date === date && t.furgoId === furgoId)
+                      ? { ...t, routeName: cleanNewName, _syncStatus: 'pending', _pendingAt: Date.now() }
                       : t
                   );
-                  setTickets(updatedTickets);
-                  saveTickets(updatedTickets);
+                  setTickets(prev => prev.map(t =>
+                    (t && t.date === date && t.furgoId === furgoId)
+                      ? { ...t, routeName: cleanNewName, _syncStatus: 'pending', _pendingAt: Date.now() }
+                      : t
+                  ));
+                  saveTickets(updatedAllTickets);
 
                   const targetShift = shifts.find(s => s.date === date && s.furgoId === furgoId);
                   const updatedShifts = shifts.map(s =>
@@ -9267,32 +9318,83 @@ function App() {
               >
                 📦 Archivar de la Vista
               </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-small"
-                onClick={async () => {
-                  const success = await handleConfirmCloseShift(activeRouteContext.furgoId, activeRouteContext.date);
-                  if (success) {
-                    const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
-                    setActiveRoutes(remaining);
-                    const nextRoute = pickNextActiveRoute(remaining);
-                    if (nextRoute) {
-                      setCurrentRouteId(nextRoute.id);
-                      setTicketDate(nextRoute.date);
-                      setTicketRoute(nextRoute.furgoId);
-                      setRouteName(nextRoute.name);
-                    } else {
-                      setCurrentRouteId(null);
-                      setTicketDate(new Date().toISOString().split('T')[0]);
-                      setTicketRoute('');
-                      setRouteName('');
+              {getShiftStatus(activeRouteContext.furgoId, activeRouteContext.date) === 'closed' ? (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#ef4444',
+                    fontSize: '0.82rem',
+                    fontWeight: '700'
+                  }}>
+                    🔒 Turno Cerrado
+                  </span>
+                  {(currentUser.role === 'admin' || currentUser.role === 'superadmin') && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-small"
+                      onClick={async () => {
+                        if (window.confirm(`¿Deseas reabrir el turno de ${activeRouteContext.name} (${activeRouteContext.date})?`)) {
+                          const res = await reopenShift(activeRouteContext.furgoId, activeRouteContext.date);
+                          if (res && res.success) {
+                            await syncFromCloud(true);
+                            loadData();
+                            triggerAlert('Turno reabierto correctamente ✓');
+                          }
+                        }
+                      }}
+                      style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#10b981', fontWeight: '700' }}
+                    >
+                      🔓 Reabrir Turno
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-small"
+                  onClick={async () => {
+                    if (currentUser.role === 'repartidor') {
+                      const targetFurgo = activeRouteContext.furgoId;
+                      const targetDate = activeRouteContext.date;
+                      const existingKms = getRouteKms(targetFurgo, targetDate);
+                      setShiftKmsInput(existingKms > 0 ? existingKms.toString() : '');
+                      const currentShift = shifts.find(s => s.furgoId === targetFurgo && s.date === targetDate);
+                      const logs = getFleetDailyLogs();
+                      const existingLog = logs.find(l => l.date === targetDate && l.plate === (currentShift?.matricula || driverShiftPlate));
+                      setDriverKmStart(existingLog ? (existingLog.kmStart ?? '') : (currentShift?.startKms ?? ''));
+                      setDriverKmEnd(existingLog ? (existingLog.kmEnd ?? '') : (currentShift?.endKms ?? ''));
+                      setDriverKmL(existingLog && existingLog.kmL !== null ? existingLog.kmL : '');
+                      setShiftSummaryDate(targetDate);
+                      setShiftSummaryFurgoId(targetFurgo);
+                      setShowShiftModal(true);
+                      return;
                     }
-                  }
-                }}
-                style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444' }}
-              >
-                🏁 Finalizar y Cerrar Turno
-              </button>
+                    const success = await handleConfirmCloseShift(activeRouteContext.furgoId, activeRouteContext.date);
+                    if (success) {
+                      const remaining = activeRoutes.filter(r => r.id !== currentRouteId);
+                      setActiveRoutes(remaining);
+                      const nextRoute = pickNextActiveRoute(remaining);
+                      if (nextRoute) {
+                        setCurrentRouteId(nextRoute.id);
+                        setTicketDate(nextRoute.date);
+                        setTicketRoute(nextRoute.furgoId);
+                        setRouteName(nextRoute.name);
+                      } else {
+                        setCurrentRouteId(null);
+                        setTicketDate(new Date().toISOString().split('T')[0]);
+                        setTicketRoute('');
+                        setRouteName('');
+                      }
+                    }
+                  }}
+                  style={{ width: 'auto', margin: 0, padding: '6px 12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#ef4444' }}
+                >
+                  🏁 Finalizar y Cerrar Turno
+                </button>
+              )}
             </div>
 
             {/* Selector de Modalidad de Servicio Dormity a nivel de Turno/Jornada */}
@@ -17909,18 +18011,24 @@ function App() {
       const resultShifts = [...existingShifts];
 
       // Si una furgoneta tiene repartos este día pero no tenía turno previo registrado,
-      // se sintetiza una entrada para que el calendario NUNCA oculte a quien trabajó
+      // se sintetiza una entrada con el ID canónico `${fId}_${dateStr}` para que el calendario,
+      // Asignaciones y Turnos Abiertos nunca oculten una ruta activa.
+      // IMPORTANTE: Nunca marcar status='closed' solo porque se completaron las paradas;
+      // un turno solo está 'closed' cuando el chofer o el administrador lo cierra realmente.
       furgosWithTickets.forEach((stats, fId) => {
         if (!shiftFurgoIds.has(fId)) {
           const uObj = (users || []).find(u => u.id === fId);
           const isFinished = stats.count > 0 && stats.completedCount === stats.count;
+          const realStatus = getShiftStatus(fId, dateStr);
           resultShifts.push({
-            id: `ticket_shift_${fId}_${dateStr}`,
+            id: `${fId}_${dateStr}`,
             furgoId: fId,
             date: dateStr,
-            status: isFinished ? 'closed' : 'open',
+            status: realStatus === 'closed' ? 'closed' : 'open',
             openedAt: dateStr,
-            closedAt: isFinished ? dateStr : null,
+            closedAt: realStatus === 'closed' ? dateStr : null,
+            allStopsCompleted: isFinished,
+            _isSynthetic: true,
             customDriver: uObj?.label || fId,
             helper: '',
             helper2: '',
@@ -17933,6 +18041,7 @@ function App() {
       // Asegurar que cada turno tenga su conteo de repartos del día y metadatos completos
       return resultShifts.map(s => {
         const stats = furgosWithTickets.get(s.furgoId);
+        const isFinished = stats ? (stats.count > 0 && stats.completedCount === stats.count) : false;
         let meta = {};
         try {
           const rawLocalMeta = localStorage.getItem(`shift_meta_${s.id}`);
@@ -17961,6 +18070,8 @@ function App() {
 
         return {
           ...s,
+          id: `${s.furgoId}_${s.date}`,
+          allStopsCompleted: isFinished,
           customDriver,
           helper,
           helper2,
@@ -17972,6 +18083,55 @@ function App() {
           ticketsCount: s.ticketsCount || (stats ? stats.count : 0)
         };
       });
+    };
+
+    // Actualiza o inserta un turno en `shifts` cuando se edita Chofer/Ayudante/Matrícula desde el Calendario
+    const upsertShiftFieldFromCalendar = (targetShift, fieldPatch, successMsg) => {
+      const canonicalId = `${targetShift.furgoId}_${targetShift.date}`;
+      const existsInShifts = (shifts || []).some(curr => curr && (curr.id === canonicalId || (curr.furgoId === targetShift.furgoId && curr.date === targetShift.date)));
+      let updatedShifts;
+      if (existsInShifts) {
+        updatedShifts = (shifts || []).map(curr => {
+          if (curr && (curr.id === canonicalId || (curr.furgoId === targetShift.furgoId && curr.date === targetShift.date))) {
+            return { ...curr, ...fieldPatch, id: canonicalId, _syncStatus: 'pending' };
+          }
+          return curr;
+        });
+      } else {
+        const { _isSynthetic, allStopsCompleted, ticketsCount, ...cleanBase } = targetShift;
+        updatedShifts = [
+          ...(shifts || []),
+          {
+            ...cleanBase,
+            ...fieldPatch,
+            id: canonicalId,
+            status: targetShift.status === 'closed' ? 'closed' : 'open',
+            openedAt: targetShift.openedAt || new Date().toISOString(),
+            _syncStatus: 'pending'
+          }
+        ];
+      }
+      setShifts(updatedShifts);
+      saveShifts(updatedShifts, canonicalId);
+      if (successMsg) triggerAlert(successMsg);
+    };
+
+    // Combina todos los turnos de `shifts` con cualquier día/furgoneta que tenga paradas cargadas
+    // para que `📋 Asignaciones` y `🔓 Turnos Abiertos` muestren siempre todas las rutas activas.
+    const getAllCombinedShiftsForCalendar = () => {
+      const allDatesSet = new Set();
+      (shifts || []).forEach(s => {
+        if (s && s.date && isFurgoAuthorizedForCalendar(s.furgoId)) allDatesSet.add(s.date);
+      });
+      (tickets || []).forEach(t => {
+        if (t && t.date && isFurgoAuthorizedForCalendar(t.furgoId)) allDatesSet.add(t.date);
+      });
+      const combined = [];
+      allDatesSet.forEach(dStr => {
+        const dayList = getShiftsForDay(dStr);
+        dayList.forEach(item => combined.push(item));
+      });
+      return combined;
     };
 
     // Format header title based on active view mode
@@ -18442,7 +18602,13 @@ function App() {
                                 background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.15)' : s.openedAt ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
                                 color: s.status === 'closed' ? 'var(--danger)' : s.openedAt ? 'var(--success)' : 'var(--text-muted)'
                               }}>
-                                {s.status === 'closed' ? `🔒 Cerrado${closedTime ? ` (${closedTime})` : ''}` : s.openedAt ? '🟢 Activo' : '⚪ Planificado'}
+                                {s.status === 'closed'
+                                  ? `🔒 Cerrado${closedTime ? ` (${closedTime})` : ''}`
+                                  : s.allStopsCompleted
+                                    ? '🟢 Activo (✅ Repartos listos)'
+                                    : s.openedAt
+                                      ? '🟢 Activo'
+                                      : '⚪ Planificado'}
                               </span>
                             </div>
 
@@ -18584,15 +18750,7 @@ function App() {
                                     if (typed === null) return;
                                     newCustom = typed.trim() || 'Por asignar';
                                   }
-                                  const updatedShifts = shifts.map(curr => {
-                                    if (curr.id === s.id) {
-                                      return { ...curr, customDriver: newCustom, _syncStatus: 'pending' };
-                                    }
-                                    return curr;
-                                  });
-                                  setShifts(updatedShifts);
-                                  saveShifts(updatedShifts, s.id);
-                                  triggerAlert('Chofer actualizado');
+                                  upsertShiftFieldFromCalendar(s, { customDriver: newCustom }, 'Chofer actualizado');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
                                 style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
@@ -18621,15 +18779,7 @@ function App() {
                                     if (typed === null) return;
                                     newHelper = typed.trim() || '';
                                   }
-                                  const updatedShifts = shifts.map(curr => {
-                                    if (curr.id === s.id) {
-                                      return { ...curr, helper: newHelper, _syncStatus: 'pending' };
-                                    }
-                                    return curr;
-                                  });
-                                  setShifts(updatedShifts);
-                                  saveShifts(updatedShifts, s.id);
-                                  triggerAlert('Ayudante actualizado');
+                                  upsertShiftFieldFromCalendar(s, { helper: newHelper }, 'Ayudante actualizado');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
                                 style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
@@ -18658,15 +18808,7 @@ function App() {
                                     if (typed === null) return;
                                     newHelper2 = typed.trim() || '';
                                   }
-                                  const updatedShifts = shifts.map(curr => {
-                                    if (curr.id === s.id) {
-                                      return { ...curr, helper2: newHelper2, _syncStatus: 'pending' };
-                                    }
-                                    return curr;
-                                  });
-                                  setShifts(updatedShifts);
-                                  saveShifts(updatedShifts, s.id);
-                                  triggerAlert('Segundo ayudante actualizado');
+                                  upsertShiftFieldFromCalendar(s, { helper2: newHelper2 }, 'Segundo ayudante actualizado');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
                                 style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
@@ -18688,15 +18830,7 @@ function App() {
                                 className="form-input"
                                 value={s.matricula || ''}
                                 onChange={(e) => {
-                                  const updatedShifts = shifts.map(curr => {
-                                    if (curr.id === s.id) {
-                                      return { ...curr, matricula: e.target.value, _syncStatus: 'pending' };
-                                    }
-                                    return curr;
-                                  });
-                                  setShifts(updatedShifts);
-                                  saveShifts(updatedShifts, s.id);
-                                  triggerAlert('Matrícula actualizada');
+                                  upsertShiftFieldFromCalendar(s, { matricula: e.target.value }, 'Matrícula actualizada');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
                                 style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
@@ -19252,8 +19386,8 @@ function App() {
         {calendarViewMode === 'routes_history' && (() => {
           const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
           
-          // Get shifts in selected month
-          const monthShifts = shifts.filter(s => s.date.startsWith(monthPrefix));
+          // Obtener todos los turnos del mes seleccionado (incluyendo rutas con paradas cargadas)
+          const monthShifts = getAllCombinedShiftsForCalendar().filter(s => s && s.date && s.date.startsWith(monthPrefix));
           
           // Sort shifts by date descending
           const sortedMonthShifts = [...monthShifts].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
@@ -19686,7 +19820,7 @@ function App() {
 
         {/* Modal de Turnos Abiertos (planificados o en curso, sin cerrar) */}
         {showOpenShiftsModal && (() => {
-          const openShifts = shifts
+          const openShifts = getAllCombinedShiftsForCalendar()
             .filter(s => s && s.status !== 'closed')
             .sort((a, b) => b.date.localeCompare(a.date));
 
@@ -20227,7 +20361,13 @@ function App() {
                                   background: s.status === 'closed' ? 'rgba(239, 68, 68, 0.15)' : s.openedAt ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.05)',
                                   color: s.status === 'closed' ? 'var(--danger)' : s.openedAt ? 'var(--success)' : 'var(--text-muted)'
                                 }}>
-                                  {s.status === 'closed' ? `🔒 Cerrado${closedTime ? ` (${closedTime})` : ''}` : s.openedAt ? '🟢 Activo' : '⚪ Planificado'}
+                                  {s.status === 'closed'
+                                  ? `🔒 Cerrado${closedTime ? ` (${closedTime})` : ''}`
+                                  : s.allStopsCompleted
+                                    ? '🟢 Activo (✅ Repartos listos)'
+                                    : s.openedAt
+                                      ? '🟢 Activo'
+                                      : '⚪ Planificado'}
                                 </span>
                               </div>
 
@@ -20260,7 +20400,29 @@ function App() {
                                   📋 Ver Detalle
                                 </button>
 
-                                {s.status === 'closed' && (
+                                {s.status !== 'closed' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminCloseShiftDirect(s)}
+                                    style={{
+                                      background: 'rgba(239, 68, 68, 0.15)',
+                                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                                      color: 'var(--danger)',
+                                      padding: '3px 8px',
+                                      borderRadius: '5px',
+                                      fontSize: '0.72rem',
+                                      cursor: 'pointer',
+                                      fontWeight: '700',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                      height: '24px'
+                                    }}
+                                    title="Cerrar este turno directamente"
+                                  >
+                                    🔒 Cerrar
+                                  </button>
+                                ) : (
                                   <button
                                     type="button"
                                     onClick={async () => {
@@ -20347,15 +20509,7 @@ function App() {
                                       if (typed === null) return;
                                       newCustom = typed.trim() || 'Por asignar';
                                     }
-                                    const updatedShifts = shifts.map(curr => {
-                                      if (curr.id === s.id) {
-                                        return { ...curr, customDriver: newCustom, _syncStatus: 'pending' };
-                                      }
-                                      return curr;
-                                    });
-                                    setShifts(updatedShifts);
-                                    saveShifts(updatedShifts, s.id);
-                                    triggerAlert('Chofer actualizado');
+                                    upsertShiftFieldFromCalendar(s, { customDriver: newCustom }, 'Chofer actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
@@ -20384,15 +20538,7 @@ function App() {
                                       if (typed === null) return;
                                       newHelper = typed.trim() || '';
                                     }
-                                    const updatedShifts = shifts.map(curr => {
-                                      if (curr.id === s.id) {
-                                        return { ...curr, helper: newHelper, _syncStatus: 'pending' };
-                                      }
-                                      return curr;
-                                    });
-                                    setShifts(updatedShifts);
-                                    saveShifts(updatedShifts, s.id);
-                                    triggerAlert('Ayudante actualizado');
+                                    upsertShiftFieldFromCalendar(s, { helper: newHelper }, 'Ayudante actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
@@ -20421,15 +20567,7 @@ function App() {
                                       if (typed === null) return;
                                       newHelper2 = typed.trim() || '';
                                     }
-                                    const updatedShifts = shifts.map(curr => {
-                                      if (curr.id === s.id) {
-                                        return { ...curr, helper2: newHelper2, _syncStatus: 'pending' };
-                                      }
-                                      return curr;
-                                    });
-                                    setShifts(updatedShifts);
-                                    saveShifts(updatedShifts, s.id);
-                                    triggerAlert('Segundo ayudante actualizado');
+                                    upsertShiftFieldFromCalendar(s, { helper2: newHelper2 }, 'Segundo ayudante actualizado');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
@@ -20451,15 +20589,7 @@ function App() {
                                   className="form-input"
                                   value={s.matricula || ''}
                                   onChange={(e) => {
-                                    const updatedShifts = shifts.map(curr => {
-                                      if (curr.id === s.id) {
-                                        return { ...curr, matricula: e.target.value, _syncStatus: 'pending' };
-                                      }
-                                      return curr;
-                                    });
-                                    setShifts(updatedShifts);
-                                    saveShifts(updatedShifts, s.id);
-                                    triggerAlert('Matrícula actualizada');
+                                    upsertShiftFieldFromCalendar(s, { matricula: e.target.value }, 'Matrícula actualizada');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
@@ -26416,7 +26546,34 @@ function App() {
               </div>
               
               {(() => {
-                const closedShiftsList = (shifts || [])
+                // Incluir también rutas que tienen paradas cargadas aunque aún no tengan fila en `delivery_shifts`
+                const existingShiftKeys = new Set((shifts || []).filter(Boolean).map(s => `${s.furgoId}_${s.date}`));
+                const ticketBackedGroups = new Map();
+                (tickets || []).forEach(t => {
+                  if (!t || !t.furgoId || !t.date) return;
+                  const key = `${t.furgoId}_${t.date}`;
+                  if (existingShiftKeys.has(key)) return;
+                  if (!ticketBackedGroups.has(key)) {
+                    const uObj = (users || []).find(u => u.id === t.furgoId);
+                    const realStatus = getShiftStatus(t.furgoId, t.date);
+                    ticketBackedGroups.set(key, {
+                      id: key,
+                      furgoId: t.furgoId,
+                      date: t.date,
+                      status: realStatus === 'closed' ? 'closed' : 'open',
+                      openedAt: t.date,
+                      closedAt: realStatus === 'closed' ? t.date : null,
+                      customDriver: uObj?.label || t.furgoId,
+                      helper: '',
+                      helper2: '',
+                      matricula: '',
+                      _isSynthetic: true
+                    });
+                  }
+                });
+                const combinedShiftsSource = [...(shifts || []), ...Array.from(ticketBackedGroups.values())];
+
+                const closedShiftsList = combinedShiftsSource
                   .filter(s => {
                     if (!s) return false;
                     
@@ -26443,7 +26600,7 @@ function App() {
                   })
                   .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.closedAt || '').localeCompare(a.closedAt || ''));
 
-                if (shifts.length === 0) {
+                if (combinedShiftsSource.length === 0) {
                   return (
                     <div style={{ padding: '20px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--panel-border)', borderRadius: '8px', textAlign: 'center' }}>
                       No se ha registrado ningún turno todavía.

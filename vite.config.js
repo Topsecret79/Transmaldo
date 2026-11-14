@@ -43,6 +43,21 @@ export default defineConfig({
           }
         });
       }
+    },
+    {
+      name: 'sw-build-stamp',
+      closeBundle() {
+        try {
+          const swDistPath = path.resolve(process.cwd(), 'dist', 'sw.js');
+          if (fs.existsSync(swDistPath)) {
+            const content = fs.readFileSync(swDistPath, 'utf-8');
+            const stamp = `\n// Build stamp: ${new Date().toISOString()}\n`;
+            fs.writeFileSync(swDistPath, content + stamp, 'utf-8');
+          }
+        } catch (err) {
+          console.warn('Warning stamping dist/sw.js:', err);
+        }
+      }
     }
   ],
 })

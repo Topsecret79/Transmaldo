@@ -317,6 +317,9 @@ export function setupRealtimeChannel() {
               if (payload.completedLng !== undefined) localTickets[idx].completedLng = payload.completedLng;
               if (payload.completedAt !== undefined) localTickets[idx].completedAt = payload.completedAt;
               if (payload.notes !== undefined) localTickets[idx].notes = payload.notes;
+              if (payload.furgoId !== undefined) localTickets[idx].furgoId = payload.furgoId;
+              if (payload.furgoLabel !== undefined) localTickets[idx].furgoLabel = payload.furgoLabel;
+              if (payload.routeName !== undefined) localTickets[idx].routeName = payload.routeName;
               safeSaveTickets(localTickets);
             }
           } catch (e) {
@@ -423,6 +426,7 @@ export function setupRealtimeChannel() {
               localStorage.setItem('delivery_' + record.key, record.value);
               localStorage.setItem(record.key, record.value);
               window.dispatchEvent(new CustomEvent('manual-route-status-updated', { detail: { key: record.key, value: record.value } }));
+              notifySync();
             } catch (e) {}
             return;
           }
@@ -471,13 +475,14 @@ export function setupRealtimeChannel() {
   }
 }
 
-// Verifica si Supabase responde haciendo una query mínima (count).
-// Si el canal está caído, lo reconecta de forma limpia y no destructiva.
-export async function checkAndReconnectIfNeeded() {
+// Verifica si Supabase responde o si el canal necesita reconectarse.
+// Si el canal está caído o vuelve de segundo plano prolongado, lo reconecta de forma limpia.
+export async function checkAndReconnectIfNeeded(forceReconnect = false) {
   if (!supabase) { await reinitSupabase(true); return; }
   const channelHealthy = isRealtimeChannelHealthy();
-  if (!channelHealthy) {
-    console.log('Canal Realtime no saludable — reconectando canal...');
+  const isStale = lastRealtimePingOkAt > 0 && (Date.now() - lastRealtimePingOkAt) > REALTIME_STALE_THRESHOLD_MS;
+  if (!channelHealthy || forceReconnect || isStale) {
+    console.log('Canal Realtime reconectando (forzado, inactivo o no saludable)...');
     setupRealtimeChannel();
   }
 }
@@ -679,6 +684,57 @@ export async function initializeSupabaseTables() {
   }
 }
 
+// Normaliza IDs de turnos al formato canónico `${furgoId}_${date}` y fusiona duplicados
+// (ej. antiguos registros `ticket_shift_...` o turnos movidos de fecha), dando prioridad a `status === 'closed'`.
+export function normalizeAndDeduplicateShifts(shiftsArray) {
+  if (!Array.isArray(shiftsArray)) return [];
+  const byCanonicalId = new Map();
+
+  shiftsArray.forEach(raw => {
+    if (!raw || !raw.furgoId || !raw.date) return;
+    const canonicalId = `${raw.furgoId}_${raw.date}`;
+    const s = { ...raw, id: canonicalId };
+    const existing = byCanonicalId.get(canonicalId);
+
+    if (!existing) {
+      byCanonicalId.set(canonicalId, s);
+      return;
+    }
+
+    const isClosed = existing.status === 'closed' || s.status === 'closed';
+    const closedSource = s.status === 'closed' ? s : (existing.status === 'closed' ? existing : null);
+
+    byCanonicalId.set(canonicalId, {
+      ...existing,
+      ...s,
+      id: canonicalId,
+      furgoId: s.furgoId,
+      date: s.date,
+      status: isClosed ? 'closed' : (s.status || existing.status || 'open'),
+      openedAt: s.openedAt || existing.openedAt || null,
+      closedAt: isClosed ? (closedSource?.closedAt || s.closedAt || existing.closedAt || null) : null,
+      customDriver: s.customDriver || existing.customDriver || '',
+      matricula: s.matricula || existing.matricula || '',
+      helper: s.helper || existing.helper || '',
+      helper2: s.helper2 || existing.helper2 || '',
+      observations: s.observations || existing.observations || '',
+      routeName: s.routeName || existing.routeName || '',
+      kms: s.kms ?? existing.kms ?? null,
+      startKms: s.startKms ?? existing.startKms ?? null,
+      endKms: s.endKms ?? existing.endKms ?? null,
+      summary: (closedSource && closedSource.summary) || s.summary || existing.summary || null,
+      createdBy: s.createdBy || existing.createdBy || 'admin',
+      ...((existing._syncStatus === 'pending' || s._syncStatus === 'pending') ? { _syncStatus: 'pending' } : {})
+    });
+  });
+
+  return Array.from(byCanonicalId.values());
+}
+
+let isCloudSyncRunning = false;
+let pendingCloudSyncAgain = false;
+let pendingCloudSyncIncludeTickets = false;
+
 export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
   if (!supabase) return;
   if (isSaving > 0) {
@@ -691,7 +747,111 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     }
     return;
   }
+  if (isCloudSyncRunning) {
+    pendingCloudSyncAgain = true;
+    if (includeTickets) pendingCloudSyncIncludeTickets = true;
+    return;
+  }
+  isCloudSyncRunning = true;
   try {
+    // 0. Empujar primero a Supabase cualquier ticket o turno pendiente local (_syncStatus === 'pending')
+    // que haya quedado en cola mientras el móvil estaba en segundo plano, bloqueado o sin cobertura.
+    try {
+      const localPendingTickets = (JSON.parse(localStorage.getItem('delivery_tickets')) || []).filter(t => t && t._syncStatus === 'pending');
+      if (localPendingTickets.length > 0) {
+        const formattedPending = localPendingTickets.map(t => ({
+          id: t.id,
+          date: t.date,
+          furgo_id: t.furgoId,
+          furgo_label: t.furgoLabel,
+          route_name: t.routeName,
+          customer_name: t.customerName,
+          phone: t.phone,
+          address: t.address,
+          postcode: t.postcode,
+          notes: t.notes,
+          cod_amount: t.codAmount,
+          tasks: Array.isArray(t.tasks) ? t.tasks : [],
+          total_price: t.totalPrice,
+          status: t.status,
+          failure_reason: t.failureReason || '',
+          lat: t.lat,
+          lng: t.lng,
+          completed_lat: t.completedLat,
+          completed_lng: t.completedLng,
+          route_order: t.routeOrder,
+          created_at: t.createdAt,
+          created_by: t.createdBy || 'admin',
+          dormity_route_type: t.dormityRouteType || null,
+          dormity_serv_dia_option: t.dormityServDiaOption || null
+        }));
+        const { error: pushTicketsErr } = await supabase.from('delivery_tickets').upsert(formattedPending);
+        if (!pushTicketsErr) {
+          const uploadedIds = new Set(localPendingTickets.map(t => String(t.id)));
+          const currentLocal = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+          const cleanedLocal = currentLocal.map(t => {
+            if (t && t._syncStatus === 'pending' && uploadedIds.has(String(t.id))) {
+              const { _syncStatus, _pendingAt, ...rest } = t;
+              return rest;
+            }
+            return t;
+          });
+          safeSaveTickets(cleanedLocal);
+          broadcastRealtimeEvent('tickets_updated', { count: localPendingTickets.length, timestamp: Date.now() });
+        }
+      }
+    } catch (pushTErr) {
+      console.warn("Aviso al reintentar subida de tickets pendientes:", pushTErr);
+    }
+
+    try {
+      const rawLocalShifts = normalizeAndDeduplicateShifts(JSON.parse(localStorage.getItem('delivery_shifts')) || []);
+      const localPendingShifts = rawLocalShifts.filter(s => s && s._syncStatus === 'pending');
+      if (localPendingShifts.length > 0) {
+        const basicPendingShifts = localPendingShifts.map(s => ({
+          id: `${s.furgoId}_${s.date}`,
+          furgo_id: s.furgoId,
+          date: s.date,
+          status: s.status,
+          opened_at: s.openedAt || null,
+          closed_at: s.closedAt || null,
+          created_by: s.createdBy || 'admin'
+        }));
+        const { error: pushShiftsErr } = await supabase.from('delivery_shifts').upsert(basicPendingShifts);
+        if (!pushShiftsErr) {
+          const metaPendingRows = localPendingShifts.map(s => ({
+            key: `shift_meta_${s.furgoId}_${s.date}`,
+            value: JSON.stringify({
+              helper: s.helper || '',
+              helper2: s.helper2 || '',
+              matricula: s.matricula || '',
+              customDriver: s.customDriver || '',
+              observations: s.observations || '',
+              routeName: s.routeName || '',
+              kms: s.kms || null,
+              startKms: s.startKms || null,
+              endKms: s.endKms || null,
+              summary: s.summary || null
+            })
+          }));
+          if (metaPendingRows.length > 0) {
+            await supabase.from('delivery_settings').upsert(metaPendingRows);
+          }
+          const savedShiftIds = new Set(localPendingShifts.map(s => `${s.furgoId}_${s.date}`));
+          const cleanedShifts = rawLocalShifts.map(s => {
+            if (s && savedShiftIds.has(s.id) && s._syncStatus === 'pending') {
+              const { _syncStatus, ...rest } = s;
+              return rest;
+            }
+            return s;
+          });
+          localStorage.setItem('delivery_shifts', JSON.stringify(cleanedShifts));
+          broadcastRealtimeEvent('shifts_updated', { timestamp: Date.now(), shiftIds: Array.from(savedShiftIds) });
+        }
+      }
+    } catch (pushSErr) {
+      console.warn("Aviso al reintentar subida de turnos pendientes:", pushSErr);
+    }
     // Pull settings first so we can use them for user permissions fallback if needed.
     // Fix: paginado por el mismo motivo que delivery_tickets (ver más abajo) — hoy
     // delivery_settings tiene muchas menos filas que el límite de 1000 por petición,
@@ -982,10 +1142,10 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
 
       const nowMs = Date.now();
       const isFreshPending = (t) => {
-        if (!t || t._syncStatus !== 'pending' || force) return false;
+        if (!t || t._syncStatus !== 'pending') return false;
         if (isSaving > 0) return true;
-        const ts = t._pendingAt || (t.createdAt ? new Date(t.createdAt).getTime() : 0);
-        return ts > 0 && (nowMs - ts) < 90000;
+        const ts = t._pendingAt || (t.completedAt ? new Date(t.completedAt).getTime() : 0) || (t.createdAt ? new Date(t.createdAt).getTime() : 0);
+        return ts === 0 || (nowMs - ts) < 24 * 3600 * 1000;
       };
       const pendingLocal = localCurrent.filter(isFreshPending);
       const filteredCloud = cloudTickets.filter(t => t && !deletedStrIds.includes(String(t.id)));
@@ -1076,8 +1236,9 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
 
       const safeSettings = (settings && !errSettings) ? settings : [];
 
-      const cloudShifts = shifts.map(s => {
-        const metaSetting = safeSettings.find(set => set.key === `shift_meta_${s.id}`);
+      const rawCloudShifts = shifts.map(s => {
+        const canonicalId = (s.furgo_id && s.date) ? `${s.furgo_id}_${s.date}` : s.id;
+        const metaSetting = safeSettings.find(set => set.key === `shift_meta_${canonicalId}`) || safeSettings.find(set => set.key === `shift_meta_${s.id}`);
         let meta = {
           helper: '',
           helper2: '',
@@ -1098,7 +1259,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           }
         }
         return {
-          id: s.id,
+          id: canonicalId,
           furgoId: s.furgo_id,
           date: s.date,
           status: s.status,
@@ -1117,6 +1278,17 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           endKms: meta.endKms || null
         };
       });
+
+      const cloudShifts = normalizeAndDeduplicateShifts(rawCloudShifts);
+      localExisting = normalizeAndDeduplicateShifts(localExisting);
+
+      // Limpiar de Supabase cualquier fila huérfana con ID sintético antiguo `ticket_shift_...`
+      const straySyntheticShiftIds = shifts
+        .filter(s => s && typeof s.id === 'string' && s.id.startsWith('ticket_shift_'))
+        .map(s => s.id);
+      if (straySyntheticShiftIds.length > 0) {
+        secureDelete('delivery_shifts', straySyntheticShiftIds).catch(() => {});
+      }
 
       // Fix: los turnos borrados (deletePlannedShift/resetMonthlyShifts) no dejaban
       // ningún rastro local, así que si el borrado remoto fallaba o llegaba tarde,
@@ -1208,7 +1380,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       });
 
-      localStorage.setItem('delivery_shifts', JSON.stringify(mergedShifts));
+      localStorage.setItem('delivery_shifts', JSON.stringify(normalizeAndDeduplicateShifts(mergedShifts)));
     }
 
     if (settings && !errSettings) {
@@ -1513,6 +1685,14 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     notifySync();
   } catch (e) {
     console.error("Error pulling database from Supabase:", e);
+  } finally {
+    isCloudSyncRunning = false;
+    if (pendingCloudSyncAgain) {
+      const nextInclude = pendingCloudSyncIncludeTickets;
+      pendingCloudSyncAgain = false;
+      pendingCloudSyncIncludeTickets = false;
+      setTimeout(() => syncFromCloud(nextInclude, 2), 400);
+    }
   }
 }
 
@@ -2468,13 +2648,6 @@ export async function saveTickets(tickets) {
       let pendingTickets = tickets.filter(t => t && t._syncStatus === 'pending');
 
       if (pendingTickets.length === 0) {
-        // Fallback de seguridad: si saveTickets fue invocado sin la marca explícita _syncStatus,
-        // subimos los tickets de hoy o fecha reciente para asegurar que ningún cambio se pierda
-        const todayStr = new Date().toISOString().split('T')[0];
-        pendingTickets = tickets.filter(t => t && t.date && t.date >= todayStr);
-      }
-
-      if (pendingTickets.length === 0) {
         return { success: true }; // nada que subir; el finally de abajo igualmente libera isSaving
       }
 
@@ -2524,7 +2697,7 @@ export async function saveTickets(tickets) {
           const currentLocal = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
           const updatedLocal = currentLocal.map(t => {
             if (t && t._syncStatus === 'pending' && uploadedIds.has(String(t.id))) {
-              const { _syncStatus, ...rest } = t;
+              const { _syncStatus, _pendingAt, ...rest } = t;
               return rest;
             }
             return t;
@@ -2914,6 +3087,7 @@ export async function addTicket(ticketData) {
     dormityRouteType: ticketData.dormityRouteType,
     dormityServDiaOption: ticketData.dormityServDiaOption,
     _syncStatus: 'pending',
+    _pendingAt: Date.now(),
     ...(anyPriceNeedsReview ? { priceNeedsReview: true } : {})
   };
 
@@ -3050,6 +3224,7 @@ export async function updateTicket(updatedTicket) {
       dormityRouteType: updatedTicket.dormityRouteType !== undefined ? updatedTicket.dormityRouteType : tickets[index].dormityRouteType,
       dormityServDiaOption: updatedTicket.dormityServDiaOption !== undefined ? updatedTicket.dormityServDiaOption : tickets[index].dormityServDiaOption,
       _syncStatus: 'pending',
+      _pendingAt: Date.now(),
       priceNeedsReview: anyPriceNeedsReview
     };
     const result = await saveTickets(tickets);
@@ -3059,9 +3234,9 @@ export async function updateTicket(updatedTicket) {
 }
 
 // Actualizar el estado de un ticket
-export function updateTicketStatus(ticketId, status, failureReason = '', completedLat = null, completedLng = null) {
+export async function updateTicketStatus(ticketId, status, failureReason = '', completedLat = null, completedLng = null) {
   const tickets = getTickets();
-  const index = tickets.findIndex(t => t.id === ticketId);
+  const index = tickets.findIndex(t => String(t.id) === String(ticketId));
   if (index !== -1) {
     tickets[index].status = status;
     if (status === 'failed') {
@@ -3130,7 +3305,10 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
     }
 
     tickets[index]._syncStatus = 'pending';
-    saveTickets(tickets);
+    tickets[index]._pendingAt = Date.now();
+    // Guardar primero en localStorage de forma síncrona e inmediata
+    safeSaveTickets(tickets);
+    // Emitir Broadcast inmediatamente para actualización instantánea en dispositivos abiertos
     broadcastRealtimeEvent('ticket_status_changed', {
       ticketId: String(ticketId),
       status,
@@ -3138,8 +3316,13 @@ export function updateTicketStatus(ticketId, status, failureReason = '', complet
       completedLat: tickets[index].completedLat || null,
       completedLng: tickets[index].completedLng || null,
       completedAt: tickets[index].completedAt || null,
-      notes: tickets[index].notes || ''
+      notes: tickets[index].notes || '',
+      furgoId: tickets[index].furgoId,
+      furgoLabel: tickets[index].furgoLabel,
+      routeName: tickets[index].routeName
     });
+    // Persistir en Supabase (si se corta por paso a segundo plano, queda con _syncStatus='pending' y se sube al reabrir)
+    await saveTickets(tickets);
     return tickets[index];
   }
   return null;
@@ -3304,14 +3487,12 @@ export function encodeObservationsHelper(helper, matricula, customDriver, obsTex
   return `${prefixes}${cleanObs}`.trim();
 }
 
-// Obtener turnos
+// Obtener turnos (normalizados y deduplicados por `${furgoId}_${date}`)
 export function getShifts() {
   initDB();
-  // Fix: un valor corrupto en localStorage aquí tumbaba cualquier pantalla que
-  // dependiera de los turnos (planificación, nómina, dashboard). Se captura y
-  // se cae a [] en vez de dejar que la excepción se propague sin control.
   try {
-    return JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+    const raw = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+    return normalizeAndDeduplicateShifts(raw);
   } catch (e) {
     console.error('Error parsing delivery_shifts:', e);
     return [];
@@ -3320,16 +3501,18 @@ export function getShifts() {
 
 // Guardar turnos (solo sube a Supabase los turnos modificados para evitar sobreescrituras concurrentes)
 export async function saveShifts(shifts, targetShiftId = null) {
-  localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
+  const normalizedShifts = normalizeAndDeduplicateShifts(shifts);
+  localStorage.setItem('delivery_shifts', JSON.stringify(normalizedShifts));
   if (supabase) {
     isSaving++; // contador, no booleano
     try {
       // Filtrar únicamente los turnos que realmente se modificaron
       let shiftsToUpload = [];
       if (targetShiftId) {
-        shiftsToUpload = shifts.filter(s => s && s.id === targetShiftId);
+        const cleanTargetId = String(targetShiftId).replace(/^ticket_shift_/, '');
+        shiftsToUpload = normalizedShifts.filter(s => s && (s.id === cleanTargetId || s.id === targetShiftId));
       } else {
-        shiftsToUpload = shifts.filter(s => s && s._syncStatus === 'pending');
+        shiftsToUpload = normalizedShifts.filter(s => s && s._syncStatus === 'pending');
       }
 
       // Si no hay ningún turno modificado pendiente de subir, terminar sin sobreescribir la nube
@@ -3409,14 +3592,18 @@ export async function saveShifts(shifts, targetShiftId = null) {
 // Comprobar si el turno para una furgoneta en una fecha está cerrado
 export function getShiftStatus(furgoId, date) {
   const shifts = getShifts();
-  const shift = shifts.find(s => s.furgoId === furgoId && s.date === date);
-  return shift ? shift.status : 'open';
+  const matching = shifts.filter(s => s && s.furgoId === furgoId && s.date === date);
+  if (matching.length === 0) return 'open';
+  if (matching.some(s => s.status === 'closed')) return 'closed';
+  return matching[0].status || 'open';
 }
 
 // Obtener un turno específico
 export function getShift(furgoId, date) {
   const shifts = getShifts();
-  return shifts.find(s => s.furgoId === furgoId && s.date === date) || null;
+  const matching = shifts.filter(s => s && s.furgoId === furgoId && s.date === date);
+  if (matching.length === 0) return null;
+  return matching.find(s => s.status === 'closed') || matching[0];
 }
 
 // Guardar o cambiar el nombre de la ruta de una jornada
@@ -3566,17 +3753,34 @@ export async function deletePlannedShift(furgoId, date) {
 // refrescaba la pantalla a un tiempo fijo (100ms) asumiendo que ya había terminado,
 // lo que con una red lenta podía seguir mostrando "Cerrado" pese al aviso de éxito.
 export async function reopenShift(furgoId, date) {
-  const shifts = getShifts();
+  let rawShifts = [];
+  try {
+    rawShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+  } catch (e) {}
   const shiftId = `${furgoId}_${date}`;
-  let index = shifts.findIndex(s => s.id === shiftId);
-  const existingShift = index !== -1 ? shifts[index] : null;
+  let existingShift = null;
+  let foundAny = false;
 
-  if (index !== -1) {
-    shifts[index].status = 'open';
-    shifts[index].closedAt = null;
-    shifts[index].closed_at = null;
-  } else {
-    shifts.push({
+  const updatedShifts = rawShifts.map(s => {
+    if (s && ((s.furgoId === furgoId && s.date === date) || s.id === shiftId || s.id === `ticket_shift_${shiftId}`)) {
+      foundAny = true;
+      existingShift = existingShift || s;
+      return {
+        ...s,
+        id: shiftId,
+        furgoId,
+        date,
+        status: 'open',
+        closedAt: null,
+        closed_at: null,
+        summary: null
+      };
+    }
+    return s;
+  });
+
+  if (!foundAny) {
+    updatedShifts.push({
       id: shiftId,
       furgoId,
       date,
@@ -3585,10 +3789,10 @@ export async function reopenShift(furgoId, date) {
       closedAt: null,
       createdBy: 'admin'
     });
-    index = shifts.length - 1;
   }
 
-  localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
+  const normalized = normalizeAndDeduplicateShifts(updatedShifts);
+  localStorage.setItem('delivery_shifts', JSON.stringify(normalized));
 
   if (supabase) {
     try {
@@ -3608,11 +3812,34 @@ export async function reopenShift(furgoId, date) {
 
       if (error) {
         console.error("Error reopening shift in Supabase:", error);
-        // Marcar como pendiente para reintentar en próxima sincronización
-        shifts[index]._syncStatus = 'pending';
-        localStorage.setItem('delivery_shifts', JSON.stringify(shifts));
+        const marked = normalized.map(s => s.id === shiftId ? { ...s, _syncStatus: 'pending' } : s);
+        localStorage.setItem('delivery_shifts', JSON.stringify(marked));
         return { success: false, error };
       }
+
+      // Actualizar también shift_meta en delivery_settings limpiando summary
+      const currentReopened = normalized.find(s => s.id === shiftId) || existingShift || {};
+      await supabase.from('delivery_settings').upsert({
+        key: `shift_meta_${shiftId}`,
+        value: JSON.stringify({
+          helper: currentReopened.helper || '',
+          helper2: currentReopened.helper2 || '',
+          matricula: currentReopened.matricula || '',
+          customDriver: currentReopened.customDriver || '',
+          observations: currentReopened.observations || '',
+          routeName: currentReopened.routeName || '',
+          kms: currentReopened.kms || null,
+          startKms: currentReopened.startKms || null,
+          endKms: currentReopened.endKms || null,
+          summary: null
+        })
+      });
+
+      broadcastRealtimeEvent('shifts_updated', {
+        timestamp: Date.now(),
+        shiftIds: [shiftId]
+      });
+      notifySync();
     } catch (e) {
       console.error("Exception reopening shift in Supabase:", e);
       return { success: false, error: e };
@@ -4886,17 +5113,25 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
   ticketsToUpdate.forEach(t => {
     t.date = newDate;
     t._syncStatus = 'pending';
+    t._pendingAt = Date.now();
   });
   await saveTickets(tickets);
 
-  // 2. Filtrar e ir cambiando la fecha del turno (shift)
+  // 2. Filtrar e ir cambiando la fecha y el ID canónico del turno (shift)
+  const oldShiftId = `${furgoId}_${oldDate}`;
+  const newShiftId = `${furgoId}_${newDate}`;
   const shiftIndex = shifts.findIndex(s => s.furgoId === furgoId && s.date === oldDate);
   let shiftToUpsert = null;
   if (shiftIndex !== -1) {
+    shifts[shiftIndex].id = newShiftId;
     shifts[shiftIndex].date = newDate;
     shifts[shiftIndex]._syncStatus = 'pending';
     shiftToUpsert = shifts[shiftIndex];
-    await saveShifts(shifts);
+    await saveShifts(shifts, newShiftId);
+    if (supabase && oldShiftId !== newShiftId) {
+      secureDelete('delivery_shifts', [oldShiftId]).catch(() => {});
+      secureDelete('delivery_settings', [`shift_meta_${oldShiftId}`]).catch(() => {});
+    }
   }
 
   // 3. Sincronizar remotamente si Supabase está activo
@@ -5418,16 +5653,20 @@ export function hasPermission(user, moduleId) {
  * with the periodic sync cycle overwriting data.
  */
 export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, matricula, helper, helper2, kms, startKms, endKms) {
+  // Normalizar siempre al ID canónico `${furgoId}_${date}` (evitando crear duplicados con `ticket_shift_...`)
+  const canonicalShiftId = (furgoId && date) ? `${furgoId}_${date}` : String(shiftId).replace(/^ticket_shift_/, '');
+
   // 1. Update the specific shift in localStorage directly
   let localShifts = [];
   try {
-    localShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+    localShifts = normalizeAndDeduplicateShifts(JSON.parse(localStorage.getItem('delivery_shifts')) || []);
   } catch (e) {}
 
-  const idx = localShifts.findIndex(s => s.id === shiftId);
+  const idx = localShifts.findIndex(s => s.id === canonicalShiftId || (s.furgoId === furgoId && s.date === date));
   if (idx !== -1) {
     localShifts[idx] = {
       ...localShifts[idx],
+      id: canonicalShiftId,
       customDriver,
       matricula,
       helper,
@@ -5439,7 +5678,7 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
   } else {
     // Create new shift entry if doesn't exist
     localShifts.push({
-      id: shiftId,
+      id: canonicalShiftId,
       furgoId,
       date,
       status: 'open',
@@ -5462,12 +5701,12 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
   // 2. Save to Supabase directly (both the shift row and its metadata setting)
   if (supabase) {
     try {
-      const currentShift = localShifts.find(s => s.id === shiftId);
+      const currentShift = localShifts.find(s => s.id === canonicalShiftId);
       // Evitar sobreescribir el status si el turno ya fue cerrado en la nube o localmente
       const { data: existingShiftRow } = await supabase
         .from('delivery_shifts')
         .select('status, closed_at, opened_at')
-        .eq('id', shiftId)
+        .eq('id', canonicalShiftId)
         .maybeSingle();
 
       const isClosed = (existingShiftRow?.status === 'closed') || (currentShift?.status === 'closed');
@@ -5476,7 +5715,7 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
 
       // Upsert the basic shift row
       const { error: shiftErr } = await supabase.from('delivery_shifts').upsert([{
-        id: shiftId,
+        id: canonicalShiftId,
         furgo_id: furgoId,
         date,
         status: isClosed ? 'closed' : 'open',
@@ -5490,7 +5729,7 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       const { data: existingMeta } = await supabase
         .from('delivery_settings')
         .select('value')
-        .eq('key', `shift_meta_${shiftId}`)
+        .eq('key', `shift_meta_${canonicalShiftId}`)
         .maybeSingle();
 
       let currentMeta = {};
@@ -5511,11 +5750,15 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       };
 
       const { error: metaErr } = await supabase.from('delivery_settings').upsert([{
-        key: `shift_meta_${shiftId}`,
+        key: `shift_meta_${canonicalShiftId}`,
         value: JSON.stringify(newMeta)
       }]);
       if (metaErr) console.error('saveDriverShiftMeta: error upserting shift meta:', metaErr);
 
+      broadcastRealtimeEvent('shifts_updated', {
+        timestamp: Date.now(),
+        shiftIds: [canonicalShiftId]
+      });
     } catch (e) {
       console.error('saveDriverShiftMeta: unexpected error:', e);
     }

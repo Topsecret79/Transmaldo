@@ -72,24 +72,60 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-// Registrar Service Worker para soporte PWA y recarga automática en actualizaciones
+// Registrar Service Worker para soporte PWA y auto-actualización inteligente sin borrar caché
 if ('serviceWorker' in navigator) {
+  let swRegistration = null;
+
+  const checkForSwUpdate = () => {
+    if (swRegistration) {
+      swRegistration.update().catch(() => {});
+    }
+  };
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
       .then(reg => {
+        swRegistration = reg;
         console.log('SW registrado:', reg.scope);
         reg.update().catch(() => {});
       })
       .catch(err => console.warn('Fallo al registrar SW:', err));
   });
 
-  // Escuchar cuando el nuevo SW toma el control y recargar la página para aplicar los cambios
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!refreshing) {
-      refreshing = true;
-      console.log('Detectada actualización de la app. Recargando...');
+  // Comprobar nuevas versiones al volver de segundo plano, recuperar red y cada 5 minutos
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkForSwUpdate();
+    } else if (document.visibilityState === 'hidden' && window.__pendingSwReload) {
+      window.__pendingSwReload = false;
       window.location.reload();
+    }
+  });
+  window.addEventListener('online', checkForSwUpdate);
+  window.addEventListener('pageshow', checkForSwUpdate);
+  setInterval(checkForSwUpdate, 5 * 60 * 1000);
+
+  // Recarga segura cuando el nuevo Service Worker toma el control
+  let refreshing = false;
+  const triggerSafeReload = () => {
+    if (refreshing) return;
+    const activeTag = document.activeElement?.tagName;
+    const isTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+    if (window.__isAppBusyForReload || isTyping) {
+      console.log('Actualización lista en segundo plano; esperando a que el usuario termine su acción...');
+      window.__pendingSwReload = true;
+      return;
+    }
+    refreshing = true;
+    window.__pendingSwReload = false;
+    console.log('Aplicando nueva versión de la aplicación automáticamente...');
+    window.location.reload();
+  };
+
+  navigator.serviceWorker.addEventListener('controllerchange', triggerSafeReload);
+  window.addEventListener('focusout', () => {
+    if (window.__pendingSwReload) {
+      setTimeout(triggerSafeReload, 300);
     }
   });
 }
