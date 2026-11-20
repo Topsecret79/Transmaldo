@@ -43,6 +43,9 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: './dist'
+
+      - name: Wait for GitHub Artifact Indexing
+        run: sleep 6
           
       - name: Deploy to GitHub Pages
         id: deployment
