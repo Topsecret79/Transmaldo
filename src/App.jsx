@@ -2204,6 +2204,25 @@ function App() {
     return true;
   };
   const [mapRenderKey, setMapRenderKey] = useState(0); // Trigger para re-montar mapa tras pérdida de contexto WebGL o bloqueo de pantalla
+  const [mapStyleMode, setMapStyleMode] = useState(() => localStorage.getItem('delivery_map_style') || 'streets');
+  const MAP_STYLE_URLS = {
+    streets: 'mapbox://styles/mapbox/streets-v12',
+    nav_day: 'mapbox://styles/mapbox/navigation-day-v1',
+    nav_night: 'mapbox://styles/mapbox/navigation-night-v1',
+    satellite: 'mapbox://styles/mapbox/satellite-streets-v12'
+  };
+  const handleMapStyleChange = (newMode) => {
+    const cleanMode = MAP_STYLE_URLS[newMode] ? newMode : 'streets';
+    if (cleanMode === mapStyleMode) return;
+    safeStorageSet('delivery_map_style', cleanMode);
+    setMapStyleMode(cleanMode);
+    if (mapInstanceRef.current) {
+      try { mapInstanceRef.current.remove(); } catch (e) {}
+      mapInstanceRef.current = null;
+    }
+    lastFittedRef.current = '';
+    setMapRenderKey(prev => prev + 1);
+  };
   const mapInstanceRef = useRef(null);
   const mapMarkersRef = useRef([]);          // Mapbox GL delivery stop markers
   const mapDriverMarkersRef = useRef([]);    // Mapbox GL live GPS driver markers
@@ -3320,7 +3339,8 @@ function App() {
         }
       }
       if (!map) {
-        map = new mapboxgl.Map({ container: mapElementId, style: 'mapbox://styles/mapbox/streets-v12', center: [2.16992, 41.3879], zoom: 12, attributionControl: true });
+        const activeStyleUrl = MAP_STYLE_URLS[mapStyleMode] || 'mapbox://styles/mapbox/streets-v12';
+        map = new mapboxgl.Map({ container: mapElementId, style: activeStyleUrl, center: [2.16992, 41.3879], zoom: 12, attributionControl: true });
         map.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: false }), 'top-right');
         map.addControl(new mapboxgl.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left');
         map.on('rotate', () => { setMapRotationState(Math.round(map.getBearing())); });
@@ -3649,7 +3669,7 @@ function App() {
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, superAdminFleetScope, tickets, users, shiftSummaryDate, currentUser, mapRenderKey]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, superAdminFleetScope, tickets, users, shiftSummaryDate, currentUser, mapRenderKey, mapStyleMode]);
 
   // Actualizar visualmente los marcadores del mapa cuando cambia bulkSelectedTickets o bulkSelectMode
   // IMPORTANTE: Nunca modificar pin.style.transform ni añadir transition:transform,
@@ -14358,6 +14378,30 @@ function App() {
             🧭
           </span>
         </button>
+        <select
+          value={mapStyleMode}
+          onChange={(e) => handleMapStyleChange(e.target.value)}
+          title="Cambiar estilo visual del mapa (Clásico / Navegación Día / Navegación Noche / Satélite)"
+          style={{
+            background: 'rgba(15, 23, 42, 0.88)',
+            border: '1px solid var(--primary)',
+            backdropFilter: 'blur(12px)',
+            color: '#f8fafc',
+            padding: '4px 7px',
+            height: '30px',
+            fontSize: '0.72rem',
+            fontWeight: '700',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+            outline: 'none'
+          }}
+        >
+          <option value="streets" style={{ color: '#000', background: '#fff' }}>🗺️ Clásico</option>
+          <option value="nav_day" style={{ color: '#000', background: '#fff' }}>🚚 Nav. Día</option>
+          <option value="nav_night" style={{ color: '#000', background: '#fff' }}>🌙 Nav. Noche</option>
+          <option value="satellite" style={{ color: '#000', background: '#fff' }}>🛰️ Satélite</option>
+        </select>
       </div>
     );
   };
@@ -22237,6 +22281,29 @@ function App() {
             >
               {showMapFiltersPanel ? '🔼 Ocultar Filtros' : '🔽 Mostrar Filtros'}
             </button>
+
+            <select
+              value={mapStyleMode}
+              onChange={(e) => handleMapStyleChange(e.target.value)}
+              title="Cambiar estilo visual del mapa (Clásico por defecto, Navegación Día, Navegación Noche o Satélite)"
+              style={{
+                fontSize: '0.73rem',
+                padding: '3px 8px',
+                height: '28px',
+                borderRadius: '8px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                background: 'rgba(15, 23, 42, 0.75)',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                color: '#e0f2fe',
+                outline: 'none'
+              }}
+            >
+              <option value="streets" style={{ color: '#000', background: '#fff' }}>🗺️ Mapa: Clásico</option>
+              <option value="nav_day" style={{ color: '#000', background: '#fff' }}>🚚 Mapa: Navegación Día</option>
+              <option value="nav_night" style={{ color: '#000', background: '#fff' }}>🌙 Mapa: Navegación Noche</option>
+              <option value="satellite" style={{ color: '#000', background: '#fff' }}>🛰️ Mapa: Satélite + Calles</option>
+            </select>
           </div>
 
           <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', fontWeight: '600' }}>
