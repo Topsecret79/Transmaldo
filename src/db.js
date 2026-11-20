@@ -1541,13 +1541,17 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       if (mapboxTokenSetting) {
         safeStorageSet('delivery_mapbox_access_token', mapboxTokenSetting.value);
       }
+      const routingEngineSetting = settings.find(s => s.key === 'routing_engine');
+      if (routingEngineSetting && (routingEngineSetting.value === 'mapbox' || routingEngineSetting.value === 'osrm')) {
+        safeStorageSet('delivery_routing_engine', routingEngineSetting.value);
+      }
 
       // Resolver ID de administrador gestor para aislar configuraciones
       let adminId = 'admin';
       if (sessionUser) {
         if (sessionUser.role === 'admin' || sessionUser.role === 'superadmin') {
           adminId = sessionUser.id;
-        } else if (sessionUser.role === 'repartidor') {
+        } else if (sessionUser.role === 'repartidor' || sessionUser.role === 'coordinador') {
           const dbUser = users ? users.find(u => u.id === sessionUser.id) : null;
           adminId = dbUser ? (dbUser.created_by || 'admin') : (sessionUser.createdBy || 'admin');
         }
@@ -5172,7 +5176,7 @@ export function getActiveAdminId() {
       if (user) {
         if (user.role === 'admin' || user.role === 'superadmin') {
           return user.id;
-        } else if (user.role === 'repartidor') {
+        } else if (user.role === 'repartidor' || user.role === 'coordinador') {
           return user.createdBy || 'admin';
         }
       }

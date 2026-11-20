@@ -3739,6 +3739,13 @@ function App() {
           const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === u.id || t.createdBy === 'admin' || !t.createdBy));
           finalTariffs = processAndDeduplicateTariffs(activeTariffsRaw, u.id || 'admin');
           finalShifts = rawShifts;
+        } else if (u.role === 'coordinador') {
+          const parentAdminId = u.createdBy || 'admin';
+          finalTickets = rawTickets;
+          finalUsers = rawUsers;
+          const activeTariffsRaw = rawTariffs.filter(t => t && (t.createdBy === parentAdminId || t.createdBy === 'admin' || !t.createdBy));
+          finalTariffs = processAndDeduplicateTariffs(activeTariffsRaw, parentAdminId);
+          finalShifts = rawShifts;
         } else if (u.role === 'repartidor') {
           finalTickets = rawTickets.filter(t => t && t.furgoId === u.id);
           finalUsers = rawUsers.filter(usr => usr && (usr.role === 'repartidor' || usr.createdBy === u.createdBy || usr.id === u.id || usr.id === u.createdBy || usr.role === 'admin' || usr.role === 'superadmin'));
@@ -3770,8 +3777,13 @@ function App() {
       if (u) {
         const freshUser = rawUsers.find(usr => usr.id === u.id);
         if (freshUser && (freshUser.email !== u.email || freshUser.auth_uid !== u.auth_uid || freshUser.mustChangePassword !== u.mustChangePassword)) {
-          setCurrentUser(freshUser);
-          localStorage.setItem('delivery_session', JSON.stringify(freshUser));
+          const preservedToken = u.appToken || localStorage.getItem('delivery_app_token') || undefined;
+          const mergedFreshUser = {
+            ...freshUser,
+            ...(preservedToken ? { appToken: preservedToken } : {})
+          };
+          setCurrentUser(mergedFreshUser);
+          safeStorageSet('delivery_session', JSON.stringify(mergedFreshUser));
         }
       }
 
@@ -3903,7 +3915,7 @@ function App() {
         return nextVal;
       });
     };
-    const targetUserId = (u && u.role === 'repartidor') ? (u.createdBy || 'admin') : (u?.id);
+    const targetUserId = (u && (u.role === 'repartidor' || u.role === 'coordinador')) ? (u.createdBy || 'admin') : (u?.id);
     setModulePrice(getModulePrice(targetUserId) || 3.81);
     setKmPrice(getKmPrice(targetUserId) || 0.43);
     setFuelPrice(getFuelPrice(targetUserId) || 1.65);
