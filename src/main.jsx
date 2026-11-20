@@ -15,10 +15,29 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error("ErrorBoundary caught an error", error, errorInfo);
+    const msg = String(error?.message || error || '');
+    const isChunkError =
+      msg.includes('Failed to fetch dynamically imported module') ||
+      msg.includes('Importing a module script failed') ||
+      msg.includes('ChunkLoadError') ||
+      msg.includes('Loading chunk');
+    if (isChunkError && !sessionStorage.getItem('delivery_chunk_auto_reloaded')) {
+      sessionStorage.setItem('delivery_chunk_auto_reloaded', '1');
+      this.handleForceUpdate();
+    }
   }
+
+  handleSoftRecover = () => {
+    try {
+      localStorage.removeItem('delivery_form_draft');
+      localStorage.removeItem('delivery_active_tab');
+    } catch (_) {}
+    this.setState({ hasError: false, error: null });
+  };
 
   handleForceUpdate = async () => {
     try {
+      localStorage.removeItem('delivery_form_draft');
       if ('serviceWorker' in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
         for (const reg of regs) {
@@ -40,22 +59,33 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '20px', background: '#fee2e2', color: '#991b1b', border: '1px solid #f87171', borderRadius: '8px', margin: '20px', fontFamily: 'sans-serif' }}>
-          <h2>💥 Algo ha salido mal en la aplicación</h2>
-          <p>Por favor, copia este error y envíaselo al desarrollador:</p>
-          <pre style={{ background: '#fef2f2', padding: '15px', border: '1px solid #fee2e2', overflowX: 'auto', whiteSpace: 'pre-wrap', color: '#991b1b' }}>
-            {this.state.error ? this.state.error.toString() : 'Error desconocido'}
-            {"\n\nStack:\n"}
-            {this.state.error ? this.state.error.stack : ''}
-          </pre>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px' }}>
+        <div style={{ padding: '20px', background: '#1e1b4b', color: '#f8fafc', border: '1px solid #6366f1', borderRadius: '12px', margin: '20px', fontFamily: 'sans-serif', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+          <h2 style={{ marginTop: 0, color: '#a5b4fc' }}>🛡️ Modo de Recuperación Automática</h2>
+          <p style={{ fontSize: '0.92rem', color: '#cbd5e1' }}>
+            La aplicación ha interceptado un fallo puntual para proteger tu sesión y tus repartos guardados. Pulsa <strong>Recuperar Pantalla</strong> para continuar trabajando al instante:
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '14px', marginBottom: '14px' }}>
+            <button 
+              onClick={this.handleSoftRecover} 
+              style={{ padding: '10px 18px', background: '#10b981', color: '#0f172a', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.95rem' }}
+            >
+              ⚡ Recuperar Pantalla (Sin Cerrar Sesión)
+            </button>
             <button 
               onClick={this.handleForceUpdate} 
-              style={{ padding: '10px 18px', background: '#991b1b', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem' }}
+              style={{ padding: '10px 18px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.95rem' }}
             >
               🔄 Limpiar Caché y Actualizar Aplicación
             </button>
           </div>
+          <details style={{ marginTop: '10px', fontSize: '0.8rem', color: '#94a3b8' }}>
+            <summary style={{ cursor: 'pointer', fontWeight: '600' }}>Ver detalle técnico del error</summary>
+            <pre style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '8px', overflowX: 'auto', whiteSpace: 'pre-wrap', color: '#fca5a5', marginTop: '8px' }}>
+              {this.state.error ? this.state.error.toString() : 'Error desconocido'}
+              {"\n\nStack:\n"}
+              {this.state.error ? this.state.error.stack : ''}
+            </pre>
+          </details>
         </div>
       );
     }
