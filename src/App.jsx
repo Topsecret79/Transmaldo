@@ -2205,6 +2205,12 @@ function App() {
   };
   const [mapRenderKey, setMapRenderKey] = useState(0); // Trigger para re-montar mapa tras pérdida de contexto WebGL o bloqueo de pantalla
   const [mapStyleMode, setMapStyleMode] = useState(() => localStorage.getItem('delivery_map_style') || 'streets');
+  const [mapRouteLineColor, setMapRouteLineColor] = useState(() => localStorage.getItem('delivery_map_route_color') || '#1d4ed8');
+  const handleMapRouteColorChange = (newColor) => {
+    const cleanColor = newColor || '#1d4ed8';
+    safeStorageSet('delivery_map_route_color', cleanColor);
+    setMapRouteLineColor(cleanColor);
+  };
   const MAP_STYLE_URLS = {
     streets: 'mapbox://styles/mapbox/streets-v12',
     nav_day: 'mapbox://styles/mapbox/navigation-day-v1',
@@ -3398,7 +3404,7 @@ function App() {
         const ticketsByDriver = {};
         sortedDayTickets.forEach(t => { if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = []; ticketsByDriver[t.furgoId].push(t); });
         const allBounds = [];
-        const COLORS = ['#a78bfa', '#38bdf8', '#34d399', '#f472b6', '#fbbf24', '#f43f5e'];
+        const COLORS = [mapRouteLineColor || '#1d4ed8', '#0284c7', '#059669', '#d97706', '#dc2626', '#7c3aed'];
         Object.keys(ticketsByDriver).forEach((fid, idx) => {
           const driverTickets = ticketsByDriver[fid];
           const driverColor = COLORS[idx % COLORS.length];
@@ -3524,9 +3530,12 @@ function App() {
                 if (!map || !map.isStyleLoaded()) return;
                 if (!map.getSource(srcId)) {
                   map.addSource(srcId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: geoCoords } } });
-                  map.addLayer({ id: srcId + '-line', type: 'line', source: srcId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': driverColor, 'line-width': 4, 'line-opacity': 0.85 } });
+                  map.addLayer({ id: srcId + '-line', type: 'line', source: srcId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': driverColor, 'line-width': 4.5, 'line-opacity': 0.92 } });
                   mapRouteSourceIds.current.push(srcId);
-                } else { map.getSource(srcId).setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: geoCoords } }); }
+                } else {
+                  map.getSource(srcId).setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: geoCoords } });
+                  try { if (map.getLayer(srcId + '-line')) map.setPaintProperty(srcId + '-line', 'line-color', driverColor); } catch (e) {}
+                }
                 setRouteStats(prev => ({ ...prev, [fid]: { distance: roadData?.distance, duration: roadData?.duration } }));
               })
               .catch(() => {
@@ -3534,7 +3543,7 @@ function App() {
                 const fbId = srcId + '-fb';
                 if (!map || !map.isStyleLoaded() || map.getSource(fbId)) return;
                 map.addSource(fbId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: geoCoords } } });
-                map.addLayer({ id: fbId + '-line', type: 'line', source: fbId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': driverColor, 'line-width': 3, 'line-opacity': 0.7, 'line-dasharray': [2, 2] } });
+                map.addLayer({ id: fbId + '-line', type: 'line', source: fbId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': driverColor, 'line-width': 3.5, 'line-opacity': 0.85, 'line-dasharray': [2, 2] } });
                 mapRouteSourceIds.current.push(fbId);
               });
           }
@@ -3669,7 +3678,7 @@ function App() {
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, superAdminFleetScope, tickets, users, shiftSummaryDate, currentUser, mapRenderKey, mapStyleMode]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, superAdminFleetScope, tickets, users, shiftSummaryDate, currentUser, mapRenderKey, mapStyleMode, mapRouteLineColor]);
 
   // Actualizar visualmente los marcadores del mapa cuando cambia bulkSelectedTickets o bulkSelectMode
   // IMPORTANTE: Nunca modificar pin.style.transform ni añadir transition:transform,
@@ -22303,6 +22312,31 @@ function App() {
               <option value="nav_day" style={{ color: '#000', background: '#fff' }}>🚚 Mapa: Navegación Día</option>
               <option value="nav_night" style={{ color: '#000', background: '#fff' }}>🌙 Mapa: Navegación Noche</option>
               <option value="satellite" style={{ color: '#000', background: '#fff' }}>🛰️ Mapa: Satélite + Calles</option>
+            </select>
+
+            <select
+              value={mapRouteLineColor}
+              onChange={(e) => handleMapRouteColorChange(e.target.value)}
+              title="Cambiar color de la línea de recorrido de la ruta en el mapa"
+              style={{
+                fontSize: '0.73rem',
+                padding: '3px 8px',
+                height: '28px',
+                borderRadius: '8px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                background: 'rgba(15, 23, 42, 0.75)',
+                border: `1.5px solid ${mapRouteLineColor || '#1d4ed8'}`,
+                color: '#e0f2fe',
+                outline: 'none'
+              }}
+            >
+              <option value="#1d4ed8" style={{ color: '#000', background: '#fff' }}>🔵 Línea: Azul Oscuro</option>
+              <option value="#1e3a8a" style={{ color: '#000', background: '#fff' }}>🔷 Línea: Azul Marino</option>
+              <option value="#2563eb" style={{ color: '#000', background: '#fff' }}>🌐 Línea: Azul GPS</option>
+              <option value="#059669" style={{ color: '#000', background: '#fff' }}>🟢 Línea: Verde</option>
+              <option value="#dc2626" style={{ color: '#000', background: '#fff' }}>🔴 Línea: Rojo</option>
+              <option value="#a78bfa" style={{ color: '#000', background: '#fff' }}>🟣 Línea: Morado Claro</option>
             </select>
           </div>
 
