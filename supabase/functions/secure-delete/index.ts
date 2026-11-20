@@ -19,7 +19,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-app-user-id, x-app-token',
 };
 
 // Lista blanca de tablas permitidas y, para cada una, la única columna por la
@@ -31,14 +31,84 @@ const ALLOWED: Record<string, string> = {
   delivery_settings: 'key',
 };
 
+// Permisos de borrado por rol de usuario
+const ROLE_ALLOWED_TABLES: Record<string, string[]> = {
+  superadmin: ['delivery_tickets', 'delivery_shifts', 'delivery_tariffs', 'delivery_settings'],
+  admin: ['delivery_tickets', 'delivery_shifts', 'delivery_tariffs', 'delivery_settings'],
+  coordinador: ['delivery_tickets', 'delivery_shifts', 'delivery_tariffs', 'delivery_settings'],
+  repartidor: ['delivery_tickets', 'delivery_shifts'],
+};
+
 const MAX_VALUES = 500; // límite defensivo por petición
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function fromBase64UrlToText(b64url: string): string {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((b64url.length + 3) % 4);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+// Verifica el token HMAC-SHA256 emitido por verify-login
+async function verifyAppSessionToken(
+  token: string,
+  secret: string
+): Promise<{ sub: string; role?: string; exp: number } | null> {
+  if (!token || !secret) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [payloadB64, sigB64] = parts;
+  if (!payloadB64 || !sigB64) return null;
+
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const expectedSigBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(payloadB64));
+    const expectedSigB64 = toBase64Url(new Uint8Array(expectedSigBuffer));
+
+    // Comparación en tiempo constante para evitar ataques de temporización
+    if (expectedSigB64.length !== sigB64.length) return null;
+    let diff = 0;
+    for (let i = 0; i < expectedSigB64.length; i++) {
+      diff |= expectedSigB64.charCodeAt(i) ^ sigB64.charCodeAt(i);
+    }
+    if (diff !== 0) return null;
+
+    const payload = JSON.parse(fromBase64UrlToText(payloadB64));
+    if (!payload || typeof payload.sub !== 'string' || typeof payload.exp !== 'number') {
+      return null;
+    }
+    if (Date.now() > payload.exp) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // ── AUTENTICACIÓN: verificar JWT antes de cualquier operación ──────────────
+  // ── AUTENTICACIÓN: verificar JWT de Supabase Auth o token HMAC firmado ─────
   const authHeader = req.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return new Response(
@@ -55,25 +125,77 @@ Deno.serve(async (req) => {
     );
   }
 
-  // Verificar que el token pertenece a un usuario real en Supabase Auth
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+
+  // 1) Intentar autenticar como usuario real de Supabase Auth (administradores con correo)
   const supabaseAnon = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_ANON_KEY') ?? '',
     { global: { headers: { Authorization: `Bearer ${jwt}` } } }
   );
 
-  const { data: { user }, error: authError } = await supabaseAnon.auth.getUser();
+  const { data: { user: authUser } } = await supabaseAnon.auth.getUser();
+  let verifiedRole: string | null = null;
+  let verifiedUserId: string | null = null;
 
-  // Aceptar también usuarios autenticados con el sistema propio de la app
-  // (que usan la anon key sin JWT de Auth). Para ellos validamos que el header
-  // x-app-user-id esté presente y sea un string no vacío como capa mínima.
-  const appUserId = req.headers.get('x-app-user-id');
-  const isAppUser = !user && appUserId && appUserId.length > 0;
+  if (authUser) {
+    verifiedUserId = authUser.id;
+    verifiedRole = 'admin';
+    try {
+      const { data: profileRows } = await supabaseAdmin
+        .from('delivery_users')
+        .select('id, role, active')
+        .eq('auth_uid', authUser.id)
+        .limit(1);
+      const profile = profileRows && profileRows[0];
+      if (profile) {
+        if (profile.active === false) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'No autorizado. Cuenta desactivada.' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        verifiedUserId = String(profile.id);
+        verifiedRole = String(profile.role || 'admin');
+      }
+    } catch (_) {}
+  } else {
+    // 2) Usuario sin correo: exigir token HMAC-SHA256 firmado en verify-login + verificar usuario activo en BD
+    const appToken = (req.headers.get('x-app-token') || '').trim();
+    const appUserIdHeader = (req.headers.get('x-app-user-id') || '').trim();
+    const signingSecret = Deno.env.get('APP_SESSION_SECRET') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const tokenPayload = await verifyAppSessionToken(appToken, signingSecret);
 
-  if (authError && !isAppUser) {
-    console.error('Token inválido en secure-delete:', authError.message);
+    if (!tokenPayload || (appUserIdHeader && appUserIdHeader !== tokenPayload.sub)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado. Token de sesión inválido o expirado.' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { data: dbUser, error: dbUserErr } = await supabaseAdmin
+      .from('delivery_users')
+      .select('id, role, active')
+      .eq('id', tokenPayload.sub)
+      .maybeSingle();
+
+    if (dbUserErr || !dbUser || dbUser.active === false) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No autorizado. Usuario no encontrado o inactivo.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    verifiedUserId = String(dbUser.id);
+    verifiedRole = String(dbUser.role || 'repartidor');
+  }
+
+  if (!verifiedUserId || !verifiedRole) {
     return new Response(
-      JSON.stringify({ success: false, error: 'No autorizado. Token inválido o expirado.' }),
+      JSON.stringify({ success: false, error: 'No autorizado.' }),
       { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -87,6 +209,14 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: 'Tabla no permitida.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const allowedForRole = ROLE_ALLOWED_TABLES[verifiedRole] || [];
+    if (!allowedForRole.includes(table)) {
+      return new Response(
+        JSON.stringify({ success: false, error: `Tu rol (${verifiedRole}) no tiene permiso para borrar en ${table}.` }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -110,11 +240,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const { error } = await supabaseAdmin.from(table).delete().in(column, values);
 

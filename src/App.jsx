@@ -290,44 +290,111 @@ const calculateTimelineSchedules = (dateTickets, startCoords, startTimeStr, endC
   return timelineSchedules;
 };
 
-// Cache in-memory for road routes to avoid aggressive OSRM re-fetching
+// Cache in-memory for road routes to avoid aggressive re-fetching
 const roadRouteCache = {};
 
-// Obtener ruta por carreteras reales desde OSRM
-const fetchRoadRoute = async (points) => {
-  if (!points || points.length < 2) return null;
-  
-  // Build a cache key by rounding coordinates to 5 decimal places (~1.1 meter precision)
-  const coordsString = points.map(p => {
-    const lng = parseFloat(p.lng);
-    const lat = parseFloat(p.lat);
-    return isNaN(lng) || isNaN(lat) ? '' : `${lng.toFixed(5)},${lat.toFixed(5)}`;
-  }).filter(Boolean).join(';');
-  
-  if (!coordsString) return null;
-  if (roadRouteCache[coordsString]) {
-    return roadRouteCache[coordsString];
-  }
-  
-  try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+// Consultar Mapbox Directions API dividiendo automáticamente en bloques de 25 paradas (límite de Mapbox)
+const fetchMapboxDirectionsRoute = async (validPoints, mbToken) => {
+  if (!mbToken || validPoints.length < 2) return null;
+  const MAX_WAYPOINTS = 25;
+  const STEP = MAX_WAYPOINTS - 1; // Solapar el último punto de un bloque con el primero del siguiente
+  let combinedGeometry = [];
+  let totalDistance = 0;
+  let totalDuration = 0;
+
+  for (let startIdx = 0; startIdx < validPoints.length - 1; startIdx += STEP) {
+    const chunk = validPoints.slice(startIdx, startIdx + MAX_WAYPOINTS);
+    if (chunk.length < 2) break;
+    const chunkCoords = chunk.map(p => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${chunkCoords}?geometries=geojson&overview=full&access_token=${encodeURIComponent(mbToken)}`;
     const response = await fetch(url);
     if (!response.ok) return null;
     const data = await response.json();
-    if (data && data.routes && data.routes.length > 0) {
-      const route = data.routes[0];
-      const routeCoords = route.geometry.coordinates;
-      const result = {
-        geometry: routeCoords.map(c => [c[1], c[0]]),
-        distance: route.distance, // en metros
-        duration: route.duration  // en segundos
-      };
-      // Store in cache
-      roadRouteCache[coordsString] = result;
+    if (!data || !data.routes || data.routes.length === 0) return null;
+    const route = data.routes[0];
+    const segCoords = (route.geometry?.coordinates || []).map(c => [c[1], c[0]]);
+    if (combinedGeometry.length > 0 && segCoords.length > 0) {
+      combinedGeometry = combinedGeometry.concat(segCoords.slice(1));
+    } else {
+      combinedGeometry = combinedGeometry.concat(segCoords);
+    }
+    totalDistance += Number(route.distance) || 0;
+    totalDuration += Number(route.duration) || 0;
+  }
+
+  if (combinedGeometry.length === 0) return null;
+  return {
+    geometry: combinedGeometry,
+    distance: totalDistance,
+    duration: totalDuration
+  };
+};
+
+// Respaldo con OSRM en caso de que el usuario lo elija en Ajustes o falle Mapbox
+const fetchOsrmDirectionsRoute = async (coordsString) => {
+  const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+  const response = await fetch(url);
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (data && data.routes && data.routes.length > 0) {
+    const route = data.routes[0];
+    const routeCoords = route.geometry.coordinates;
+    return {
+      geometry: routeCoords.map(c => [c[1], c[0]]),
+      distance: route.distance,
+      duration: route.duration
+    };
+  }
+  return null;
+};
+
+// Obtener ruta por carreteras reales (Mapbox Directions API por defecto con respaldo automático)
+const fetchRoadRoute = async (points) => {
+  if (!points || points.length < 2) return null;
+
+  const validPoints = points
+    .map(p => ({ lng: parseFloat(p.lng), lat: parseFloat(p.lat) }))
+    .filter(p => !isNaN(p.lng) && !isNaN(p.lat));
+  if (validPoints.length < 2) return null;
+
+  const coordsString = validPoints.map(p => `${p.lng.toFixed(5)},${p.lat.toFixed(5)}`).join(';');
+  const preferredEngine = getRoutingEngine();
+  const cacheKey = `${preferredEngine}:${coordsString}`;
+
+  if (roadRouteCache[cacheKey]) {
+    return roadRouteCache[cacheKey];
+  }
+
+  const mbToken = getMapboxToken() || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || getSplitMapboxToken();
+
+  try {
+    let result = null;
+    if (preferredEngine === 'osrm') {
+      try {
+        result = await fetchOsrmDirectionsRoute(coordsString);
+      } catch (e) {}
+      if (!result && mbToken) {
+        result = await fetchMapboxDirectionsRoute(validPoints, mbToken);
+      }
+    } else {
+      if (mbToken) {
+        try {
+          result = await fetchMapboxDirectionsRoute(validPoints, mbToken);
+        } catch (e) {
+          console.warn("Mapbox Directions failed, trying OSRM fallback:", e);
+        }
+      }
+      if (!result) {
+        result = await fetchOsrmDirectionsRoute(coordsString);
+      }
+    }
+
+    if (result) {
+      roadRouteCache[cacheKey] = result;
       return result;
     }
   } catch (e) {
-    console.error("OSRM Routing failed:", e);
+    console.error("Road routing failed:", e);
   }
   return null;
 };
@@ -482,7 +549,10 @@ import {
   getLocalDateISO,
   getPendingSyncCount,
   broadcastRealtimeEvent,
-  updateDriverNavigationTarget
+  updateDriverNavigationTarget,
+  getRoutingEngine,
+  saveRoutingEngine,
+  safeStorageSet
 } from './db';
 
 
@@ -2457,7 +2527,56 @@ function App() {
   const [searchStrictCity, setSearchStrictCity] = useState(localStorage.getItem('search_strict_city') === 'true');
   const [googleKeyInput, setGoogleKeyInput] = useState(getGoogleMapsKey());
   const [mapboxTokenInput, setMapboxTokenInput] = useState(getMapboxToken());
+  const [routingEngineInput, setRoutingEngineInput] = useState(() => getRoutingEngine());
   const [spellingSuggestions, setSpellingSuggestions] = useState([]);
+
+  // Etiqueta visual inteligente para selectores de matrícula (🔧 En taller, ⛔ Inactiva, ⚠️ Ya asignada hoy)
+  const getPlateOptionLabel = (plate, targetDate, currentFurgoId = null) => {
+    if (!plate) return '';
+    const normPlate = String(plate).trim().toUpperCase();
+    const tags = [];
+    const veh = (fleetVehicles || []).find(v => v && String(v.plate || '').trim().toUpperCase() === normPlate);
+    if (veh) {
+      if (veh.status === 'maintenance') tags.push('🔧 En taller');
+      else if (veh.status === 'inactive') tags.push('⛔ Inactiva');
+    }
+    if (targetDate) {
+      const dupShift = (shifts || []).find(
+        s => s && s.date === targetDate && s.matricula && String(s.matricula).trim().toUpperCase() === normPlate && (!currentFurgoId || s.furgoId !== currentFurgoId)
+      );
+      if (dupShift) {
+        const otherRouteLabel = (users || []).find(u => u && u.id === dupShift.furgoId)?.label || dupShift.customDriver || dupShift.furgoId;
+        tags.push(`⚠️ Ya en ${otherRouteLabel}`);
+      }
+    }
+    return tags.length > 0 ? `${plate} (${tags.join(' · ')})` : plate;
+  };
+
+  // Confirmación rápida al asignar una furgoneta marcada «En taller / Inactiva» o ya asignada ese día (manteniéndolo 100% editable)
+  const confirmPlateAssignmentIfNeeded = (plate, targetDate, currentFurgoId = null) => {
+    if (!plate) return true;
+    const normPlate = String(plate).trim().toUpperCase();
+    const warnings = [];
+    const veh = (fleetVehicles || []).find(v => v && String(v.plate || '').trim().toUpperCase() === normPlate);
+    if (veh) {
+      if (veh.status === 'maintenance') {
+        warnings.push(`• El vehículo ${plate} figura marcado en Control de Flota como "🔧 En taller".`);
+      } else if (veh.status === 'inactive') {
+        warnings.push(`• El vehículo ${plate} figura marcado en Control de Flota como "⛔ Inactivo / Baja".`);
+      }
+    }
+    if (targetDate) {
+      const dupShifts = (shifts || []).filter(
+        s => s && s.date === targetDate && s.matricula && String(s.matricula).trim().toUpperCase() === normPlate && (!currentFurgoId || s.furgoId !== currentFurgoId)
+      );
+      if (dupShifts.length > 0) {
+        const otherLabels = dupShifts.map(ds => (users || []).find(u => u && u.id === ds.furgoId)?.label || ds.customDriver || ds.furgoId).join(', ');
+        warnings.push(`• La matrícula ${plate} ya está asignada el día ${targetDate} a: ${otherLabels}.`);
+      }
+    }
+    if (warnings.length === 0) return true;
+    return window.confirm(`⚠️ Aviso de Control de Flota:\n\n${warnings.join('\n')}\n\n¿Deseas asignar la matrícula ${plate} igualmente?`);
+  };
 
   // Cambiar flota supervisada desde la cuenta de Super Administrador
   const handleSuperAdminFleetScopeChange = (newScope) => {
@@ -3795,6 +3914,7 @@ function App() {
     }
     setGoogleKeyInput(getGoogleMapsKey());
     setMapboxTokenInput(getMapboxToken());
+    setRoutingEngineInput(getRoutingEngine());
     setAllowDriverSupportTransfer(getAllowDriverSupportTransfer());
     setIfChangedOuter(setHelpersList, getHelpersList() || []);
     setIfChangedOuter(setPlatesList, getPlatesList() || []);
@@ -4071,8 +4191,16 @@ function App() {
         }
 
         if (fnResult && fnResult.success && fnResult.user) {
-          foundUser = fnResult.user;
-          const updatedUsers = [...dbUsers.filter(usr => usr.id !== foundUser.id), foundUser];
+          const receivedToken = fnResult.appToken || fnResult.user.appToken || '';
+          foundUser = {
+            ...fnResult.user,
+            ...(receivedToken ? { appToken: receivedToken } : {})
+          };
+          if (receivedToken) {
+            safeStorageSet('delivery_app_token', receivedToken);
+          }
+          const { appToken: _omitToken, ...publicUser } = foundUser;
+          const updatedUsers = [...dbUsers.filter(usr => usr.id !== publicUser.id), publicUser];
           saveUsers(updatedUsers);
         } else if (fnResult && fnResult.error) {
           setLoginError(fnResult.error);
@@ -4457,6 +4585,7 @@ function App() {
 
     // 2. Limpiar datos de sesión y preferencias de UI
     localStorage.removeItem('delivery_session');
+    localStorage.removeItem('delivery_app_token');
     localStorage.removeItem('delivery_active_tab');
     localStorage.removeItem('delivery_form_draft');
 
@@ -7090,37 +7219,50 @@ function App() {
 
   const recalculateAllTickets = (activeTariffs, activeModulePrice) => {
     const allTickets = getTickets() || [];
-    const changedTickets = [];
-    const updatedTickets = allTickets.map(ticket => {
+    const todayStr = getLocalDateISO();
+    const candidates = allTickets.map(ticket => {
       let totalCalculado = 0;
       let hasChanged = false;
-      
+
       const tasks = (ticket.tasks || []).map(task => {
         if (task.tariffId && task.tariffId.startsWith('CUSTOM_')) return task;
         const basePrice = calculateTaskPrice(task.tariffId, activeTariffs, activeModulePrice);
         const price = task.noCharge ? 0 : basePrice;
-        
+
         if (task.unitPrice !== price || task.subtotal !== (price * task.quantity)) {
           hasChanged = true;
         }
-        
+
         return {
           ...task,
           unitPrice: price,
           subtotal: price * task.quantity
         };
       });
-      
+
       totalCalculado = tasks.reduce((sum, t) => sum + t.subtotal, 0);
       const updatedTicket = { ...ticket, tasks, totalPrice: totalCalculado };
-      
-      if (hasChanged || ticket.totalPrice !== totalCalculado) {
-        changedTickets.push(updatedTicket);
-      }
-      
-      return updatedTicket;
+      const didChange = hasChanged || ticket.totalPrice !== totalCalculado;
+      const isPast = Boolean(ticket.date && ticket.date < todayStr);
+      return { original: ticket, updated: updatedTicket, didChange, isPast };
     });
-    
+
+    const pastChangedCount = candidates.filter(c => c.didChange && c.isPast).length;
+    let includePastDates = false;
+    if (pastChangedCount > 0) {
+      includePastDates = window.confirm(
+        `🧾 Protección de Facturación Pasada:\n\nSe actualizarán automáticamente los repartos desde hoy (${todayStr}) en adelante.\n\nHay ${pastChangedCount} reparto(s) de fechas pasadas (anteriores a ${todayStr}) cuyo importe cambiaría con la nueva tarifa.\n¿Deseas recalcular TAMBIÉN las fechas pasadas?\n\n• Pulsa CANCELAR para proteger las facturas y cierres pasados (Recomendado).\n• Pulsa ACEPTAR si quieres recalcular también el histórico.`
+      );
+    }
+
+    const changedTickets = [];
+    const updatedTickets = candidates.map(c => {
+      if (!c.didChange) return c.original;
+      if (c.isPast && !includePastDates) return c.original;
+      changedTickets.push(c.updated);
+      return c.updated;
+    });
+
     safeSaveTickets(updatedTickets);
     setTickets(updatedTickets);
 
@@ -12612,6 +12754,9 @@ function App() {
                                   if (typed === null) return;
                                   newPlate = typed.trim().toUpperCase() || '';
                                 }
+                                if (newPlate && !confirmPlateAssignmentIfNeeded(newPlate, shiftSummaryDate || getLocalDateISO(), currentUser?.id)) {
+                                  return;
+                                }
                                 setDriverMatricula(newPlate);
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
@@ -12619,10 +12764,10 @@ function App() {
                               <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar matrícula...</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
                               {driverMatricula && !platesList.includes(driverMatricula) && (
-                                <option value={driverMatricula} style={{ color: '#000', background: '#fff' }}>{driverMatricula}</option>
+                                <option value={driverMatricula} style={{ color: '#000', background: '#fff' }}>{getPlateOptionLabel(driverMatricula, shiftSummaryDate || getLocalDateISO(), currentUser?.id)}</option>
                               )}
                               {platesList.map(plate => (
-                                <option key={plate} value={plate} style={{ color: '#000', background: '#fff' }}>{plate}</option>
+                                <option key={plate} value={plate} style={{ color: '#000', background: '#fff' }}>{getPlateOptionLabel(plate, shiftSummaryDate || getLocalDateISO(), currentUser?.id)}</option>
                               ))}
                             </select>
                           </div>
@@ -18938,17 +19083,21 @@ function App() {
                                 className="form-input"
                                 value={s.matricula || ''}
                                 onChange={(e) => {
-                                  upsertShiftFieldFromCalendar(s, { matricula: e.target.value }, 'Matrícula actualizada');
+                                  const nextPlate = e.target.value;
+                                  if (nextPlate && !confirmPlateAssignmentIfNeeded(nextPlate, s.date, s.furgoId)) {
+                                    return;
+                                  }
+                                  upsertShiftFieldFromCalendar(s, { matricula: nextPlate }, 'Matrícula actualizada');
                                 }}
                                 disabled={s.status === 'closed' && !isAdminOrSuper}
                                 style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
                               >
                                 <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin matrícula</option>
                                 {s.matricula && !platesList.includes(s.matricula) && (
-                                  <option value={s.matricula} style={{ color: '#000000', background: '#ffffff' }}>{s.matricula}</option>
+                                  <option value={s.matricula} style={{ color: '#000000', background: '#ffffff' }}>{getPlateOptionLabel(s.matricula, s.date, s.furgoId)}</option>
                                 )}
                                 {platesList.map(plate => (
-                                  <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
+                                  <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{getPlateOptionLabel(plate, s.date, s.furgoId)}</option>
                                 ))}
                               </select>
                             </div>
@@ -19132,12 +19281,18 @@ function App() {
                     <select
                       className="form-input"
                       value={plannedMatricula}
-                      onChange={(e) => setPlannedMatricula(e.target.value)}
+                      onChange={(e) => {
+                        const nextPlate = e.target.value;
+                        if (nextPlate && !confirmPlateAssignmentIfNeeded(nextPlate, dayStr, plannedFurgoId || null)) {
+                          return;
+                        }
+                        setPlannedMatricula(nextPlate);
+                      }}
                       style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                     >
                       <option value="" style={{ color: '#000000', background: '#ffffff' }}>Selecciona matrícula (Opcional)...</option>
                       {platesList.map(plate => (
-                        <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
+                        <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{getPlateOptionLabel(plate, dayStr, plannedFurgoId || null)}</option>
                       ))}
                     </select>
                   </div>
@@ -19773,12 +19928,18 @@ function App() {
                           <select
                             className="form-input"
                             value={editAssignPlate}
-                            onChange={(e) => setEditAssignPlate(e.target.value)}
+                            onChange={(e) => {
+                              const nextPlate = e.target.value;
+                              if (nextPlate && !confirmPlateAssignmentIfNeeded(nextPlate, editingAssignment?.date, editingAssignment?.furgoId)) {
+                                return;
+                              }
+                              setEditAssignPlate(nextPlate);
+                            }}
                             style={{ color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                           >
                             <option value="" style={{ color: '#000', background: '#fff' }}>Sin vehículo / matrícula</option>
                             {platesList.map(plate => (
-                              <option key={plate} value={plate} style={{ color: '#000', background: '#fff' }}>{plate}</option>
+                              <option key={plate} value={plate} style={{ color: '#000', background: '#fff' }}>{getPlateOptionLabel(plate, editingAssignment?.date, editingAssignment?.furgoId)}</option>
                             ))}
                           </select>
                         </div>
@@ -20697,17 +20858,21 @@ function App() {
                                   className="form-input"
                                   value={s.matricula || ''}
                                   onChange={(e) => {
-                                    upsertShiftFieldFromCalendar(s, { matricula: e.target.value }, 'Matrícula actualizada');
+                                    const nextPlate = e.target.value;
+                                    if (nextPlate && !confirmPlateAssignmentIfNeeded(nextPlate, s.date, s.furgoId)) {
+                                      return;
+                                    }
+                                    upsertShiftFieldFromCalendar(s, { matricula: nextPlate }, 'Matrícula actualizada');
                                   }}
                                   disabled={s.status === 'closed' && !isAdminOrSuper}
                                   style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
                                 >
                                   <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin matrícula</option>
                                   {s.matricula && !platesList.includes(s.matricula) && (
-                                    <option value={s.matricula} style={{ color: '#000000', background: '#ffffff' }}>{s.matricula}</option>
+                                    <option value={s.matricula} style={{ color: '#000000', background: '#ffffff' }}>{getPlateOptionLabel(s.matricula, s.date, s.furgoId)}</option>
                                   )}
                                   {platesList.map(plate => (
-                                    <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
+                                    <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{getPlateOptionLabel(plate, s.date, s.furgoId)}</option>
                                   ))}
                                 </select>
                               </div>
@@ -20885,12 +21050,18 @@ function App() {
                       <select
                         className="form-input"
                         value={plannedMatricula}
-                        onChange={(e) => setPlannedMatricula(e.target.value)}
+                        onChange={(e) => {
+                          const nextPlate = e.target.value;
+                          if (nextPlate && !confirmPlateAssignmentIfNeeded(nextPlate, selectedCalendarDay, plannedFurgoId || null)) {
+                            return;
+                          }
+                          setPlannedMatricula(nextPlate);
+                        }}
                         style={{ margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
                       >
                         <option value="" style={{ color: '#000000', background: '#ffffff' }}>Selecciona matrícula (Opcional)...</option>
                         {platesList.map(plate => (
-                          <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{plate}</option>
+                          <option key={plate} value={plate} style={{ color: '#000000', background: '#ffffff' }}>{getPlateOptionLabel(plate, selectedCalendarDay, plannedFurgoId || null)}</option>
                         ))}
                       </select>
                     </div>
@@ -24613,6 +24784,18 @@ function App() {
                       onChange={(e) => setGoogleKeyInput(e.target.value)}
                     />
                   </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <span className="input-label">Motor de Trazado de Carreteras en el Mapa</span>
+                    <select
+                      className="form-input"
+                      value={routingEngineInput}
+                      onChange={(e) => setRoutingEngineInput(e.target.value)}
+                      style={{ color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
+                    >
+                      <option value="mapbox" style={{ color: '#000', background: '#fff' }}>🚀 Mapbox Directions API (Recomendado · +25 paradas auto-bloques)</option>
+                      <option value="osrm" style={{ color: '#000', background: '#fff' }}>🌐 OSRM Demo (Con respaldo automático a Mapbox)</option>
+                    </select>
+                  </div>
                 </div>
                 
                 <button 
@@ -24621,11 +24804,13 @@ function App() {
                   onClick={() => {
                     saveGoogleMapsKey(googleKeyInput);
                     saveMapboxToken(mapboxTokenInput);
-                    triggerAlert('Configuración de mapas guardada y sincronizada correctamente');
+                    saveRoutingEngine(routingEngineInput);
+                    Object.keys(roadRouteCache).forEach(k => delete roadRouteCache[k]);
+                    triggerAlert('Configuración de mapas y motor de rutas guardada correctamente');
                   }}
                   style={{ width: 'auto', marginTop: '20px', height: '42px' }}
                 >
-                  Guardar API Keys de Mapas
+                  Guardar API Keys y Motor de Rutas
                 </button>
               </div>
             )}

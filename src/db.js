@@ -144,44 +144,92 @@ export function getFleetopsClient() {
   return null;
 }
 
+// Guardado centralizado y protegido contra QuotaExceededError (memoria llena en móviles).
+// Si el almacenamiento local está al límite, recorta automáticamente el histórico antiguo
+// de tickets o turnos cerrados (conservando siempre cualquier cambio con _syncStatus === 'pending'
+// y manteniendo los tickets históricos en inMemoryHistoricalTickets) y reintenta el guardado.
+export function safeStorageSet(key, value) {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    console.warn(`[safeStorageSet] Memoria local llena al guardar "${key}". Liberando caché histórica...`, err);
+    try {
+      if (key !== 'delivery_tickets') {
+        const rawTickets = localStorage.getItem('delivery_tickets');
+        if (rawTickets) {
+          const parsedTickets = JSON.parse(rawTickets) || [];
+          const cutoff15 = new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString().split('T')[0];
+          const trimmedTickets = parsedTickets.filter(
+            t => t && (t._syncStatus === 'pending' || (t.date && t.date >= cutoff15))
+          );
+          localStorage.setItem('delivery_tickets', JSON.stringify(trimmedTickets));
+        }
+      }
+      if (key === 'delivery_shifts') {
+        try {
+          const parsedShifts = JSON.parse(value) || [];
+          const cutoff60 = new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString().split('T')[0];
+          const trimmedShifts = parsedShifts.filter(
+            s => s && (s._syncStatus === 'pending' || s.status !== 'closed' || (s.date && s.date >= cutoff60))
+          );
+          localStorage.setItem(key, JSON.stringify(trimmedShifts));
+          return true;
+        } catch (_) {}
+      }
+      localStorage.setItem(key, value);
+      return true;
+    } catch (err2) {
+      console.error(`[safeStorageSet] Error crítico: no se pudo guardar "${key}" en localStorage:`, err2);
+      return false;
+    }
+  }
+}
+
 // Fix de seguridad: los borrados en delivery_tickets/delivery_shifts/
 // delivery_tariffs/delivery_settings ya no se hacen directamente desde el
 // navegador con la clave pública — se delegan en la Edge Function
 // "secure-delete" (clave de servicio, nunca expuesta). Esto permite proteger
 // esas 4 tablas con RLS sin conceder permiso de borrado a la clave pública:
 // nadie externo puede mandarle a Supabase un "borra todo", solo esta función,
-// y solo por IDs/keys concretos.
+// y solo por IDs/keys concretos, verificando JWT de Auth o token HMAC firmado.
 async function secureDelete(table, values) {
   if (!supabase) return { error: new Error('Supabase no inicializado') };
   if (!values || values.length === 0) return { error: null };
   const col = table === 'delivery_settings' ? 'key' : 'id';
   try {
-    // Obtener el ID del usuario en sesión para enviarlo como header de autenticación.
-    // Usar 'admin' como fallback seguro si no hay sesión para que la Edge Function no rechace con 401.
-    let appUserId = 'admin';
+    let appUserId = '';
+    let appToken = '';
     try {
+      appToken = localStorage.getItem('delivery_app_token') || '';
       const sessionRaw = localStorage.getItem('delivery_session');
       if (sessionRaw) {
         const sessionObj = JSON.parse(sessionRaw);
         if (sessionObj && sessionObj.id) {
           appUserId = String(sessionObj.id);
-        } else if (sessionObj && sessionObj.username) {
-          appUserId = String(sessionObj.username);
+        }
+        if (sessionObj && sessionObj.appToken) {
+          appToken = String(sessionObj.appToken);
         }
       }
     } catch (_) {}
 
+    const reqHeaders = {};
+    if (appUserId) reqHeaders['x-app-user-id'] = appUserId;
+    if (appToken) reqHeaders['x-app-token'] = appToken;
+
     const { data, error } = await supabase.functions.invoke('secure-delete', {
       body: { table, values },
-      headers: { 'x-app-user-id': appUserId }
+      headers: reqHeaders
     });
 
     if (!error && (!data || data.success !== false)) {
       return { error: null };
     }
 
-    // Fallback: Si la Edge Function falló (401, timeout, cold start o error), borrar directamente en Supabase
-    console.warn(`[secureDelete] Edge Function secure-delete no disponible (${error?.message || data?.error}), ejecutando borrado directo en ${table}...`);
+    // Fallback: Si la Edge Function aún no se ha redesplegado o falló por red, intentar borrado directo si RLS lo permite
+    console.warn(`[secureDelete] Edge Function secure-delete devolvió aviso (${error?.message || data?.error}), intentando borrado directo en ${table}...`);
     const { error: directErr } = await supabase.from(table).delete().in(col, values);
     if (!directErr) {
       return { error: null };
@@ -379,7 +427,7 @@ export function setupRealtimeChannel() {
           try {
             const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
             const filtered = localTickets.filter(t => t && String(t.id) !== delId);
-            localStorage.setItem('delivery_tickets', JSON.stringify(filtered));
+            safeStorageSet('delivery_tickets', JSON.stringify(filtered));
           } catch (e) {}
           notifySync();
         }
@@ -428,7 +476,7 @@ export function setupRealtimeChannel() {
               ...(payload.appStateAt ? { appStateAt: payload.appStateAt } : {}),
               ...(payload.navTarget !== undefined ? { navTarget: payload.navTarget } : (prev.navTarget ? { navTarget: prev.navTarget } : {}))
             };
-            localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+            safeStorageSet('delivery_driver_locations', JSON.stringify(locations));
             window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: payload }));
           } catch (e) {}
         }
@@ -452,15 +500,15 @@ export function setupRealtimeChannel() {
                 ...(val.appStateAt ? { appStateAt: val.appStateAt } : {}),
                 ...(val.navTarget ? { navTarget: val.navTarget } : {})
               };
-              localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+              safeStorageSet('delivery_driver_locations', JSON.stringify(locations));
               window.dispatchEvent(new CustomEvent('driver-location-updated', { detail: { fid, lat: val.lat, lng: val.lng } }));
             } catch (e) {}
             return;
           }
           if (record.key && record.key.startsWith('manual_route_')) {
             try {
-              localStorage.setItem('delivery_' + record.key, record.value);
-              localStorage.setItem(record.key, record.value);
+              safeStorageSet('delivery_' + record.key, record.value);
+              safeStorageSet(record.key, record.value);
               window.dispatchEvent(new CustomEvent('manual-route-status-updated', { detail: { key: record.key, value: record.value } }));
               notifySync();
             } catch (e) {}
@@ -487,7 +535,7 @@ export function setupRealtimeChannel() {
           try {
             const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
             const filtered = localTickets.filter(t => t && String(t.id) !== delId);
-            localStorage.setItem('delivery_tickets', JSON.stringify(filtered));
+            safeStorageSet('delivery_tickets', JSON.stringify(filtered));
           } catch (e) {}
         }
         scheduleSyncFromCloud(payload.table);
@@ -881,7 +929,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
             }
             return s;
           });
-          localStorage.setItem('delivery_shifts', JSON.stringify(cleanedShifts));
+          safeStorageSet('delivery_shifts', JSON.stringify(cleanedShifts));
           broadcastRealtimeEvent('shifts_updated', { timestamp: Date.now(), shiftIds: Array.from(savedShiftIds) });
         }
       }
@@ -1003,7 +1051,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           active: u.active !== false
         };
       });
-      localStorage.setItem('delivery_users', JSON.stringify(localUsers));
+      safeStorageSet('delivery_users', JSON.stringify(localUsers));
     }
 
     // Pull Tariffs
@@ -1044,21 +1092,13 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         provider: t.provider || 'eci'
       }));
 
-      // Migrar soportes a tarifa fija (5.23 € / equivalente a TV pequeña)
-      let needsSave = false;
-      
-      const sparItem = localTariffs.find(t => t.id === 'SPAR');
-      if (sparItem && (sparItem.type !== 'fixed' || sparItem.value !== 5.23)) {
-        sparItem.type = 'fixed';
-        sparItem.value = 5.23;
-        needsSave = true;
+      // Si SPAR o SSUE no existen aún en el catálogo descargado, se añaden con su valor
+      // inicial por defecto (5.23 €), pero NUNCA se sobrescribe un precio que el usuario haya editado.
+      if (!localTariffs.some(t => t.id === 'SPAR' || t.id.startsWith('SPAR_'))) {
+        localTariffs.push({ id: 'SPAR', name: 'Soporte de Pared', block: 'Paquetería', type: 'fixed', value: 5.23, createdBy: null, provider: 'eci' });
       }
-      
-      const ssueItem = localTariffs.find(t => t.id === 'SSUE');
-      if (ssueItem && (ssueItem.type !== 'fixed' || ssueItem.value !== 5.23)) {
-        ssueItem.type = 'fixed';
-        ssueItem.value = 5.23;
-        needsSave = true;
+      if (!localTariffs.some(t => t.id === 'SSUE' || t.id.startsWith('SSUE_'))) {
+        localTariffs.push({ id: 'SSUE', name: 'Soporte de Suelo', block: 'Paquetería', type: 'fixed', value: 5.23, createdBy: null, provider: 'eci' });
       }
 
       // Preservar tarifas personalizadas creadas localmente para que no se borren en caso de desfase
@@ -1070,10 +1110,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       const preservedCustom = existingLocal.filter(t => t && t.id && t.id.startsWith('CUSTOM_') && !cloudIds.has(t.id));
       const mergedTariffs = [...localTariffs, ...preservedCustom];
 
-      localStorage.setItem('delivery_tariffs', JSON.stringify(mergedTariffs));
-      if (needsSave) {
-        saveTariffs(localTariffs);
-      }
+      safeStorageSet('delivery_tariffs', JSON.stringify(mergedTariffs));
     }
 
     // Pull Tickets (se omite si el cambio detectado por Realtime no afecta a delivery_tickets,
@@ -1170,7 +1207,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           } else {
             try {
               const current = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-              localStorage.setItem('delivery_deleted_tickets', JSON.stringify(current.filter(id => !stillPendingDeleteIds.map(String).includes(String(id)))));
+              safeStorageSet('delivery_deleted_tickets', JSON.stringify(current.filter(id => !stillPendingDeleteIds.map(String).includes(String(id)))));
             } catch (e) {}
           }
         });
@@ -1348,7 +1385,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           } else {
             try {
               const current = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
-              localStorage.setItem('delivery_deleted_shifts', JSON.stringify(current.filter(id => !stillPendingDeleteShiftIds.includes(id))));
+              safeStorageSet('delivery_deleted_shifts', JSON.stringify(current.filter(id => !stillPendingDeleteShiftIds.includes(id))));
             } catch (e) {}
           }
         });
@@ -1416,7 +1453,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       });
 
-      localStorage.setItem('delivery_shifts', JSON.stringify(normalizeAndDeduplicateShifts(mergedShifts)));
+      safeStorageSet('delivery_shifts', JSON.stringify(normalizeAndDeduplicateShifts(mergedShifts)));
     }
 
     if (settings && !errSettings) {
@@ -1436,8 +1473,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           mPrice = settings.find(s => s.key === 'module_price');
         }
         if (mPrice) {
-          localStorage.setItem(`delivery_module_price_${userId}`, JSON.stringify(parseFloat(mPrice.value)));
-          localStorage.setItem('delivery_module_price', JSON.stringify(parseFloat(mPrice.value)));
+          safeStorageSet(`delivery_module_price_${userId}`, JSON.stringify(parseFloat(mPrice.value)));
+          safeStorageSet('delivery_module_price', JSON.stringify(parseFloat(mPrice.value)));
         }
       }
       
@@ -1454,8 +1491,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
             val = 'My Delivery Team';
             supabase.from('delivery_settings').upsert({ key: appNameSetting.key, value: 'My Delivery Team' }).then(() => {});
           }
-          localStorage.setItem(`delivery_app_name_${userId}`, val);
-          localStorage.setItem('delivery_app_name', val);
+          safeStorageSet(`delivery_app_name_${userId}`, val);
+          safeStorageSet('delivery_app_name', val);
         }
       }
 
@@ -1467,8 +1504,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           themeSetting = settings.find(s => s.key === 'app_theme');
         }
         if (themeSetting) {
-          localStorage.setItem(`delivery_app_theme_${userId}`, themeSetting.value);
-          localStorage.setItem('delivery_app_theme', themeSetting.value);
+          safeStorageSet(`delivery_app_theme_${userId}`, themeSetting.value);
+          safeStorageSet('delivery_app_theme', themeSetting.value);
         }
       }
 
@@ -1480,8 +1517,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           startSetting = settings.find(s => s.key === 'default_start_addr');
         }
         if (startSetting) {
-          localStorage.setItem(`delivery_start_addr_${userId}`, startSetting.value);
-          localStorage.setItem('delivery_default_start_addr', startSetting.value);
+          safeStorageSet(`delivery_start_addr_${userId}`, startSetting.value);
+          safeStorageSet('delivery_default_start_addr', startSetting.value);
         }
 
         const endKey = `default_end_addr_${userId}`;
@@ -1490,19 +1527,19 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           endSetting = settings.find(s => s.key === 'default_end_addr');
         }
         if (endSetting) {
-          localStorage.setItem(`delivery_end_addr_${userId}`, endSetting.value);
-          localStorage.setItem('delivery_default_end_addr', endSetting.value);
+          safeStorageSet(`delivery_end_addr_${userId}`, endSetting.value);
+          safeStorageSet('delivery_default_end_addr', endSetting.value);
         }
       }
 
       // Google Maps Key & Mapbox Token
       const googleKeySetting = settings.find(s => s.key === 'google_maps_api_key');
       if (googleKeySetting) {
-        localStorage.setItem('delivery_google_maps_api_key', googleKeySetting.value);
+        safeStorageSet('delivery_google_maps_api_key', googleKeySetting.value);
       }
       const mapboxTokenSetting = settings.find(s => s.key === 'mapbox_access_token');
       if (mapboxTokenSetting) {
-        localStorage.setItem('delivery_mapbox_access_token', mapboxTokenSetting.value);
+        safeStorageSet('delivery_mapbox_access_token', mapboxTokenSetting.value);
       }
 
       // Resolver ID de administrador gestor para aislar configuraciones
@@ -1523,8 +1560,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         transferSetting = settings.find(s => s.key === 'allow_driver_support_transfer');
       }
       if (transferSetting) {
-        localStorage.setItem(`delivery_allow_driver_support_transfer_${adminId}`, transferSetting.value);
-        localStorage.setItem('delivery_allow_driver_support_transfer', transferSetting.value);
+        safeStorageSet(`delivery_allow_driver_support_transfer_${adminId}`, transferSetting.value);
+        safeStorageSet('delivery_allow_driver_support_transfer', transferSetting.value);
       }
 
       // Helpers List
@@ -1534,8 +1571,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         helpersSetting = settings.find(s => s.key === 'delivery_helpers_list');
       }
       if (helpersSetting) {
-        localStorage.setItem(`delivery_helpers_list_${adminId}`, helpersSetting.value);
-        localStorage.setItem('delivery_helpers_list', helpersSetting.value);
+        safeStorageSet(`delivery_helpers_list_${adminId}`, helpersSetting.value);
+        safeStorageSet('delivery_helpers_list', helpersSetting.value);
       }
 
       // Plates List
@@ -1545,8 +1582,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         platesSetting = settings.find(s => s.key === 'delivery_plates_list');
       }
       if (platesSetting) {
-        localStorage.setItem(`delivery_plates_list_${adminId}`, platesSetting.value);
-        localStorage.setItem('delivery_plates_list', platesSetting.value);
+        safeStorageSet(`delivery_plates_list_${adminId}`, platesSetting.value);
+        safeStorageSet('delivery_plates_list', platesSetting.value);
       }
 
       // Employees List
@@ -1556,40 +1593,40 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         empSetting = settings.find(s => s.key === 'delivery_employees_list');
       }
       if (empSetting) {
-        localStorage.setItem(`delivery_employees_list_${adminId}`, empSetting.value);
-        localStorage.setItem('delivery_employees_list', empSetting.value);
+        safeStorageSet(`delivery_employees_list_${adminId}`, empSetting.value);
+        safeStorageSet('delivery_employees_list', empSetting.value);
       }
 
       // Fleet Vehicles
       const vehiclesKey = `fleet_vehicles_${adminId}`;
       let vehiclesSetting = settings.find(s => s.key === vehiclesKey);
       if (vehiclesSetting) {
-        localStorage.setItem(`delivery_fleet_vehicles_${adminId}`, vehiclesSetting.value);
-        localStorage.setItem('delivery_fleet_vehicles', vehiclesSetting.value);
+        safeStorageSet(`delivery_fleet_vehicles_${adminId}`, vehiclesSetting.value);
+        safeStorageSet('delivery_fleet_vehicles', vehiclesSetting.value);
       }
 
       // Fleet Fuel Logs
       const fuelKey = `fleet_fuel_logs_${adminId}`;
       let fuelSetting = settings.find(s => s.key === fuelKey);
       if (fuelSetting) {
-        localStorage.setItem(`delivery_fleet_fuel_logs_${adminId}`, fuelSetting.value);
-        localStorage.setItem('delivery_fleet_fuel_logs', fuelSetting.value);
+        safeStorageSet(`delivery_fleet_fuel_logs_${adminId}`, fuelSetting.value);
+        safeStorageSet('delivery_fleet_fuel_logs', fuelSetting.value);
       }
 
       // Fleet Maintenance Logs
       const maintKey = `fleet_maintenance_logs_${adminId}`;
       let maintSetting = settings.find(s => s.key === maintKey);
       if (maintSetting) {
-        localStorage.setItem(`delivery_fleet_maintenance_logs_${adminId}`, maintSetting.value);
-        localStorage.setItem('delivery_fleet_maintenance_logs', maintSetting.value);
+        safeStorageSet(`delivery_fleet_maintenance_logs_${adminId}`, maintSetting.value);
+        safeStorageSet('delivery_fleet_maintenance_logs', maintSetting.value);
       }
 
       // Fleet Daily Logs
       const dailyKey = `fleet_daily_logs_${adminId}`;
       let dailySetting = settings.find(s => s.key === dailyKey);
       if (dailySetting) {
-        localStorage.setItem(`delivery_fleet_daily_logs_${adminId}`, dailySetting.value);
-        localStorage.setItem('delivery_fleet_daily_logs', dailySetting.value);
+        safeStorageSet(`delivery_fleet_daily_logs_${adminId}`, dailySetting.value);
+        safeStorageSet('delivery_fleet_daily_logs', dailySetting.value);
       }
 
       // Fixed Rate Logs (Tarifa Fija por jornada y furgoneta — aislado por administrador y con vista supervisora para Super Administrador)
@@ -1603,7 +1640,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
                 if (Array.isArray(parsed)) {
                   const existingLocal = getFixedRateLogsRaw(targetAdm);
                   const mergedAdm = filterFixedLogsForAdmin(mergeFixedRateLogsArrays(existingLocal, parsed), targetAdm);
-                  localStorage.setItem(`delivery_fixed_rate_logs_${targetAdm}`, JSON.stringify(mergedAdm));
+                  safeStorageSet(`delivery_fixed_rate_logs_${targetAdm}`, JSON.stringify(mergedAdm));
                 }
               } catch (e) {}
             }
@@ -1646,8 +1683,8 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           kmPriceSetting = settings.find(s => s.key === 'km_price');
         }
         if (kmPriceSetting) {
-          localStorage.setItem(`delivery_km_price_${userId}`, kmPriceSetting.value);
-          localStorage.setItem('delivery_km_price', kmPriceSetting.value);
+          safeStorageSet(`delivery_km_price_${userId}`, kmPriceSetting.value);
+          safeStorageSet('delivery_km_price', kmPriceSetting.value);
         }
       }
 
@@ -1659,7 +1696,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
           if (!s || !s.key) return;
           if (!(s.key.startsWith('payroll_advances_') || s.key.startsWith('payroll_day_rates_'))) return;
           if (dirtyPayroll.has(s.key)) return;
-          if (s.value !== null && s.value !== undefined) localStorage.setItem(s.key, String(s.value));
+          if (s.value !== null && s.value !== undefined) safeStorageSet(s.key, String(s.value));
         });
         // Reintentar subir lo pendiente
         if (dirtyPayroll.size > 0) retryPendingPayrollUploads();
@@ -1670,25 +1707,25 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       // Route Kilometers and Driver Daily Rates
       settings.forEach(s => {
         if (s.key && s.key.startsWith('route_kms_')) {
-          localStorage.setItem(`delivery_${s.key}`, s.value);
+          safeStorageSet(`delivery_${s.key}`, s.value);
         }
         if (s.key && s.key.startsWith('driver_daily_rate_')) {
-          localStorage.setItem(`delivery_${s.key}`, s.value);
+          safeStorageSet(`delivery_${s.key}`, s.value);
         }
       });
 
       // Route Start Time
       settings.forEach(s => {
         if (s.key && s.key.startsWith('route_start_time_')) {
-          localStorage.setItem(`delivery_${s.key}`, s.value);
+          safeStorageSet(`delivery_${s.key}`, s.value);
         }
       });
 
       // Estado Manual de Rutas (Sincronizar a TODOS los dispositivos)
       settings.forEach(s => {
         if (s.key && s.key.startsWith('manual_route_')) {
-          localStorage.setItem(`delivery_${s.key}`, s.value);
-          localStorage.setItem(s.key, s.value);
+          safeStorageSet(`delivery_${s.key}`, s.value);
+          safeStorageSet(s.key, s.value);
         }
       });
 
@@ -1715,7 +1752,7 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         }
       });
       if (Object.keys(locations).length > 0) {
-        localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+        safeStorageSet('delivery_driver_locations', JSON.stringify(locations));
       }
     }
 
@@ -1838,7 +1875,7 @@ export const PREDEFINED_TV_INCHES = [32, 40, 43, 48, 49, 50, 55, 58, 65, 70, 74,
 // Inicialización de la base de datos
 export function initDB() {
   if (!localStorage.getItem('delivery_users')) {
-    localStorage.setItem('delivery_users', JSON.stringify(DEFAULT_USERS));
+    safeStorageSet('delivery_users', JSON.stringify(DEFAULT_USERS));
   } else {
     // Migration: remove old default vans and make sure 'admin' user has 'superadmin' role
     try {
@@ -1852,16 +1889,16 @@ export function initDB() {
           adminUser.label = 'Super Administrador';
         }
       }
-      localStorage.setItem('delivery_users', JSON.stringify(current));
+      safeStorageSet('delivery_users', JSON.stringify(current));
     } catch (e) {
       console.error("Error migrating admin user role:", e);
     }
   }
   if (!localStorage.getItem('delivery_module_price')) {
-    localStorage.setItem('delivery_module_price', JSON.stringify(DEFAULT_MODULE_PRICE));
+    safeStorageSet('delivery_module_price', JSON.stringify(DEFAULT_MODULE_PRICE));
   }
   if (!localStorage.getItem('delivery_tariffs')) {
-    localStorage.setItem('delivery_tariffs', JSON.stringify(DEFAULT_TARIFFS));
+    safeStorageSet('delivery_tariffs', JSON.stringify(DEFAULT_TARIFFS));
   }
   let currentDormity = [];
   try {
@@ -1870,7 +1907,7 @@ export function initDB() {
   } catch (e) {}
 
   if (!currentDormity || currentDormity.length === 0) {
-    localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(DEFAULT_DORMITY_TARIFFS));
+    safeStorageSet('delivery_dormity_tariffs', JSON.stringify(DEFAULT_DORMITY_TARIFFS));
   } else {
     let updatedDormity = currentDormity.map(t => {
       if (t && t.id && (t.id === 'DORMITY_SERVDIA_EXPRESS' || t.id.startsWith('DORMITY_SERVDIA_EXPRESS_'))) {
@@ -1892,7 +1929,7 @@ export function initDB() {
         updatedDormity.push(defItem);
       }
     });
-    localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(updatedDormity));
+    safeStorageSet('delivery_dormity_tariffs', JSON.stringify(updatedDormity));
   }
 
   // Migration to split Delivery and Pickup under Paquetería and add Soundbar items
@@ -1927,32 +1964,19 @@ export function initDB() {
         );
       }
       
-      // Migrate BSND to fixed 5.23 (equivalent to small TV)
-      const bsndItem = current.find(t => t.id === 'BSND');
-      if (bsndItem && (bsndItem.type !== 'fixed' || bsndItem.value !== 5.23)) {
-        bsndItem.type = 'fixed';
-        bsndItem.value = 5.23;
+      // Garantizar existencia inicial de BSND, PROY, SPAR y SSUE (5.23 € por defecto)
+      // sin sobrescribir jamás los precios que el administrador haya editado.
+      if (!current.some(t => t.id === 'BSND' || t.id.startsWith('BSND_'))) {
+        current.push({ id: 'BSND', name: 'Barra de Sonido', block: 'Barras de Sonido', type: 'fixed', value: 5.23 });
       }
-      
-      // Migrate PROY to fixed 5.23 (equivalent to small TV / soundbar)
-      const proyItem = current.find(t => t.id === 'PROY');
-      if (proyItem && (proyItem.type !== 'fixed' || proyItem.value !== 5.23)) {
-        proyItem.type = 'fixed';
-        proyItem.value = 5.23;
+      if (!current.some(t => t.id === 'PROY' || t.id.startsWith('PROY_'))) {
+        current.push({ id: 'PROY', name: 'Proyector', block: 'Electrodomésticos Varios', type: 'fixed', value: 5.23 });
       }
-      
-      // Migrate SPAR to fixed 5.23 (equivalent to small TV)
-      const sparItem = current.find(t => t.id === 'SPAR');
-      if (sparItem && (sparItem.type !== 'fixed' || sparItem.value !== 5.23)) {
-        sparItem.type = 'fixed';
-        sparItem.value = 5.23;
+      if (!current.some(t => t.id === 'SPAR' || t.id.startsWith('SPAR_'))) {
+        current.push({ id: 'SPAR', name: 'Soporte de Pared', block: 'Paquetería', type: 'fixed', value: 5.23 });
       }
-
-      // Migrate SSUE to fixed 5.23 (equivalent to small TV)
-      const ssueItem = current.find(t => t.id === 'SSUE');
-      if (ssueItem && (ssueItem.type !== 'fixed' || ssueItem.value !== 5.23)) {
-        ssueItem.type = 'fixed';
-        ssueItem.value = 5.23;
+      if (!current.some(t => t.id === 'SSUE' || t.id.startsWith('SSUE_'))) {
+        current.push({ id: 'SSUE', name: 'Soporte de Suelo', block: 'Paquetería', type: 'fixed', value: 5.23 });
       }
       
       // Migrate VTEC tariff (Visita Técnica 5 modules)
@@ -2003,7 +2027,7 @@ export function initDB() {
         return t;
       });
       
-      localStorage.setItem('delivery_tariffs', JSON.stringify(current));
+      safeStorageSet('delivery_tariffs', JSON.stringify(current));
     } catch (e) {
       console.error("Error migrating tariffs:", e);
     }
@@ -2011,9 +2035,9 @@ export function initDB() {
     safeSaveTickets([]);
   }
   if (!localStorage.getItem('delivery_shifts') || !localStorage.getItem('delivery_db_cleared_once')) {
-    localStorage.setItem('delivery_shifts', JSON.stringify([]));
+    safeStorageSet('delivery_shifts', JSON.stringify([]));
   }
-  localStorage.setItem('delivery_db_cleared_once', 'true');
+  safeStorageSet('delivery_db_cleared_once', 'true');
 }
 
 // Hash password using browser-native SHA-256 Web Crypto API
@@ -2107,7 +2131,7 @@ export async function saveUsers(users) {
       hashedUsers.push(entry);
     }
 
-    localStorage.setItem('delivery_users', JSON.stringify(hashedUsers));
+    safeStorageSet('delivery_users', JSON.stringify(hashedUsers));
     
     if (supabase) {
       // Fix (causa raíz encontrada el 1 ago 2026): este bucle de "respaldo"
@@ -2190,10 +2214,10 @@ export async function saveUsers(users) {
             const hasAuthUidErr = errMsg.includes('auth_uid');
             
             if (hasPermissionsErr) {
-              localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
+              safeStorageSet('delivery_supabase_needs_permissions_col', 'true');
             }
             if (hasEmailErr || hasAuthUidErr) {
-              localStorage.setItem('delivery_supabase_needs_auth_migration_cols', 'true');
+              safeStorageSet('delivery_supabase_needs_auth_migration_cols', 'true');
             }
             
             // Reintentar ajustando las columnas disponibles
@@ -2233,7 +2257,7 @@ export async function saveUsers(users) {
               console.warn("Second upsert failed, retrying with minimal columns...");
               const fallbackMsg = fallbackError.message || '';
               if (fallbackMsg.includes('permissions')) {
-                localStorage.setItem('delivery_supabase_needs_permissions_col', 'true');
+                safeStorageSet('delivery_supabase_needs_permissions_col', 'true');
               }
               
               const minimalFormatted = hashedUsers.map(u => {
@@ -2292,9 +2316,9 @@ export function getModulePrice(userId) {
 
 export async function saveModulePrice(price, userId) {
   if (userId) {
-    localStorage.setItem(`delivery_module_price_${userId}`, JSON.stringify(price));
+    safeStorageSet(`delivery_module_price_${userId}`, JSON.stringify(price));
   }
-  localStorage.setItem('delivery_module_price', JSON.stringify(price));
+  safeStorageSet('delivery_module_price', JSON.stringify(price));
   if (supabase) {
     const key = userId ? `module_price_${userId}` : 'module_price';
     const { error } = await supabase.from('delivery_settings').upsert({ key, value: price.toString() });
@@ -2432,7 +2456,7 @@ export async function saveTariffs(tariffs) {
     });
     const mergedList = Object.values(mergedMap);
 
-    localStorage.setItem('delivery_tariffs', JSON.stringify(mergedList));
+    safeStorageSet('delivery_tariffs', JSON.stringify(mergedList));
     if (supabase) {
       try {
         const dbFormatted = formatted.map(t => ({
@@ -2895,7 +2919,7 @@ export async function saveDormityTariffs(tariffs) {
     formatted.forEach(t => { if (t && t.id) mergedMap[t.id] = t; });
 
     const mergedList = Object.values(mergedMap);
-    localStorage.setItem('delivery_dormity_tariffs', JSON.stringify(mergedList));
+    safeStorageSet('delivery_dormity_tariffs', JSON.stringify(mergedList));
     
     if (supabase) {
       // Fix: esta función mandaba a Supabase un campo `provider` que no existe en la
@@ -3387,7 +3411,7 @@ export async function deleteTicket(ticketId) {
     const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
     if (!deletedIds.includes(ticketId)) {
       deletedIds.push(ticketId);
-      localStorage.setItem('delivery_deleted_tickets', JSON.stringify(deletedIds));
+      safeStorageSet('delivery_deleted_tickets', JSON.stringify(deletedIds));
     }
   } catch (e) {}
 
@@ -3429,7 +3453,7 @@ export async function resetMonthlyTickets() {
 
   try {
     const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-    localStorage.setItem('delivery_deleted_tickets', JSON.stringify([...new Set([...deletedIds, ...idsToDelete])]));
+    safeStorageSet('delivery_deleted_tickets', JSON.stringify([...new Set([...deletedIds, ...idsToDelete])]));
   } catch (e) {}
 
   if (supabase) {
@@ -3440,7 +3464,7 @@ export async function resetMonthlyTickets() {
     }
     try {
       const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-      localStorage.setItem('delivery_deleted_tickets', JSON.stringify(deletedIds.filter(id => !idsToDelete.includes(id))));
+      safeStorageSet('delivery_deleted_tickets', JSON.stringify(deletedIds.filter(id => !idsToDelete.includes(id))));
     } catch (e) {}
   }
   return { success: true };
@@ -3544,7 +3568,7 @@ export function getShifts() {
 // Guardar turnos (solo sube a Supabase los turnos modificados para evitar sobreescrituras concurrentes)
 export async function saveShifts(shifts, targetShiftId = null) {
   const normalizedShifts = normalizeAndDeduplicateShifts(shifts);
-  localStorage.setItem('delivery_shifts', JSON.stringify(normalizedShifts));
+  safeStorageSet('delivery_shifts', JSON.stringify(normalizedShifts));
   if (supabase) {
     isSaving++; // contador, no booleano
     try {
@@ -3612,7 +3636,7 @@ export async function saveShifts(shifts, targetShiftId = null) {
             }
             return s;
           });
-          localStorage.setItem('delivery_shifts', JSON.stringify(updatedLocal));
+          safeStorageSet('delivery_shifts', JSON.stringify(updatedLocal));
         } catch (e) {
           console.error("Error clearing local shift sync status:", e);
         }
@@ -3765,12 +3789,12 @@ export async function deletePlannedShift(furgoId, date) {
   const shifts = getShifts();
   const shiftId = `${furgoId}_${date}`;
   const filtered = shifts.filter(s => s.id !== shiftId);
-  localStorage.setItem('delivery_shifts', JSON.stringify(filtered));
+  safeStorageSet('delivery_shifts', JSON.stringify(filtered));
 
   try {
     const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
     deletedIds.push(shiftId);
-    localStorage.setItem('delivery_deleted_shifts', JSON.stringify(deletedIds));
+    safeStorageSet('delivery_deleted_shifts', JSON.stringify(deletedIds));
   } catch (e) {}
 
   if (supabase) {
@@ -3784,7 +3808,7 @@ export async function deletePlannedShift(furgoId, date) {
     });
     try {
       const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
-      localStorage.setItem('delivery_deleted_shifts', JSON.stringify(deletedIds.filter(id => id !== shiftId)));
+      safeStorageSet('delivery_deleted_shifts', JSON.stringify(deletedIds.filter(id => id !== shiftId)));
     } catch (e) {}
   }
   return { success: true };
@@ -3834,7 +3858,7 @@ export async function reopenShift(furgoId, date) {
   }
 
   const normalized = normalizeAndDeduplicateShifts(updatedShifts);
-  localStorage.setItem('delivery_shifts', JSON.stringify(normalized));
+  safeStorageSet('delivery_shifts', JSON.stringify(normalized));
 
   if (supabase) {
     try {
@@ -3855,7 +3879,7 @@ export async function reopenShift(furgoId, date) {
       if (error) {
         console.error("Error reopening shift in Supabase:", error);
         const marked = normalized.map(s => s.id === shiftId ? { ...s, _syncStatus: 'pending' } : s);
-        localStorage.setItem('delivery_shifts', JSON.stringify(marked));
+        safeStorageSet('delivery_shifts', JSON.stringify(marked));
         return { success: false, error };
       }
 
@@ -3907,7 +3931,7 @@ export async function resetMonthlyShifts() {
 
   try {
     const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
-    localStorage.setItem('delivery_deleted_shifts', JSON.stringify([...new Set([...deletedIds, ...idsToDelete])]));
+    safeStorageSet('delivery_deleted_shifts', JSON.stringify([...new Set([...deletedIds, ...idsToDelete])]));
   } catch (e) {}
 
   if (supabase) {
@@ -3918,7 +3942,7 @@ export async function resetMonthlyShifts() {
     }
     try {
       const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
-      localStorage.setItem('delivery_deleted_shifts', JSON.stringify(deletedIds.filter(id => !idsToDelete.includes(id))));
+      safeStorageSet('delivery_deleted_shifts', JSON.stringify(deletedIds.filter(id => !idsToDelete.includes(id))));
     } catch (e) {}
   }
   return { success: true };
@@ -3997,7 +4021,7 @@ export async function addUser(username, label, password, role = 'repartidor', cr
   // guarda aquí una copia sin password en la caché local.
   const { password: _newUserPassword, ...newUserWithoutPassword } = newUser;
   users.push(newUserWithoutPassword);
-  localStorage.setItem('delivery_users', JSON.stringify(users));
+  safeStorageSet('delivery_users', JSON.stringify(users));
 
   if (supabase) {
     const hashedPassword = await hashPassword(newUser.password);
@@ -4044,7 +4068,7 @@ export async function updateUserAllowedProviders(userId, allowedProviders) {
   }
   
   try {
-    localStorage.setItem(`delivery_user_allowed_providers_${userId}`, JSON.stringify(provs));
+    safeStorageSet(`delivery_user_allowed_providers_${userId}`, JSON.stringify(provs));
   } catch (e) {}
 
   await saveUsers(users);
@@ -4105,7 +4129,7 @@ export async function initializeAdminTariffs(newAdminId, option, creatorTariffs,
 export async function deactivateUser(userId) {
   const users = getUsers();
   const updated = users.map(u => u.id === userId ? { ...u, active: false } : u);
-  localStorage.setItem('delivery_users', JSON.stringify(updated));
+  safeStorageSet('delivery_users', JSON.stringify(updated));
   if (!supabase) return { success: true };
   const { error } = await supabase.from('delivery_users').update({ active: false }).eq('id', userId);
   if (error) {
@@ -4119,7 +4143,7 @@ export async function deactivateUser(userId) {
 export async function reactivateUser(userId) {
   const users = getUsers();
   const updated = users.map(u => u.id === userId ? { ...u, active: true } : u);
-  localStorage.setItem('delivery_users', JSON.stringify(updated));
+  safeStorageSet('delivery_users', JSON.stringify(updated));
   if (!supabase) return { success: true };
   const { error } = await supabase.from('delivery_users').update({ active: true }).eq('id', userId);
   if (error) {
@@ -4143,7 +4167,7 @@ export async function deleteUserPermanently(userId) {
   }
   const users = getUsers();
   const filtered = users.filter(u => u.id !== userId);
-  localStorage.setItem('delivery_users', JSON.stringify(filtered));
+  safeStorageSet('delivery_users', JSON.stringify(filtered));
   return { success: true };
 }
 
@@ -4153,7 +4177,7 @@ export function getAppName(userId) {
     const customName = localStorage.getItem(`delivery_app_name_${userId}`);
     if (customName) {
       if (customName === 'My Delevery Team' || customName === 'MY Delevery Team' || customName.toLowerCase().includes('delevery')) {
-        localStorage.setItem(`delivery_app_name_${userId}`, 'My Delivery Team');
+        safeStorageSet(`delivery_app_name_${userId}`, 'My Delivery Team');
         return 'My Delivery Team';
       }
       return customName;
@@ -4161,7 +4185,7 @@ export function getAppName(userId) {
   }
   const globalName = localStorage.getItem('delivery_app_name');
   if (globalName === 'My Delevery Team' || globalName === 'MY Delevery Team' || (globalName && globalName.toLowerCase().includes('delevery'))) {
-    localStorage.setItem('delivery_app_name', 'My Delivery Team');
+    safeStorageSet('delivery_app_name', 'My Delivery Team');
     return 'My Delivery Team';
   }
   return globalName || 'My Delivery Team';
@@ -4175,9 +4199,9 @@ export function getAppName(userId) {
 // real, devolviendo {success, error}.
 export async function saveAppName(name, userId) {
   if (userId) {
-    localStorage.setItem(`delivery_app_name_${userId}`, name.trim());
+    safeStorageSet(`delivery_app_name_${userId}`, name.trim());
   }
-  localStorage.setItem('delivery_app_name', name.trim());
+  safeStorageSet('delivery_app_name', name.trim());
   if (supabase) {
     const key = userId ? `app_name_${userId}` : 'app_name';
     const { error } = await supabase.from('delivery_settings').upsert({ key, value: name.trim() });
@@ -4201,9 +4225,9 @@ export function getAppTheme(userId) {
 // Guardar tema visual
 export async function saveAppTheme(theme, userId) {
   if (userId) {
-    localStorage.setItem(`delivery_app_theme_${userId}`, theme);
+    safeStorageSet(`delivery_app_theme_${userId}`, theme);
   }
-  localStorage.setItem('delivery_app_theme', theme);
+  safeStorageSet('delivery_app_theme', theme);
   if (supabase) {
     const key = userId ? `app_theme_${userId}` : 'app_theme';
     const { error } = await supabase.from('delivery_settings').upsert({ key, value: theme });
@@ -4229,9 +4253,9 @@ export function getKmPrice(userId) {
 export async function saveKmPrice(price, userId) {
   const pStr = price.toString();
   if (userId) {
-    localStorage.setItem(`delivery_km_price_${userId}`, pStr);
+    safeStorageSet(`delivery_km_price_${userId}`, pStr);
   }
-  localStorage.setItem('delivery_km_price', pStr);
+  safeStorageSet('delivery_km_price', pStr);
   if (supabase) {
     const key = userId ? `km_price_${userId}` : 'km_price';
     const { error } = await supabase.from('delivery_settings').upsert({ key, value: pStr });
@@ -4257,9 +4281,9 @@ export function getFuelPrice(userId) {
 export async function saveFuelPrice(price, userId) {
   const pStr = price.toString();
   if (userId) {
-    localStorage.setItem(`delivery_fuel_price_${userId}`, pStr);
+    safeStorageSet(`delivery_fuel_price_${userId}`, pStr);
   }
-  localStorage.setItem('delivery_fuel_price', pStr);
+  safeStorageSet('delivery_fuel_price', pStr);
   if (supabase) {
     const key = userId ? `fuel_price_${userId}` : 'fuel_price';
     const { error } = await supabase.from('delivery_settings').upsert({ key, value: pStr });
@@ -4283,7 +4307,7 @@ export function getRouteKms(furgoId, date) {
 export async function saveRouteKms(furgoId, date, kms) {
   const key = `delivery_route_kms_${furgoId}_${date}`;
   const kStr = kms.toString();
-  localStorage.setItem(key, kStr);
+  safeStorageSet(key, kStr);
   if (supabase) {
     const dbKey = `route_kms_${furgoId}_${date}`;
     const { error } = await supabase.from('delivery_settings').upsert({ key: dbKey, value: kStr });
@@ -4355,7 +4379,7 @@ export async function addTariff(tariff) {
     const mergedMap = {};
     existingRaw.forEach(t => { if (t && t.id) mergedMap[t.id] = t; });
     mergedMap[newTariff.id] = newTariff;
-    localStorage.setItem('delivery_tariffs', JSON.stringify(Object.values(mergedMap)));
+    safeStorageSet('delivery_tariffs', JSON.stringify(Object.values(mergedMap)));
   } catch (e) {
     console.warn("Error guardando tarifa en localStorage:", e);
   }
@@ -4468,7 +4492,7 @@ export async function saveDriverLocation(furgoId, lat, lng) {
       appStateAt: nowIso,
       ...(existingNavTarget ? { navTarget: existingNavTarget } : {})
     };
-    localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+    safeStorageSet('delivery_driver_locations', JSON.stringify(locations));
 
     const now = Date.now();
     const lastSent = lastLocationSentAt[furgoId] || 0;
@@ -4550,7 +4574,7 @@ export async function updateDeviceAppState(furgoId, appState) {
       appStateAt: nowIso
     };
     locations[furgoId] = updatedLoc;
-    localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+    safeStorageSet('delivery_driver_locations', JSON.stringify(locations));
     if (supabase) {
       await supabase.from('delivery_settings').upsert({
         key: `loc_${furgoId}`,
@@ -4584,7 +4608,7 @@ export async function updateDriverNavigationTarget(furgoId, navTarget) {
       delete updatedLoc.navTarget;
     }
     locations[furgoId] = updatedLoc;
-    localStorage.setItem('delivery_driver_locations', JSON.stringify(locations));
+    safeStorageSet('delivery_driver_locations', JSON.stringify(locations));
     if (supabase) {
       if (updatedLoc.lat != null && updatedLoc.lng != null) {
         await supabase.from('delivery_settings').upsert({
@@ -4742,6 +4766,9 @@ export async function geocodeAddress(addressText) {
       }
     }
 
+    // Pausa automática de 1,1 s exclusivamente cuando cae en el respaldo de Nominatim (OSM)
+    // para respetar su política de uso en lotes masivos y evitar bloqueos HTTP 403/429.
+    await waitForNominatimSlot();
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(searchQueryWithCity)}`;
     const response = await fetch(url, {
       headers: {
@@ -4755,6 +4782,7 @@ export async function geocodeAddress(addressText) {
     if (!data || data.length === 0) {
       const strippedQuery = searchQuery.replace(/^\s*(carrer\s+(de\s+|d')?|calle\s+(de\s+)?|avinguda\s+(de\s+|d')?|avenida\s+(de\s+)?|paseo\s+(de\s+)?|passeig\s+(de\s+|d')?|plaza\s+(de\s+)?|plaça\s+(de\s+|d')?|ronda\s+(de\s+)?|via\s+|vía\s+|camí\s+(de\s+|d')?|cami\s+(de\s+|d')?|carretera\s+(de\s+)?|ctra\s+|pasaje\s+(de\s+)?|passatge\s+(de\s+|d')?|ptge\s+)/i, '').trim();
       if (strippedQuery && strippedQuery !== searchQuery) {
+        await waitForNominatimSlot();
         const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&countrycodes=${countryCode}&q=${encodeURIComponent(strippedQuery)}`;
         const fallbackRes = await fetch(fallbackUrl, { 
           headers: { 
@@ -4852,9 +4880,9 @@ export function getRouteStartAddr(userId) {
 // Guardar punto de inicio predeterminado
 export async function saveRouteStartAddr(addr, userId) {
   if (userId) {
-    localStorage.setItem(`delivery_start_addr_${userId}`, addr.trim());
+    safeStorageSet(`delivery_start_addr_${userId}`, addr.trim());
   }
-  localStorage.setItem('delivery_default_start_addr', addr.trim());
+  safeStorageSet('delivery_default_start_addr', addr.trim());
   if (supabase) {
     const key = userId ? `default_start_addr_${userId}` : 'default_start_addr';
     const { error } = await supabase.from('delivery_settings').upsert({ key, value: addr.trim() });
@@ -4878,9 +4906,9 @@ export function getRouteEndAddr(userId) {
 // Guardar punto de fin predeterminado
 export async function saveRouteEndAddr(addr, userId) {
   if (userId) {
-    localStorage.setItem(`delivery_end_addr_${userId}`, addr.trim());
+    safeStorageSet(`delivery_end_addr_${userId}`, addr.trim());
   }
-  localStorage.setItem('delivery_default_end_addr', addr.trim());
+  safeStorageSet('delivery_default_end_addr', addr.trim());
   if (supabase) {
     const key = userId ? `default_end_addr_${userId}` : 'default_end_addr';
     const { error } = await supabase.from('delivery_settings').upsert({ key, value: addr.trim() });
@@ -4897,7 +4925,7 @@ export function getGoogleMapsKey() {
   return localStorage.getItem('delivery_google_maps_api_key') || '';
 }
 export async function saveGoogleMapsKey(key) {
-  localStorage.setItem('delivery_google_maps_api_key', key.trim());
+  safeStorageSet('delivery_google_maps_api_key', key.trim());
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({ key: 'google_maps_api_key', value: key.trim() });
     if (error) {
@@ -4908,17 +4936,46 @@ export async function saveGoogleMapsKey(key) {
   return { success: true };
 }
 
+// Controlador de ritmo (1,1 s entre peticiones) exclusivo para Nominatim (OSM)
+let lastNominatimCallAt = 0;
+let nominatimQueuePromise = Promise.resolve();
+function waitForNominatimSlot() {
+  nominatimQueuePromise = nominatimQueuePromise.then(async () => {
+    const now = Date.now();
+    const waitMs = Math.max(0, 1100 - (now - lastNominatimCallAt));
+    if (waitMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+    lastNominatimCallAt = Date.now();
+  });
+  return nominatimQueuePromise;
+}
+
 export function getMapboxToken() {
   return localStorage.getItem('delivery_mapbox_access_token') || '';
 }
 export async function saveMapboxToken(token) {
-  localStorage.setItem('delivery_mapbox_access_token', token.trim());
+  safeStorageSet('delivery_mapbox_access_token', token.trim());
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({ key: 'mapbox_access_token', value: token.trim() });
     if (error) {
       console.error("Error saving mapbox token to cloud:", error);
       return { success: false, error };
     }
+  }
+  return { success: true };
+}
+
+export function getRoutingEngine() {
+  return localStorage.getItem('delivery_routing_engine') || 'mapbox';
+}
+export async function saveRoutingEngine(engine) {
+  const clean = engine === 'osrm' ? 'osrm' : 'mapbox';
+  safeStorageSet('delivery_routing_engine', clean);
+  if (supabase) {
+    try {
+      await supabase.from('delivery_settings').upsert({ key: 'routing_engine', value: clean });
+    } catch (e) {}
   }
   return { success: true };
 }
@@ -5093,7 +5150,7 @@ export function getRouteStartTime(furgoId, date) {
 export async function saveRouteStartTime(furgoId, date, time) {
   if (furgoId && date) {
     const key = `delivery_route_start_time_${furgoId}_${date}`;
-    localStorage.setItem(key, time);
+    safeStorageSet(key, time);
     if (supabase) {
       const dbKey = `route_start_time_${furgoId}_${date}`;
       const { error } = await supabase.from('delivery_settings').upsert({ key: dbKey, value: time });
@@ -5136,8 +5193,8 @@ export function getAllowDriverSupportTransfer() {
 export async function saveAllowDriverSupportTransfer(value) {
   const adminId = getActiveAdminId();
   const valStr = value ? 'true' : 'false';
-  localStorage.setItem(`delivery_allow_driver_support_transfer_${adminId}`, valStr);
-  localStorage.setItem('delivery_allow_driver_support_transfer', valStr);
+  safeStorageSet(`delivery_allow_driver_support_transfer_${adminId}`, valStr);
+  safeStorageSet('delivery_allow_driver_support_transfer', valStr);
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `allow_driver_support_transfer_${adminId}`,
@@ -5156,8 +5213,8 @@ export async function saveRouteManualStatus(furgoId, date, isManual) {
   if (furgoId && date) {
     const key = `manual_route_${furgoId}_${date}`;
     const value = isManual ? 'true' : 'false';
-    localStorage.setItem(`delivery_${key}`, value);
-    localStorage.setItem(key, value);
+    safeStorageSet(`delivery_${key}`, value);
+    safeStorageSet(key, value);
     if (supabase) {
       const { error } = await supabase.from('delivery_settings').upsert({ key: key, value: value });
       if (error) {
@@ -5313,7 +5370,7 @@ export async function moveRouteDate(furgoId, oldDate, newDate) {
               }
               return s;
             });
-            localStorage.setItem('delivery_shifts', JSON.stringify(clearedShifts));
+            safeStorageSet('delivery_shifts', JSON.stringify(clearedShifts));
           }
         } catch (e) {
           console.error("Error limpiando _syncStatus tras mover fecha de ruta:", e);
@@ -5356,8 +5413,8 @@ export async function saveHelpersList(helpers) {
     dailyRate: parseFloat(item.dailyRate) || 0
   }));
   const helpersStr = JSON.stringify(formatted);
-  localStorage.setItem(`delivery_helpers_list_${adminId}`, helpersStr);
-  localStorage.setItem('delivery_helpers_list', helpersStr);
+  safeStorageSet(`delivery_helpers_list_${adminId}`, helpersStr);
+  safeStorageSet('delivery_helpers_list', helpersStr);
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `delivery_helpers_list_${adminId}`,
@@ -5391,8 +5448,8 @@ export function getPlatesList() {
     if (hadObjects) {
       // Persistir la versión limpia para que no se repita la migración
       const clean = JSON.stringify(normalized);
-      localStorage.setItem(`delivery_plates_list_${adminId}`, clean);
-      localStorage.setItem('delivery_plates_list', clean);
+      safeStorageSet(`delivery_plates_list_${adminId}`, clean);
+      safeStorageSet('delivery_plates_list', clean);
     }
     return normalized;
   } catch (e) {
@@ -5405,8 +5462,8 @@ export function getPlatesList() {
 export async function savePlatesList(plates) {
   const adminId = getActiveAdminId();
   const platesStr = JSON.stringify(plates);
-  localStorage.setItem(`delivery_plates_list_${adminId}`, platesStr);
-  localStorage.setItem('delivery_plates_list', platesStr);
+  safeStorageSet(`delivery_plates_list_${adminId}`, platesStr);
+  safeStorageSet('delivery_plates_list', platesStr);
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `delivery_plates_list_${adminId}`,
@@ -5428,7 +5485,7 @@ export function getDriverDailyRate(driverId) {
 
 // Guardar la tarifa diaria de un chofer
 export async function saveDriverDailyRate(driverId, rate) {
-  localStorage.setItem(`delivery_driver_daily_rate_${driverId}`, rate.toString());
+  safeStorageSet(`delivery_driver_daily_rate_${driverId}`, rate.toString());
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `driver_daily_rate_${driverId}`,
@@ -5579,8 +5636,8 @@ function persistFixedRateLogsLocal(logs, explicitAdminId) {
       const mergedAdm = filterFixedLogsForAdmin(mergeFixedRateLogsArrays(existingAdm, admLogs), adm);
       const str = JSON.stringify(mergedAdm);
       try {
-        localStorage.setItem(`delivery_fixed_rate_logs_${adm}`, str);
-        if (adm === 'admin') localStorage.setItem('delivery_fixed_rate_logs', str);
+        safeStorageSet(`delivery_fixed_rate_logs_${adm}`, str);
+        if (adm === 'admin') safeStorageSet('delivery_fixed_rate_logs', str);
       } catch (e) {}
     });
     return;
@@ -5588,9 +5645,9 @@ function persistFixedRateLogsLocal(logs, explicitAdminId) {
   const cleanLogs = filterFixedLogsForAdmin(Array.isArray(logs) ? logs : [], scope);
   const str = JSON.stringify(cleanLogs);
   try {
-    localStorage.setItem(`delivery_fixed_rate_logs_${scope}`, str);
+    safeStorageSet(`delivery_fixed_rate_logs_${scope}`, str);
     if (scope === 'admin') {
-      localStorage.setItem('delivery_fixed_rate_logs', str);
+      safeStorageSet('delivery_fixed_rate_logs', str);
     }
   } catch (e) {}
 }
@@ -5670,7 +5727,7 @@ export function getEmployeesList() {
       dailyRate: h.dailyRate
     }));
     if (migrated.length > 0) {
-      localStorage.setItem(`delivery_employees_list_${adminId}`, JSON.stringify(migrated));
+      safeStorageSet(`delivery_employees_list_${adminId}`, JSON.stringify(migrated));
     }
     return migrated;
   } catch (e) {
@@ -5689,8 +5746,8 @@ export async function saveEmployeesList(employees) {
     active: item.active === false ? false : true
   }));
   const empStr = JSON.stringify(formatted);
-  localStorage.setItem(`delivery_employees_list_${adminId}`, empStr);
-  localStorage.setItem('delivery_employees_list', empStr);
+  safeStorageSet(`delivery_employees_list_${adminId}`, empStr);
+  safeStorageSet('delivery_employees_list', empStr);
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `delivery_employees_list_${adminId}`,
@@ -5780,7 +5837,7 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       ...(endKms !== undefined ? { endKms } : {})
     });
   }
-  localStorage.setItem('delivery_shifts', JSON.stringify(localShifts));
+  safeStorageSet('delivery_shifts', JSON.stringify(localShifts));
 
   // 2. Save to Supabase directly (both the shift row and its metadata setting)
   if (supabase) {
@@ -5868,8 +5925,8 @@ export function getFleetVehicles() {
 export async function saveFleetVehicles(vehicles) {
   const adminId = getActiveAdminId();
   const valStr = JSON.stringify(vehicles);
-  localStorage.setItem(`delivery_fleet_vehicles_${adminId}`, valStr);
-  localStorage.setItem('delivery_fleet_vehicles', valStr); // fallback local
+  safeStorageSet(`delivery_fleet_vehicles_${adminId}`, valStr);
+  safeStorageSet('delivery_fleet_vehicles', valStr); // fallback local
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `fleet_vehicles_${adminId}`,
@@ -5896,8 +5953,8 @@ export function getFleetFuelLogs() {
 export async function saveFleetFuelLogs(logs) {
   const adminId = getActiveAdminId();
   const valStr = JSON.stringify(logs);
-  localStorage.setItem(`delivery_fleet_fuel_logs_${adminId}`, valStr);
-  localStorage.setItem('delivery_fleet_fuel_logs', valStr); // fallback local
+  safeStorageSet(`delivery_fleet_fuel_logs_${adminId}`, valStr);
+  safeStorageSet('delivery_fleet_fuel_logs', valStr); // fallback local
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `fleet_fuel_logs_${adminId}`,
@@ -5924,8 +5981,8 @@ export function getFleetMaintenanceLogs() {
 export async function saveFleetMaintenanceLogs(logs) {
   const adminId = getActiveAdminId();
   const valStr = JSON.stringify(logs);
-  localStorage.setItem(`delivery_fleet_maintenance_logs_${adminId}`, valStr);
-  localStorage.setItem('delivery_fleet_maintenance_logs', valStr); // fallback local
+  safeStorageSet(`delivery_fleet_maintenance_logs_${adminId}`, valStr);
+  safeStorageSet('delivery_fleet_maintenance_logs', valStr); // fallback local
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `fleet_maintenance_logs_${adminId}`,
@@ -5952,8 +6009,8 @@ export function getFleetDailyLogs() {
 export async function saveFleetDailyLogs(logs) {
   const adminId = getActiveAdminId();
   const valStr = JSON.stringify(logs);
-  localStorage.setItem(`delivery_fleet_daily_logs_${adminId}`, valStr);
-  localStorage.setItem('delivery_fleet_daily_logs', valStr); // fallback local
+  safeStorageSet(`delivery_fleet_daily_logs_${adminId}`, valStr);
+  safeStorageSet('delivery_fleet_daily_logs', valStr); // fallback local
   if (supabase) {
     const { error } = await supabase.from('delivery_settings').upsert({
       key: `fleet_daily_logs_${adminId}`,
@@ -5990,7 +6047,7 @@ export function getPrimeDriveCarSyncSettings() {
 
 export function savePrimeDriveCarSyncSettings(settings) {
   const adminId = getActiveAdminId();
-  localStorage.setItem(`delivery_primedrivecar_sync_settings_${adminId}`, JSON.stringify(settings));
+  safeStorageSet(`delivery_primedrivecar_sync_settings_${adminId}`, JSON.stringify(settings));
 }
 
 // Sincroniza un único repostaje a PrimeDriveCar
@@ -6282,7 +6339,7 @@ export async function loadPvgvCatalog() {
       if (!error && data && data.value) {
         const catalog = JSON.parse(data.value);
         // Actualizar también localStorage como caché local
-        try { localStorage.setItem('pvgv_catalog', data.value); } catch {}
+        try { safeStorageSet('pvgv_catalog', data.value); } catch {}
         return catalog;
       }
     } catch (e) {
@@ -6301,7 +6358,7 @@ export async function loadPvgvCatalog() {
 export async function savePvgvCatalog(catalog) {
   const value = JSON.stringify(catalog);
   // Guardar siempre en localStorage como caché
-  try { localStorage.setItem('pvgv_catalog', value); } catch {}
+  try { safeStorageSet('pvgv_catalog', value); } catch {}
   // Guardar en Supabase si está disponible
   if (supabase) {
     try {
@@ -6323,7 +6380,7 @@ function getPayrollDirtyKeys() {
   } catch { return []; }
 }
 function setPayrollDirtyKeys(arr) {
-  try { localStorage.setItem('delivery_payroll_dirty_keys', JSON.stringify(Array.from(new Set(arr)))); } catch {}
+  try { safeStorageSet('delivery_payroll_dirty_keys', JSON.stringify(Array.from(new Set(arr)))); } catch {}
 }
 function markPayrollKeyDirty(key) {
   setPayrollDirtyKeys([...getPayrollDirtyKeys(), key]);
@@ -6400,7 +6457,7 @@ export async function savePayrollDayRates(arg1, arg2, arg3, arg4, arg5) {
   const monthStr = String(Number(month) + 1).padStart(2, '0');
   const key = 'payroll_day_rates_' + adminId + '_' + employeeId + '_' + year + '_' + monthStr;
   const val = JSON.stringify(rates || {});
-  localStorage.setItem(key, val);
+  safeStorageSet(key, val);
   return await uploadPayrollKey(key, val);
 }
 
@@ -6442,6 +6499,6 @@ export async function savePayrollAdvances(arg1, arg2, arg3, arg4, arg5) {
   const monthStr = String(Number(month) + 1).padStart(2, '0');
   const key = 'payroll_advances_' + adminId + '_' + employeeId + '_' + year + '_' + monthStr;
   const val = String(amount || 0);
-  localStorage.setItem(key, val);
+  safeStorageSet(key, val);
   return await uploadPayrollKey(key, val);
 }

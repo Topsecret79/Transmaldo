@@ -13,8 +13,33 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-app-user-id, x-app-token',
 };
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+// Firma un token de sesión HMAC-SHA256 con caducidad (30 días) para usuarios sin correo (repartidores / coordinadores)
+async function signAppSessionToken(payload: Record<string, unknown>, secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const payloadBytes = encoder.encode(JSON.stringify(payload));
+  const payloadB64 = toBase64Url(payloadBytes);
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sigBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(payloadB64));
+  const sigB64 = toBase64Url(new Uint8Array(sigBuffer));
+  return `${payloadB64}.${sigB64}`;
+}
 
 // Replica exacta del hashPassword() del cliente (SHA-256 vía Web Crypto,
 // disponible de forma nativa en el runtime Deno de las Edge Functions).
@@ -86,6 +111,27 @@ Deno.serve(async (req) => {
         .eq('id', found.id);
     }
 
+    if (found.active === false) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Esta cuenta está desactivada. Contacta con tu administrador.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Generar token firmado criptográficamente (HMAC-SHA256) con caducidad de 30 días
+    const signingSecret = Deno.env.get('APP_SESSION_SECRET') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const appToken = signingSecret
+      ? await signAppSessionToken(
+          {
+            sub: String(found.id),
+            username: String(found.username || ''),
+            role: String(found.role || 'repartidor'),
+            exp: Date.now() + 30 * 24 * 3600 * 1000,
+          },
+          signingSecret
+        )
+      : null;
+
     // Objeto de usuario seguro para el navegador: SIN el campo password.
     // Nota: must_change_password / allowed_providers no existen como columnas
     // en esta tabla en producción (se gestionan aparte, vía delivery_settings)
@@ -104,10 +150,11 @@ Deno.serve(async (req) => {
       email: found.email || null,
       auth_uid: found.auth_uid || null,
       active: found.active !== false,
+      ...(appToken ? { appToken } : {}),
     };
 
     return new Response(
-      JSON.stringify({ success: true, user: safeUser }),
+      JSON.stringify({ success: true, user: safeUser, appToken }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
