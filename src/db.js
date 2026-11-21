@@ -1545,6 +1545,10 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       if (routingEngineSetting && (routingEngineSetting.value === 'mapbox' || routingEngineSetting.value === 'osrm')) {
         safeStorageSet('delivery_routing_engine', routingEngineSetting.value);
       }
+      const routeColorsSetting = settings.find(s => s.key === 'route_line_colors');
+      if (routeColorsSetting && routeColorsSetting.value) {
+        safeStorageSet('delivery_route_line_colors', routeColorsSetting.value);
+      }
 
       // Resolver ID de administrador gestor para aislar configuraciones
       let adminId = 'admin';
@@ -4979,6 +4983,28 @@ export async function saveRoutingEngine(engine) {
   if (supabase) {
     try {
       await supabase.from('delivery_settings').upsert({ key: 'routing_engine', value: clean });
+    } catch (e) {}
+  }
+  return { success: true };
+}
+
+export function getRouteLineColors() {
+  try {
+    const raw = localStorage.getItem('delivery_route_line_colors');
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+export async function saveRouteLineColors(colorsMap) {
+  const safeObj = colorsMap && typeof colorsMap === 'object' ? colorsMap : {};
+  const valStr = JSON.stringify(safeObj);
+  safeStorageSet('delivery_route_line_colors', valStr);
+  if (supabase) {
+    try {
+      await supabase.from('delivery_settings').upsert({ key: 'route_line_colors', value: valStr });
     } catch (e) {}
   }
   return { success: true };

@@ -552,6 +552,8 @@ import {
   updateDriverNavigationTarget,
   getRoutingEngine,
   saveRoutingEngine,
+  getRouteLineColors,
+  saveRouteLineColors,
   safeStorageSet
 } from './db';
 
@@ -2206,10 +2208,39 @@ function App() {
   const [mapRenderKey, setMapRenderKey] = useState(0); // Trigger para re-montar mapa tras pérdida de contexto WebGL o bloqueo de pantalla
   const [mapStyleMode, setMapStyleMode] = useState(() => localStorage.getItem('delivery_map_style') || 'streets');
   const [mapRouteLineColor, setMapRouteLineColor] = useState(() => localStorage.getItem('delivery_map_route_color') || '#1d4ed8');
+  const [routeLineColorsMap, setRouteLineColorsMap] = useState(() => getRouteLineColors());
+  const DEFAULT_ROUTE_PALETTE = ['#1d4ed8', '#059669', '#d97706', '#dc2626', '#0284c7', '#7c3aed', '#db2777', '#0d9488'];
+  const getFurgoLineColor = (fid, fallbackIdx = 0) => {
+    if (fid && routeLineColorsMap && routeLineColorsMap[fid]) {
+      return routeLineColorsMap[fid];
+    }
+    const repIdx = (users || []).filter(u => u && u.role === 'repartidor' && u.active !== false).findIndex(u => u.id === fid);
+    if (repIdx === 0) return mapRouteLineColor || '#1d4ed8';
+    if (repIdx > 0) return DEFAULT_ROUTE_PALETTE[repIdx % DEFAULT_ROUTE_PALETTE.length];
+    return fallbackIdx === 0 ? (mapRouteLineColor || '#1d4ed8') : DEFAULT_ROUTE_PALETTE[fallbackIdx % DEFAULT_ROUTE_PALETTE.length];
+  };
+  const handleSetFurgoLineColor = (fid, newColor) => {
+    const cleanColor = newColor || '#1d4ed8';
+    if (!fid || fid === 'all') {
+      safeStorageSet('delivery_map_route_color', cleanColor);
+      setMapRouteLineColor(cleanColor);
+      return;
+    }
+    const nextMap = { ...(routeLineColorsMap || {}), [fid]: cleanColor };
+    setRouteLineColorsMap(nextMap);
+    saveRouteLineColors(nextMap);
+  };
   const handleMapRouteColorChange = (newColor) => {
     const cleanColor = newColor || '#1d4ed8';
-    safeStorageSet('delivery_map_route_color', cleanColor);
-    setMapRouteLineColor(cleanColor);
+    const singleSelectedFid = mapSelectedFurgos.length === 1
+      ? mapSelectedFurgos[0]
+      : (mapFilterFurgo && mapFilterFurgo !== 'all' ? mapFilterFurgo : null);
+    if (singleSelectedFid) {
+      handleSetFurgoLineColor(singleSelectedFid, cleanColor);
+    } else {
+      safeStorageSet('delivery_map_route_color', cleanColor);
+      setMapRouteLineColor(cleanColor);
+    }
   };
   const MAP_STYLE_URLS = {
     streets: 'mapbox://styles/mapbox/streets-v12',
@@ -3404,10 +3435,9 @@ function App() {
         const ticketsByDriver = {};
         sortedDayTickets.forEach(t => { if (!ticketsByDriver[t.furgoId]) ticketsByDriver[t.furgoId] = []; ticketsByDriver[t.furgoId].push(t); });
         const allBounds = [];
-        const COLORS = [mapRouteLineColor || '#1d4ed8', '#0284c7', '#059669', '#d97706', '#dc2626', '#7c3aed'];
         Object.keys(ticketsByDriver).forEach((fid, idx) => {
           const driverTickets = ticketsByDriver[fid];
-          const driverColor = COLORS[idx % COLORS.length];
+          const driverColor = getFurgoLineColor(fid, idx);
           const isClosed = getShiftStatus(fid, targetDate) === 'closed';
           driverTickets.forEach((t, seqIndex) => {
             const displayStopNum = realStopMap[t.id] || (seqIndex + 1);
@@ -3678,7 +3708,7 @@ function App() {
       delete window.updateLiveDriversOnMapFn;
       window.removeEventListener('driver-location-updated', handleDriverLocationUpdate);
     };
-  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, superAdminFleetScope, tickets, users, shiftSummaryDate, currentUser, mapRenderKey, mapStyleMode, mapRouteLineColor]);
+  }, [activeTab, mapFilterDate, mapFilterFurgo, mapSelectedFurgos, mapFilterSource, mapFilterTimeSlot, mapFilterCompletion, superAdminFleetScope, tickets, users, shiftSummaryDate, currentUser, mapRenderKey, mapStyleMode, mapRouteLineColor, routeLineColorsMap]);
 
   // Actualizar visualmente los marcadores del mapa cuando cambia bulkSelectedTickets o bulkSelectMode
   // IMPORTANTE: Nunca modificar pin.style.transform ni añadir transition:transform,
@@ -3956,6 +3986,7 @@ function App() {
     setGoogleKeyInput(getGoogleMapsKey());
     setMapboxTokenInput(getMapboxToken());
     setRoutingEngineInput(getRoutingEngine());
+    setIfChangedOuter(setRouteLineColorsMap, getRouteLineColors() || {});
     setAllowDriverSupportTransfer(getAllowDriverSupportTransfer());
     setIfChangedOuter(setHelpersList, getHelpersList() || []);
     setIfChangedOuter(setPlatesList, getPlatesList() || []);
@@ -22314,30 +22345,41 @@ function App() {
               <option value="satellite" style={{ color: '#000', background: '#fff' }}>🛰️ Mapa: Satélite + Calles</option>
             </select>
 
-            <select
-              value={mapRouteLineColor}
-              onChange={(e) => handleMapRouteColorChange(e.target.value)}
-              title="Cambiar color de la línea de recorrido de la ruta en el mapa"
-              style={{
-                fontSize: '0.73rem',
-                padding: '3px 8px',
-                height: '28px',
-                borderRadius: '8px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                background: 'rgba(15, 23, 42, 0.75)',
-                border: `1.5px solid ${mapRouteLineColor || '#1d4ed8'}`,
-                color: '#e0f2fe',
-                outline: 'none'
-              }}
-            >
-              <option value="#1d4ed8" style={{ color: '#000', background: '#fff' }}>🔵 Línea: Azul Oscuro</option>
-              <option value="#1e3a8a" style={{ color: '#000', background: '#fff' }}>🔷 Línea: Azul Marino</option>
-              <option value="#2563eb" style={{ color: '#000', background: '#fff' }}>🌐 Línea: Azul GPS</option>
-              <option value="#059669" style={{ color: '#000', background: '#fff' }}>🟢 Línea: Verde</option>
-              <option value="#dc2626" style={{ color: '#000', background: '#fff' }}>🔴 Línea: Rojo</option>
-              <option value="#a78bfa" style={{ color: '#000', background: '#fff' }}>🟣 Línea: Morado Claro</option>
-            </select>
+            {(() => {
+              const singleFid = mapSelectedFurgos.length === 1
+                ? mapSelectedFurgos[0]
+                : (mapFilterFurgo && mapFilterFurgo !== 'all' ? mapFilterFurgo : null);
+              const singleLabel = singleFid ? (activeRepartidores.find(r => r.id === singleFid)?.label || singleFid) : null;
+              const activeLineColor = singleFid ? getFurgoLineColor(singleFid, 0) : (mapRouteLineColor || '#1d4ed8');
+              return (
+                <select
+                  value={activeLineColor}
+                  onChange={(e) => handleMapRouteColorChange(e.target.value)}
+                  title={singleLabel ? `Cambiar el color de la línea de recorrido para la ruta ${singleLabel}` : 'Cambiar color de la línea de recorrido principal (o toca el círculo de color en cada botón de ruta abajo)'}
+                  style={{
+                    fontSize: '0.73rem',
+                    padding: '3px 8px',
+                    height: '28px',
+                    borderRadius: '8px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    background: 'rgba(15, 23, 42, 0.75)',
+                    border: `2px solid ${activeLineColor}`,
+                    color: '#e0f2fe',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="#1d4ed8" style={{ color: '#000', background: '#fff' }}>🔵 {singleLabel ? `Línea ${singleLabel}` : 'Línea'}: Azul Oscuro</option>
+                  <option value="#1e3a8a" style={{ color: '#000', background: '#fff' }}>🔷 {singleLabel ? `Línea ${singleLabel}` : 'Línea'}: Azul Marino</option>
+                  <option value="#0284c7" style={{ color: '#000', background: '#fff' }}>🌐 {singleLabel ? `Línea ${singleLabel}` : 'Línea'}: Azul Celeste</option>
+                  <option value="#059669" style={{ color: '#000', background: '#fff' }}>🟢 {singleLabel ? `Línea ${singleLabel}` : 'Línea'}: Verde Esmeralda</option>
+                  <option value="#d97706" style={{ color: '#000', background: '#fff' }}>🟠 {singleLabel ? `Línea ${singleLabel}` : 'Línea'}: Naranja</option>
+                  <option value="#dc2626" style={{ color: '#000', background: '#fff' }}>🔴 {singleLabel ? `Línea ${singleLabel}` : 'Línea'}: Rojo</option>
+                  <option value="#7c3aed" style={{ color: '#000', background: '#fff' }}>🟣 {singleLabel ? `Línea ${singleLabel}` : 'Línea'}: Morado Oscuro</option>
+                  <option value="#db2777" style={{ color: '#000', background: '#fff' }}>🩷 {singleLabel ? `Línea ${singleLabel}` : 'Línea'}: Rosa Fucsia</option>
+                </select>
+              );
+            })()}
           </div>
 
           <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', fontWeight: '600' }}>
@@ -23018,36 +23060,78 @@ function App() {
               🌐 Todas ({daySourceSlotCompletionTickets.length})
             </button>
 
-            {activeRepartidores.map(u => {
+            {activeRepartidores.map((u, uIdx) => {
               const isSelected = mapSelectedFurgos.includes(u.id) || (mapSelectedFurgos.length === 0 && mapFilterFurgo === u.id);
               const routeStopsCount = daySourceSlotCompletionTickets.filter(t => matchesSingleFurgo(t, u.id)).length;
+              const routeLineColor = getFurgoLineColor(u.id, uIdx);
               return (
-                <button
+                <div
                   key={u.id}
-                  type="button"
-                  onClick={() => toggleMapFurgoSelection(u.id)}
                   style={{
-                    fontSize: '0.76rem',
-                    padding: '4px 10px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
                     borderRadius: '7px',
-                    fontWeight: isSelected ? '800' : '600',
-                    cursor: 'pointer',
+                    overflow: 'hidden',
                     background: isSelected
                       ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
                       : (routeStopsCount > 0 ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255, 255, 255, 0.03)'),
                     border: isSelected
                       ? '1.5px solid #a5b4fc'
                       : (routeStopsCount > 0 ? '1px solid rgba(99, 102, 241, 0.35)' : '1px solid var(--panel-border)'),
-                    color: isSelected
-                      ? '#fff'
-                      : (routeStopsCount > 0 ? '#e2e8f0' : 'var(--text-muted)'),
                     boxShadow: isSelected ? '0 0 10px rgba(99, 102, 241, 0.45)' : 'none',
                     transition: 'all 0.15s'
                   }}
-                  title="Toca para activar o desactivar esta ruta en el mapa"
                 >
-                  {isSelected ? '✓ ' : '🚚 '}{u.label}{routeStopsCount > 0 ? ` (${routeStopsCount})` : ''}
-                </button>
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    title={`Color de la línea de ruta de ${u.label}. Haz clic en este círculo para elegir otro color para ${u.label}.`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '4px 6px',
+                      cursor: 'pointer',
+                      borderRight: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(0,0,0,0.22)'
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        backgroundColor: routeLineColor,
+                        border: '1.5px solid #ffffff',
+                        boxShadow: `0 0 6px ${routeLineColor}`,
+                        display: 'inline-block'
+                      }}
+                    />
+                    <input
+                      type="color"
+                      value={routeLineColor}
+                      onChange={(e) => handleSetFurgoLineColor(u.id, e.target.value)}
+                      style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => toggleMapFurgoSelection(u.id)}
+                    style={{
+                      fontSize: '0.76rem',
+                      padding: '4px 10px 4px 7px',
+                      fontWeight: isSelected ? '800' : '600',
+                      cursor: 'pointer',
+                      background: 'transparent',
+                      border: 'none',
+                      color: isSelected
+                        ? '#fff'
+                        : (routeStopsCount > 0 ? '#e2e8f0' : 'var(--text-muted)')
+                    }}
+                    title="Toca para activar o desactivar esta ruta en el mapa"
+                  >
+                    {isSelected ? '✓ ' : '🚚 '}{u.label}{routeStopsCount > 0 ? ` (${routeStopsCount})` : ''}
+                  </button>
+                </div>
               );
             })}
           </div>
