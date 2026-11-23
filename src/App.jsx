@@ -12837,7 +12837,7 @@ function App() {
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
-                              <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar turno</option>
+                              <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar ruta</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
                               {(() => {
                                 const ownerAdmin = currentUser?.createdBy || 'admin';
@@ -12878,7 +12878,7 @@ function App() {
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
-                              <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar chofer</option>
+                              <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar nombre</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
                               {driverCustomDriver && !employeesList.some(emp => emp.name === driverCustomDriver) && (
                                 <option value={driverCustomDriver} style={{ color: '#000', background: '#fff' }}>{driverCustomDriver}</option>
