@@ -439,6 +439,7 @@ import {
   addTicket, 
   updateTicket, 
   deleteTicket, 
+  deleteTicketsBatch,
   calculateTaskPrice, 
   resetMonthlyTickets,
   updateTicketStatus,
@@ -5908,11 +5909,15 @@ function App() {
         loadData();
       } else {
         const result = await addTicket(ticketData);
-        if (!result || !result.success) {
+        if (!result || (!result.success && !result.savedLocally)) {
           triggerAlert('No se pudo guardar el reparto (sin conexión o error del servidor). Vuelve a intentarlo.', 'error');
           return;
         }
-        triggerAlert('Registro guardado con éxito');
+        if (result.success) {
+          triggerAlert('Registro guardado con éxito');
+        } else {
+          triggerAlert('Reparto guardado en el móvil (se subirá automáticamente al recuperar cobertura)', 'warning');
+        }
         // Resetear
         localStorage.removeItem('delivery_form_draft');
         // Fix defensivo: el guardado automático de borrador (más abajo, en el
@@ -12206,14 +12211,10 @@ function App() {
                     return;
                   }
                   if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente TODAS las (${sortedActiveRouteTickets.length}) paradas de la ruta ${activeRouteContext.furgoId} para el día ${activeRouteContext.date}? Esta acción no se puede deshacer.`)) {
-                    // Fix: antes se disparaban todos los borrados en paralelo sin esperar
-                    // ni comprobar el resultado — si fallaba alguno a mitad de camino, la
-                    // pantalla igual decía "todas eliminadas" sin forma de saber cuáles.
-                    const results = await Promise.all(sortedActiveRouteTickets.map(t => deleteTicket(t.id)));
-                    const failedCount = results.filter(r => !r || !r.success).length;
+                    const batchResult = await deleteTicketsBatch(sortedActiveRouteTickets.map(t => t.id));
                     loadData();
-                    if (failedCount > 0) {
-                      triggerAlert(`${sortedActiveRouteTickets.length - failedCount} paradas eliminadas, pero ${failedCount} no se pudieron confirmar en el servidor (revisa la conexión).`, 'error');
+                    if (!batchResult || !batchResult.success) {
+                      triggerAlert('Las paradas se eliminaron del dispositivo, pero hubo un aviso al confirmar con el servidor (se reintentará automáticamente).', 'warning');
                     } else {
                       triggerAlert('Todas las paradas de la ruta han sido eliminadas');
                     }

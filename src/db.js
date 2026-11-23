@@ -338,12 +338,78 @@ export function getLocalDateISO(dateInput = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
+const MAX_DELETED_TICKET_TOMBSTONES = 800;
+
+export function getDeletedTicketIdsList() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('delivery_deleted_tickets') || '[]');
+    return Array.isArray(raw) ? raw.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getDeletedTicketIdsSet() {
+  return new Set(getDeletedTicketIdsList());
+}
+
+export async function registerDeletedTicketIds(idsToAdd, pushToCloud = true) {
+  const cleanNew = (Array.isArray(idsToAdd) ? idsToAdd : [idsToAdd]).map(String).filter(Boolean);
+  if (cleanNew.length === 0) return getDeletedTicketIdsList();
+
+  cleanNew.forEach(delId => {
+    inMemoryHistoricalTickets.delete(delId);
+  });
+
+  const currentList = getDeletedTicketIdsList();
+  const mergedList = Array.from(new Set([...currentList, ...cleanNew])).slice(-MAX_DELETED_TICKET_TOMBSTONES);
+  safeStorageSet('delivery_deleted_tickets', JSON.stringify(mergedList));
+
+  try {
+    const delSet = new Set(mergedList);
+    const localTickets = JSON.parse(localStorage.getItem('delivery_tickets') || '[]');
+    if (Array.isArray(localTickets)) {
+      const filtered = localTickets.filter(t => t && !delSet.has(String(t.id)));
+      if (filtered.length !== localTickets.length) {
+        safeStorageSet('delivery_tickets', JSON.stringify(filtered));
+      }
+    }
+  } catch (_) {}
+
+  if (pushToCloud && supabase) {
+    try {
+      const { data: cloudRow } = await supabase
+        .from('delivery_settings')
+        .select('value')
+        .eq('key', 'deleted_ticket_ids')
+        .maybeSingle();
+      let cloudList = [];
+      if (cloudRow && cloudRow.value) {
+        try {
+          const parsed = JSON.parse(cloudRow.value);
+          if (Array.isArray(parsed)) cloudList = parsed.map(String).filter(Boolean);
+        } catch (_) {}
+      }
+      const finalCloudList = Array.from(new Set([...cloudList, ...mergedList])).slice(-MAX_DELETED_TICKET_TOMBSTONES);
+      safeStorageSet('delivery_deleted_tickets', JSON.stringify(finalCloudList));
+      await supabase.from('delivery_settings').upsert({
+        key: 'deleted_ticket_ids',
+        value: JSON.stringify(finalCloudList)
+      });
+    } catch (e) {
+      console.warn('No se pudo sincronizar deleted_ticket_ids en delivery_settings:', e);
+    }
+  }
+  return mergedList;
+}
+
 // Cuenta cuántos registros (paradas y turnos) están pendientes de subir a la nube en este dispositivo
 export function getPendingSyncCount() {
   try {
+    const delSet = getDeletedTicketIdsSet();
     const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
     const localShifts = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
-    const pendingTickets = localTickets.filter(t => t && t._syncStatus === 'pending').length;
+    const pendingTickets = localTickets.filter(t => t && t._syncStatus === 'pending' && !delSet.has(String(t.id))).length;
     const pendingShifts = localShifts.filter(s => s && s._syncStatus === 'pending').length;
     return pendingTickets + pendingShifts;
   } catch {
@@ -420,15 +486,13 @@ export function setupRealtimeChannel() {
       .on('broadcast', { event: 'ticket_deleted' }, (msg) => {
         const payload = msg.payload || msg;
         lastRealtimePingOkAt = Date.now();
-        if (payload && payload.ticketId) {
-          const delId = String(payload.ticketId);
-          inMemoryHistoricalTickets.delete(delId);
-          inMemoryHistoricalTickets.delete(payload.ticketId);
-          try {
-            const localTickets = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
-            const filtered = localTickets.filter(t => t && String(t.id) !== delId);
-            safeStorageSet('delivery_tickets', JSON.stringify(filtered));
-          } catch (e) {}
+        const incomingIds = [];
+        if (payload && payload.ticketId) incomingIds.push(String(payload.ticketId));
+        if (payload && Array.isArray(payload.ticketIds)) {
+          payload.ticketIds.forEach(id => { if (id) incomingIds.push(String(id)); });
+        }
+        if (incomingIds.length > 0) {
+          registerDeletedTicketIds(incomingIds, false);
           notifySync();
         }
         scheduleSyncFromCloud('delivery_tickets');
@@ -511,6 +575,16 @@ export function setupRealtimeChannel() {
               safeStorageSet(record.key, record.value);
               window.dispatchEvent(new CustomEvent('manual-route-status-updated', { detail: { key: record.key, value: record.value } }));
               notifySync();
+            } catch (e) {}
+            return;
+          }
+          if (record.key === 'deleted_ticket_ids' && record.value) {
+            try {
+              const incomingDeleted = JSON.parse(record.value || '[]');
+              if (Array.isArray(incomingDeleted) && incomingDeleted.length > 0) {
+                registerDeletedTicketIds(incomingDeleted, false);
+                notifySync();
+              }
             } catch (e) {}
             return;
           }
@@ -838,10 +912,51 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
   }
   isCloudSyncRunning = true;
   try {
-    // 0. Empujar primero a Supabase cualquier ticket o turno pendiente local (_syncStatus === 'pending')
-    // que haya quedado en cola mientras el móvil estaba en segundo plano, bloqueado o sin cobertura.
+    // 0. Pull settings FIRST para conocer inmediatamente la lista global de paradas eliminadas
+    // (deleted_ticket_ids) antes de empujar ningún cambio pendiente local a la nube.
+    let settings = [];
+    let errSettings = null;
+    {
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data: page, error: pageErr } = await supabase
+          .from('delivery_settings')
+          .select('*')
+          .order('key', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (pageErr) {
+          console.error("Error paginando delivery_settings:", pageErr);
+          errSettings = pageErr;
+          break;
+        }
+        if (!page || page.length === 0) break;
+        settings = settings.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+    }
+
+    if (settings && !errSettings) {
+      const deletedRegistryRow = settings.find(s => s && s.key === 'deleted_ticket_ids');
+      if (deletedRegistryRow && deletedRegistryRow.value) {
+        try {
+          const cloudDeletedIds = JSON.parse(deletedRegistryRow.value);
+          if (Array.isArray(cloudDeletedIds) && cloudDeletedIds.length > 0) {
+            await registerDeletedTicketIds(cloudDeletedIds, false);
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 0b. Empujar a Supabase cualquier ticket o turno pendiente local (_syncStatus === 'pending')
+    // que haya quedado en cola, EXCLUYENDO estrictamente cualquier ID que haya sido eliminado.
     try {
-      const localPendingTickets = (JSON.parse(localStorage.getItem('delivery_tickets')) || []).filter(t => t && t._syncStatus === 'pending');
+      const delSetForPrePush = getDeletedTicketIdsSet();
+      const allLocalBeforePush = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
+      const localPendingTickets = allLocalBeforePush.filter(
+        t => t && t._syncStatus === 'pending' && !delSetForPrePush.has(String(t.id))
+      );
       if (localPendingTickets.length > 0) {
         const formattedPending = localPendingTickets.map(t => ({
           id: t.id,
@@ -873,13 +988,15 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         if (!pushTicketsErr) {
           const uploadedIds = new Set(localPendingTickets.map(t => String(t.id)));
           const currentLocal = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
-          const cleanedLocal = currentLocal.map(t => {
-            if (t && t._syncStatus === 'pending' && uploadedIds.has(String(t.id))) {
-              const { _syncStatus, _pendingAt, ...rest } = t;
-              return rest;
-            }
-            return t;
-          });
+          const cleanedLocal = currentLocal
+            .filter(t => t && !delSetForPrePush.has(String(t.id)))
+            .map(t => {
+              if (t && t._syncStatus === 'pending' && uploadedIds.has(String(t.id))) {
+                const { _syncStatus, _pendingAt, ...rest } = t;
+                return rest;
+              }
+              return t;
+            });
           safeSaveTickets(cleanedLocal);
           broadcastRealtimeEvent('tickets_updated', { count: localPendingTickets.length, timestamp: Date.now() });
         }
@@ -935,33 +1052,6 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       }
     } catch (pushSErr) {
       console.warn("Aviso al reintentar subida de turnos pendientes:", pushSErr);
-    }
-    // Pull settings first so we can use them for user permissions fallback if needed.
-    // Fix: paginado por el mismo motivo que delivery_tickets (ver más abajo) — hoy
-    // delivery_settings tiene muchas menos filas que el límite de 1000 por petición,
-    // pero crece con cada turno/ruta y en algún momento lo cruzaría igual, así que se
-    // blinda de una vez con el mismo patrón.
-    let settings = [];
-    let errSettings = null;
-    {
-      const pageSize = 1000;
-      let from = 0;
-      while (true) {
-        const { data: page, error: pageErr } = await supabase
-          .from('delivery_settings')
-          .select('*')
-          .order('key', { ascending: true })
-          .range(from, from + pageSize - 1);
-        if (pageErr) {
-          console.error("Error paginando delivery_settings:", pageErr);
-          errSettings = pageErr;
-          break;
-        }
-        if (!page || page.length === 0) break;
-        settings = settings.concat(page);
-        if (page.length < pageSize) break;
-        from += pageSize;
-      }
     }
 
     // Pull Users
@@ -1193,38 +1283,29 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         localCurrent = JSON.parse(localStorage.getItem('delivery_tickets')) || [];
       } catch (e) {}
 
-      let deletedIds = [];
-      try {
-        deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-      } catch (e) {}
-
-      const deletedStrIds = deletedIds.map(String);
-      const stillPendingDeleteIds = cloudTickets.filter(t => t && deletedStrIds.includes(String(t.id))).map(t => t.id);
+      const deletedStrSet = getDeletedTicketIdsSet();
+      const stillPendingDeleteIds = cloudTickets.filter(t => t && deletedStrSet.has(String(t.id))).map(t => String(t.id));
       if (stillPendingDeleteIds.length > 0) {
-        secureDelete('delivery_tickets', stillPendingDeleteIds).then(({ error }) => {
-          if (error) {
-            console.error("Error reintentando borrado remoto pendiente de tickets:", error);
-          } else {
-            try {
-              const current = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-              safeStorageSet('delivery_deleted_tickets', JSON.stringify(current.filter(id => !stillPendingDeleteIds.map(String).includes(String(id)))));
-            } catch (e) {}
-          }
+        // Reintentar borrado en la nube si algún otro dispositivo había resucitado estos IDs,
+        // pero CONSERVANDO siempre los IDs en delivery_deleted_tickets como escudo permanente.
+        secureDelete('delivery_tickets', stillPendingDeleteIds).catch(err => {
+          console.error("Error reintentando borrado remoto pendiente de tickets:", err);
         });
       }
 
       const nowMs = Date.now();
       const isFreshPending = (t) => {
         if (!t || t._syncStatus !== 'pending') return false;
+        if (deletedStrSet.has(String(t.id))) return false;
         if (isSaving > 0) return true;
         const ts = t._pendingAt || (t.completedAt ? new Date(t.completedAt).getTime() : 0) || (t.createdAt ? new Date(t.createdAt).getTime() : 0);
         return ts === 0 || (nowMs - ts) < 24 * 3600 * 1000;
       };
       const pendingLocal = localCurrent.filter(isFreshPending);
-      const filteredCloud = cloudTickets.filter(t => t && !deletedStrIds.includes(String(t.id)));
+      const filteredCloud = cloudTickets.filter(t => t && !deletedStrSet.has(String(t.id)));
 
       const localById = {};
-      localCurrent.forEach(t => { if (t && t.id !== undefined && t.id !== null) localById[String(t.id)] = t; });
+      localCurrent.forEach(t => { if (t && t.id !== undefined && t.id !== null && !deletedStrSet.has(String(t.id))) localById[String(t.id)] = t; });
 
       const mergedTickets = filteredCloud.map(cloudT => {
         const localT = localById[String(cloudT.id)];
@@ -1244,15 +1325,23 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       });
 
       pendingLocal.forEach(localT => {
+        if (deletedStrSet.has(String(localT.id))) return;
         const cloudIndex = mergedTickets.findIndex(t => String(t.id) === String(localT.id));
         if (cloudIndex !== -1) {
           mergedTickets[cloudIndex] = localT;
         } else {
-          mergedTickets.push(localT);
+          // Solo insertar un ticket local que no está en la nube si fue creado hace menos de 30 minutos
+          // (evita que un ticket antiguo que fue borrado en otro móvil mientras no existía su registro
+          // en deleted_ticket_ids vuelva a colarse por haber quedado con _syncStatus='pending').
+          const createdMs = localT.createdAt ? new Date(localT.createdAt).getTime() : 0;
+          const isRecentlyCreatedOffline = !createdMs || (nowMs - createdMs) < 30 * 60 * 1000;
+          if (isRecentlyCreatedOffline) {
+            mergedTickets.push(localT);
+          }
         }
       });
 
-      const historicalLocal = localCurrent.filter(t => t && t.date && t.date < syncCutoffDate && !deletedStrIds.includes(String(t.id)));
+      const historicalLocal = localCurrent.filter(t => t && t.date && t.date < syncCutoffDate && !deletedStrSet.has(String(t.id)));
       historicalLocal.forEach(histT => {
         const existingIndex = mergedTickets.findIndex(t => String(t.id) === String(histT.id));
         if (existingIndex === -1) {
@@ -2697,7 +2786,9 @@ export function getTickets() {
 }
 
 export async function saveTickets(tickets) {
-  safeSaveTickets(tickets);
+  const delSet = getDeletedTicketIdsSet();
+  const cleanTickets = Array.isArray(tickets) ? tickets.filter(t => t && !delSet.has(String(t.id))) : [];
+  safeSaveTickets(cleanTickets);
   // Fix: antes esta función nunca informaba a quien la llamaba si el guardado en la
   // nube realmente funcionó o falló (siempre "terminaba bien" aunque solo hubiera
   // guardado en local) — devuelve ahora {success, error} para que el que llama pueda
@@ -2705,16 +2796,8 @@ export async function saveTickets(tickets) {
   if (supabase) {
     isSaving++; // contador, no booleano (ver comentario junto a la declaración de isSaving)
     try {
-      // Fix: antes se re-subía el array COMPLETO de tickets en cada guardado, sin
-      // importar cuántos hubieran cambiado realmente. Con miles de tickets acumulados,
-      // esto era caro (mismo patrón que causó el problema de egress, pero en subida) y
-      // aumentaba el riesgo de pisar cambios concurrentes de otro dispositivo en filas
-      // que ni siquiera habían cambiado aquí. Todos los que llaman a saveTickets()
-      // marcan _syncStatus:'pending' en los tickets que sí modificaron, así que ahora
-      // solo subimos esos. Si por algún motivo ninguno está marcado, no hay nada que
-      // subir (p.ej. borrar un ticket o resetear el mes, que ya gestionan su propia
-      // sincronización).
-      let pendingTickets = tickets.filter(t => t && t._syncStatus === 'pending');
+      const freshDelSet = getDeletedTicketIdsSet();
+      let pendingTickets = cleanTickets.filter(t => t && t._syncStatus === 'pending' && !freshDelSet.has(String(t.id)));
 
       if (pendingTickets.length === 0) {
         return { success: true }; // nada que subir; el finally de abajo igualmente libera isSaving
@@ -3121,13 +3204,32 @@ export async function addTicket(ticketData) {
   const inferredProvider = ticketData.provider || (ticketData.tasks && ticketData.tasks.some(t => t.tariffId && t.tariffId.startsWith('DORMITY_')) ? 'dormity' : 'eci');
   const parsedNotesForTicket = ticketData.notes ? parseTicketNotes(ticketData.notes) : {};
 
+  const targetDate = ticketData.date || getLocalDateISO();
+  const normName = String(ticketData.customerName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const normAddr = String(ticketData.address || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  // Protección anti-duplicados por reintento de red o doble toque:
+  // Si ya existe en esta misma ruta y fecha una parada con el mismo cliente y dirección
+  // que esté pendiente de sincronizar (_syncStatus === 'pending') o haya sido creada
+  // en los últimos 3 minutos, reutilizamos su mismo ID en lugar de crear un duplicado.
+  const nowMs = Date.now();
+  const recentDuplicateIdx = (normName && normAddr)
+    ? tickets.findIndex(t => {
+        if (!t || t.furgoId !== ticketData.furgoId || t.date !== targetDate) return false;
+        const tName = String(t.customerName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const tAddr = String(t.address || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (tName !== normName || tAddr !== normAddr) return false;
+        if (t._syncStatus === 'pending') return true;
+        const createdMs = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+        return createdMs > 0 && (nowMs - createdMs) < 3 * 60 * 1000;
+      })
+    : -1;
+
+  const existingDuplicate = recentDuplicateIdx !== -1 ? tickets[recentDuplicateIdx] : null;
+
   const newTicket = {
-    // Fix: un id basado solo en Date.now() puede colisionar si dos dispositivos crean
-    // un ticket en el mismo milisegundo (offline-first, con varios choferes/admins
-    // trabajando a la vez). Añadimos un sufijo aleatorio, igual que ya se hace en otros
-    // puntos de la app (ver App.jsx) para IDs generados en el cliente.
-    id: Date.now().toString() + Math.random().toString(36).substring(2, 7),
-    date: ticketData.date || getLocalDateISO(),
+    id: existingDuplicate ? existingDuplicate.id : (Date.now().toString() + Math.random().toString(36).substring(2, 7)),
+    date: targetDate,
     furgoId: ticketData.furgoId,
     furgoLabel: users.find(u => u.id === ticketData.furgoId)?.label || ticketData.furgoId,
     routeName: ticketData.routeName || users.find(u => u.id === ticketData.furgoId)?.label || ticketData.furgoId,
@@ -3144,15 +3246,12 @@ export async function addTicket(ticketData) {
     timeSlot: ticketData.timeSlot || parsedNotesForTicket.timeSlot || null,
     tasks: detailedTasks,
     totalPrice: round2(totalCalculado),
-    status: ticketData.status || 'pending',
-    createdAt: new Date().toISOString(),
+    status: ticketData.status || (existingDuplicate ? existingDuplicate.status : 'pending'),
+    createdAt: existingDuplicate?.createdAt || new Date().toISOString(),
     lat: ticketData.lat || null,
     lng: ticketData.lng || null,
-    routeOrder: ticketData.routeOrder || null,
+    routeOrder: ticketData.routeOrder || (existingDuplicate ? existingDuplicate.routeOrder : null),
     createdBy: ticketData.createdBy || 'admin',
-    // Fix: estos dos campos nunca se copiaban desde ticketData al crear el
-    // ticket — se perdían desde el primer guardado, así que la restauración al
-    // volver a editar nunca tenía nada real que recuperar.
     dormityRouteType: ticketData.dormityRouteType,
     dormityServDiaOption: ticketData.dormityServDiaOption,
     _syncStatus: 'pending',
@@ -3160,9 +3259,13 @@ export async function addTicket(ticketData) {
     ...(anyPriceNeedsReview ? { priceNeedsReview: true } : {})
   };
 
-  tickets.push(newTicket);
+  if (recentDuplicateIdx !== -1) {
+    tickets[recentDuplicateIdx] = newTicket;
+  } else {
+    tickets.push(newTicket);
+  }
   const result = await saveTickets(tickets);
-  return { ...result, ticket: newTicket };
+  return { ...result, ticket: newTicket, savedLocally: true };
 }
 
 // Actualizar un ticket existente
@@ -3402,35 +3505,27 @@ export async function updateTicketStatus(ticketId, status, failureReason = '', c
   return null;
 }
 
-// Eliminar un ticket (para el administrador)
-// Fix: antes el borrado en la nube era "fire and forget" (sin await, sin avisar
-// si falló) — la pantalla ya mostraba "Eliminado" aunque el ticket siguiera vivo
-// en Supabase. Ahora es async y devuelve {success, error} para que quien llama
-// pueda confirmar antes de dar el borrado por hecho.
-export async function deleteTicket(ticketId) {
-  inMemoryHistoricalTickets.delete(ticketId);
-  inMemoryHistoricalTickets.delete(String(ticketId));
-  const tickets = getTickets();
-  const filtered = tickets.filter(t => String(t.id) !== String(ticketId));
-  saveTickets(filtered);
+// Eliminar un lote de tickets de forma atómica (evita condiciones de carrera al vaciar rutas)
+export async function deleteTicketsBatch(ticketIds) {
+  const cleanIds = (Array.isArray(ticketIds) ? ticketIds : [ticketIds]).map(String).filter(Boolean);
+  if (cleanIds.length === 0) return { success: true };
 
-  // Track tombstone deleted ID to avoid re-downloading during background sync
-  try {
-    const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-    if (!deletedIds.includes(ticketId)) {
-      deletedIds.push(ticketId);
-      safeStorageSet('delivery_deleted_tickets', JSON.stringify(deletedIds));
-    }
-  } catch (e) {}
+  // 1. Registrar inmediatamente los IDs en el escudo local y remoto (deleted_ticket_ids)
+  // y purgarlos de localStorage e inMemoryHistoricalTickets
+  await registerDeletedTicketIds(cleanIds, true);
 
   if (supabase) {
-    const { error } = await secureDelete('delivery_tickets', [ticketId]);
+    const { error } = await secureDelete('delivery_tickets', cleanIds);
     if (error) {
-      console.warn("secureDelete error, intentando borrado directo de ticket:", error);
+      console.warn("secureDelete error en lote, intentando borrado directo:", error);
       try {
-        const { error: directErr } = await supabase.from('delivery_tickets').delete().eq('id', ticketId);
+        const { error: directErr } = await supabase.from('delivery_tickets').delete().in('id', cleanIds);
         if (!directErr) {
-          broadcastRealtimeEvent('ticket_deleted', { ticketId: String(ticketId), timestamp: Date.now() });
+          broadcastRealtimeEvent('ticket_deleted', {
+            ticketId: cleanIds[0],
+            ticketIds: cleanIds,
+            timestamp: Date.now()
+          });
           return { success: true };
         }
         return { success: false, error: directErr };
@@ -3438,44 +3533,32 @@ export async function deleteTicket(ticketId) {
         return { success: false, error: ex };
       }
     }
-    broadcastRealtimeEvent('ticket_deleted', { ticketId: String(ticketId), timestamp: Date.now() });
+    broadcastRealtimeEvent('ticket_deleted', {
+      ticketId: cleanIds[0],
+      ticketIds: cleanIds,
+      timestamp: Date.now()
+    });
     return { success: true };
   }
   return { success: true };
 }
 
+// Eliminar un ticket individual
+export async function deleteTicket(ticketId) {
+  return await deleteTicketsBatch([ticketId]);
+}
+
 // Iniciar mes de cero
-// Fix: antes esto solo vaciaba la lista local (saveTickets([]) no borra nada en
-// la nube porque no hay ningún ticket marcado como "pendiente de subir" en un
-// array vacío) — los repartos "reseteados" volvían a aparecer solos en la
-// siguiente sincronización. Ahora se borran de verdad en Supabase y se registran
-// como tombstone, igual que el borrado individual de un ticket.
 export async function resetMonthlyTickets() {
   inMemoryHistoricalTickets.clear();
   const tickets = getTickets();
-  const idsToDelete = tickets.map(t => t.id).filter(Boolean);
+  const idsToDelete = tickets.map(t => String(t.id)).filter(Boolean);
 
-  saveTickets([]);
+  safeSaveTickets([]);
 
   if (idsToDelete.length === 0) return { success: true };
 
-  try {
-    const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-    safeStorageSet('delivery_deleted_tickets', JSON.stringify([...new Set([...deletedIds, ...idsToDelete])]));
-  } catch (e) {}
-
-  if (supabase) {
-    const { error } = await secureDelete('delivery_tickets', idsToDelete);
-    if (error) {
-      console.error("Error borrando tickets en el reset mensual:", error);
-      return { success: false, error };
-    }
-    try {
-      const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_tickets')) || [];
-      safeStorageSet('delivery_deleted_tickets', JSON.stringify(deletedIds.filter(id => !idsToDelete.includes(id))));
-    } catch (e) {}
-  }
-  return { success: true };
+  return await deleteTicketsBatch(idsToDelete);
 }
 
 // Obtener rango de TV según las pulgadas
