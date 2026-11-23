@@ -7965,9 +7965,9 @@ function App() {
     const activeDate = shiftSummaryDate || getLocalDateISO();
     const shiftId = `${currentUser.id}_${activeDate}`;
     
-    // Validation: driver and plate are mandatory
-    if (!driverCustomDriver || !driverCustomDriver.trim() || !driverMatricula || !driverMatricula.trim()) {
-      triggerAlert('El Chofer y la Matrícula del vehículo son campos obligatorios.', 'error');
+    // Validation: route, driver and plate are mandatory
+    if (!driverRouteName || !driverRouteName.trim() || !driverCustomDriver || !driverCustomDriver.trim() || !driverMatricula || !driverMatricula.trim()) {
+      triggerAlert('La Ruta del Turno, el Chofer y la Matrícula del vehículo son campos obligatorios.', 'error');
       return;
     }
 
@@ -12731,8 +12731,8 @@ function App() {
                                 return;
                               }
                               
-                              if (adminAllowsShiftFields && (!driverCustomDriver || !driverCustomDriver.trim() || !driverMatricula || !driverMatricula.trim())) {
-                                triggerAlert('El Chofer y la Matrícula del vehículo son campos obligatorios para poder finalizar el turno.', 'error');
+                              if (adminAllowsShiftFields && (!driverRouteName || !driverRouteName.trim() || !driverCustomDriver || !driverCustomDriver.trim() || !driverMatricula || !driverMatricula.trim())) {
+                                triggerAlert('La Ruta del Turno, el Chofer y la Matrícula del vehículo son campos obligatorios para poder finalizar el turno.', 'error');
                                 return;
                               }
 
@@ -12821,7 +12821,7 @@ function App() {
                         }}>
                           {/* Selector Ruta del Turno */}
                           <div className="input-group" style={{ marginBottom: 0 }}>
-                            <span className="input-label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Ruta del Turno</span>
+                            <span className="input-label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Ruta del Turno (Obligatorio) *</span>
                             <select
                               className="form-input"
                               value={driverRouteName}
