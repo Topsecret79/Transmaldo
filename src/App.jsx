@@ -1985,23 +1985,22 @@ function App() {
       const activeDate = shiftSummaryDate || getLocalDateISO();
       const shiftId = `${currentUser.id}_${activeDate}`;
       const s = Array.isArray(shifts) ? shifts.find(item => item.id === shiftId) : undefined;
-      const dayTks = Array.isArray(tickets) ? tickets.filter(t => t && t.furgoId === currentUser.id && t.date === activeDate) : [];
-      const ticketRoute = dayTks.find(t => t.routeName)?.routeName || '';
-      const resolvedRouteName = s?.routeName || ticketRoute || currentUser.label || '';
+      const resolvedDriver = (s?.customDriver && s.customDriver !== currentUser.label) ? s.customDriver : '';
+      const resolvedRouteName = s?.routeName || '';
       
       // Compare database values using a key string to detect genuine DB/date changes
-      const key = `${shiftId}_${s?.customDriver || ''}_${s?.matricula || ''}_${s?.helper || ''}_${s?.helper2 || ''}_${resolvedRouteName}`;
+      const key = `${shiftId}_${resolvedDriver}_${s?.matricula || ''}_${s?.helper || ''}_${s?.helper2 || ''}_${resolvedRouteName}`;
       
       if (lastLoadedShiftRef.current !== key) {
         lastLoadedShiftRef.current = key;
-        setDriverCustomDriver(s?.customDriver || currentUser.label || '');
+        setDriverCustomDriver(resolvedDriver);
         setDriverMatricula(s?.matricula || '');
         setDriverHelper(s?.helper || '');
         setDriverHelper2(s?.helper2 || '');
         setDriverRouteName(resolvedRouteName);
       }
     }
-  }, [shifts, shiftSummaryDate, currentUser, tickets]);
+  }, [shifts, shiftSummaryDate, currentUser]);
 
   // Cambiar fecha de ruta
   const [showMoveRouteModal, setShowMoveRouteModal] = useState(false);
@@ -7947,14 +7946,12 @@ function App() {
     const activeDate = shiftSummaryDate || getLocalDateISO();
     const shiftId = `${currentUser.id}_${activeDate}`;
     const s = shifts.find(item => item.id === shiftId);
-    const dayTks = Array.isArray(tickets) ? tickets.filter(t => t && t.furgoId === currentUser.id && t.date === activeDate) : [];
-    const ticketRoute = dayTks.find(t => t.routeName)?.routeName || '';
     
-    const dbDriver = s?.customDriver || currentUser.label || '';
+    const dbDriver = (s?.customDriver && s.customDriver !== currentUser.label) ? s.customDriver : '';
     const dbMatricula = s?.matricula || '';
     const dbHelper = s?.helper || '';
     const dbHelper2 = s?.helper2 || '';
-    const dbRouteName = s?.routeName || ticketRoute || currentUser.label || '';
+    const dbRouteName = s?.routeName || '';
     
     return dbDriver !== driverCustomDriver ||
            dbMatricula !== driverMatricula ||
@@ -12840,7 +12837,7 @@ function App() {
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
-                              <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar ruta...</option>
+                              <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar turno</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
                               {(() => {
                                 const ownerAdmin = currentUser?.createdBy || 'admin';
@@ -12875,13 +12872,13 @@ function App() {
                                 if (val === 'custom_input') {
                                   const typed = window.prompt('Escribe el nombre del chofer:');
                                   if (typed === null) return;
-                                  newDriver = typed.trim() || currentUser.label || 'Por asignar';
+                                  newDriver = typed.trim() || '';
                                 }
                                 setDriverCustomDriver(newDriver);
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
-                              <option value="" style={{ color: '#000', background: '#fff' }}>Por asignar</option>
+                              <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar chofer</option>
                               <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
                               {driverCustomDriver && !employeesList.some(emp => emp.name === driverCustomDriver) && (
                                 <option value={driverCustomDriver} style={{ color: '#000', background: '#fff' }}>{driverCustomDriver}</option>
