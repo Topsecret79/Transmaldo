@@ -3802,24 +3802,28 @@ export async function closeShift(furgoId, date, summary) {
   const existingShift = existingIndex !== -1 ? shifts[existingIndex] : {};
 
   const helper = existingShift.helper || (summary ? summary.helper : '') || '';
+  const helper2 = existingShift.helper2 || (summary ? summary.helper2 : '') || '';
   const matricula = existingShift.matricula || (summary ? summary.matricula : '') || '';
   const customDriver = existingShift.customDriver || '';
+  const routeName = (summary && summary.routeName ? summary.routeName : existingShift.routeName) || '';
 
   const newShift = {
     id: shiftId,
     furgoId,
     date,
     status: 'closed',
+    openedAt: existingShift.openedAt || null,
     closedAt: new Date().toISOString(),
-    routeName: existingShift.routeName || '',
+    routeName,
     helper,
+    helper2,
     matricula,
     customDriver,
     kms: summary ? summary.kms : null,
     startKms: summary ? summary.startKms : null,
     endKms: summary ? summary.endKms : null,
     observations: summary ? summary.observations : '',
-    summary,
+    summary: summary ? { ...summary, routeName } : summary,
     createdBy: existingShift.createdBy || 'admin',
     _syncStatus: 'pending'
   };
@@ -5906,7 +5910,7 @@ export function hasPermission(user, moduleId) {
  * AND Supabase, bypassing the full shifts array save. This prevents any race condition
  * with the periodic sync cycle overwriting data.
  */
-export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, matricula, helper, helper2, kms, startKms, endKms) {
+export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, matricula, helper, helper2, kms, startKms, endKms, routeName) {
   // Normalizar siempre al ID canónico `${furgoId}_${date}` (evitando crear duplicados con `ticket_shift_...`)
   const canonicalShiftId = (furgoId && date) ? `${furgoId}_${date}` : String(shiftId).replace(/^ticket_shift_/, '');
 
@@ -5925,6 +5929,7 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       matricula,
       helper,
       helper2,
+      ...(routeName !== undefined ? { routeName } : {}),
       ...(kms !== undefined ? { kms } : {}),
       ...(startKms !== undefined ? { startKms } : {}),
       ...(endKms !== undefined ? { endKms } : {})
@@ -5943,7 +5948,7 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       helper,
       helper2,
       observations: '',
-      routeName: '',
+      routeName: routeName !== undefined ? routeName : '',
       createdBy: 'driver',
       ...(kms !== undefined ? { kms } : {}),
       ...(startKms !== undefined ? { startKms } : {}),
@@ -5991,13 +5996,14 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
         try { currentMeta = JSON.parse(existingMeta.value); } catch (e) {}
       }
 
-      // Merge: keep existing fields, override driver/plate/helper fields and kms if provided
+      // Merge: keep existing fields, override driver/plate/helper fields and kms/routeName if provided
       const newMeta = {
         ...currentMeta,
         customDriver,
         matricula,
         helper,
         helper2,
+        ...(routeName !== undefined ? { routeName } : {}),
         ...(kms !== undefined ? { kms } : {}),
         ...(startKms !== undefined ? { startKms } : {}),
         ...(endKms !== undefined ? { endKms } : {})

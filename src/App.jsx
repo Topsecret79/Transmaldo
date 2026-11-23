@@ -1227,6 +1227,7 @@ function App() {
   const [editAssignPlate, setEditAssignPlate] = useState('');
   const [editAssignHelper, setEditAssignHelper] = useState('');
   const [editAssignHelper2, setEditAssignHelper2] = useState('');
+  const [editAssignRouteName, setEditAssignRouteName] = useState('');
   const [editAssignKmStart, setEditAssignKmStart] = useState('');
   const [editAssignKmEnd, setEditAssignKmEnd] = useState('');
   const [editAssignKmL, setEditAssignKmL] = useState('');
@@ -1976,6 +1977,7 @@ function App() {
   const [driverMatricula, setDriverMatricula] = useState('');
   const [driverHelper, setDriverHelper] = useState('');
   const [driverHelper2, setDriverHelper2] = useState('');
+  const [driverRouteName, setDriverRouteName] = useState('');
   const lastLoadedShiftRef = useRef(null);
 
   useEffect(() => {
@@ -1983,9 +1985,12 @@ function App() {
       const activeDate = shiftSummaryDate || getLocalDateISO();
       const shiftId = `${currentUser.id}_${activeDate}`;
       const s = Array.isArray(shifts) ? shifts.find(item => item.id === shiftId) : undefined;
+      const dayTks = Array.isArray(tickets) ? tickets.filter(t => t && t.furgoId === currentUser.id && t.date === activeDate) : [];
+      const ticketRoute = dayTks.find(t => t.routeName)?.routeName || '';
+      const resolvedRouteName = s?.routeName || ticketRoute || currentUser.label || '';
       
       // Compare database values using a key string to detect genuine DB/date changes
-      const key = `${shiftId}_${s?.customDriver || ''}_${s?.matricula || ''}_${s?.helper || ''}_${s?.helper2 || ''}`;
+      const key = `${shiftId}_${s?.customDriver || ''}_${s?.matricula || ''}_${s?.helper || ''}_${s?.helper2 || ''}_${resolvedRouteName}`;
       
       if (lastLoadedShiftRef.current !== key) {
         lastLoadedShiftRef.current = key;
@@ -1993,9 +1998,10 @@ function App() {
         setDriverMatricula(s?.matricula || '');
         setDriverHelper(s?.helper || '');
         setDriverHelper2(s?.helper2 || '');
+        setDriverRouteName(resolvedRouteName);
       }
     }
-  }, [shifts, shiftSummaryDate, currentUser]);
+  }, [shifts, shiftSummaryDate, currentUser, tickets]);
 
   // Cambiar fecha de ruta
   const [showMoveRouteModal, setShowMoveRouteModal] = useState(false);
@@ -7545,6 +7551,14 @@ function App() {
       const summary = getShiftSummary(furgoId, date);
       let kms = parseFloat(shiftKmsInput) || 0;
       summary.kms = kms;
+      const existingS = shifts.find(item => item.furgoId === furgoId && item.date === date);
+      const ticketRoute = dayTickets.find(t => t.routeName)?.routeName || '';
+      const furgoLbl = users.find(u => u.id === furgoId)?.label || '';
+      if (currentUser && currentUser.role === 'repartidor' && furgoId === currentUser.id) {
+        summary.routeName = (driverRouteName || '').trim() || existingS?.routeName || ticketRoute || furgoLbl;
+      } else {
+        summary.routeName = existingS?.routeName || ticketRoute || furgoLbl;
+      }
       
       // Si está activo el control de flota, guardar en el diario e impactar en kms
       if (adminAllowsFleetInput && currentUser && currentUser.role === 'repartidor') {
@@ -7699,6 +7713,9 @@ function App() {
     summary.kms = parsedKms;
     if (s.startKms != null) summary.startKms = s.startKms;
     if (s.endKms != null) summary.endKms = s.endKms;
+    const ticketRoute = dayTickets.find(t => t.routeName)?.routeName || '';
+    const furgoLbl = users.find(usr => usr.id === furgoId)?.label || '';
+    summary.routeName = s.routeName || ticketRoute || furgoLbl;
 
     await saveRouteKms(furgoId, date, parsedKms);
     const closeResult = await closeShift(furgoId, date, summary);
@@ -7845,7 +7862,8 @@ function App() {
       editAssignHelper2,
       billableKms,
       startKmVal,
-      endKmVal
+      endKmVal,
+      (editAssignRouteName || '').trim()
     );
     setShifts(updatedShifts);
 
@@ -7926,24 +7944,28 @@ function App() {
 
   const hasUnsavedShiftChanges = () => {
     if (!currentUser) return false;
-    const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+    const activeDate = shiftSummaryDate || getLocalDateISO();
     const shiftId = `${currentUser.id}_${activeDate}`;
     const s = shifts.find(item => item.id === shiftId);
+    const dayTks = Array.isArray(tickets) ? tickets.filter(t => t && t.furgoId === currentUser.id && t.date === activeDate) : [];
+    const ticketRoute = dayTks.find(t => t.routeName)?.routeName || '';
     
     const dbDriver = s?.customDriver || currentUser.label || '';
     const dbMatricula = s?.matricula || '';
     const dbHelper = s?.helper || '';
     const dbHelper2 = s?.helper2 || '';
+    const dbRouteName = s?.routeName || ticketRoute || currentUser.label || '';
     
     return dbDriver !== driverCustomDriver ||
            dbMatricula !== driverMatricula ||
            dbHelper !== driverHelper ||
-           dbHelper2 !== driverHelper2;
+           dbHelper2 !== driverHelper2 ||
+           dbRouteName !== driverRouteName;
   };
 
   const handleSaveDriverShiftSettings = async () => {
     if (!currentUser) return;
-    const activeDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+    const activeDate = shiftSummaryDate || getLocalDateISO();
     const shiftId = `${currentUser.id}_${activeDate}`;
     
     // Validation: driver and plate are mandatory
@@ -7954,6 +7976,7 @@ function App() {
 
     const driver = driverCustomDriver.trim();
     const plate = driverMatricula.trim();
+    const shiftRoute = (driverRouteName || '').trim();
 
     // Use the atomic saveDriverShiftMeta function that writes directly to localStorage
     // and Supabase without touching or depending on the full shifts array.
@@ -7965,21 +7988,25 @@ function App() {
       driver,
       plate,
       driverHelper,
-      driverHelper2
+      driverHelper2,
+      undefined,
+      undefined,
+      undefined,
+      shiftRoute
     );
 
     // Update React state to reflect the saved data
     setShifts(updatedShifts);
     
     // Update ref key so the useEffect does NOT reset the fields when shifts state updates
-    const key = `${shiftId}_${driver}_${plate}_${driverHelper}_${driverHelper2}`;
+    const key = `${shiftId}_${driver}_${plate}_${driverHelper}_${driverHelper2}_${shiftRoute}`;
     lastLoadedShiftRef.current = key;
     
     triggerAlert('Configuración del turno guardada correctamente ✓');
   };
 
   const handleUpdateDriverShiftField = (field, value) => {
-    const targetDate = shiftSummaryDate || new Date().toISOString().split('T')[0];
+    const targetDate = shiftSummaryDate || getLocalDateISO();
     const shiftId = `${currentUser.id}_${targetDate}`;
     const index = shifts.findIndex(s => s.id === shiftId);
     
@@ -8003,7 +8030,7 @@ function App() {
         matricula: field === 'matricula' ? value : '',
         customDriver: field === 'customDriver' ? value : (currentUser.label || ''),
         observations: '',
-        routeName: '',
+        routeName: field === 'routeName' ? value : '',
         createdBy: 'driver',
         _syncStatus: 'pending'
       });
@@ -8017,6 +8044,7 @@ function App() {
     if (field === 'matricula') alertMsg = 'Matrícula actualizada';
     if (field === 'helper') alertMsg = 'Ayudante actualizado';
     if (field === 'helper2') alertMsg = 'Segundo ayudante actualizado';
+    if (field === 'routeName') alertMsg = 'Ruta del turno actualizada';
     triggerAlert(alertMsg);
   };
 
@@ -12623,6 +12651,16 @@ function App() {
                     return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                         <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', fontWeight: '700' }}>🔒 Turno Cerrado</span>
+                        {(currentShift?.routeName || currentShift?.summary?.routeName) && (
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: '700' }}>
+                            📍 Ruta: {currentShift.routeName || currentShift.summary.routeName}
+                          </span>
+                        )}
+                        {currentShift?.customDriver && (
+                          <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: '700' }}>
+                            👤 Chofer: {currentShift.customDriver}
+                          </span>
+                        )}
                         {currentShift?.helper && (
                           <span className="badge" style={{ padding: '8px 14px', borderRadius: '8px', fontSize: '0.85rem', background: 'rgba(99, 102, 241, 0.15)', color: 'var(--primary)', border: '1px solid rgba(99, 102, 241, 0.3)', fontWeight: '700' }}>
                             🤝 Ayudante: {currentShift.helper}
@@ -12784,6 +12822,47 @@ function App() {
                           borderRadius: '8px',
                           boxShadow: 'none'
                         }}>
+                          {/* Selector Ruta del Turno */}
+                          <div className="input-group" style={{ marginBottom: 0 }}>
+                            <span className="input-label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Ruta del Turno</span>
+                            <select
+                              className="form-input"
+                              value={driverRouteName}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                let newRoute = val;
+                                if (val === 'custom_input') {
+                                  const typed = window.prompt('Escribe la ruta a la que pertenece este turno (ej. Ruta 150, Ruta 151, Refuerzo...):', driverRouteName || currentUser?.label || '');
+                                  if (typed === null) return;
+                                  newRoute = typed.trim();
+                                }
+                                setDriverRouteName(newRoute);
+                              }}
+                              style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
+                            >
+                              <option value="" style={{ color: '#000', background: '#fff' }}>Seleccionar ruta...</option>
+                              <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
+                              {(() => {
+                                const ownerAdmin = currentUser?.createdBy || 'admin';
+                                const fleetRoutes = (users || [])
+                                  .filter(u => u && u.role === 'repartidor' && (u.createdBy || 'admin') === ownerAdmin && u.label)
+                                  .map(u => u.label.trim());
+                                const ticketRoutes = (dayTickets || [])
+                                  .map(t => (t && t.routeName ? t.routeName.trim() : ''))
+                                  .filter(Boolean);
+                                const uniqueOptions = Array.from(new Set([
+                                  ...(currentUser?.label ? [currentUser.label.trim()] : []),
+                                  ...ticketRoutes,
+                                  ...fleetRoutes,
+                                  ...(driverRouteName ? [driverRouteName.trim()] : [])
+                                ])).filter(Boolean);
+                                return uniqueOptions.map(opt => (
+                                  <option key={opt} value={opt} style={{ color: '#000', background: '#fff' }}>{opt}</option>
+                                ));
+                              })()}
+                            </select>
+                          </div>
+
                           {/* Selector Chofer */}
                           <div className="input-group" style={{ marginBottom: 0 }}>
                             <span className="input-label" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Chofer (Obligatorio) *</span>
@@ -18349,11 +18428,12 @@ function App() {
       dayTickets.forEach(t => {
         if (t.furgoId) {
           if (!furgosWithTickets.has(t.furgoId)) {
-            furgosWithTickets.set(t.furgoId, { count: 0, completedCount: 0 });
+            furgosWithTickets.set(t.furgoId, { count: 0, completedCount: 0, routeName: '' });
           }
           const data = furgosWithTickets.get(t.furgoId);
           data.count++;
           if (t.status === 'success' || t.status === 'failed') data.completedCount++;
+          if (!data.routeName && t.routeName) data.routeName = t.routeName;
         }
       });
 
@@ -18380,6 +18460,7 @@ function App() {
             allStopsCompleted: isFinished,
             _isSynthetic: true,
             customDriver: uObj?.label || fId,
+            routeName: stats.routeName || uObj?.label || '',
             helper: '',
             helper2: '',
             matricula: '',
@@ -18409,10 +18490,12 @@ function App() {
           } catch (e) {}
         }
 
+        const uObj = (users || []).find(u => u.id === s.furgoId);
         const customDriver = s.customDriver || meta.customDriver || '';
         const helper = s.helper || meta.helper || '';
         const helper2 = s.helper2 || meta.helper2 || '';
         const matricula = s.matricula || meta.matricula || '';
+        const routeName = s.routeName || meta.routeName || s.summary?.routeName || meta.summary?.routeName || stats?.routeName || uObj?.label || '';
         const startKms = s.startKms ?? meta.startKms ?? s.summary?.startKms ?? meta.summary?.startKms ?? null;
         const endKms = s.endKms ?? meta.endKms ?? s.summary?.endKms ?? meta.summary?.endKms ?? null;
         const kms = s.kms ?? meta.kms ?? s.summary?.kms ?? meta.summary?.kms ?? null;
@@ -18423,6 +18506,7 @@ function App() {
           id: `${s.furgoId}_${s.date}`,
           allStopsCompleted: isFinished,
           customDriver,
+          routeName,
           helper,
           helper2,
           matricula,
@@ -18944,6 +19028,11 @@ function App() {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                             <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                               <span>🚚 {driverName}</span>
+                              {s.routeName && (
+                                <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', fontWeight: '700', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                  📍 {s.routeName}
+                                </span>
+                              )}
                               <span style={{ 
                                 fontSize: '0.68rem', 
                                 padding: '2px 6px', 
@@ -19087,6 +19176,41 @@ function App() {
 
                           {/* Personal Asignado y Matrícula */}
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px', border: '1px solid var(--panel-border)' }}>
+                            <div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>📍 Ruta del Turno:</div>
+                              <select
+                                className="form-input"
+                                value={s.routeName || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  let newRoute = val;
+                                  if (val === 'custom_input') {
+                                    const typed = window.prompt('Escribe la ruta de este turno:', s.routeName || '');
+                                    if (typed === null) return;
+                                    newRoute = typed.trim();
+                                  }
+                                  upsertShiftFieldFromCalendar(s, { routeName: newRoute }, 'Ruta del turno actualizada');
+                                }}
+                                disabled={s.status === 'closed' && !isAdminOrSuper}
+                                style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
+                              >
+                                <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ruta</option>
+                                <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                {(() => {
+                                  const furgoObj = (users || []).find(u => u && u.id === s.furgoId);
+                                  const fleetRoutes = (users || []).filter(u => u && u.role === 'repartidor' && isFurgoAuthorizedForCalendar(u.id) && u.label).map(u => u.label.trim());
+                                  const uniqueRoutes = Array.from(new Set([
+                                    ...(s.routeName ? [s.routeName.trim()] : []),
+                                    ...(furgoObj?.label ? [furgoObj.label.trim()] : []),
+                                    ...fleetRoutes
+                                  ])).filter(Boolean);
+                                  return uniqueRoutes.map(rOpt => (
+                                    <option key={rOpt} value={rOpt} style={{ color: '#000000', background: '#ffffff' }}>{rOpt}</option>
+                                  ));
+                                })()}
+                              </select>
+                            </div>
+
                             <div>
                               <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>👤 Chofer:</div>
                               <select
@@ -19761,8 +19885,9 @@ function App() {
             const helper = (s.helper || '').toLowerCase();
             const helper2 = (s.helper2 || '').toLowerCase();
             const route = (s.furgoId || '').toLowerCase();
+            const shiftRouteName = (s.routeName || '').toLowerCase();
             const date = s.date.toLowerCase();
-            return driver.includes(query) || plate.includes(query) || helper.includes(query) || helper2.includes(query) || route.includes(query) || date.includes(query);
+            return driver.includes(query) || plate.includes(query) || helper.includes(query) || helper2.includes(query) || route.includes(query) || shiftRouteName.includes(query) || date.includes(query);
           });
 
           return (
@@ -19879,7 +20004,12 @@ function App() {
                               )}
                             </td>
                             <td style={{ padding: '12px 16px', fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-main)' }}>
-                              🗺️ {routeLabel}
+                              <div>🗺️ {routeLabel}</div>
+                              {s.routeName && (
+                                <div style={{ fontSize: '0.74rem', color: '#60a5fa', marginTop: '3px', fontWeight: '700' }}>
+                                  📍 Ruta Turno: {s.routeName}
+                                </div>
+                              )}
                             </td>
                             <td style={{ padding: '12px 16px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--primary)' }}>
                               👤 {driverName}
@@ -19914,6 +20044,7 @@ function App() {
                                     setEditAssignPlate(s.matricula || '');
                                     setEditAssignHelper(s.helper || '');
                                     setEditAssignHelper2(s.helper2 || '');
+                                    setEditAssignRouteName(s.routeName || routeLabel || '');
                                     
                                     const logs = getFleetDailyLogs() || [];
                                     const matchingLog = logs.find(l => l.date === s.date && l.plate === s.matricula);
@@ -20003,6 +20134,40 @@ function App() {
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {/* Selector de Ruta del Turno */}
+                        <div className="input-group" style={{ marginBottom: 0 }}>
+                          <span className="input-label" style={{ fontSize: '0.78rem' }}>Ruta del Turno</span>
+                          <select
+                            className="form-input"
+                            value={editAssignRouteName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === 'custom_input') {
+                                const typed = window.prompt('Escribe la ruta a la que pertenece este turno:', editAssignRouteName || routeLabel || '');
+                                if (typed === null) return;
+                                setEditAssignRouteName(typed.trim());
+                              } else {
+                                setEditAssignRouteName(val);
+                              }
+                            }}
+                            style={{ color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)' }}
+                          >
+                            <option value="" style={{ color: '#000', background: '#fff' }}>Sin ruta asignada</option>
+                            <option value="custom_input" style={{ color: '#000', background: '#fff' }}>✍️ Escribir...</option>
+                            {(() => {
+                              const fleetRoutes = (users || []).filter(u => u && u.role === 'repartidor' && isFurgoAuthorizedForCalendar(u.id) && u.label).map(u => u.label.trim());
+                              const uniqueRoutes = Array.from(new Set([
+                                ...(editAssignRouteName ? [editAssignRouteName.trim()] : []),
+                                ...(routeLabel ? [routeLabel.trim()] : []),
+                                ...fleetRoutes
+                              ])).filter(Boolean);
+                              return uniqueRoutes.map(rOpt => (
+                                <option key={rOpt} value={rOpt} style={{ color: '#000', background: '#fff' }}>{rOpt}</option>
+                              ));
+                            })()}
+                          </select>
+                        </div>
+
                         {/* Selector de Chofer */}
                         <div className="input-group" style={{ marginBottom: 0 }}>
                           <span className="input-label" style={{ fontSize: '0.78rem' }}>Chofer *</span>
@@ -20719,6 +20884,11 @@ function App() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                               <div style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                 <span>🚚 {driverName}</span>
+                                {s.routeName && (
+                                  <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '4px', fontWeight: '700', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                    📍 {s.routeName}
+                                  </span>
+                                )}
                                 <span style={{ 
                                   fontSize: '0.68rem', 
                                   padding: '2px 6px', 
@@ -20862,6 +21032,41 @@ function App() {
 
                             {/* Equipo y Matrícula */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '6px', border: '1px solid var(--panel-border)' }}>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>📍 Ruta del Turno:</div>
+                                <select
+                                  className="form-input"
+                                  value={s.routeName || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    let newRoute = val;
+                                    if (val === 'custom_input') {
+                                      const typed = window.prompt('Escribe la ruta de este turno:', s.routeName || '');
+                                      if (typed === null) return;
+                                      newRoute = typed.trim();
+                                    }
+                                    upsertShiftFieldFromCalendar(s, { routeName: newRoute }, 'Ruta del turno actualizada');
+                                  }}
+                                  disabled={s.status === 'closed' && !isAdminOrSuper}
+                                  style={{ width: '100%', padding: '2px 4px', fontSize: '0.74rem', height: '26px', margin: 0, color: 'var(--text-main)', background: 'var(--input-bg)', border: '1px solid var(--panel-border)', borderRadius: '4px' }}
+                                >
+                                  <option value="" style={{ color: '#000000', background: '#ffffff' }}>Sin ruta</option>
+                                  <option value="custom_input" style={{ color: '#000000', background: '#ffffff' }}>✍️ Escribir...</option>
+                                  {(() => {
+                                    const furgoObj = (users || []).find(u => u && u.id === s.furgoId);
+                                    const fleetRoutes = (users || []).filter(u => u && u.role === 'repartidor' && isFurgoAuthorizedForCalendar(u.id) && u.label).map(u => u.label.trim());
+                                    const uniqueRoutes = Array.from(new Set([
+                                      ...(s.routeName ? [s.routeName.trim()] : []),
+                                      ...(furgoObj?.label ? [furgoObj.label.trim()] : []),
+                                      ...fleetRoutes
+                                    ])).filter(Boolean);
+                                    return uniqueRoutes.map(rOpt => (
+                                      <option key={rOpt} value={rOpt} style={{ color: '#000000', background: '#ffffff' }}>{rOpt}</option>
+                                    ));
+                                  })()}
+                                </select>
+                              </div>
+
                               <div>
                                 <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '2px' }}>👤 Chofer:</div>
                                 <select
@@ -27128,11 +27333,12 @@ function App() {
                           const furgoLabel = users.find(u => u.id === s.furgoId)?.label || s.furgoId;
                           const summary = (s.summary && typeof s.summary === 'object') ? s.summary : getShiftSummary(s.furgoId, s.date);
                           const isShiftClosed = s.status === 'closed' || Boolean(s.closedAt);
+                          const shiftRouteDisplay = s.routeName || summary?.routeName || '';
                           return (
                             <tr key={s.id}>
                               <td style={{ fontWeight: '600' }}>
                                 <div>{s.date}</div>
-                                {s.routeName && <div style={{ fontSize: '0.8rem', color: 'var(--primary)', marginTop: '2.5px' }}>📍 {s.routeName}</div>}
+                                {shiftRouteDisplay && <div style={{ fontSize: '0.8rem', color: '#60a5fa', marginTop: '2.5px', fontWeight: '700' }}>📍 {shiftRouteDisplay}</div>}
                               </td>
                               <td>
                                 {(() => {
@@ -27140,7 +27346,14 @@ function App() {
                                   const badgeClass = uIdx % 3 === 0 ? 'badge-primary' : uIdx % 3 === 1 ? 'badge-warning' : 'badge-success';
                                   return (
                                     <div>
-                                      <span className={`badge ${badgeClass}`}>{furgoLabel}</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <span className={`badge ${badgeClass}`}>{furgoLabel}</span>
+                                        {shiftRouteDisplay && shiftRouteDisplay.toLowerCase() !== furgoLabel.toLowerCase() && (
+                                          <span className="badge" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: '700' }}>
+                                            📍 {shiftRouteDisplay}
+                                          </span>
+                                        )}
+                                      </div>
                                       {s.customDriver && (
                                         <div style={{ fontSize: '0.8rem', color: 'var(--text-main)', marginTop: '3px', fontWeight: '600' }}>
                                           🚚 {s.customDriver}
@@ -27148,7 +27361,7 @@ function App() {
                                       )}
                                       {s.helper && (
                                         <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                                          🤝 {s.helper}
+                                          🤝 {s.helper}{s.helper2 ? ` / ${s.helper2}` : ''}
                                         </div>
                                       )}
                                       {s.matricula && (
@@ -29033,14 +29246,14 @@ function App() {
                                 const summary = (existingShift?.summary && typeof existingShift.summary === 'object') ? existingShift.summary : getShiftSummary(targetFurgoId, targetDate);
                 
                 const dayTickets = tickets.filter(t => t.furgoId === targetFurgoId && t.date === targetDate);
-                const routeNameText = existingShift?.routeName || (dayTickets.length > 0 ? dayTickets[0].routeName : '');
+                const routeNameText = existingShift?.routeName || existingShift?.summary?.routeName || (currentUser?.role === 'repartidor' && targetFurgoId === currentUser.id ? driverRouteName : '') || (dayTickets.find(t => t.routeName)?.routeName) || furgoLabel || '';
                 
                 return (
                   <>
-                    <div><strong>Furgoneta:</strong> {furgoLabel}</div>
+                    <div><strong>Furgoneta / Dispositivo:</strong> {furgoLabel}</div>
                     <div><strong>Fecha:</strong> {targetDate}</div>
+                    {routeNameText && <div><strong>Ruta del Turno:</strong> <span style={{ color: '#60a5fa', fontWeight: '700' }}>📍 {routeNameText}</span></div>}
                     {existingShift?.customDriver && <div><strong>Chofer:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>👤 {existingShift.customDriver}</span></div>}
-                    {routeNameText && <div><strong>Ruta:</strong> <span style={{ color: 'var(--primary)', fontWeight: '600' }}>📍 {routeNameText}</span></div>}
                     {existingShift?.matricula && <div><strong>Vehículo (Matrícula):</strong> <span style={{ color: 'var(--danger)', fontWeight: '600' }}>🚐 {existingShift.matricula}</span></div>}
                     {((existingShift?.startKms ?? summary?.startKms) != null && (existingShift?.endKms ?? summary?.endKms) != null) && (
                       <div><strong>Odómetro:</strong> <span style={{ color: '#10b981', fontWeight: '700' }}>🚗 {Number(existingShift?.startKms ?? summary?.startKms).toLocaleString('es-ES')} → {Number(existingShift?.endKms ?? summary?.endKms).toLocaleString('es-ES')} ({Number(existingShift?.endKms ?? summary?.endKms) - Number(existingShift?.startKms ?? summary?.startKms)} km)</span></div>
