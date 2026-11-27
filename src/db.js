@@ -15,13 +15,37 @@ try {
 const activeUrl = (storedUrl && storedUrl !== 'none') ? storedUrl : defaultUrl;
 const activeKey = (storedKey && storedKey !== 'none') ? storedKey : defaultKey;
 
+// Petición HTTP con límite de tiempo (12s) para evitar que una conexión colgada
+// bloquee indefinidamente el ciclo de sincronización en segundo plano.
+function fetchWithTimeout(resource, options = {}) {
+  const timeoutMs = 12000;
+  const controller = new AbortController();
+  const externalSignal = options.signal;
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(resource, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+function createSupabaseClientWithTimeout(url, key) {
+  return createClient(url, key, {
+    global: { fetch: fetchWithTimeout },
+    realtime: { params: { eventsPerSecond: 20 } }
+  });
+}
+
 if (activeUrl && activeKey) {
   try {
-    supabase = createClient(activeUrl, activeKey);
+    supabase = createSupabaseClientWithTimeout(activeUrl, activeKey);
   } catch (e) {
     console.error("Error initializing Supabase client:", e);
     try {
-      supabase = createClient(defaultUrl, defaultKey);
+      supabase = createSupabaseClientWithTimeout(defaultUrl, defaultKey);
     } catch (err2) {
       console.error("Critical fallback failed:", err2);
     }
@@ -124,11 +148,11 @@ export function getSupabaseClient() {
       } catch (_) {}
       const u = (sUrl && sUrl !== 'none') ? sUrl : defaultUrl;
       const k = (sKey && sKey !== 'none') ? sKey : defaultKey;
-      supabase = createClient(u, k);
+      supabase = createSupabaseClientWithTimeout(u, k);
     } catch (e) {
       console.error("Error creating Supabase client:", e);
       try {
-        supabase = createClient(defaultUrl, defaultKey);
+        supabase = createSupabaseClientWithTimeout(defaultUrl, defaultKey);
       } catch (err2) {
         console.error("Critical fallback failed:", err2);
       }
@@ -248,6 +272,7 @@ async function secureDelete(table, values) {
 }
 
 let isSyncing = false;
+let reinitStartedAt = 0;
 let realtimeChannel = null;
 
 // Agrupa (debounce) las sincronizaciones disparadas por Realtime: si llegan varios cambios
@@ -256,18 +281,21 @@ let realtimeChannel = null;
 // tabla delivery_tickets (la más pesada, ~43 MB) si alguno de los cambios de la ráfaga era
 // realmente sobre esa tabla.
 let syncDebounceTimer = null;
-let syncDebouncePendingTickets = true;
-const SYNC_DEBOUNCE_MS = 500;
+let syncDebouncePendingTickets = false;
+const SYNC_DEBOUNCE_MS = 350;
 
 function scheduleSyncFromCloud(changedTable) {
-  syncDebouncePendingTickets = true;
+  if (!changedTable || changedTable === 'delivery_tickets') {
+    syncDebouncePendingTickets = true;
+  }
   if (syncDebounceTimer) {
     clearTimeout(syncDebounceTimer);
   }
   syncDebounceTimer = setTimeout(() => {
+    const shouldIncludeTickets = syncDebouncePendingTickets;
     syncDebounceTimer = null;
-    syncDebouncePendingTickets = true;
-    syncFromCloud(true);
+    syncDebouncePendingTickets = false;
+    syncFromCloud(shouldIncludeTickets);
   }, SYNC_DEBOUNCE_MS);
 }
 
@@ -419,6 +447,10 @@ export function getPendingSyncCount() {
 
 // ultra-rápido (<50ms) y funciona entre clientes móviles garantizando sincronización instantánea.
 export async function broadcastRealtimeEvent(event, payload) {
+  if (!supabase) return;
+  if (!realtimeChannel) {
+    setupRealtimeChannel();
+  }
   if (!realtimeChannel) return;
   try {
     await realtimeChannel.send({
@@ -428,6 +460,179 @@ export async function broadcastRealtimeEvent(event, payload) {
     });
   } catch (err) {
     console.warn('Realtime broadcast warning:', err);
+  }
+}
+
+// Aplica de forma instantánea en localStorage cambios de turnos recibidos en directo
+// (ya sea por Broadcast o por postgres_changes) sin esperar a descargar todas las tablas.
+function applyIncomingRealtimeShiftPatch({ shiftsPatch = [], deletedIds = [], reopened = false, shiftRow = null, metaKey = null, metaValue = null }) {
+  try {
+    let current = [];
+    try {
+      current = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+    } catch (_) {}
+    current = Array.isArray(current) ? [...current] : [];
+
+    let changed = false;
+
+    if (Array.isArray(deletedIds) && deletedIds.length > 0) {
+      const delSet = new Set(deletedIds.map(String));
+      const beforeLen = current.length;
+      current = current.filter(s => s && !delSet.has(String(s.id)));
+      if (current.length !== beforeLen) changed = true;
+    }
+
+    if (Array.isArray(shiftsPatch) && shiftsPatch.length > 0) {
+      shiftsPatch.forEach(inc => {
+        if (!inc || !inc.furgoId || !inc.date) return;
+        const canonicalId = `${inc.furgoId}_${inc.date}`;
+        const idx = current.findIndex(s => s && (s.id === canonicalId || (s.furgoId === inc.furgoId && s.date === inc.date)));
+        if (idx !== -1) {
+          const prev = current[idx];
+          if (prev._syncStatus === 'pending' && inc.status !== 'closed' && !reopened) {
+            return;
+          }
+          const nextStatus = reopened ? 'open' : (inc.status || prev.status || 'open');
+          const nextClosedAt = nextStatus === 'closed' ? (inc.closedAt || prev.closedAt || new Date().toISOString()) : null;
+          current[idx] = {
+            ...prev,
+            ...inc,
+            id: canonicalId,
+            status: nextStatus,
+            closedAt: nextClosedAt,
+            customDriver: inc.customDriver !== undefined ? inc.customDriver : (prev.customDriver || ''),
+            matricula: inc.matricula !== undefined ? inc.matricula : (prev.matricula || ''),
+            helper: inc.helper !== undefined ? inc.helper : (prev.helper || ''),
+            helper2: inc.helper2 !== undefined ? inc.helper2 : (prev.helper2 || ''),
+            routeName: inc.routeName !== undefined ? inc.routeName : (prev.routeName || ''),
+            kms: inc.kms !== undefined ? inc.kms : (prev.kms ?? null),
+            startKms: inc.startKms !== undefined ? inc.startKms : (prev.startKms ?? null),
+            endKms: inc.endKms !== undefined ? inc.endKms : (prev.endKms ?? null),
+            summary: reopened ? null : (inc.summary !== undefined ? inc.summary : (prev.summary || null))
+          };
+          delete current[idx]._syncStatus;
+          delete current[idx]._explicitMetaEdit;
+          changed = true;
+        } else {
+          const cleanInc = { ...inc, id: canonicalId };
+          delete cleanInc._syncStatus;
+          delete cleanInc._explicitMetaEdit;
+          current.push(cleanInc);
+          changed = true;
+        }
+      });
+    }
+
+    if (shiftRow && shiftRow.furgo_id && shiftRow.date) {
+      const canonicalId = `${shiftRow.furgo_id}_${shiftRow.date}`;
+      const idx = current.findIndex(s => s && (s.id === canonicalId || (s.furgoId === shiftRow.furgo_id && s.date === shiftRow.date)));
+      if (idx !== -1) {
+        const prev = current[idx];
+        if (prev._syncStatus !== 'pending' || shiftRow.status === 'closed') {
+          current[idx] = {
+            ...prev,
+            id: canonicalId,
+            furgoId: shiftRow.furgo_id,
+            date: shiftRow.date,
+            status: shiftRow.status || prev.status || 'open',
+            openedAt: shiftRow.opened_at !== undefined ? shiftRow.opened_at : (prev.openedAt || null),
+            closedAt: shiftRow.status === 'closed' ? (shiftRow.closed_at || prev.closedAt || new Date().toISOString()) : null,
+            ...(shiftRow.status !== 'closed' ? { summary: null } : {}),
+            createdBy: shiftRow.created_by || prev.createdBy || 'admin'
+          };
+          changed = true;
+        }
+      } else {
+        current.push({
+          id: canonicalId,
+          furgoId: shiftRow.furgo_id,
+          date: shiftRow.date,
+          status: shiftRow.status || 'open',
+          openedAt: shiftRow.opened_at || null,
+          closedAt: shiftRow.closed_at || null,
+          createdBy: shiftRow.created_by || 'admin',
+          helper: '',
+          helper2: '',
+          matricula: '',
+          customDriver: '',
+          observations: '',
+          routeName: '',
+          kms: null,
+          startKms: null,
+          endKms: null,
+          summary: null
+        });
+        changed = true;
+      }
+    }
+
+    if (metaKey && metaKey.startsWith('shift_meta_') && metaValue) {
+      const targetId = metaKey.substring('shift_meta_'.length);
+      let parsedMeta = null;
+      try { parsedMeta = typeof metaValue === 'string' ? JSON.parse(metaValue) : metaValue; } catch (_) {}
+      if (parsedMeta && typeof parsedMeta === 'object') {
+        const idx = current.findIndex(s => s && s.id === targetId);
+        if (idx !== -1) {
+          const prev = current[idx];
+          if (prev._syncStatus !== 'pending') {
+            current[idx] = {
+              ...prev,
+              helper: parsedMeta.helper !== undefined ? parsedMeta.helper : (prev.helper || ''),
+              helper2: parsedMeta.helper2 !== undefined ? parsedMeta.helper2 : (prev.helper2 || ''),
+              matricula: parsedMeta.matricula !== undefined ? parsedMeta.matricula : (prev.matricula || ''),
+              customDriver: parsedMeta.customDriver !== undefined ? parsedMeta.customDriver : (prev.customDriver || ''),
+              observations: parsedMeta.observations !== undefined ? parsedMeta.observations : (prev.observations || ''),
+              routeName: parsedMeta.routeName !== undefined ? parsedMeta.routeName : (prev.routeName || ''),
+              kms: parsedMeta.kms !== undefined ? parsedMeta.kms : (prev.kms ?? null),
+              startKms: parsedMeta.startKms !== undefined ? parsedMeta.startKms : (prev.startKms ?? null),
+              endKms: parsedMeta.endKms !== undefined ? parsedMeta.endKms : (prev.endKms ?? null),
+              summary: parsedMeta.summary !== undefined ? parsedMeta.summary : (prev.summary || null)
+            };
+            changed = true;
+          }
+        } else {
+          // Extraer furgoId y date del ID canónico `${furgoId}_${YYYY-MM-DD}`
+          const match = targetId.match(/^(.+)_(\d{4}-\d{2}-\d{2})$/);
+          if (match) {
+            current.push({
+              id: targetId,
+              furgoId: match[1],
+              date: match[2],
+              status: 'open',
+              openedAt: new Date().toISOString(),
+              closedAt: null,
+              createdBy: 'driver',
+              helper: parsedMeta.helper || '',
+              helper2: parsedMeta.helper2 || '',
+              matricula: parsedMeta.matricula || '',
+              customDriver: parsedMeta.customDriver || '',
+              observations: parsedMeta.observations || '',
+              routeName: parsedMeta.routeName || '',
+              kms: parsedMeta.kms ?? null,
+              startKms: parsedMeta.startKms ?? null,
+              endKms: parsedMeta.endKms ?? null,
+              summary: parsedMeta.summary || null
+            });
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (changed) {
+      // Nota: Si fue una reapertura explícita o actualización directa de fila abierta en la nube,
+      // ya ajustamos el status en current, por lo que guardamos deduplicado respetando cada id único.
+      const byId = new Map();
+      current.forEach(s => {
+        if (!s || !s.furgoId || !s.date) return;
+        const cid = `${s.furgoId}_${s.date}`;
+        byId.set(cid, { ...s, id: cid });
+      });
+      safeStorageSet('delivery_shifts', JSON.stringify(Array.from(byId.values())));
+      notifySync();
+    }
+  } catch (err) {
+    console.warn('Error aplicando parche instantáneo de turno:', err);
   }
 }
 
@@ -497,10 +702,19 @@ export function setupRealtimeChannel() {
         }
         scheduleSyncFromCloud('delivery_tickets');
       })
-      // 3. Escuchar cuando se abre/cierra un turno
-      .on('broadcast', { event: 'shifts_updated' }, () => {
-        console.log("⚡ Realtime Broadcast shifts_updated recibido");
+      // 3. Escuchar cuando se abre/cierra o configura un turno (aplicación instantánea <50ms)
+      .on('broadcast', { event: 'shifts_updated' }, (msg) => {
+        const payload = (msg && msg.payload) ? msg.payload : (msg || {});
+        console.log("⚡ Realtime Broadcast shifts_updated recibido:", payload);
         lastRealtimePingOkAt = Date.now();
+        if (payload && (Array.isArray(payload.shifts) || Array.isArray(payload.deletedShiftIds))) {
+          applyIncomingRealtimeShiftPatch({
+            shiftsPatch: payload.shifts || [],
+            deletedIds: payload.deletedShiftIds || [],
+            reopened: Boolean(payload.reopened)
+          });
+        }
+        syncShiftsFromCloud().catch(() => {});
         scheduleSyncFromCloud('delivery_shifts');
       })
       // 3b. Escuchar cuando se actualiza Tarifa Fija en cualquier dispositivo del mismo administrador
@@ -601,6 +815,41 @@ export function setupRealtimeChannel() {
             } catch (e) {}
             return;
           }
+          if (record.key && record.key.startsWith('shift_meta_')) {
+            applyIncomingRealtimeShiftPatch({ metaKey: record.key, metaValue: record.value });
+            syncShiftsFromCloud().catch(() => {});
+            return;
+          }
+          if (record.key && record.key.startsWith('fleet_daily_logs_')) {
+            try {
+              const myAdminId = getActiveAdminId();
+              if (record.key === `fleet_daily_logs_${myAdminId}`) {
+                safeStorageSet(`delivery_${record.key}`, record.value);
+                safeStorageSet('delivery_fleet_daily_logs', record.value);
+                notifySync();
+              }
+            } catch (e) {}
+            return;
+          }
+          if (record.key && record.key.startsWith('route_kms_')) {
+            try {
+              safeStorageSet(`delivery_${record.key}`, record.value);
+              notifySync();
+            } catch (e) {}
+            return;
+          }
+        }
+        if (payload.table === 'delivery_shifts') {
+          if (payload.eventType === 'DELETE' && payload.old && payload.old.id) {
+            applyIncomingRealtimeShiftPatch({ deletedIds: [String(payload.old.id)] });
+          } else if (payload.new) {
+            applyIncomingRealtimeShiftPatch({
+              shiftRow: payload.new,
+              reopened: payload.new.status === 'open'
+            });
+          }
+          syncShiftsFromCloud().catch(() => {});
+          return;
         }
         if (payload.table === 'delivery_tickets' && payload.eventType === 'DELETE' && payload.old && payload.old.id !== undefined) {
           const delId = String(payload.old.id);
@@ -651,8 +900,13 @@ export async function reinitSupabase(force = false) {
   if (!force && isRealtimeChannelHealthy() && (Date.now() - lastFullReinitAt) < REINIT_MIN_INTERVAL_MS) {
     return;
   }
+  if (isSyncing && (Date.now() - reinitStartedAt) > 20000) {
+    console.warn('[reinitSupabase] Desbloqueando isSyncing tras superar 20s');
+    isSyncing = false;
+  }
   if (isSyncing || isSaving > 0) return;
   isSyncing = true;
+  reinitStartedAt = Date.now();
   try {
     let url = null;
     let key = null;
@@ -667,7 +921,7 @@ export async function reinitSupabase(force = false) {
     if (activeUrl && activeKey) {
       try {
         if (!supabase) {
-          supabase = createClient(activeUrl, activeKey);
+          supabase = createSupabaseClientWithTimeout(activeUrl, activeKey);
         }
         setupRealtimeChannel();
 
@@ -890,8 +1144,213 @@ export function normalizeAndDeduplicateShifts(shiftsArray) {
 }
 
 let isCloudSyncRunning = false;
+let cloudSyncStartedAt = 0;
 let pendingCloudSyncAgain = false;
 let pendingCloudSyncIncludeTickets = false;
+const CLOUD_SYNC_MAX_LOCK_MS = 20000;
+
+let isShiftsQuickSyncing = false;
+let shiftsQuickSyncStartedAt = 0;
+
+// Sincronización ultraligera dedicada exclusivamente a Turnos y Diario de Kilómetros (~120ms).
+// No depende de isCloudSyncRunning ni descarga delivery_tickets, permitiendo refrescar el
+// Calendario de Turnos y los Cierres de Turno al instante sin cerrar nunca la aplicación.
+export async function syncShiftsFromCloud(retriesLeft = 2) {
+  if (!supabase) return false;
+  if (isSaving > 0) {
+    if (retriesLeft > 0) {
+      setTimeout(() => syncShiftsFromCloud(retriesLeft - 1), 1000);
+    }
+    return false;
+  }
+  if (isShiftsQuickSyncing && (Date.now() - shiftsQuickSyncStartedAt) < 10000) {
+    return false;
+  }
+  isShiftsQuickSyncing = true;
+  shiftsQuickSyncStartedAt = Date.now();
+  try {
+    const fetchAllShiftRows = async () => {
+      let rows = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: page, error } = await supabase
+          .from('delivery_shifts')
+          .select('*')
+          .order('id', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!page || page.length === 0) break;
+        rows = rows.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+      return rows;
+    };
+
+    const fetchAllShiftMetaRows = async () => {
+      let rows = [];
+      let from = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: page, error } = await supabase
+          .from('delivery_settings')
+          .select('key, value')
+          .like('key', 'shift_meta_%')
+          .order('key', { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!page || page.length === 0) break;
+        rows = rows.concat(page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+      return rows;
+    };
+
+    const adminId = getActiveAdminId();
+    const [shifts, metaSettings, extraSettingsRes] = await Promise.all([
+      fetchAllShiftRows(),
+      fetchAllShiftMetaRows(),
+      supabase
+        .from('delivery_settings')
+        .select('key, value')
+        .or(`key.eq.fleet_daily_logs_${adminId},key.like.route_kms_%`)
+        .limit(1000)
+    ]);
+
+    if (extraSettingsRes && Array.isArray(extraSettingsRes.data)) {
+      extraSettingsRes.data.forEach(s => {
+        if (!s || !s.key) return;
+        if (s.key === `fleet_daily_logs_${adminId}` && s.value) {
+          safeStorageSet(`delivery_${s.key}`, s.value);
+          safeStorageSet('delivery_fleet_daily_logs', s.value);
+        } else if (s.key.startsWith('route_kms_') && s.value !== undefined && s.value !== null) {
+          safeStorageSet(`delivery_${s.key}`, s.value);
+        }
+      });
+    }
+
+    if (Array.isArray(shifts)) {
+      let localExisting = [];
+      try {
+        localExisting = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
+      } catch (_) {}
+      localExisting = normalizeAndDeduplicateShifts(localExisting);
+
+      const metaMap = new Map();
+      (metaSettings || []).forEach(m => {
+        if (m && m.key) metaMap.set(m.key, m.value);
+      });
+
+      const rawCloudShifts = shifts.map(s => {
+        const canonicalId = (s.furgo_id && s.date) ? `${s.furgo_id}_${s.date}` : s.id;
+        const rawMetaVal = metaMap.get(`shift_meta_${canonicalId}`) || metaMap.get(`shift_meta_${s.id}`);
+        let meta = {
+          helper: '',
+          helper2: '',
+          matricula: '',
+          customDriver: '',
+          observations: '',
+          routeName: '',
+          kms: null,
+          startKms: null,
+          endKms: null,
+          summary: null
+        };
+        if (rawMetaVal) {
+          try { meta = { ...meta, ...JSON.parse(rawMetaVal) }; } catch (_) {}
+        }
+        return {
+          id: canonicalId,
+          furgoId: s.furgo_id,
+          date: s.date,
+          status: s.status,
+          openedAt: s.opened_at,
+          closedAt: s.closed_at,
+          routeName: meta.routeName || '',
+          summary: meta.summary || null,
+          createdBy: s.created_by || 'admin',
+          helper: meta.helper || '',
+          helper2: meta.helper2 || '',
+          matricula: meta.matricula || '',
+          customDriver: meta.customDriver || '',
+          observations: meta.observations || '',
+          kms: meta.kms ?? null,
+          startKms: meta.startKms ?? null,
+          endKms: meta.endKms ?? null
+        };
+      });
+
+      const cloudShifts = normalizeAndDeduplicateShifts(rawCloudShifts);
+      let deletedShiftIds = [];
+      try {
+        deletedShiftIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
+      } catch (_) {}
+
+      const filteredCloudShifts = cloudShifts.filter(s => {
+        if (!s) return false;
+        if (s.status === 'closed' || s.closedAt || s.openedAt) return true;
+        return !deletedShiftIds.includes(s.id);
+      });
+
+      const mergedShifts = [...filteredCloudShifts];
+      const pendingLocalShifts = localExisting.filter(s => s && s._syncStatus === 'pending');
+      pendingLocalShifts.forEach(localS => {
+        const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
+        if (cloudIdx !== -1) {
+          const cloud = mergedShifts[cloudIdx];
+          const effectiveStatus = (cloud.status === 'closed') ? 'closed' : localS.status;
+          const effectiveClosedAt = (cloud.status === 'closed') ? (cloud.closedAt || localS.closedAt) : localS.closedAt;
+          mergedShifts[cloudIdx] = {
+            ...cloud,
+            ...localS,
+            status: effectiveStatus,
+            closedAt: effectiveClosedAt
+          };
+        } else {
+          mergedShifts.push(localS);
+        }
+      });
+
+      localExisting.forEach(localS => {
+        if (!localS || localS._syncStatus === 'pending') return;
+        const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
+        if (cloudIdx !== -1) {
+          const cloud = mergedShifts[cloudIdx];
+          mergedShifts[cloudIdx] = {
+            ...cloud,
+            status: cloud.status,
+            closedAt: cloud.closedAt,
+            customDriver: cloud.customDriver || localS.customDriver || '',
+            matricula: cloud.matricula || localS.matricula || '',
+            helper: cloud.helper || localS.helper || '',
+            helper2: cloud.helper2 || localS.helper2 || '',
+            observations: cloud.observations || localS.observations || '',
+            routeName: cloud.routeName || localS.routeName || '',
+            kms: cloud.kms ?? localS.kms ?? null,
+            startKms: cloud.startKms ?? localS.startKms ?? null,
+            endKms: cloud.endKms ?? localS.endKms ?? null,
+            summary: cloud.status === 'closed' ? (cloud.summary || localS.summary || null) : null
+          };
+        }
+      });
+
+      const finalMergedStr = JSON.stringify(normalizeAndDeduplicateShifts(mergedShifts));
+      const prevRawStr = localStorage.getItem('delivery_shifts') || '';
+      if (finalMergedStr !== prevRawStr) {
+        safeStorageSet('delivery_shifts', finalMergedStr);
+      }
+      notifySync();
+      return true;
+    }
+  } catch (err) {
+    console.warn('[syncShiftsFromCloud] Error sincronizando turnos rápidos:', err);
+  } finally {
+    isShiftsQuickSyncing = false;
+  }
+  return false;
+}
 
 export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
   if (!supabase) return;
@@ -905,12 +1364,17 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
     }
     return;
   }
+  if (isCloudSyncRunning && (Date.now() - cloudSyncStartedAt) > CLOUD_SYNC_MAX_LOCK_MS) {
+    console.warn('[syncFromCloud] Desbloqueando isCloudSyncRunning tras superar tiempo límite de seguridad (20s)');
+    isCloudSyncRunning = false;
+  }
   if (isCloudSyncRunning) {
     pendingCloudSyncAgain = true;
     if (includeTickets) pendingCloudSyncIncludeTickets = true;
     return;
   }
   isCloudSyncRunning = true;
+  cloudSyncStartedAt = Date.now();
   try {
     // 0. Pull settings FIRST para conocer inmediatamente la lista global de paradas eliminadas
     // (deleted_ticket_ids) antes de empujar ningún cambio pendiente local a la nube.
@@ -1396,11 +1860,31 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
         localExisting = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
       } catch (e) {}
 
+      // Refrescar shift_meta_% justo al lado de delivery_shifts si pasó tiempo descargando tickets,
+      // evitando cruzar un turno recién cerrado con metadatos viejos del inicio del ciclo.
+      let freshMetaMap = null;
+      if (includeTickets) {
+        try {
+          const { data: freshMetas } = await supabase
+            .from('delivery_settings')
+            .select('key, value')
+            .like('key', 'shift_meta_%')
+            .limit(1000);
+          if (Array.isArray(freshMetas) && freshMetas.length > 0) {
+            freshMetaMap = new Map();
+            freshMetas.forEach(m => { if (m && m.key) freshMetaMap.set(m.key, m.value); });
+          }
+        } catch (_) {}
+      }
+
       const safeSettings = (settings && !errSettings) ? settings : [];
 
       const rawCloudShifts = shifts.map(s => {
         const canonicalId = (s.furgo_id && s.date) ? `${s.furgo_id}_${s.date}` : s.id;
-        const metaSetting = safeSettings.find(set => set.key === `shift_meta_${canonicalId}`) || safeSettings.find(set => set.key === `shift_meta_${s.id}`);
+        const freshMetaVal = freshMetaMap ? (freshMetaMap.get(`shift_meta_${canonicalId}`) || freshMetaMap.get(`shift_meta_${s.id}`)) : null;
+        const metaSetting = freshMetaVal
+          ? { value: freshMetaVal }
+          : (safeSettings.find(set => set.key === `shift_meta_${canonicalId}`) || safeSettings.find(set => set.key === `shift_meta_${s.id}`));
         let meta = {
           helper: '',
           helper2: '',
@@ -3674,23 +4158,9 @@ export async function saveShifts(shifts, targetShiftId = null) {
         return { success: true };
       }
 
-      const basicShifts = shiftsToUpload.map(s => ({
-        id: s.id,
-        furgo_id: s.furgoId,
-        date: s.date,
-        status: s.status,
-        opened_at: s.openedAt || null,
-        closed_at: s.closedAt || null,
-        created_by: s.createdBy || 'admin'
-      }));
-      const { error } = await supabase.from('delivery_shifts').upsert(basicShifts);
-      if (error) {
-        console.error("Error saving basic shifts to Supabase:", error);
-        return { success: false, error };
-      }
-
-      // Guardar metadata solo de los turnos modificados, fusionando con cualquier metadata
-      // existente en la nube para no borrar Chofer/Ayudante/Matrícula al cerrar desde otro equipo
+      // 1. Guardar PRIMERO la metadata (shift_meta_*) de los turnos modificados, fusionando con
+      // cualquier metadata existente en la nube para que cuando delivery_shifts cambie a 'closed',
+      // todos sus datos (chofer, ayudante, matrícula, ruta, kms, resumen) ya estén listos.
       const metaKeysToFetch = shiftsToUpload.map(s => `shift_meta_${s.id}`);
       const existingMetaMap = new Map();
       if (metaKeysToFetch.length > 0) {
@@ -3709,6 +4179,7 @@ export async function saveShifts(shifts, targetShiftId = null) {
         } catch (_) {}
       }
 
+      const mergedMetaById = new Map();
       const metaRows = shiftsToUpload.map(s => {
         const mKey = `shift_meta_${s.id}`;
         const prevMeta = existingMetaMap.get(mKey) || {};
@@ -3717,21 +4188,23 @@ export async function saveShifts(shifts, targetShiftId = null) {
           if (isExplicitEdit && localVal !== undefined) return localVal || '';
           return localVal || cloudVal || '';
         };
+        const mergedMetaObj = {
+          ...prevMeta,
+          helper: pickField(s.helper, prevMeta.helper),
+          helper2: pickField(s.helper2, prevMeta.helper2),
+          matricula: pickField(s.matricula, prevMeta.matricula),
+          customDriver: pickField(s.customDriver, prevMeta.customDriver),
+          observations: s.observations || prevMeta.observations || '',
+          routeName: pickField(s.routeName, prevMeta.routeName),
+          kms: s.kms ?? prevMeta.kms ?? null,
+          startKms: s.startKms ?? prevMeta.startKms ?? null,
+          endKms: s.endKms ?? prevMeta.endKms ?? null,
+          summary: s.summary || prevMeta.summary || null
+        };
+        mergedMetaById.set(s.id, mergedMetaObj);
         return {
           key: mKey,
-          value: JSON.stringify({
-            ...prevMeta,
-            helper: pickField(s.helper, prevMeta.helper),
-            helper2: pickField(s.helper2, prevMeta.helper2),
-            matricula: pickField(s.matricula, prevMeta.matricula),
-            customDriver: pickField(s.customDriver, prevMeta.customDriver),
-            observations: s.observations || prevMeta.observations || '',
-            routeName: pickField(s.routeName, prevMeta.routeName),
-            kms: s.kms ?? prevMeta.kms ?? null,
-            startKms: s.startKms ?? prevMeta.startKms ?? null,
-            endKms: s.endKms ?? prevMeta.endKms ?? null,
-            summary: s.summary || prevMeta.summary || null
-          })
+          value: JSON.stringify(mergedMetaObj)
         };
       });
       if (metaRows.length > 0) {
@@ -3741,15 +4214,39 @@ export async function saveShifts(shifts, targetShiftId = null) {
         }
       }
 
-      // Limpiar _syncStatus de los turnos subidos con éxito
+      // 2. Guardar la fila principal del turno en delivery_shifts (status, horas, etc.)
+      const basicShifts = shiftsToUpload.map(s => ({
+        id: s.id,
+        furgo_id: s.furgoId,
+        date: s.date,
+        status: s.status,
+        opened_at: s.openedAt || null,
+        closed_at: s.closedAt || null,
+        created_by: s.createdBy || 'admin'
+      }));
+      const { error } = await supabase.from('delivery_shifts').upsert(basicShifts);
+      if (error) {
+        console.error("Error saving basic shifts to Supabase:", error);
+        return { success: false, error };
+      }
+
+      // 3. Limpiar _syncStatus local y emitir los turnos completos para actualización instantánea en Calendario
       if (!error) {
+        const uploadedFullShifts = shiftsToUpload.map(s => {
+          const m = mergedMetaById.get(s.id) || {};
+          const { _syncStatus, _explicitMetaEdit, ...cleanS } = s;
+          return {
+            ...cleanS,
+            ...m,
+            id: s.id
+          };
+        });
+        const uploadedById = new Map(uploadedFullShifts.map(s => [s.id, s]));
         try {
           const currentLocal = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
-          const savedIds = new Set(shiftsToUpload.map(s => s.id));
           const updatedLocal = currentLocal.map(s => {
-            if (s && savedIds.has(s.id) && (s._syncStatus === 'pending' || s._explicitMetaEdit)) {
-              const { _syncStatus, _explicitMetaEdit, ...rest } = s;
-              return rest;
+            if (s && uploadedById.has(s.id)) {
+              return uploadedById.get(s.id);
             }
             return s;
           });
@@ -3757,10 +4254,12 @@ export async function saveShifts(shifts, targetShiftId = null) {
         } catch (e) {
           console.error("Error clearing local shift sync status:", e);
         }
-        broadcastRealtimeEvent('shifts_updated', { 
+        await broadcastRealtimeEvent('shifts_updated', {
           timestamp: Date.now(),
-          shiftIds: shiftsToUpload.map(s => s.id)
+          shiftIds: uploadedFullShifts.map(s => s.id),
+          shifts: uploadedFullShifts
         });
+        notifySync();
       }
     } catch (e) {
       console.error("Error saving shifts or meta to Supabase:", e);
@@ -3931,6 +4430,12 @@ export async function deletePlannedShift(furgoId, date) {
       const deletedIds = JSON.parse(localStorage.getItem('delivery_deleted_shifts')) || [];
       safeStorageSet('delivery_deleted_shifts', JSON.stringify(deletedIds.filter(id => id !== shiftId)));
     } catch (e) {}
+    await broadcastRealtimeEvent('shifts_updated', {
+      timestamp: Date.now(),
+      shiftIds: [shiftId],
+      deletedShiftIds: [shiftId]
+    });
+    notifySync();
   }
   return { success: true };
 }
@@ -4022,9 +4527,31 @@ export async function reopenShift(furgoId, date) {
         })
       });
 
-      broadcastRealtimeEvent('shifts_updated', {
+      const reopenedShiftPayload = {
+        id: shiftId,
+        furgoId,
+        date,
+        status: 'open',
+        openedAt: existingShift?.openedAt || null,
+        closedAt: null,
+        createdBy: existingShift?.createdBy || 'admin',
+        helper: currentReopened.helper || '',
+        helper2: currentReopened.helper2 || '',
+        matricula: currentReopened.matricula || '',
+        customDriver: currentReopened.customDriver || '',
+        observations: currentReopened.observations || '',
+        routeName: currentReopened.routeName || '',
+        kms: currentReopened.kms ?? null,
+        startKms: currentReopened.startKms ?? null,
+        endKms: currentReopened.endKms ?? null,
+        summary: null
+      };
+
+      await broadcastRealtimeEvent('shifts_updated', {
         timestamp: Date.now(),
-        shiftIds: [shiftId]
+        shiftIds: [shiftId],
+        reopened: true,
+        shifts: [reopenedShiftPayload]
       });
       notifySync();
     } catch (e) {
@@ -6001,19 +6528,8 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       const closedAt = isClosed ? (existingShiftRow?.closed_at || currentShift?.closedAt || new Date().toISOString()) : null;
       const openedAt = existingShiftRow?.opened_at || currentShift?.openedAt || new Date().toISOString();
 
-      // Upsert the basic shift row
-      const { error: shiftErr } = await supabase.from('delivery_shifts').upsert([{
-        id: canonicalShiftId,
-        furgo_id: furgoId,
-        date,
-        status: isClosed ? 'closed' : 'open',
-        opened_at: openedAt,
-        closed_at: closedAt,
-        created_by: currentShift?.createdBy || 'driver'
-      }]);
-      if (shiftErr) console.error('saveDriverShiftMeta: error upserting shift row:', shiftErr);
-
-      // Get existing meta to preserve other fields (kms, summary, observations, etc.)
+      // 1. Obtener y actualizar primero shift_meta para que cuando se notifique el cambio
+      // ya estén en la nube todos los metadatos del turno (chofer, ayudante, matrícula, ruta, kms)
       const { data: existingMeta } = await supabase
         .from('delivery_settings')
         .select('value')
@@ -6025,7 +6541,6 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
         try { currentMeta = JSON.parse(existingMeta.value); } catch (e) {}
       }
 
-      // Merge: keep existing fields, override provided fields
       const newMeta = {
         ...currentMeta,
         ...(customDriver !== undefined ? { customDriver } : {}),
@@ -6044,13 +6559,37 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       }]);
       if (metaErr) console.error('saveDriverShiftMeta: error upserting shift meta:', metaErr);
 
+      // 2. Guardar la fila básica en delivery_shifts
+      const { error: shiftErr } = await supabase.from('delivery_shifts').upsert([{
+        id: canonicalShiftId,
+        furgo_id: furgoId,
+        date,
+        status: isClosed ? 'closed' : 'open',
+        opened_at: openedAt,
+        closed_at: closedAt,
+        created_by: currentShift?.createdBy || 'driver'
+      }]);
+      if (shiftErr) console.error('saveDriverShiftMeta: error upserting shift row:', shiftErr);
+
+      const fullSavedShift = {
+        ...(currentShift || {}),
+        ...newMeta,
+        id: canonicalShiftId,
+        furgoId,
+        date,
+        status: isClosed ? 'closed' : 'open',
+        openedAt,
+        closedAt,
+        createdBy: currentShift?.createdBy || 'driver'
+      };
+      delete fullSavedShift._syncStatus;
+
       if (!shiftErr && !metaErr) {
         try {
           const latestLocal = normalizeAndDeduplicateShifts(JSON.parse(localStorage.getItem('delivery_shifts')) || []);
           const cleaned = latestLocal.map(s => {
-            if (s && s.id === canonicalShiftId && s._syncStatus === 'pending') {
-              const { _syncStatus, ...rest } = s;
-              return rest;
+            if (s && s.id === canonicalShiftId) {
+              return fullSavedShift;
             }
             return s;
           });
@@ -6059,9 +6598,10 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
         } catch (_) {}
       }
 
-      broadcastRealtimeEvent('shifts_updated', {
+      await broadcastRealtimeEvent('shifts_updated', {
         timestamp: Date.now(),
-        shiftIds: [canonicalShiftId]
+        shiftIds: [canonicalShiftId],
+        shifts: [fullSavedShift]
       });
       notifySync();
     } catch (e) {

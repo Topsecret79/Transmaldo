@@ -1,5 +1,5 @@
 // sw.js - Service Worker optimizado (Network-First) para recibir actualizaciones al instante
-const CACHE_NAME = 'delivery-app-v325';
+const CACHE_NAME = 'delivery-app-v326';
 const ASSETS = [
   './',
   './index.html',
@@ -36,9 +36,9 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Para llamadas a APIs externas de geocodificación o Supabase, no cachear de forma agresiva
+  // Para llamadas a APIs externas de geocodificación o Supabase, forzar red fresca sin caché HTTP
   if (e.request.url.includes('supabase.co') || e.request.url.includes('openstreetmap.org')) {
-    e.respondWith(fetch(e.request));
+    e.respondWith(fetch(e.request, { cache: 'no-store' }));
     return;
   }
 

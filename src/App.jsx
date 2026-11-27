@@ -489,6 +489,7 @@ import {
   onDataSync,
   reinitSupabase,
   syncFromCloud,
+  syncShiftsFromCloud,
   safeSaveTickets,
   loadHistoricalTicketsForPeriod,
   getSupabaseClient,
@@ -3121,6 +3122,7 @@ function App() {
     // Heartbeat de sincronización en segundo plano cada 10 segundos mientras la app esté visible.
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
+        checkAndReconnectIfNeeded(false).catch(() => {});
         handleRefresh(true);
       }
     }, 10 * 1000);
@@ -3137,6 +3139,29 @@ function App() {
       window.removeEventListener('delivery-data-synced', handleCustomSyncEvent);
     };
   }, []);
+
+  // Sincronización ultraligera en vivo dedicada a Turnos mientras el usuario consulta el
+  // Calendario de Turnos, Cierres de Turno o tiene abierto un modal de turnos: actualiza
+  // automáticamente cada 4 segundos (~120ms, sin descargar todos los tickets) como respaldo
+  // adicional a los eventos instantáneos de Realtime.
+  useEffect(() => {
+    const isShiftsViewActive =
+      activeTab === 'calendar' ||
+      activeTab === 'shifts' ||
+      Boolean(showShiftModal || plannedShiftModalOpen || showOpenShiftsModal);
+    if (!isShiftsViewActive) return;
+
+    syncShiftsFromCloud().then(() => loadDataRef.current()).catch(() => {});
+
+    const shiftsLiveInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        checkAndReconnectIfNeeded(false).catch(() => {});
+        syncShiftsFromCloud().then(() => loadDataRef.current()).catch(() => {});
+      }
+    }, 4000);
+
+    return () => clearInterval(shiftsLiveInterval);
+  }, [activeTab, showShiftModal, plannedShiftModalOpen, showOpenShiftsModal]);
 
   useEffect(() => {
     if (currentUser) {
@@ -18706,13 +18731,33 @@ function App() {
           </button>
           
           {/* Navigation Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <button type="button" className="btn btn-secondary btn-small" onClick={prevTime} style={{ padding: '8px 12px' }}>◀</button>
             <span style={{ fontSize: '1.05rem', fontWeight: '700', minWidth: '180px', textAlign: 'center', color: 'var(--text-main)' }}>
               {headerTitle}
             </span>
             <button type="button" className="btn btn-secondary btn-small" onClick={nextTime} style={{ padding: '8px 12px' }}>▶</button>
             <button type="button" className="btn btn-primary btn-small" onClick={goToToday} style={{ padding: '8px 12px' }}>Hoy</button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-small"
+              onClick={async () => {
+                triggerAlert('Actualizando turnos en vivo...', 'info');
+                try {
+                  await checkAndReconnectIfNeeded(true);
+                  await syncShiftsFromCloud();
+                  await syncFromCloud(false);
+                  loadDataRef.current();
+                  triggerAlert('Calendario de turnos actualizado ✓');
+                } catch (_) {
+                  loadDataRef.current();
+                }
+              }}
+              style={{ padding: '8px 12px' }}
+              title="Sincronizar turnos con el servidor al instante"
+            >
+              🔄 Actualizar
+            </button>
           </div>
         </div>
 
@@ -20477,17 +20522,69 @@ function App() {
         })()}
 
         {/* Modal de Detalle de Fechas de Empleado */}
-        {selectedPayrollEmployee && (
+        {selectedPayrollEmployee && (() => {
+          // Recalcular en vivo los días trabajados (turnos cerrados) del empleado desde `shifts`
+          // para que si un chofer cierra turno mientras este modal está abierto, se marque al instante.
+          const modalYear = selectedPayrollEmployee.year;
+          const modalMonth = selectedPayrollEmployee.month;
+          const modalMonthPrefix = `${modalYear}-${String(modalMonth + 1).padStart(2, '0')}`;
+          const modalDaysInMonth = new Date(modalYear, modalMonth + 1, 0).getDate();
+          const liveMonthShiftsMap = new Map();
+          (shifts || []).forEach(s => {
+            if (s && s.date && s.date.startsWith(modalMonthPrefix) && (s.status === 'closed' || s.closedAt)) {
+              liveMonthShiftsMap.set(s.id, s);
+            }
+          });
+          for (let d = 1; d <= modalDaysInMonth; d++) {
+            const dStr = `${modalYear}-${String(modalMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            getShiftsForDay(dStr).forEach(s => {
+              if (s && (s.status === 'closed' || s.closedAt)) {
+                const prev = liveMonthShiftsMap.get(s.id);
+                liveMonthShiftsMap.set(s.id, prev ? {
+                  ...prev,
+                  customDriver: prev.customDriver || s.customDriver || '',
+                  helper: prev.helper || s.helper || '',
+                  helper2: prev.helper2 || s.helper2 || '',
+                  matricula: prev.matricula || s.matricula || ''
+                } : s);
+              }
+            });
+          }
+          const normModalStr = (str) => (str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+          const empNormModal = normModalStr(selectedPayrollEmployee.name);
+          const liveClosedList = Array.from(liveMonthShiftsMap.values());
+          const liveDriverDates = liveClosedList
+            .filter(s => normModalStr(s.customDriver || (users || []).find(usr => usr.id === s.furgoId)?.label || '') === empNormModal)
+            .map(s => ({ date: s.date, role: 'Chofer' }));
+          const liveHelperDates = liveClosedList
+            .filter(s => normModalStr(s.helper) === empNormModal || normModalStr(s.helper2) === empNormModal)
+            .map(s => ({ date: s.date, role: 'Ayudante' }));
+          const liveCombined = [...liveDriverDates, ...liveHelperDates].sort((a, b) => a.date.localeCompare(b.date));
+          const liveUniqueDates = [];
+          const liveSeen = new Set();
+          liveCombined.forEach(it => {
+            if (!liveSeen.has(it.date)) {
+              liveSeen.add(it.date);
+              liveUniqueDates.push(it);
+            }
+          });
+          const livePayrollEmp = {
+            ...selectedPayrollEmployee,
+            days: liveUniqueDates.length,
+            dates: liveUniqueDates
+          };
+
+          return (
           <div className="obs-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, padding: '15px', backdropFilter: 'blur(4px)' }}>
             <div className="obs-modal" style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '14px', width: '100%', maxWidth: '440px', padding: '20px', position: 'relative', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'left' }}>
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--panel-border)', paddingBottom: '12px' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '700', color: 'var(--primary)' }}>
-                    📅 {selectedPayrollEmployee.name}
+                    📅 {livePayrollEmp.name}
                   </h3>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {selectedPayrollEmployee.role === 'chofer' ? '🚚 Chofer' : '🤝 Ayudante'} • Tarifa base: {selectedPayrollEmployee.rate} €/día
+                    {livePayrollEmp.role === 'chofer' ? '🚚 Chofer' : '🤝 Ayudante'} • Tarifa base: {livePayrollEmp.rate} €/día
                   </span>
                 </div>
                 <button 
@@ -20517,7 +20614,7 @@ function App() {
                     fontWeight: payrollModalTab === 'real' ? '700' : '500'
                   }}
                 >
-                  📅 Días Reales ({selectedPayrollEmployee.days})
+                  📅 Días Reales ({livePayrollEmp.days})
                 </button>
                 <button
                   type="button"
@@ -20541,12 +20638,12 @@ function App() {
 
               {/* VISTA 1: DÍAS REALES TRABAJADOS */}
               {payrollModalTab === 'real' && (() => {
-                const year = selectedPayrollEmployee.year;
-                const month = selectedPayrollEmployee.month; // 0-indexado
+                const year = livePayrollEmp.year;
+                const month = livePayrollEmp.month; // 0-indexado
                 const monthLabel = new Date(year, month, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
 
                 const workedByDate = {};
-                selectedPayrollEmployee.dates.forEach(d => { workedByDate[d.date] = d.role; });
+                livePayrollEmp.dates.forEach(d => { workedByDate[d.date] = d.role; });
 
                 const daysInMonth = new Date(year, month + 1, 0).getDate();
                 // Lunes=0 ... Domingo=6 (convención española de calendario)
@@ -20857,7 +20954,8 @@ function App() {
               </button>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* -------------------- COMMON PLAN MODAL (For Month/Week Views) -------------------- */}
         {plannedShiftModalOpen && selectedCalendarDay && (() => {
