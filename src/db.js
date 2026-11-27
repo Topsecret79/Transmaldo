@@ -1491,16 +1491,13 @@ export async function syncFromCloud(includeTickets = true, retriesLeft = 3) {
       // and the cloud version is empty, prefer the local data to avoid losing unsaved state
       const mergedShifts = [...filteredCloudShifts];
 
-      const todayIsoStr = getLocalDateISO();
       const pendingLocalShifts = localExisting.filter(s => s && s._syncStatus === 'pending');
       pendingLocalShifts.forEach(localS => {
         const cloudIdx = mergedShifts.findIndex(cs => cs.id === localS.id);
         if (cloudIdx !== -1) {
           const cloud = mergedShifts[cloudIdx];
-          if (cloud.status === 'closed' && cloud.date && cloud.date < todayIsoStr) {
-            return;
-          }
-          // REGLA DE INTEGRIDAD: Si en la nube ya está CERRADO, nunca se revierte a 'open'
+          // REGLA DE INTEGRIDAD: Si en la nube ya está CERRADO, nunca se revierte a 'open',
+          // pero sí se conservan los cambios pendientes de Chofer, Ayudante, Matrícula o Ruta.
           const effectiveStatus = (cloud.status === 'closed') ? 'closed' : localS.status;
           const effectiveClosedAt = (cloud.status === 'closed') ? (cloud.closedAt || localS.closedAt) : localS.closedAt;
           mergedShifts[cloudIdx] = {
@@ -3692,22 +3689,51 @@ export async function saveShifts(shifts, targetShiftId = null) {
         return { success: false, error };
       }
 
-      // Guardar metadata solo de los turnos modificados
-      const metaRows = shiftsToUpload.map(s => ({
-        key: `shift_meta_${s.id}`,
-        value: JSON.stringify({
-          helper: s.helper || '',
-          helper2: s.helper2 || '',
-          matricula: s.matricula || '',
-          customDriver: s.customDriver || '',
-          observations: s.observations || '',
-          routeName: s.routeName || '',
-          kms: s.kms || null,
-          startKms: s.startKms || null,
-          endKms: s.endKms || null,
-          summary: s.summary || null
-        })
-      }));
+      // Guardar metadata solo de los turnos modificados, fusionando con cualquier metadata
+      // existente en la nube para no borrar Chofer/Ayudante/Matrícula al cerrar desde otro equipo
+      const metaKeysToFetch = shiftsToUpload.map(s => `shift_meta_${s.id}`);
+      const existingMetaMap = new Map();
+      if (metaKeysToFetch.length > 0) {
+        try {
+          const { data: existingCloudMetas } = await supabase
+            .from('delivery_settings')
+            .select('key, value')
+            .in('key', metaKeysToFetch);
+          if (Array.isArray(existingCloudMetas)) {
+            existingCloudMetas.forEach(row => {
+              if (row && row.key && row.value) {
+                try { existingMetaMap.set(row.key, JSON.parse(row.value)); } catch (_) {}
+              }
+            });
+          }
+        } catch (_) {}
+      }
+
+      const metaRows = shiftsToUpload.map(s => {
+        const mKey = `shift_meta_${s.id}`;
+        const prevMeta = existingMetaMap.get(mKey) || {};
+        const isExplicitEdit = Boolean(s._explicitMetaEdit);
+        const pickField = (localVal, cloudVal) => {
+          if (isExplicitEdit && localVal !== undefined) return localVal || '';
+          return localVal || cloudVal || '';
+        };
+        return {
+          key: mKey,
+          value: JSON.stringify({
+            ...prevMeta,
+            helper: pickField(s.helper, prevMeta.helper),
+            helper2: pickField(s.helper2, prevMeta.helper2),
+            matricula: pickField(s.matricula, prevMeta.matricula),
+            customDriver: pickField(s.customDriver, prevMeta.customDriver),
+            observations: s.observations || prevMeta.observations || '',
+            routeName: pickField(s.routeName, prevMeta.routeName),
+            kms: s.kms ?? prevMeta.kms ?? null,
+            startKms: s.startKms ?? prevMeta.startKms ?? null,
+            endKms: s.endKms ?? prevMeta.endKms ?? null,
+            summary: s.summary || prevMeta.summary || null
+          })
+        };
+      });
       if (metaRows.length > 0) {
         const { error: metaErr } = await supabase.from('delivery_settings').upsert(metaRows);
         if (metaErr) {
@@ -3721,8 +3747,8 @@ export async function saveShifts(shifts, targetShiftId = null) {
           const currentLocal = JSON.parse(localStorage.getItem('delivery_shifts')) || [];
           const savedIds = new Set(shiftsToUpload.map(s => s.id));
           const updatedLocal = currentLocal.map(s => {
-            if (s && savedIds.has(s.id) && s._syncStatus === 'pending') {
-              const { _syncStatus, ...rest } = s;
+            if (s && savedIds.has(s.id) && (s._syncStatus === 'pending' || s._explicitMetaEdit)) {
+              const { _syncStatus, _explicitMetaEdit, ...rest } = s;
               return rest;
             }
             return s;
@@ -3801,10 +3827,10 @@ export async function closeShift(furgoId, date, summary) {
   const existingIndex = shifts.findIndex(s => s.id === shiftId);
   const existingShift = existingIndex !== -1 ? shifts[existingIndex] : {};
 
-  const helper = existingShift.helper || (summary ? summary.helper : '') || '';
-  const helper2 = existingShift.helper2 || (summary ? summary.helper2 : '') || '';
-  const matricula = existingShift.matricula || (summary ? summary.matricula : '') || '';
-  const customDriver = existingShift.customDriver || '';
+  const helper = (summary && summary.helper !== undefined && summary.helper !== '' ? summary.helper : existingShift.helper) || '';
+  const helper2 = (summary && summary.helper2 !== undefined && summary.helper2 !== '' ? summary.helper2 : existingShift.helper2) || '';
+  const matricula = (summary && summary.matricula !== undefined && summary.matricula !== '' ? summary.matricula : existingShift.matricula) || '';
+  const customDriver = (summary && summary.customDriver !== undefined && summary.customDriver !== '' ? summary.customDriver : existingShift.customDriver) || '';
   const routeName = (summary && summary.routeName ? summary.routeName : existingShift.routeName) || '';
 
   const newShift = {
@@ -5914,7 +5940,7 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
   // Normalizar siempre al ID canónico `${furgoId}_${date}` (evitando crear duplicados con `ticket_shift_...`)
   const canonicalShiftId = (furgoId && date) ? `${furgoId}_${date}` : String(shiftId).replace(/^ticket_shift_/, '');
 
-  // 1. Update the specific shift in localStorage directly
+  // 1. Update the specific shift in localStorage directly (marcado con _syncStatus='pending' mientras sube)
   let localShifts = [];
   try {
     localShifts = normalizeAndDeduplicateShifts(JSON.parse(localStorage.getItem('delivery_shifts')) || []);
@@ -5925,14 +5951,15 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
     localShifts[idx] = {
       ...localShifts[idx],
       id: canonicalShiftId,
-      customDriver,
-      matricula,
-      helper,
-      helper2,
+      ...(customDriver !== undefined ? { customDriver } : {}),
+      ...(matricula !== undefined ? { matricula } : {}),
+      ...(helper !== undefined ? { helper } : {}),
+      ...(helper2 !== undefined ? { helper2 } : {}),
       ...(routeName !== undefined ? { routeName } : {}),
       ...(kms !== undefined ? { kms } : {}),
       ...(startKms !== undefined ? { startKms } : {}),
-      ...(endKms !== undefined ? { endKms } : {})
+      ...(endKms !== undefined ? { endKms } : {}),
+      _syncStatus: 'pending'
     };
   } else {
     // Create new shift entry if doesn't exist
@@ -5943,22 +5970,24 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       status: 'open',
       openedAt: new Date().toISOString(),
       closedAt: null,
-      customDriver,
-      matricula,
-      helper,
-      helper2,
+      customDriver: customDriver !== undefined ? customDriver : '',
+      matricula: matricula !== undefined ? matricula : '',
+      helper: helper !== undefined ? helper : '',
+      helper2: helper2 !== undefined ? helper2 : '',
       observations: '',
       routeName: routeName !== undefined ? routeName : '',
       createdBy: 'driver',
       ...(kms !== undefined ? { kms } : {}),
       ...(startKms !== undefined ? { startKms } : {}),
-      ...(endKms !== undefined ? { endKms } : {})
+      ...(endKms !== undefined ? { endKms } : {}),
+      _syncStatus: 'pending'
     });
   }
   safeStorageSet('delivery_shifts', JSON.stringify(localShifts));
 
-  // 2. Save to Supabase directly (both the shift row and its metadata setting)
+  // 2. Save to Supabase directly (con bloqueo isSaving para impedir que syncFromCloud pise el cambio en vuelo)
   if (supabase) {
+    isSaving++;
     try {
       const currentShift = localShifts.find(s => s.id === canonicalShiftId);
       // Evitar sobreescribir el status si el turno ya fue cerrado en la nube o localmente
@@ -5996,13 +6025,13 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
         try { currentMeta = JSON.parse(existingMeta.value); } catch (e) {}
       }
 
-      // Merge: keep existing fields, override driver/plate/helper fields and kms/routeName if provided
+      // Merge: keep existing fields, override provided fields
       const newMeta = {
         ...currentMeta,
-        customDriver,
-        matricula,
-        helper,
-        helper2,
+        ...(customDriver !== undefined ? { customDriver } : {}),
+        ...(matricula !== undefined ? { matricula } : {}),
+        ...(helper !== undefined ? { helper } : {}),
+        ...(helper2 !== undefined ? { helper2 } : {}),
         ...(routeName !== undefined ? { routeName } : {}),
         ...(kms !== undefined ? { kms } : {}),
         ...(startKms !== undefined ? { startKms } : {}),
@@ -6015,12 +6044,30 @@ export async function saveDriverShiftMeta(shiftId, furgoId, date, customDriver, 
       }]);
       if (metaErr) console.error('saveDriverShiftMeta: error upserting shift meta:', metaErr);
 
+      if (!shiftErr && !metaErr) {
+        try {
+          const latestLocal = normalizeAndDeduplicateShifts(JSON.parse(localStorage.getItem('delivery_shifts')) || []);
+          const cleaned = latestLocal.map(s => {
+            if (s && s.id === canonicalShiftId && s._syncStatus === 'pending') {
+              const { _syncStatus, ...rest } = s;
+              return rest;
+            }
+            return s;
+          });
+          localShifts = cleaned;
+          safeStorageSet('delivery_shifts', JSON.stringify(cleaned));
+        } catch (_) {}
+      }
+
       broadcastRealtimeEvent('shifts_updated', {
         timestamp: Date.now(),
         shiftIds: [canonicalShiftId]
       });
+      notifySync();
     } catch (e) {
       console.error('saveDriverShiftMeta: unexpected error:', e);
+    } finally {
+      isSaving = Math.max(0, isSaving - 1);
     }
   }
 
@@ -6041,22 +6088,58 @@ export function getFleetVehicles() {
   }
 }
 
-export async function saveFleetVehicles(vehicles) {
+export async function saveFleetVehicles(vehicles, options = {}) {
   const adminId = getActiveAdminId();
-  const valStr = JSON.stringify(vehicles);
-  safeStorageSet(`delivery_fleet_vehicles_${adminId}`, valStr);
-  safeStorageSet('delivery_fleet_vehicles', valStr); // fallback local
+  let finalVehicles = Array.isArray(vehicles) ? [...vehicles] : [];
+  safeStorageSet(`delivery_fleet_vehicles_${adminId}`, JSON.stringify(finalVehicles));
+  safeStorageSet('delivery_fleet_vehicles', JSON.stringify(finalVehicles));
   if (supabase) {
-    const { error } = await supabase.from('delivery_settings').upsert({
-      key: `fleet_vehicles_${adminId}`,
-      value: valStr
-    });
-    if (error) {
-      console.error("Error saving fleet vehicles to Supabase:", error);
-      return { success: false, error };
+    isSaving++;
+    try {
+      if (!options.replaceAll) {
+        const { data: cloudRow } = await supabase
+          .from('delivery_settings')
+          .select('value')
+          .eq('key', `fleet_vehicles_${adminId}`)
+          .maybeSingle();
+        if (cloudRow?.value) {
+          try {
+            const cloudVehicles = JSON.parse(cloudRow.value);
+            if (Array.isArray(cloudVehicles)) {
+              const byPlate = new Map();
+              cloudVehicles.forEach(v => { if (v && v.plate) byPlate.set(v.plate, v); });
+              finalVehicles.forEach(v => {
+                if (!v || !v.plate) return;
+                const prev = byPlate.get(v.plate);
+                if (!prev) {
+                  byPlate.set(v.plate, v);
+                } else {
+                  const maxKm = Math.max(Number(prev.currentKm) || 0, Number(v.currentKm) || 0);
+                  byPlate.set(v.plate, { ...prev, ...v, currentKm: maxKm > 0 ? String(maxKm) : (v.currentKm || prev.currentKm || '') });
+                }
+              });
+              finalVehicles = Array.from(byPlate.values());
+            }
+          } catch (_) {}
+        }
+      }
+      const valStr = JSON.stringify(finalVehicles);
+      safeStorageSet(`delivery_fleet_vehicles_${adminId}`, valStr);
+      safeStorageSet('delivery_fleet_vehicles', valStr);
+      const { error } = await supabase.from('delivery_settings').upsert({
+        key: `fleet_vehicles_${adminId}`,
+        value: valStr
+      });
+      if (error) {
+        console.error("Error saving fleet vehicles to Supabase:", error);
+        return { success: false, error };
+      }
+      notifySync();
+    } finally {
+      isSaving = Math.max(0, isSaving - 1);
     }
   }
-  return { success: true };
+  return { success: true, vehicles: finalVehicles };
 }
 
 export function getFleetFuelLogs() {
@@ -6069,22 +6152,49 @@ export function getFleetFuelLogs() {
   }
 }
 
-export async function saveFleetFuelLogs(logs) {
+export async function saveFleetFuelLogs(logs, options = {}) {
   const adminId = getActiveAdminId();
-  const valStr = JSON.stringify(logs);
-  safeStorageSet(`delivery_fleet_fuel_logs_${adminId}`, valStr);
-  safeStorageSet('delivery_fleet_fuel_logs', valStr); // fallback local
+  let finalLogs = Array.isArray(logs) ? [...logs] : [];
+  safeStorageSet(`delivery_fleet_fuel_logs_${adminId}`, JSON.stringify(finalLogs));
+  safeStorageSet('delivery_fleet_fuel_logs', JSON.stringify(finalLogs));
   if (supabase) {
-    const { error } = await supabase.from('delivery_settings').upsert({
-      key: `fleet_fuel_logs_${adminId}`,
-      value: valStr
-    });
-    if (error) {
-      console.error("Error saving fleet fuel logs to Supabase:", error);
-      return { success: false, error };
+    isSaving++;
+    try {
+      if (!options.replaceAll) {
+        const { data: cloudRow } = await supabase
+          .from('delivery_settings')
+          .select('value')
+          .eq('key', `fleet_fuel_logs_${adminId}`)
+          .maybeSingle();
+        if (cloudRow?.value) {
+          try {
+            const cloudLogs = JSON.parse(cloudRow.value);
+            if (Array.isArray(cloudLogs)) {
+              const byId = new Map();
+              cloudLogs.forEach(l => { if (l && l.id) byId.set(String(l.id), l); });
+              finalLogs.forEach(l => { if (l && l.id) byId.set(String(l.id), { ...(byId.get(String(l.id)) || {}), ...l }); });
+              finalLogs = Array.from(byId.values()).sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
+            }
+          } catch (_) {}
+        }
+      }
+      const valStr = JSON.stringify(finalLogs);
+      safeStorageSet(`delivery_fleet_fuel_logs_${adminId}`, valStr);
+      safeStorageSet('delivery_fleet_fuel_logs', valStr);
+      const { error } = await supabase.from('delivery_settings').upsert({
+        key: `fleet_fuel_logs_${adminId}`,
+        value: valStr
+      });
+      if (error) {
+        console.error("Error saving fleet fuel logs to Supabase:", error);
+        return { success: false, error };
+      }
+      notifySync();
+    } finally {
+      isSaving = Math.max(0, isSaving - 1);
     }
   }
-  return { success: true };
+  return { success: true, logs: finalLogs };
 }
 
 export function getFleetMaintenanceLogs() {
@@ -6125,22 +6235,63 @@ export function getFleetDailyLogs() {
   }
 }
 
-export async function saveFleetDailyLogs(logs) {
+export async function saveFleetDailyLogs(logs, options = {}) {
   const adminId = getActiveAdminId();
-  const valStr = JSON.stringify(logs);
-  safeStorageSet(`delivery_fleet_daily_logs_${adminId}`, valStr);
-  safeStorageSet('delivery_fleet_daily_logs', valStr); // fallback local
+  let finalLogs = Array.isArray(logs) ? [...logs] : [];
+  safeStorageSet(`delivery_fleet_daily_logs_${adminId}`, JSON.stringify(finalLogs));
+  safeStorageSet('delivery_fleet_daily_logs', JSON.stringify(finalLogs));
   if (supabase) {
-    const { error } = await supabase.from('delivery_settings').upsert({
-      key: `fleet_daily_logs_${adminId}`,
-      value: valStr
-    });
-    if (error) {
-      console.error("Error saving fleet daily logs to Supabase:", error);
-      return { success: false, error };
+    isSaving++;
+    try {
+      if (!options.replaceAll) {
+        const { data: cloudRow } = await supabase
+          .from('delivery_settings')
+          .select('value')
+          .eq('key', `fleet_daily_logs_${adminId}`)
+          .maybeSingle();
+        if (cloudRow?.value) {
+          try {
+            const cloudLogs = JSON.parse(cloudRow.value);
+            if (Array.isArray(cloudLogs)) {
+              const merged = [...cloudLogs];
+              finalLogs.forEach(item => {
+                if (!item) return;
+                const existingIdx = merged.findIndex(c =>
+                  c && (String(c.id) === String(item.id) || (c.date === item.date && c.plate === item.plate))
+                );
+                if (existingIdx !== -1) {
+                  // Si ambos son del mismo día y matrícula, gana el que viene en item si es más reciente o editado
+                  const prev = merged[existingIdx];
+                  const isNewerOrHigher = Number(item.kmEnd || 0) >= Number(prev.kmEnd || 0) || String(item.id) === String(prev.id);
+                  if (isNewerOrHigher) {
+                    merged[existingIdx] = { ...prev, ...item };
+                  }
+                } else {
+                  merged.push(item);
+                }
+              });
+              finalLogs = merged.sort((a, b) => (b.date || '').localeCompare(a.date || '') || String(b.id).localeCompare(String(a.id)));
+            }
+          } catch (_) {}
+        }
+      }
+      const valStr = JSON.stringify(finalLogs);
+      safeStorageSet(`delivery_fleet_daily_logs_${adminId}`, valStr);
+      safeStorageSet('delivery_fleet_daily_logs', valStr);
+      const { error } = await supabase.from('delivery_settings').upsert({
+        key: `fleet_daily_logs_${adminId}`,
+        value: valStr
+      });
+      if (error) {
+        console.error("Error saving fleet daily logs to Supabase:", error);
+        return { success: false, error };
+      }
+      notifySync();
+    } finally {
+      isSaving = Math.max(0, isSaving - 1);
     }
   }
-  return { success: true };
+  return { success: true, logs: finalLogs };
 }
 
 // ==========================================

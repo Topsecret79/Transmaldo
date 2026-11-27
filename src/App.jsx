@@ -7555,8 +7555,16 @@ function App() {
       const furgoLbl = users.find(u => u.id === furgoId)?.label || '';
       if (currentUser && currentUser.role === 'repartidor' && furgoId === currentUser.id) {
         summary.routeName = (driverRouteName || '').trim() || existingS?.routeName || ticketRoute || furgoLbl;
+        summary.customDriver = (driverCustomDriver || '').trim() || existingS?.customDriver || '';
+        summary.matricula = (driverMatricula || '').trim() || existingS?.matricula || '';
+        summary.helper = driverHelper !== undefined ? driverHelper : (existingS?.helper || '');
+        summary.helper2 = driverHelper2 !== undefined ? driverHelper2 : (existingS?.helper2 || '');
       } else {
         summary.routeName = existingS?.routeName || ticketRoute || furgoLbl;
+        summary.customDriver = existingS?.customDriver || '';
+        summary.matricula = existingS?.matricula || '';
+        summary.helper = existingS?.helper || '';
+        summary.helper2 = existingS?.helper2 || '';
       }
       
       // Si está activo el control de flota, guardar en el diario e impactar en kms
@@ -7590,7 +7598,7 @@ function App() {
         } else {
           updatedDailyLogs = [newDailyLog, ...currentDailyLogs];
         }
-        saveFleetDailyLogs(updatedDailyLogs);
+        await saveFleetDailyLogs(updatedDailyLogs);
 
         // Auto-sincronización con PrimeDriveCar si está activa
         const syncSettings = getPrimeDriveCarSyncSettings();
@@ -7613,7 +7621,7 @@ function App() {
               ...currentVehicles[vehIndex],
               currentKm: end.toString()
             };
-            saveFleetVehicles(currentVehicles);
+            await saveFleetVehicles(currentVehicles);
           }
         }
 
@@ -7635,7 +7643,7 @@ function App() {
           };
           const currentFuelLogs = getFleetFuelLogs() || [];
           const updatedFuelLogs = [newFuelLog, ...currentFuelLogs];
-          saveFleetFuelLogs(updatedFuelLogs);
+          await saveFleetFuelLogs(updatedFuelLogs);
 
           const syncSettings = getPrimeDriveCarSyncSettings();
           if (syncSettings && syncSettings.autoSync) {
@@ -7960,6 +7968,39 @@ function App() {
            dbRouteName !== driverRouteName;
   };
 
+  // Autoguardado atómico inmediato al cambiar cualquier desplegable en "Mi Ruta"
+  // para que el Chofer, Ayudante, Matrícula o Ruta queden grabados desde la mañana
+  // sin esperar al final de la jornada ni perderse al cambiar al Mapa.
+  const autoSaveDriverShiftPatch = async (patch) => {
+    if (!currentUser) return;
+    const activeDate = shiftSummaryDate || getLocalDateISO();
+    const shiftId = `${currentUser.id}_${activeDate}`;
+
+    const nextDriver = patch.customDriver !== undefined ? patch.customDriver : driverCustomDriver;
+    const nextPlate = patch.matricula !== undefined ? patch.matricula : driverMatricula;
+    const nextHelper = patch.helper !== undefined ? patch.helper : driverHelper;
+    const nextHelper2 = patch.helper2 !== undefined ? patch.helper2 : driverHelper2;
+    const nextRoute = patch.routeName !== undefined ? patch.routeName : driverRouteName;
+
+    const key = `${shiftId}_${nextDriver}_${nextPlate}_${nextHelper}_${nextHelper2}_${nextRoute}`;
+    lastLoadedShiftRef.current = key;
+
+    const updatedShifts = await saveDriverShiftMeta(
+      shiftId,
+      currentUser.id,
+      activeDate,
+      nextDriver,
+      nextPlate,
+      nextHelper,
+      nextHelper2,
+      undefined,
+      undefined,
+      undefined,
+      nextRoute
+    );
+    setShifts(updatedShifts);
+  };
+
   const handleSaveDriverShiftSettings = async () => {
     if (!currentUser) return;
     const activeDate = shiftSummaryDate || getLocalDateISO();
@@ -7975,9 +8016,10 @@ function App() {
     const plate = driverMatricula.trim();
     const shiftRoute = (driverRouteName || '').trim();
 
-    // Use the atomic saveDriverShiftMeta function that writes directly to localStorage
-    // and Supabase without touching or depending on the full shifts array.
-    // This eliminates ALL race conditions with the periodic sync cycle.
+    // Update ref key FIRST so the useEffect does NOT reset the fields during sync
+    const key = `${shiftId}_${driver}_${plate}_${driverHelper}_${driverHelper2}_${shiftRoute}`;
+    lastLoadedShiftRef.current = key;
+
     const updatedShifts = await saveDriverShiftMeta(
       shiftId,
       currentUser.id,
@@ -7992,13 +8034,7 @@ function App() {
       shiftRoute
     );
 
-    // Update React state to reflect the saved data
     setShifts(updatedShifts);
-    
-    // Update ref key so the useEffect does NOT reset the fields when shifts state updates
-    const key = `${shiftId}_${driver}_${plate}_${driverHelper}_${driverHelper2}_${shiftRoute}`;
-    lastLoadedShiftRef.current = key;
-    
     triggerAlert('Configuración del turno guardada correctamente ✓');
   };
 
@@ -12834,6 +12870,7 @@ function App() {
                                   newRoute = typed.trim();
                                 }
                                 setDriverRouteName(newRoute);
+                                autoSaveDriverShiftPatch({ routeName: newRoute });
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
@@ -12875,6 +12912,7 @@ function App() {
                                   newDriver = typed.trim() || '';
                                 }
                                 setDriverCustomDriver(newDriver);
+                                autoSaveDriverShiftPatch({ customDriver: newDriver });
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
@@ -12907,6 +12945,7 @@ function App() {
                                   return;
                                 }
                                 setDriverMatricula(newPlate);
+                                autoSaveDriverShiftPatch({ matricula: newPlate });
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
@@ -12936,6 +12975,7 @@ function App() {
                                   newHelper = typed.trim() || '';
                                 }
                                 setDriverHelper(newHelper);
+                                autoSaveDriverShiftPatch({ helper: newHelper });
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
@@ -12965,6 +13005,7 @@ function App() {
                                   newHelper2 = typed.trim() || '';
                                 }
                                 setDriverHelper2(newHelper2);
+                                autoSaveDriverShiftPatch({ helper2: newHelper2 });
                               }}
                               style={{ margin: 0, padding: '6px 10px', fontSize: '0.8rem', background: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--panel-border)' }}
                             >
@@ -16358,7 +16399,7 @@ function App() {
       if (window.confirm('¿Estás seguro de que deseas eliminar este vehículo?')) {
         const updated = fleetVehicles.filter(v => v.id !== id);
         setFleetVehicles(updated);
-        saveFleetVehicles(updated);
+        saveFleetVehicles(updated, { replaceAll: true });
         reinitSupabase();
         setAlertMsg({ text: 'Vehículo eliminado con éxito', type: 'success' });
       }
@@ -16407,7 +16448,7 @@ function App() {
       if (window.confirm('¿Estás seguro de que deseas eliminar este registro de repostaje?')) {
         const updated = fleetFuelLogs.filter(log => log.id !== id);
         setFleetFuelLogs(updated);
-        saveFleetFuelLogs(updated);
+        saveFleetFuelLogs(updated, { replaceAll: true });
         reinitSupabase();
         setAlertMsg({ text: 'Registro de repostaje eliminado con éxito', type: 'success' });
       }
@@ -16540,7 +16581,7 @@ function App() {
       if (window.confirm('¿Estás seguro de que deseas eliminar este registro de kilómetros diarios?')) {
         const updated = fleetDailyLogs.filter(log => log.id !== id);
         setFleetDailyLogs(updated);
-        saveFleetDailyLogs(updated);
+        saveFleetDailyLogs(updated, { replaceAll: true });
         reinitSupabase();
         setAlertMsg({ text: 'Registro de kilómetros diarios eliminado con éxito', type: 'success' });
       }
@@ -18524,21 +18565,30 @@ function App() {
       if (existsInShifts) {
         updatedShifts = (shifts || []).map(curr => {
           if (curr && (curr.id === canonicalId || (curr.furgoId === targetShift.furgoId && curr.date === targetShift.date))) {
-            return { ...curr, ...fieldPatch, id: canonicalId, _syncStatus: 'pending' };
+            return { ...curr, ...fieldPatch, id: canonicalId, _syncStatus: 'pending', _explicitMetaEdit: true };
           }
           return curr;
         });
       } else {
         const { _isSynthetic, allStopsCompleted, ticketsCount, ...cleanBase } = targetShift;
+        const furgoObj = (users || []).find(u => u && u.id === targetShift.furgoId);
+        const cleanDriver = (_isSynthetic && cleanBase.customDriver === (furgoObj?.label || targetShift.furgoId))
+          ? ''
+          : (cleanBase.customDriver || '');
+        const validOpenedAt = (targetShift.openedAt && String(targetShift.openedAt).includes('T'))
+          ? targetShift.openedAt
+          : new Date().toISOString();
         updatedShifts = [
           ...(shifts || []),
           {
             ...cleanBase,
+            customDriver: cleanDriver,
             ...fieldPatch,
             id: canonicalId,
             status: targetShift.status === 'closed' ? 'closed' : 'open',
-            openedAt: targetShift.openedAt || new Date().toISOString(),
-            _syncStatus: 'pending'
+            openedAt: validOpenedAt,
+            _syncStatus: 'pending',
+            _explicitMetaEdit: true
           }
         ];
       }
